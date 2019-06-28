@@ -37,8 +37,8 @@ using llvm::dbgs;
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<AffineApplyOp, AffineForOp, AffineIfOp, AffineLoadOp,
-                AffineStoreOp, AffineTerminatorOp>();
+  addOperations<AffineApplyOp, AffineDmaStartOp, AffineDmaWaitOp, AffineForOp,
+                AffineIfOp, AffineLoadOp, AffineStoreOp, AffineTerminatorOp>();
 }
 
 /// A utility function to check if a value is defined at the top level of a
@@ -694,6 +694,220 @@ struct SimplifyAffineApply : public OpRewritePattern<AffineApplyOp> {
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.push_back(llvm::make_unique<SimplifyAffineApply>(context));
+}
+
+//===----------------------------------------------------------------------===//
+// AffineDmaStartOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/133776335) Check that map operands are loop IVs or symbols.
+void AffineDmaStartOp::build(Builder *builder, OperationState *result,
+                             Value *srcMemRef, AffineMap srcMap,
+                             ArrayRef<Value *> srcIndices, Value *destMemRef,
+                             AffineMap dstMap, ArrayRef<Value *> destIndices,
+                             Value *tagMemRef, AffineMap tagMap,
+                             ArrayRef<Value *> tagIndices, Value *numElements,
+                             Value *stride, Value *elementsPerStride) {
+  result->addOperands(srcMemRef);
+  result->addAttribute(getSrcMapAttrName(), builder->getAffineMapAttr(srcMap));
+  result->addOperands(srcIndices);
+  result->addOperands(destMemRef);
+  result->addAttribute(getDstMapAttrName(), builder->getAffineMapAttr(dstMap));
+  result->addOperands(destIndices);
+  result->addOperands(tagMemRef);
+  result->addAttribute(getTagMapAttrName(), builder->getAffineMapAttr(tagMap));
+  result->addOperands(tagIndices);
+  result->addOperands(numElements);
+  if (stride) {
+    result->addOperands({stride, elementsPerStride});
+  }
+}
+
+void AffineDmaStartOp::print(OpAsmPrinter *p) {
+  *p << "affine.dma_start " << *getSrcMemRef() << '[';
+  SmallVector<Value *, 8> operands(getSrcIndices());
+  p->printAffineMapOfSSAIds(getSrcMapAttr(), operands);
+  *p << "], " << *getDstMemRef() << '[';
+  operands.assign(getDstIndices().begin(), getDstIndices().end());
+  p->printAffineMapOfSSAIds(getDstMapAttr(), operands);
+  *p << "], " << *getTagMemRef() << '[';
+  operands.assign(getTagIndices().begin(), getTagIndices().end());
+  p->printAffineMapOfSSAIds(getTagMapAttr(), operands);
+  *p << "], " << *getNumElements();
+  if (isStrided()) {
+    *p << ", " << *getStride();
+    *p << ", " << *getNumElementsPerStride();
+  }
+  *p << " : " << getSrcMemRefType() << ", " << getDstMemRefType() << ", "
+     << getTagMemRefType();
+}
+
+// Parse AffineDmaStartOp.
+// Ex:
+//   affine.dma_start %src[%i, %j], %dst[%k, %l], %tag[%index], %size,
+//     %stride, %num_elt_per_stride
+//       : memref<3076 x f32, 0>, memref<1024 x f32, 2>, memref<1 x i32>
+//
+ParseResult AffineDmaStartOp::parse(OpAsmParser *parser,
+                                    OperationState *result) {
+  OpAsmParser::OperandType srcMemRefInfo;
+  AffineMapAttr srcMapAttr;
+  SmallVector<OpAsmParser::OperandType, 4> srcMapOperands;
+  OpAsmParser::OperandType dstMemRefInfo;
+  AffineMapAttr dstMapAttr;
+  SmallVector<OpAsmParser::OperandType, 4> dstMapOperands;
+  OpAsmParser::OperandType tagMemRefInfo;
+  AffineMapAttr tagMapAttr;
+  SmallVector<OpAsmParser::OperandType, 4> tagMapOperands;
+  OpAsmParser::OperandType numElementsInfo;
+  SmallVector<OpAsmParser::OperandType, 2> strideInfo;
+
+  SmallVector<Type, 3> types;
+  auto indexType = parser->getBuilder().getIndexType();
+
+  // Parse and resolve the following list of operands:
+  // *) dst memref followed by its affine maps operands (in square brackets).
+  // *) src memref followed by its affine map operands (in square brackets).
+  // *) tag memref followed by its affine map operands (in square brackets).
+  // *) number of elements transferred by DMA operation.
+  if (parser->parseOperand(srcMemRefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(srcMapOperands, srcMapAttr,
+                                     getSrcMapAttrName(), result->attributes) ||
+      parser->parseRSquare() || parser->parseComma() ||
+      parser->parseOperand(dstMemRefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(dstMapOperands, dstMapAttr,
+                                     getDstMapAttrName(), result->attributes) ||
+      parser->parseRSquare() || parser->parseComma() ||
+      parser->parseOperand(tagMemRefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(tagMapOperands, tagMapAttr,
+                                     getTagMapAttrName(), result->attributes) ||
+      parser->parseRSquare() || parser->parseComma() ||
+      parser->parseOperand(numElementsInfo))
+    return failure();
+
+  // Parse optional stride and elements per stride.
+  if (parser->parseTrailingOperandList(strideInfo)) {
+    return failure();
+  }
+  if (!strideInfo.empty() && strideInfo.size() != 2) {
+    return parser->emitError(parser->getNameLoc(),
+                             "expected two stride related operands");
+  }
+  bool isStrided = strideInfo.size() == 2;
+
+  if (parser->parseColonTypeList(types))
+    return failure();
+
+  if (types.size() != 3)
+    return parser->emitError(parser->getNameLoc(), "expected three types");
+
+  if (parser->resolveOperand(srcMemRefInfo, types[0], result->operands) ||
+      parser->resolveOperands(srcMapOperands, indexType, result->operands) ||
+      parser->resolveOperand(dstMemRefInfo, types[1], result->operands) ||
+      parser->resolveOperands(dstMapOperands, indexType, result->operands) ||
+      parser->resolveOperand(tagMemRefInfo, types[2], result->operands) ||
+      parser->resolveOperands(tagMapOperands, indexType, result->operands) ||
+      parser->resolveOperand(numElementsInfo, indexType, result->operands))
+    return failure();
+
+  if (isStrided) {
+    if (parser->resolveOperands(strideInfo, indexType, result->operands))
+      return failure();
+  }
+
+  // Check that src/dst/tag operand counts match their map.numInputs.
+  if (srcMapOperands.size() != srcMapAttr.getValue().getNumInputs() ||
+      dstMapOperands.size() != dstMapAttr.getValue().getNumInputs() ||
+      tagMapOperands.size() != tagMapAttr.getValue().getNumInputs())
+    return parser->emitError(parser->getNameLoc(),
+                             "memref operand count not equal to map.numInputs");
+  return success();
+}
+
+LogicalResult AffineDmaStartOp::verify() {
+  if (!getOperand(getSrcMemRefOperandIndex())->getType().isa<MemRefType>())
+    return emitOpError("expected DMA source to be of memref type");
+  if (!getOperand(getDstMemRefOperandIndex())->getType().isa<MemRefType>())
+    return emitOpError("expected DMA destination to be of memref type");
+  if (!getOperand(getTagMemRefOperandIndex())->getType().isa<MemRefType>())
+    return emitOpError("expected DMA tag to be of memref type");
+
+  // DMAs from different memory spaces supported.
+  if (getSrcMemorySpace() == getDstMemorySpace()) {
+    return emitOpError("DMA should be between different memory spaces");
+  }
+  unsigned numInputsAllMaps = getSrcMap().getNumInputs() +
+                              getDstMap().getNumInputs() +
+                              getTagMap().getNumInputs();
+  if (getNumOperands() != numInputsAllMaps + 3 + 1 &&
+      getNumOperands() != numInputsAllMaps + 3 + 1 + 2) {
+    return emitOpError("incorrect number of operands");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AffineDmaWaitOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/133776335) Check that map operands are loop IVs or symbols.
+void AffineDmaWaitOp::build(Builder *builder, OperationState *result,
+                            Value *tagMemRef, AffineMap tagMap,
+                            ArrayRef<Value *> tagIndices, Value *numElements) {
+  result->addOperands(tagMemRef);
+  result->addAttribute(getTagMapAttrName(), builder->getAffineMapAttr(tagMap));
+  result->addOperands(tagIndices);
+  result->addOperands(numElements);
+}
+
+void AffineDmaWaitOp::print(OpAsmPrinter *p) {
+  *p << "affine.dma_wait " << *getTagMemRef() << '[';
+  SmallVector<Value *, 2> operands(getTagIndices());
+  p->printAffineMapOfSSAIds(getTagMapAttr(), operands);
+  *p << "], ";
+  p->printOperand(getNumElements());
+  *p << " : " << getTagMemRef()->getType();
+}
+
+// Parse AffineDmaWaitOp.
+// Eg:
+//   affine.dma_wait %tag[%index], %num_elements
+//     : memref<1 x i32, (d0) -> (d0), 4>
+//
+ParseResult AffineDmaWaitOp::parse(OpAsmParser *parser,
+                                   OperationState *result) {
+  OpAsmParser::OperandType tagMemRefInfo;
+  AffineMapAttr tagMapAttr;
+  SmallVector<OpAsmParser::OperandType, 2> tagMapOperands;
+  Type type;
+  auto indexType = parser->getBuilder().getIndexType();
+  OpAsmParser::OperandType numElementsInfo;
+
+  // Parse tag memref, its map operands, and dma size.
+  if (parser->parseOperand(tagMemRefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(tagMapOperands, tagMapAttr,
+                                     getTagMapAttrName(), result->attributes) ||
+      parser->parseRSquare() || parser->parseComma() ||
+      parser->parseOperand(numElementsInfo) || parser->parseColonType(type) ||
+      parser->resolveOperand(tagMemRefInfo, type, result->operands) ||
+      parser->resolveOperands(tagMapOperands, indexType, result->operands) ||
+      parser->resolveOperand(numElementsInfo, indexType, result->operands))
+    return failure();
+
+  if (!type.isa<MemRefType>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected tag to be of memref type");
+
+  if (tagMapOperands.size() != tagMapAttr.getValue().getNumInputs())
+    return parser->emitError(parser->getNameLoc(),
+                             "tag memref operand count != to map.numInputs");
+  return success();
+}
+
+LogicalResult AffineDmaWaitOp::verify() {
+  if (!getOperand(0)->getType().isa<MemRefType>())
+    return emitOpError("expected DMA tag to be of memref type");
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
