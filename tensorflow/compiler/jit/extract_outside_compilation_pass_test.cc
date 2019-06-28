@@ -57,7 +57,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   add_node->AddAttr(kXlaConnectedToXlaComputationAttrName, "cluster");
   add_node->AddAttr(kXlaConnectedFromXlaComputationAttrName, "cluster");
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -72,7 +72,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   for (Node *n : g->nodes()) {
     EXPECT_NE(n->type_string(), "_Arg");
   }
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_NE(recv_at_host, nullptr);
   std::vector<DataType> recv_at_host_dtypes;
   TF_CHECK_OK(
@@ -85,7 +85,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   for (Node *n : g->nodes()) {
     EXPECT_NE(n->type_string(), "_Retval");
   }
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_NE(send_from_host, nullptr);
   std::vector<DataType> send_from_host_dtypes;
   TF_CHECK_OK(
@@ -118,7 +118,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   TF_CHECK_OK(GetNodeAttr(AttrSlice(&call_node_def.attr()),
                           "shape_inference_graph", &shape_inference_graph));
   EXPECT_EQ(shape_inference_graph.name(),
-            "_outside_compilation_shape_inference_cluster_0");
+            "_outside_compilation_shape_inference_cluster__0");
 }
 
 TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
@@ -128,7 +128,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -139,9 +139,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
   // Check key placeholder and RecvAtHost is present, but SendFromHost is not.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_NE(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_NE(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_EQ(send_from_host, nullptr);
 }
 
@@ -154,7 +154,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoRecvAtHost) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -165,9 +165,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoRecvAtHost) {
   // Check key placeholder and SendFromHost is present, but RecvAtHost is not.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_NE(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_EQ(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_NE(send_from_host, nullptr);
 }
 
@@ -178,7 +178,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoKeyPlaceholder) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -189,9 +189,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoKeyPlaceholder) {
   // Check key placeholder/RecvAtHost/SendFromHost are not present.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_EQ(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_EQ(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_EQ(send_from_host, nullptr);
 }
 
@@ -210,7 +210,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, ShapesInferred) {
   const0_node->AddAttr(kXlaInferredShapesAttrName,
                        std::vector<PartialTensorShape>{shape});
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
