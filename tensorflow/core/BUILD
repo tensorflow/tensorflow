@@ -2976,8 +2976,6 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:dense_update_functor",
-        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
