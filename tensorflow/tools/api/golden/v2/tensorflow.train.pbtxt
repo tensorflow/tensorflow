@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "checkpoints_iterator"
+    argspec: "args=[\'checkpoint_dir\', \'min_interval_secs\', \'timeout\', \'timeout_fn\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "get_checkpoint_state"
     argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

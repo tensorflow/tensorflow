@@ -29,6 +29,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -42,6 +43,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
@@ -638,7 +640,7 @@ def _pad_all_input(inputs, padded_shapes):
         padded_inputs[core_idx].append(input_tensor)
       else:
         # Only pad the non static shape dimension.
-        for i, s in enumerate(input_shape):
+        for i, s in enumerate(input_shape.dims):
           if s.value is None:
             if core_idx == 0:
               real_shape_idx += 1
@@ -651,8 +653,8 @@ def _pad_all_input(inputs, padded_shapes):
                 math_ops.cast(input_shape_tensor[i], dtypes.uint32))
 
         paddings = []
-        for i, s in enumerate(padded_shape):
-          if input_shape[i].value:
+        for i, s in enumerate(padded_shape.dims):
+          if input_shape.dims[i].value:
             # Don't pad if input shape is already static.
             padding = [0, 0]
           else:
@@ -843,7 +845,15 @@ def split_compile_and_replicate(computation,
     flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
-  cluster_name = graph.unique_name("cluster")
+  if isinstance(graph, func_graph.FuncGraph):
+    # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
+    # object. If both outside graph and this function have a TPU cluster,
+    # they will have the same cluster name and it will cause problems (because
+    # we lower functional ops in Tensorflow 2.0). Append function name to
+    # 'cluster_name' to avoid cluster name collision.
+    cluster_name = graph.unique_name("cluster_" + graph.name)
+  else:
+    cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
@@ -1614,7 +1624,9 @@ def prune_unconnected_ops_from_xla(prune_graph):
       removing the tpu_replicate attribute.
   """
   # Scan over the top level graph and all function graphs.
-  for graph in [prune_graph] + list(prune_graph._functions.values()):  # pylint: disable=protected-access
+  for graph in [prune_graph] + [
+      f for f in prune_graph._functions.values() if isinstance(f, ops.Graph)  # pylint: disable=protected-access
+  ]:
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue

@@ -28,6 +28,7 @@ from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -254,9 +255,8 @@ class StaticHashTableTest(BaseLookupTableTest):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.initialize_table(table)
-
-      with self.assertRaisesOpError("Table already initialized"):
-        self.initialize_table(table)
+      # Make sure that initializing twice doesn't throw any errors.
+      self.initialize_table(table)
 
   def testInitializationWithInvalidDimensions(self):
     default_val = -1
@@ -298,6 +298,27 @@ class StaticHashTableTest(BaseLookupTableTest):
     with session2:
       table.initializer.run()
       self.assertAllEqual(3, self.evaluate(table.size()))
+
+  @test_util.run_v2_only
+  def testImportedHashTable(self):
+    g = ops.Graph()
+    with g.as_default():
+      t = lookup_ops.StaticHashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1]),
+          2)
+      init_op = t._init_op
+      op = t.lookup(ops.convert_to_tensor(["a"]))
+      meta_graph = saver.export_meta_graph()
+
+    def f():
+      saver.import_meta_graph(meta_graph)
+      return ops.get_default_graph().get_tensor_by_name(op.name)
+
+    wrapped = wrap_function.wrap_function(f, [])
+    pruned_init_fn = wrapped.prune(
+        (), [wrapped.graph.get_operation_by_name(init_op.name)])
+    self.evaluate(pruned_init_fn())
+    self.assertAllEqual([1], wrapped())
 
   def testStaticHashTableInt32String(self):
     default_val = "n/a"
@@ -1293,6 +1314,71 @@ class DenseHashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
       self.assertAllEqual([-1, 0, -1, 2, 3], output.eval())
 
+  @test_util.run_v1_only("Saver V1 only")
+  def testSaveRestoreOnlyTable(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    with self.session(graph=ops.Graph()) as sess:
+      default_value = -1
+      empty_key = 0
+      deleted_key = -1
+      keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+      table = lookup_ops.DenseHashTable(
+          dtypes.int64,
+          dtypes.int64,
+          default_value=default_value,
+          empty_key=empty_key,
+          deleted_key=deleted_key,
+          name="t1",
+          checkpoint=True,
+          initial_num_buckets=32)
+
+      save = saver.Saver([table])
+
+      self.assertAllEqual(0, table.size().eval())
+      table.insert(keys, values).run()
+      self.assertAllEqual(4, table.size().eval())
+      self.assertAllEqual(32, len(table.export()[0].eval()))
+
+      keys2 = constant_op.constant([12, 15], dtypes.int64)
+      table.remove(keys2).run()
+      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(32, len(table.export()[0].eval()))
+
+      val = save.save(sess, save_path)
+      self.assertIsInstance(val, six.string_types)
+      self.assertEqual(save_path, val)
+
+    with self.session(graph=ops.Graph()) as sess:
+      table = lookup_ops.DenseHashTable(
+          dtypes.int64,
+          dtypes.int64,
+          default_value=default_value,
+          empty_key=empty_key,
+          deleted_key=deleted_key,
+          name="t1",
+          checkpoint=True,
+          initial_num_buckets=64)
+      table.insert(
+          constant_op.constant([11, 14], dtypes.int64),
+          constant_op.constant([12, 24], dtypes.int64)).run()
+      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(64, len(table.export()[0].eval()))
+
+      save = saver.Saver([table])
+
+      # Restore the saved values in the parameter nodes.
+      save.restore(sess, save_path)
+
+      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(32, len(table.export()[0].eval()))
+
+      input_string = constant_op.constant([10, 11, 12, 13, 14], dtypes.int64)
+      output = table.lookup(input_string)
+      self.assertAllEqual([-1, 0, -1, 2, 3], output.eval())
+
   @test_util.run_in_graph_and_eager_modes
   def testObjectSaveRestore(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
@@ -1910,6 +1996,17 @@ class IndexTableFromTensor(test.TestCase):
           vocabulary_list=("brain", "salad", "surgery"), num_oov_buckets=1)
     self.evaluate(lookup_ops.tables_initializer())
     ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+
+  def test_index_table_from_tensor_with_tensor_init_in_function(self):
+    @function.defun()
+    def lookup_fn():
+      vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
+      table = lookup_ops.index_table_from_tensor(
+          vocabulary_list=vocabulary_list, num_oov_buckets=1)
+      return table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
+
+    ids = lookup_fn()
     self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int32_index_table_from_tensor_with_tensor_init(self):
@@ -2607,6 +2704,59 @@ class MutableHashTableOpTest(test.TestCase):
       # Check that the parameter nodes have been restored.
       self.assertEqual(10.0, self.evaluate(v0))
       self.assertEqual(20.0, self.evaluate(v1))
+
+      self.assertAllEqual(3, self.evaluate(table.size()))
+
+      input_string = constant_op.constant(["a", "b", "c", "d", "e"],
+                                          dtypes.string)
+      output = table.lookup(input_string)
+      self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
+
+  @test_util.run_v1_only("SaverV1")
+  def testSaveRestoreOnlyTable(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    with self.session(graph=ops.Graph()) as sess:
+      v0 = variables.Variable(10.0, name="v0")
+      v1 = variables.Variable(20.0, name="v1")
+
+      default_val = -1
+      keys = constant_op.constant(["b", "c", "d"], dtypes.string)
+      values = constant_op.constant([0, 1, 2], dtypes.int64)
+      table = lookup_ops.MutableHashTable(
+          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+
+      save = saver.Saver([table])
+      self.evaluate(variables.global_variables_initializer())
+
+      # Check that the parameter nodes have been initialized.
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+
+      self.assertAllEqual(0, self.evaluate(table.size()))
+      self.evaluate(table.insert(keys, values))
+      self.assertAllEqual(3, self.evaluate(table.size()))
+
+      val = save.save(sess, save_path)
+      self.assertIsInstance(val, six.string_types)
+      self.assertEqual(save_path, val)
+
+    with self.session(graph=ops.Graph()) as sess:
+      default_val = -1
+      table = lookup_ops.MutableHashTable(
+          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+      self.evaluate(
+          table.insert(
+              constant_op.constant(["a", "c"], dtypes.string),
+              constant_op.constant([12, 24], dtypes.int64)))
+      self.assertAllEqual(2, self.evaluate(table.size()))
+
+      save = saver.Saver([table])
+
+      # Restore the saved values in the parameter nodes.
+      save.restore(sess, save_path)
+      # Check that the parameter nodes have been restored.
 
       self.assertAllEqual(3, self.evaluate(table.size()))
 

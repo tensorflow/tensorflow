@@ -250,8 +250,8 @@ class BufferAllocation {
   // for this allocation. The point of peak memory usage is the point at which
   // the total size of all live logical buffers is maximal. If peak memory is
   // reached at multiple points, the set of logical buffers live at the earliest
-  // maximal point is returned. The vector is stabily sorted by
-  // LogicalBuffer::Index.
+  // maximal point is returned. The vector is stably sorted by
+  // BufferValue::Index.
   const std::vector<const BufferValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
@@ -586,8 +586,7 @@ class BufferAssigner {
       bool allocate_buffers_for_constants = false,
       Colorer colorer = DefaultColorer(),
       const absl::flat_hash_set<HloOpcode>& must_not_live_out = {},
-      HloDataflowAnalysis::FusionCanShareBufferFunction
-          fusion_can_share_buffer = nullptr);
+      HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -602,8 +601,7 @@ class BufferAssigner {
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
-      HloDataflowAnalysis::FusionCanShareBufferFunction
-          fusion_can_share_buffer);
+      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is

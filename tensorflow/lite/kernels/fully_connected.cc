@@ -209,11 +209,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Resize output.
-  TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
-  output_size_array->data[0] = batch_size;
-  output_size_array->data[1] = num_units;
+  TfLiteIntArray* output_size_array = nullptr;
+  if (params->keep_num_dims) {
+    // When number of dimensions are kept the filter operates along the last
+    // dimenions. In other words, for an input tensor with shape
+    // [batch_size, ..., n_inputs] and a filter of shape [n_inputs, n_units]
+    // this Op produces an output of shape [batch_size, ..., n_units].
+    TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1],
+                      SizeOfDimension(filter, 1));
+    output_size_array = TfLiteIntArrayCopy(input->dims);
+    output_size_array->data[output_size_array->size - 1] = num_units;
+  } else {
+    // Otherwise, the output is (potentially flattened to) a 2-D matrix.
+    output_size_array = TfLiteIntArrayCreate(2);
+    output_size_array->data[0] = batch_size;
+    output_size_array->data[1] = num_units;
+  }
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
+
   return kTfLiteOk;
 }
 

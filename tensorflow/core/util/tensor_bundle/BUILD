@@ -1,18 +1,17 @@
 # Description:
 #   Tensor bundle: a module to efficiently serialize and deserialize tensors.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_test",
+    "tf_copts",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # To be exported to tensorflow/core:mobile_srcs.

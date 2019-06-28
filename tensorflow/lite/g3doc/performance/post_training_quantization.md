@@ -1,9 +1,20 @@
 # Post-training quantization
 
-Post-training quantization is a general technique to reduce model size while also
-providing up to 3x lower latency with little degradation in model accuracy. Post-training
-quantization quantizes weights from floating point to 8-bits of precision. This technique
-is enabled as an option in the [TensorFlow Lite converter](../convert/):
+Post-training quantization includes general techniques to reduce model size
+while also improving CPU and hardware accelerator latency with little
+degradation in model accuracy. These techniques can be performed on an
+already-trained float TensorFlow model and applied during TensorFlow Lite
+conversion.
+
+### Optimization options
+
+![post-training optimization options](images/optimization.jpg)
+
+### Quantizing weights
+
+The simplest form of post-training quantization quantizes weights from floating
+point to 8-bits of precision. This technique is enabled as an option in the
+[TensorFlow Lite converter](../convert/):
 
 ```
 import tensorflow as tf
@@ -28,56 +39,72 @@ Hybrid ops are available for the most compute-intensive operators in a network:
 *  [tf.nn.bidirectional_dynamic_rnn for BasicRNNCell type](https://www.tensorflow.org/api_docs/python/tf/nn/bidirectional_dynamic_rnn)
 *  [tf.nn.dynamic_rnn for LSTM and BasicRNN Cell types](https://www.tensorflow.org/api_docs/python/tf/nn/dynamic_rnn)
 
+### Full integer quantization of weights and activations
 
-Since weights are quantized post training, there could be an accuracy loss, particularly for
-smaller networks. Pre-trained fully quantized models are provided for specific networks in
-the [TensorFlow Lite model repository](../models/). It is important to check the accuracy of the quantized model to verify that any degradation
-in accuracy is within acceptable limits. There is a tool to evaluate [TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/README.md){:.external}.
+We can get further latency improvements, reductions in peak memory usage, and
+access to integer only hardware accelerators by making sure all model math is
+quantized. To do this, we need to measure the dynamic range of activations and
+inputs with a representative data set. You can simply create an input data
+generator and provide it to our converter.
 
-If the accuracy drop is too high, consider using [quantization aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}.
+```
+import tensorflow as tf
+
+def representative_dataset_gen():
+  for _ in range(num_calibration_steps):
+    # Get sample input data as a numpy array in a method of your choosing.
+    yield [input]
+
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = representative_dataset_gen
+tflite_quant_model = converter.convert()
+```
+
+The resulting model will be fully quantized but still take float input and
+output for convenience.
+
+Ops that do not have quantized implementations will automatically be left in
+floating point. This allows conversion to occur smoothly but may restrict
+deployment to accelerators that support float. To require the converter to only
+output integer operations, one can specify:
+
+```
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+```
+
+Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
+
+This makes the converter throw an error if it encounters an operation it cannot
+currently quantize.
+
+### Model accuracy
+
+Since weights are quantized post training, there could be an accuracy loss,
+particularly for smaller networks. Pre-trained fully quantized models are
+provided for specific networks in the
+[TensorFlow Lite model repository](../models/). It is important to check the
+accuracy of the quantized model to verify that any degradation in accuracy is
+within acceptable limits. There is a tool to evaluate
+[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/README.md){:.external}.
+
+If the accuracy drop is too high, consider using
+[quantization aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}.
 
 ### Representation for quantized tensors
 
-TensorFlow approaches the conversion of floating-point arrays of numbers into
-8-bit representations as a compression problem. Since the weights and activation
-tensors in trained neural network models tend to have values that are distributed
-across comparatively small ranges (e.g. -15 to +15 for weights or -500 to
-1000 for image model activations).
+8-bit quantization approximates floating point values using the following
+formula. `real_value = (int8_value - zero_point) * scale`.
 
-Since neural networks tend to be robust at handling noise, the error introduced
-by quantizing to a small set of values maintains the precision of the overall
-results within an acceptable threshold. A chosen representation must perform
-fast calculations, especially with large matrix multiplications that comprise
-the bulk of the computations while running a model.
+The representation has two main parts:
 
-This is represented with two floats that store the overall minimum and maximum
-values corresponding to the lowest and highest quantized value. Each entry in the
-quantized array represents a float value in that range, distributed linearly
-between the minimum and maximum.
+*   Per-axis (aka per-channel) or per-tensor weights represented by int8 two’s
+    complement values in the range [-127, 127] with zero-point equal to 0.
 
-With our post-training quantization tooling, we use symmetric quantization for
-our weights, meaning we expand the represented range and force the min and max
-to be the negative of each other.
+*   Per-tensor activations/inputs represented by int8 two’s complement values in
+    the range [-128, 127], with a zero-point in range [-128, 127].
 
-For example, with an overall minimum of -10.0 and a maximum
-of 30.0f, we instead represent a minimum of -30.0 and maximum of 30.0f. In an
-8-bit array, the quantized values would be represented as follows:
-
-<figure>
-  <table>
-    <tr><th>Quantized</th><th>Float</th></tr>
-    <tr><td>-42</td><td>-10.0</td></tr>
-    <tr><td>0</td><td>0</td></tr>
-    <tr><td>127</td><td>30.0</td></tr>
-    <tr><td>-127</td><td>30.0 (this value does not ever show up)</td></tr>
-  </table>
-  <figcaption>
-    <b>Table 2</b>: Quantized value range example
-  </figcaption>
-</figure>
-
-The advantages of this representation format are:
-
-* It efficiently represents an arbitrary magnitude of ranges.
-* The linear spread makes multiplications straightforward.
-* A symmetric range for weights enables downstream hardware optimizations.
+For a detailed view of our quantization scheme, please see our
+[quantization spec](./quantization_spec.md). Hardware vendors who want to plug
+into TensorFlow Lite's delegate interface are encouraged to implement the
+quantization scheme described there.

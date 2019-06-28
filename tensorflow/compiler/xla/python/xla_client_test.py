@@ -520,6 +520,29 @@ class BufferTest(ComputationTest):
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+  def testBlockHostUntilReadyWorks(self):
+    arg = np.array([[1., 2.]], np.float32)
+    arg_buffer = xla_client.Buffer.from_pyval(arg)
+    arg_buffer.block_host_until_ready()
+    # This test merely checks that nothing goes awry when we call
+    # block_host_until_ready(); it's difficult to test anything else.
+
+  def testCopyToHost(self):
+    arg0 = np.array([[1., 2.]], np.float32)
+    arg1 = np.array([[3., 4.]], np.float32)
+    arg0_buffer = xla_client.Buffer.from_pyval(arg0)
+    arg1_buffer = xla_client.Buffer.from_pyval(arg1)
+    # Prefetch two buffers using copy_to_host_async, and then retrieve their
+    # values using to_py.
+    arg0_buffer.copy_to_host_async()
+    arg0_buffer.copy_to_host_async()  # Duplicate calls don't do anything.
+    arg1_buffer.copy_to_host_async()
+    np.testing.assert_equal(arg0, arg0_buffer.to_py())
+    np.testing.assert_equal(arg1, arg1_buffer.to_py())
+    # copy_to_host_async does nothing after to_py is called.
+    arg0_buffer.copy_to_host_async()
+    np.testing.assert_equal(arg0, arg0_buffer.to_py())
+
 
 class SingleOpTest(ComputationTest):
   """Tests for single ops.
@@ -693,6 +716,22 @@ class SingleOpTest(ComputationTest):
     c.DotGeneral(c.Constant(lhs), c.Constant(rhs), dimension_numbers)
     self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
 
+  def testDotGeneralWithPrecisionConfig(self):
+    c = self._NewComputation()
+    rng = np.random.RandomState(0)
+    lhs = NumpyArrayF32(rng.randn(10, 3, 4))
+    rhs = NumpyArrayF32(rng.randn(10, 4, 5))
+    dimension_numbers = (([2], [1]), ([0], [0]))
+    config = xla_client.PrecisionConfig()
+    config.operand_precision.append(config.Precision.HIGH)
+    config.operand_precision.append(config.Precision.HIGHEST)
+    c.DotGeneral(
+        c.Constant(lhs),
+        c.Constant(rhs),
+        dimension_numbers,
+        precision_config=config)
+    self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
+
   def testConvF32Same(self):
     c = self._NewComputation()
     a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
@@ -753,6 +792,36 @@ class SingleOpTest(ComputationTest):
     c.ConvGeneralDilated(
         c.Constant(lhs), c.Constant(rhs), strides, pads, lhs_dilation,
         rhs_dilation, dimension_numbers)
+    result = np.array([[[
+        [0., 0., 0.],
+        [10., 20., 0.],
+        [0., 0., 0.],
+        [40., 50., 0.],
+    ]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvGeneralDilatedF32WithPrecisionConfig(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+    dimension_numbers = ("NCHW", "OIHW", "NCHW")
+    config = xla_client.PrecisionConfig()
+    config.operand_precision.append(config.Precision.HIGHEST)
+    config.operand_precision.append(config.Precision.DEFAULT)
+    c.ConvGeneralDilated(
+        c.Constant(lhs),
+        c.Constant(rhs),
+        strides,
+        pads,
+        lhs_dilation,
+        rhs_dilation,
+        dimension_numbers,
+        precision_config=config)
     result = np.array([[[
         [0., 0., 0.],
         [10., 20., 0.],

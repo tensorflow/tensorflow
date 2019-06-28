@@ -303,6 +303,24 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 
 )"
 },
+// copy-start and copy-done
+{
+"CopyStartAndCopyDone",
+
+R"(HloModule CopyStartAndCopyDone_module
+
+ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
+  %v1 = f32[] parameter(0)
+  %copy-start.1 = (f32[], u32[]) copy-start(f32[] %v1)
+  %copy-done.1 = f32[] copy-done((f32[], u32[]) %copy-start.1)
+  %v2 = f32[2,3]{1,0:S(1)} parameter(1)
+  %copy-start.2 = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
+  %copy-done.2 = f32[2,3]{1,0:S(2)} copy-done((f32[2,3]{1,0:S(2)}, u32[]) %copy-start.2)
+  ROOT %tuple = (f32[], f32[2,3]{1,0:S(2)}) tuple(f32[] %copy-done.1, f32[2,3]{1,0:S(2)} %copy-done.2)
+}
+
+)"
+},
 // send and recv
 {
 "SendRecv",
@@ -945,6 +963,19 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 
 )"
 },
+// CustomCallWithHasSideEffect
+{
+"CustomCallWithHasSideEffect",
+R"(HloModule CustomCallWithHasSideEffect
+
+ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1367,7 +1398,7 @@ add {
 
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
 )"
@@ -1385,8 +1416,8 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs.1 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
-  ROOT crs.0 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
 }
 
 )"
@@ -2816,6 +2847,33 @@ TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual: " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
+  // Tile, element size, and memory space.
+  string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                                  {Tile({2, 128})}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size and memory space.
+  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space only.
+  shape_string = "pred[123,456]{1,0:S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 }
 
 TEST_F(HloParserTest, ParseOpaqueType) {

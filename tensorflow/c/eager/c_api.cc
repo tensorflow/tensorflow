@@ -30,7 +30,10 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/platform.h"  // NOLINT
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA
@@ -87,12 +90,6 @@ bool IsCPU(const tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
-bool IsXLA(const tensorflow::Device* d) {
-  if (d == nullptr) return false;
-  const auto& device_type = d->attributes().device_type();
-  return device_type.find("XLA") != std::string::npos;
-}
-
 string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
@@ -135,11 +132,12 @@ tensorflow::Status CreateRemoteContexts(
     const std::vector<string>& remote_workers, int64 rendezvous_id,
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    const tensorflow::eager::CreateContextRequest& base_request,
     tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
   for (int i = 0; i < remote_workers.size(); i++) {
     const string& remote_worker = remote_workers[i];
 
-    tensorflow::eager::CreateContextRequest request;
+    tensorflow::eager::CreateContextRequest request(base_request);
     tensorflow::eager::CreateContextResponse response;
     request.set_rendezvous_id(rendezvous_id);
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
@@ -221,23 +219,42 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       remote_workers, grpc_server->master_env()->worker_cache,
       &remote_device_mgr));
 
-  std::shared_ptr<tensorflow::GrpcChannelCache> channel_cache =
-      grpc_server->channel_cache();
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers(
-      tensorflow::eager::NewGrpcEagerClientCache(channel_cache));
+  std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
+  remote_device_mgr->ListDeviceAttributes(&cluster_device_attributes);
+
+  std::vector<tensorflow::DeviceAttributes> local_device_attributes;
+  grpc_server->worker_env()->device_mgr->ListDeviceAttributes(
+      &local_device_attributes);
+
+  // This request make sure that we can create Rendevzous properly between
+  // Local and Remote context.
+  tensorflow::eager::CreateContextRequest base_request;
+  for (const auto& da : cluster_device_attributes) {
+    *base_request.add_cluster_device_attributes() = da;
+  }
+  for (const auto& da : local_device_attributes) {
+    *base_request.add_cluster_device_attributes() = da;
+  }
+
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  LOG_AND_RETURN_IF_ERROR(
+      grpc_server->master_env()->worker_cache->GetEagerClientCache(
+          &remote_eager_workers));
 
   // Initialize remote eager workers.
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
       remote_workers, rendezvous_id, keep_alive_secs, server_def,
-      remote_eager_workers.get(), ctx->context->Async(), &remote_contexts));
+      remote_eager_workers.get(), ctx->context->Async(), base_request,
+      &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
 
   auto session_name = tensorflow::strings::StrCat("eager_", rendezvous_id);
   TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
-      session_name, server_def, true));
+      session_name, server_def, base_request.cluster_device_attributes(),
+      true));
 
   std::shared_ptr<tensorflow::WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(
@@ -250,9 +267,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
   return ctx->context->InitializeRemote(
-      std::move(server), std::move(remote_eager_workers),
-      std::move(remote_device_mgr), remote_contexts, r, device_mgr,
-      keep_alive_secs);
+      std::move(server), grpc_server->worker_env(), worker_session,
+      std::move(remote_eager_workers), std::move(remote_device_mgr),
+      remote_contexts, r, device_mgr, keep_alive_secs,
+      worker_session->cluster_flr.get());
 #undef LOG_AND_RETURN_IF_ERROR
 }
 #endif  // !IS_MOBILE_PLATFORM
@@ -346,7 +364,7 @@ void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
 
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
-  options->policy = policy;
+  options->device_placement_policy = policy;
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
@@ -369,7 +387,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
-  return new TFE_Context(opts->session_options.options, opts->policy,
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
                          opts->async, device_mgr.release(),
                          /*device_mgr_owned*/ true, r,
                          tensorflow::GetDefaultCustomKernelCreator());
@@ -383,7 +402,8 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
 
-  return new TFE_Context(opts->session_options.options, opts->policy,
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
                          opts->async, device_mgr, /*device_mgr_owned*/ false, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
@@ -453,7 +473,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
@@ -546,46 +566,40 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
-  const tensorflow::Tensor* t = nullptr;
-  tensorflow::TensorHandle* h_cpu = nullptr;
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
+  tensorflow::TensorHandle* handle = h->handle;
 
-  if (h->handle->IsRemote()) {
+  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
+  if (handle->IsRemote()) {
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        h->handle, h->handle->Context(),
-        h->handle->Context()->HostCPU()->name().c_str(), &h_cpu);
+        handle, handle->Context(), handle->Context()->HostCPU()->name().c_str(),
+        false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
-    status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
+    status->status = h_cpu->Tensor(&t);
     if (!status->status.ok()) {
       h_cpu->Unref();
       return nullptr;
     }
-  } else {
-    status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
-    if (!status->status.ok()) return nullptr;
-
-    if (!IsCPU(d)) {
-      status->status = h->handle->CopyToDevice(
-          h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
-      if (!status->status.ok()) {
-        return nullptr;
-      }
-      status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
-      if (!status->status.ok()) {
-        h_cpu->Unref();
-        return nullptr;
-      }
-    }
-  }
-  TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
-  if (h_cpu != nullptr) {
+    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
     h_cpu->Unref();
+    return retval;
+  } else {
+    tensorflow::Tensor tensor;
+    if (IsCPU(handle->device())) {
+      const tensorflow::Tensor* src = nullptr;
+      status->status = handle->Tensor(&src);
+      if (!status->status.ok()) return nullptr;
+      tensor = *src;
+    } else {
+      tensorflow::EagerContext* ctx = handle->Context();
+      status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      if (!status->status.ok()) return nullptr;
+    }
+    return tensorflow::TF_TensorFromTensor(tensor, status);
   }
-  return retval;
 }
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
@@ -903,9 +917,9 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::TensorHandle* handle;
+  tensorflow::TensorHandle* handle = nullptr;
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
-                                                 device_name, &handle);
+                                                 device_name, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
   }
@@ -950,8 +964,9 @@ void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
 
 }  // extern "C"
 
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
-  return new TFE_TensorHandle(t, nullptr, nullptr);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status) {
+  return TFE_TensorHandle::CreateLocalHandle(t, status);
 }
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
@@ -962,12 +977,29 @@ const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
         "a tensorflow::Tensor");
     return nullptr;
   }
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
+
   const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+  status->status = h->handle->Tensor(&t);
   if (!status->status.ok()) return nullptr;
+
   return t;
+}
+
+TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
+                                                     TF_Status* status) {
+  // TensorHandles created by PyFuncOp lack context and therefore could
+  // not be copied.
+  if (!h->handle->OnHostCPU() && h->handle->Context() != nullptr) {
+    tensorflow::TensorHandle* handle = nullptr;
+    status->status = tensorflow::EagerCopyToDevice(
+        h->handle, h->handle->Context(), "CPU:0", false, &handle);
+    if (status->status.ok()) {
+      return new TFE_TensorHandle(handle);
+    } else {
+      return nullptr;
+    }
+  }
+  return h;
 }
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,

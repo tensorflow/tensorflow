@@ -104,9 +104,9 @@ class QuantizedMatMulOp : public OpKernel {
 
     OP_REQUIRES(context,
                 a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-                errors::InvalidArgument(
-                    "Matrix size-compatible: In[0]: ", a.shape().DebugString(),
-                    ", In[1]: ", b.shape().DebugString()));
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
+                                        a.shape().DebugString(),
+                                        ", In[1]: ", b.shape().DebugString()));
 
     OP_REQUIRES(context, ((shift_c >= 0) && (shift_c <= 31)),
                 errors::InvalidArgument("shift_c must be between 0 and 31, "

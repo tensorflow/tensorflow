@@ -155,6 +155,13 @@ string BuildHloTextBatchGroupedConvolution2D(
 XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   const BatchGroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
+
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (use_bfloat16) {
+    return;
+  }
+#endif
+
   const string hlo_text =
       BuildHloTextBatchGroupedConvolution2D(spec, use_bfloat16);
 

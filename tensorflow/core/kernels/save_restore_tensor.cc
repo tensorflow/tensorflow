@@ -353,7 +353,7 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     }
   }
   if (!mismatched_errors.empty()) {
-    const string error_msg = str_util::Join(mismatched_errors, "\n");
+    const string error_msg = absl::StrJoin(mismatched_errors, "\n");
     return errors::InvalidArgument(error_msg);
   }
 

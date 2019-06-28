@@ -17,294 +17,101 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
+import collections
+import functools
 
 import six
 
 from tensorflow.python.data.util import nest
-from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import list_ops
-from tensorflow.python.ops import sparse_ops
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import tf_export
 
 
-_STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
+# Define backwards-compatiblity wrappers for using TypeSpec and its subclasses
+# to replace Structure and its subclasses.  Note that the constructor argument
+# order is different in many cases -- in particular, TypeSpec follows TensorSpec
+# and uses the order (shape, dtype); but most Structure subclasses use the
+# order (dtype, shape).
+#
+# TODO(b/133606651) Update tf.data to use TypeSpec directly, and then remove
+# these compatibility wrappers.
 
 
-@tf_export("data.experimental.Structure")
-@six.add_metaclass(abc.ABCMeta)
-class Structure(object):
-  """Represents structural information, such as type and shape, about a value.
-
-  A `Structure` generalizes the `tf.Tensor.dtype` and `tf.Tensor.shape`
-  properties, so that we can define generic containers of objects including:
-
-  * `tf.Tensor`
-  * `tf.SparseTensor`
-  * Nested structures of the above.
-
-  TODO(b/110122868): In the future, a single `Structure` will replace the
-  `tf.data.Dataset.output_types`, `tf.data.Dataset.output_shapes`,
-  and `tf.data.Dataset.output_classes`, and similar properties and arguments in
-  the `tf.compat.v1.data.Iterator` and `Optional` classes.
-  """
-
-  @abc.abstractmethod
-  def __eq__(self, other):
-    """Returns the this structure and the input structure are equal.
-
-    Args:
-      other: the structure to use for equality check
-
-    Returns:
-      `True` if this and the input structure are equal and `False` otherwise.
-    """
-    raise NotImplementedError("Structure.__eq__()")
-
-  def __ne__(self, other):
-    return not self == other
-
-  @abc.abstractmethod
-  def __hash__(self):
-    """Returns the hash of this structure.
-
-    Returns:
-      The hash of this structure.
-    """
-    raise NotImplementedError("Structure.__hash__()")
-
-  @abc.abstractproperty
-  def _flat_shapes(self):
-    """A list of shapes matching the shapes of `self._to_tensor_list()`.
-
-    Returns:
-      A list of `tf.TensorShape` objects.
-    """
-    raise NotImplementedError("Structure._flat_shapes")
-
-  @abc.abstractproperty
-  def _flat_types(self):
-    """A list of types matching the types of `self._to_tensor_list()`.
-
-    Returns:
-      A list of `tf.DType` objects.
-    """
-    raise NotImplementedError("Structure._flat_shapes")
-
-  @abc.abstractmethod
-  def is_compatible_with(self, other):
-    """Returns `True` if `other` is compatible with this structure.
-
-    A structure `t` is a "subtype" of `s` if:
-
-    * `s` and `t` are instances of the same `Structure` subclass.
-    * The nested structures (if any) of `s` and `t` are the same, according to
-      `tf.nest.assert_same_structure`, and each nested
-      structure of `t` is a "subtype" of the corresponding nested structure of
-      `s`.
-    * Any `tf.DType` components of `t` are the same as the corresponding
-      components in `s`.
-    * Any `tf.TensorShape` components of `t` are compatible with the
-      corresponding components in `s`, according to
-      `tf.TensorShape.is_compatible_with`.
-
-    Args:
-      other: A `Structure`.
-
-    Returns:
-      `True` if `other` is a subtype of this structure, otherwise `False`.
-    """
-    raise NotImplementedError("Structure.is_compatible_with()")
-
-  @abc.abstractmethod
-  def _to_tensor_list(self, value):
-    """Returns a flat list of `tf.Tensor` representing `value`.
-
-    This method can be used, along with `self._flat_shapes` and
-    `self._flat_types` to represent structured values in lower level APIs
-    (such as plain TensorFlow operations) that do not understand structure.
-
-    Requires: `self.is_compatible_with(Structure.from_value(value))`.
-
-    Args:
-      value: A value with compatible structure.
-
-    Returns:
-      A flat list of `tf.Tensor` representing `value`.
-    """
-    raise NotImplementedError("Structure._to_tensor_list()")
-
-  @abc.abstractmethod
-  def _to_batched_tensor_list(self, value):
-    """Returns a flat list of rank >= 1 `tf.Tensor` representing `value`.
-
-    This method can be used, along with `self._flat_shapes` and
-    `self._flat_types` to represent structured values in lower level APIs
-    (such as plain TensorFlow operations) that do not understand structure,
-    *and* that require that the plain tensors have a rank of at least one
-    (e.g. for the purpose of slicing the tensors).
-
-    Requires: `self.is_compatible_with(Structure.from_value(value))`.
-
-    Args:
-      value: A value with compatible structure.
-
-    Returns:
-      A flat list of `tf.Tensor` representing `value`.
-    """
-    raise NotImplementedError("Structure._to_batched_tensor_list()")
-
-  @abc.abstractmethod
-  def _from_tensor_list(self, flat_value):
-    """Builds a flat list of `tf.Tensor` into a value matching this structure.
-
-    Args:
-      flat_value: A list of `tf.Tensor` with compatible flat structure.
-
-    Returns:
-      A structured object matching this structure.
-
-    Raises:
-      ValueError: If the shapes and types of the tensors in `flat_value` are not
-        compatible with `self._flat_shapes` and `self._flat_types` respectively.
-    """
-    raise NotImplementedError("Structure._from_tensor_list()")
-
-  def _from_compatible_tensor_list(self, flat_value):
-    """A version of `_from_tensor_list()` that may avoid performing checks.
-
-    NOTE: This method should be used to avoid checks for performance reasons,
-    when the validity of `flat_value` has been validated by other means.
-    The shapes and types of the tensors in `flat_value` must be compatible with
-    `self._flat_shapes` and `self._flat_types` respectively. The behavior is
-    undefined if this requirement is not met.
-
-    Args:
-      flat_value: A list of `tf.Tensor` with compatible flat structure.
-
-    Returns:
-      A structured object matching this structure.
-    """
-    return self._from_tensor_list(flat_value)
-
-  @abc.abstractmethod
-  def _batch(self, batch_size):
-    """Returns a structure representing a batch of objects with this structure.
-
-    Args:
-      batch_size: An `int` representing the number of elements in a batch,
-        or `None` if the batch size may vary.
-
-    Returns:
-      A `Structure` representing a batch of objects with this structure.
-    """
-    raise NotImplementedError("Structure._batch()")
-
-  @abc.abstractmethod
-  def _unbatch(self):
-    raise NotImplementedError("Structure._unbatch()")
-
-  @staticmethod
-  def from_value(value):
-    """Returns a `Structure` that represents the given `value`.
-
-    Args:
-      value: A potentially structured value.
-
-    Returns:
-      A `Structure` that is compatible with `value`.
-
-    Raises:
-      TypeError: If a structure cannot be built for `value`, because its type
-        or one of its component types is not supported.
-    """
-    # TODO(b/110122868): Add support for custom types and Dataset to this
-    # method.
-    if isinstance(
-        value,
-        (sparse_tensor_lib.SparseTensor, sparse_tensor_lib.SparseTensorValue)):
-      return SparseTensorStructure.from_value(value)
-    elif isinstance(value, tensor_array_ops.TensorArray):
-      return TensorArrayStructure.from_value(value)
-    elif isinstance(
-        value,
-        (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
-      return RaggedTensorStructure.from_value(value)
-    elif isinstance(value, (tuple, dict)):
-      return NestedStructure.from_value(value)
-    else:
-      for converter_type, converter_fn in (
-          _STRUCTURE_CONVERSION_FUNCTION_REGISTRY.items()):
-        if isinstance(value, converter_type):
-          return converter_fn(value)
-      try:
-        tensor = ops.convert_to_tensor(value)
-      except (ValueError, TypeError):
-        raise TypeError("Could not build a structure for %r" % value)
-      return TensorStructure.from_value(tensor)
-
-  @staticmethod
-  def _register_custom_converter(type_object, converter_fn):
-    """Registers `converter_fn` for converting values of the given type.
-
-    Args:
-      type_object: A Python `type` object representing the type of values
-        accepted by `converter_fn`.
-      converter_fn: A function that takes one argument (an instance of the
-        type represented by `type_object`) and returns a `Structure`.
-    """
-    _STRUCTURE_CONVERSION_FUNCTION_REGISTRY[type_object] = converter_fn
-
-  @abc.abstractmethod
-  def _to_legacy_output_types(self):
-    raise NotImplementedError("Structure._to_legacy_output_types()")
-
-  @abc.abstractmethod
-  def _to_legacy_output_shapes(self):
-    raise NotImplementedError("Structure._to_legacy_output_shapes()")
-
-  @abc.abstractmethod
-  def _to_legacy_output_classes(self):
-    raise NotImplementedError("Structure._to_legacy_output_classes()")
+Structure = type_spec.TypeSpec
 
 
-def normalize_tensors(tensors):
-  """Converts a nested structure of tensor-like objects to tensors.
+# pylint: disable=invalid-name
 
-  * `SparseTensor`-like inputs are converted to `SparseTensor`.
-  * `TensorArray` inputs are passed through.
-  * Everything else is converted to a dense `Tensor`.
+
+@tf_export("data.experimental.TensorStructure")
+def TensorStructure(dtype, shape):
+  return tensor_spec.TensorSpec(shape, dtype)
+
+
+@tf_export("data.experimental.SparseTensorStructure")
+def SparseTensorStructure(dtype, shape):
+  return sparse_tensor.SparseTensorSpec(shape, dtype)
+
+
+@tf_export("data.experimental.TensorArrayStructure")
+def TensorArrayStructure(dtype, element_shape, dynamic_size, infer_shape):
+  return tensor_array_ops.TensorArraySpec(element_shape, dtype,
+                                          dynamic_size, infer_shape)
+
+
+@tf_export("data.experimental.RaggedTensorStructure")
+def RaggedTensorStructure(dtype, shape, ragged_rank):
+  return ragged_tensor.RaggedTensorSpec(shape, dtype, ragged_rank)
+
+
+# TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
+# it is a subclass of `CompositeTensor`.
+def normalize_element(element):
+  """Normalizes a nested structure of element components.
+
+  * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
+  * Components matching `RaggedTensorSpec` are converted to `RaggedTensor`.
+  * Components matching `DatasetSpec` or `TensorArraySpec` are passed through.
+  * `CompositeTensor` components are passed through.
+  * All other components are converted to `Tensor`.
 
   Args:
-    tensors: A nested structure of tensor-like, list,
-      `SparseTensor`, `SparseTensorValue`, or `TensorArray` objects.
+    element: A nested structure of individual components.
 
   Returns:
-    A nested structure of tensor, `SparseTensor`, or `TensorArray` objects.
+    A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
+    or `TensorArray` objects.
   """
-  flat_tensors = nest.flatten(tensors)
-  prepared = []
+  components = nest.flatten(element)
+  normalized_components = []
   with ops.name_scope("normalize_tensors"):
-    for i, t in enumerate(flat_tensors):
-      if sparse_tensor_lib.is_sparse(t):
-        prepared.append(sparse_tensor_lib.SparseTensor.from_value(t))
-      elif ragged_tensor.is_ragged(t):
-        prepared.append(
+    # Imported here to avoid circular dependency
+    from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
+    for i, t in enumerate(components):
+      spec = type_spec_from_value(t)
+      if isinstance(spec, sparse_tensor.SparseTensorSpec):
+        normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
+      elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
+        normalized_components.append(
             ragged_tensor.convert_to_tensor_or_ragged_tensor(
                 t, name="component_%d" % i))
-      elif isinstance(t, tensor_array_ops.TensorArray):
-        prepared.append(t)
+      elif isinstance(
+          spec,
+          (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetStructure)):
+        normalized_components.append(t)
+      elif isinstance(t, composite_tensor.CompositeTensor):
+        normalized_components.append(t)
       else:
-        prepared.append(ops.convert_to_tensor(t, name="component_%d" % i))
-  return nest.pack_sequence_as(tensors, prepared)
+        normalized_components.append(
+            ops.convert_to_tensor(t, name="component_%d" % i))
+  return nest.pack_sequence_as(element, normalized_components)
 
 
 def convert_legacy_structure(output_types, output_shapes, output_classes):
@@ -340,9 +147,9 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
   flat_ret = []
   for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
                                                flat_classes):
-    if isinstance(flat_class, Structure):
+    if isinstance(flat_class, type_spec.TypeSpec):
       flat_ret.append(flat_class)
-    elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+    elif issubclass(flat_class, sparse_tensor.SparseTensor):
       flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
     elif issubclass(flat_class, ops.Tensor):
       flat_ret.append(TensorStructure(flat_type, flat_shape))
@@ -360,506 +167,289 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       raise TypeError(
           "Could not build a structure for output class %r" % (flat_class,))
 
-  ret = nest.pack_sequence_as(output_classes, flat_ret)
-  if isinstance(ret, Structure):
-    return ret
-  else:
-    return NestedStructure(ret)
+  return nest.pack_sequence_as(output_classes, flat_ret)
 
 
-# NOTE(mrry): The following classes make extensive use of non-public methods of
-# their base class, so we disable the protected-access lint warning once here.
-# pylint: disable=protected-access
-@tf_export("data.experimental.NestedStructure")
-class NestedStructure(Structure):
-  """Represents a nested structure in which each leaf is a `Structure`."""
+def _from_tensor_list_helper(decode_fn, element_spec, tensor_list):
+  """Returns an element constructed from the given spec and tensor list.
 
-  def __init__(self, nested_structure):
-    self._nested_structure = nested_structure
-    self._flat_nested_structure = nest.flatten(nested_structure)
-    self._flat_shapes_list = []
-    self._flat_types_list = []
-    for s in nest.flatten(nested_structure):
-      if not isinstance(s, Structure):
-        raise TypeError("nested_structure must be a (potentially nested) tuple "
-                        "or dictionary of Structure objects.")
-      self._flat_shapes_list.extend(s._flat_shapes)
-      self._flat_types_list.extend(s._flat_types)
+  Args:
+    decode_fn: Method that constructs an element component from the element spec
+      component and a tensor list.
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    tensor_list: A list of tensors to use for constructing the value.
 
-  def __eq__(self, other):
-    if not isinstance(other, NestedStructure):
+  Returns:
+    An element constructed from the given spec and tensor list.
+
+  Raises:
+    ValueError: If the number of tensors needed to construct an element for
+      the given spec does not match the given number of tensors.
+  """
+
+  # pylint: disable=protected-access
+
+  flat_specs = nest.flatten(element_spec)
+  flat_spec_lengths = [len(spec._flat_tensor_specs) for spec in flat_specs]
+  if sum(flat_spec_lengths) != len(tensor_list):
+    raise ValueError("Expected %d tensors but got %d." %
+                     (sum(flat_spec_lengths), len(tensor_list)))
+
+  i = 0
+  flat_ret = []
+  for (component_spec, num_flat_values) in zip(flat_specs, flat_spec_lengths):
+    value = tensor_list[i:i + num_flat_values]
+    flat_ret.append(decode_fn(component_spec, value))
+    i += num_flat_values
+  return nest.pack_sequence_as(element_spec, flat_ret)
+
+
+def from_compatible_tensor_list(element_spec, tensor_list):
+  """Returns an element constructed from the given spec and tensor list.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    tensor_list: A list of tensors to use for constructing the value.
+
+  Returns:
+    An element constructed from the given spec and tensor list.
+
+  Raises:
+    ValueError: If the number of tensors needed to construct an element for
+      the given spec does not match the given number of tensors.
+  """
+
+  # pylint: disable=protected-access
+  # pylint: disable=g-long-lambda
+  return _from_tensor_list_helper(
+      lambda spec, value: spec._from_compatible_tensor_list(value),
+      element_spec, tensor_list)
+
+
+def from_tensor_list(element_spec, tensor_list):
+  """Returns an element constructed from the given spec and tensor list.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    tensor_list: A list of tensors to use for constructing the value.
+
+  Returns:
+    An element constructed from the given spec and tensor list.
+
+  Raises:
+    ValueError: If the number of tensors needed to construct an element for
+      the given spec does not match the given number of tensors or the given
+      spec is not compatible with the tensor list.
+  """
+
+  # pylint: disable=protected-access
+  # pylint: disable=g-long-lambda
+  return _from_tensor_list_helper(
+      lambda spec, value: spec._from_tensor_list(value), element_spec,
+      tensor_list)
+
+
+def get_flat_tensor_specs(element_spec):
+  """Returns a list `tf.TypeSpec`s for the element tensor representation.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+
+  Returns:
+    A list `tf.TypeSpec`s for the element tensor representation.
+  """
+
+  # pylint: disable=protected-access
+  return functools.reduce(lambda state, value: state + value._flat_tensor_specs,
+                          nest.flatten(element_spec), [])
+
+
+def get_flat_tensor_shapes(element_spec):
+  """Returns a list `tf.TensorShapes`s for the element tensor representation.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+
+  Returns:
+    A list `tf.TensorShapes`s for the element tensor representation.
+  """
+  return [spec.shape for spec in get_flat_tensor_specs(element_spec)]
+
+
+def get_flat_tensor_types(element_spec):
+  """Returns a list `tf.DType`s for the element tensor representation.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+
+  Returns:
+    A list `tf.DType`s for the element tensor representation.
+  """
+  return [spec.dtype for spec in get_flat_tensor_specs(element_spec)]
+
+
+def _to_tensor_list_helper(encode_fn, element_spec, element):
+  """Returns a tensor list representation of the element.
+
+  Args:
+    encode_fn: Method that constructs a tensor list representation from the
+      given element spec and element.
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    element: The element to convert to tensor list representation.
+
+  Returns:
+    A tensor list representation of `element`.
+
+  Raises:
+    ValueError: If `element_spec` and `element` do not have the same number of
+      elements or if the two structures are not nested in the same way.
+    TypeError: If `element_spec` and `element` differ in the type of sequence
+      in any of their substructures.
+  """
+
+  nest.assert_same_structure(element_spec, element)
+
+  def reduce_fn(state, value):
+    spec, component = value
+    return encode_fn(state, spec, component)
+
+  return functools.reduce(
+      reduce_fn, zip(nest.flatten(element_spec), nest.flatten(element)), [])
+
+
+def to_batched_tensor_list(element_spec, element):
+  """Returns a tensor list representation of the element.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    element: The element to convert to tensor list representation.
+
+  Returns:
+    A tensor list representation of `element`.
+
+  Raises:
+    ValueError: If `element_spec` and `element` do not have the same number of
+      elements or if the two structures are not nested in the same way or the
+      rank of any of the tensors in the tensor list representation is 0.
+    TypeError: If `element_spec` and `element` differ in the type of sequence
+      in any of their substructures.
+  """
+
+  # pylint: disable=protected-access
+  # pylint: disable=g-long-lambda
+  return _to_tensor_list_helper(
+      lambda state, spec, component: state + spec._to_batched_tensor_list(
+          component), element_spec, element)
+
+
+def to_tensor_list(element_spec, element):
+  """Returns a tensor list representation of the element.
+
+  Args:
+    element_spec: A nested structure of `tf.TypeSpec` objects representing to
+      element type specification.
+    element: The element to convert to tensor list representation.
+
+  Returns:
+    A tensor list representation of `element`.
+
+  Raises:
+    ValueError: If `element_spec` and `element` do not have the same number of
+      elements or if the two structures are not nested in the same way.
+    TypeError: If `element_spec` and `element` differ in the type of sequence
+      in any of their substructures.
+  """
+
+  # pylint: disable=protected-access
+  # pylint: disable=g-long-lambda
+  return _to_tensor_list_helper(
+      lambda state, spec, component: state + spec._to_tensor_list(component),
+      element_spec, element)
+
+
+def are_compatible(spec1, spec2):
+  """Indicates whether two type specifications are compatible.
+
+  Two type specifications are compatible if they have the same nested structure
+  and the their individual components are pair-wise compatible.
+
+  Args:
+    spec1: A `tf.TypeSpec` object to compare.
+    spec2: A `tf.TypeSpec` object to compare.
+
+  Returns:
+    `True` if the two type specifications are compatible and `False` otherwise.
+  """
+
+  try:
+    nest.assert_same_structure(spec1, spec2)
+  except TypeError:
+    return False
+  except ValueError:
+    return False
+
+  for s1, s2 in zip(nest.flatten(spec1), nest.flatten(spec2)):
+    if not s1.is_compatible_with(s2) or not s2.is_compatible_with(s1):
       return False
-    try:
-      # pylint: disable=protected-access
-      nest.assert_same_structure(self._nested_structure,
-                                 other._nested_structure)
-    except (ValueError, TypeError):
-      return False
-
-    return nest.flatten(self._nested_structure) == nest.flatten(
-        other._nested_structure)
-
-  def __hash__(self):
-    return hash(tuple(nest.flatten(self._nested_structure)))
-
-  @property
-  def _flat_shapes(self):
-    return self._flat_shapes_list
-
-  @property
-  def _flat_types(self):
-    return self._flat_types_list
-
-  def is_compatible_with(self, other):
-    if not isinstance(other, NestedStructure):
-      return False
-    try:
-      # pylint: disable=protected-access
-      nest.assert_same_structure(self._nested_structure,
-                                 other._nested_structure)
-    except (ValueError, TypeError):
-      return False
-
-    return all(
-        substructure.is_compatible_with(other_substructure)
-        for substructure, other_substructure in zip(
-            nest.flatten(self._nested_structure),
-            nest.flatten(other._nested_structure)))
-
-  def _to_tensor_list(self, value):
-    ret = []
-
-    try:
-      flat_value = nest.flatten_up_to(self._nested_structure, value)
-    except (ValueError, TypeError):
-      raise ValueError("The value %r is not compatible with the nested "
-                       "structure %r." % (value, self._nested_structure))
-
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      if not structure.is_compatible_with(Structure.from_value(sub_value)):
-        raise ValueError("Component value %r is not compatible with the nested "
-                         "structure %r." % (sub_value, structure))
-      ret.extend(structure._to_tensor_list(sub_value))
-    return ret
-
-  def _to_batched_tensor_list(self, value):
-    ret = []
-
-    try:
-      flat_value = nest.flatten_up_to(self._nested_structure, value)
-    except (ValueError, TypeError):
-      raise ValueError("The value %r is not compatible with the nested "
-                       "structure %r." % (value, self._nested_structure))
-
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      if not structure.is_compatible_with(Structure.from_value(sub_value)):
-        raise ValueError("Component value %r is not compatible with the nested "
-                         "structure %r." % (sub_value, structure))
-      ret.extend(structure._to_batched_tensor_list(sub_value))
-    return ret
-
-  def _from_tensor_list(self, flat_value):
-    if len(flat_value) != len(self._flat_types):
-      raise ValueError("Expected %d flat values in NestedStructure but got %d."
-                       % (len(self._flat_types), len(flat_value)))
-
-    flat_ret = []
-    i = 0
-    for structure in self._flat_nested_structure:
-      num_flat_values = len(structure._flat_types)
-      sub_value = flat_value[i:i + num_flat_values]
-      flat_ret.append(structure._from_tensor_list(sub_value))
-      i += num_flat_values
-
-    return nest.pack_sequence_as(self._nested_structure, flat_ret)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    flat_ret = []
-    i = 0
-    for structure in self._flat_nested_structure:
-      num_flat_values = len(structure._flat_types)
-      sub_value = flat_value[i:i + num_flat_values]
-      flat_ret.append(structure._from_compatible_tensor_list(sub_value))
-      i += num_flat_values
-
-    return nest.pack_sequence_as(self._nested_structure, flat_ret)
-
-  @staticmethod
-  def from_value(value):
-    flat_nested_structure = [
-        Structure.from_value(sub_value) for sub_value in nest.flatten(value)
-    ]
-    return NestedStructure(nest.pack_sequence_as(value, flat_nested_structure))
-
-  def _to_legacy_output_types(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_types(), self._nested_structure)
-
-  def _to_legacy_output_shapes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_shapes(), self._nested_structure)
-
-  def _to_legacy_output_classes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_classes(), self._nested_structure)
-
-  def _batch(self, batch_size):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._batch(batch_size), self._nested_structure))
-
-  def _unbatch(self):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._unbatch(), self._nested_structure))
-
-
-@tf_export("data.experimental.TensorStructure")
-class TensorStructure(Structure):
-  """Represents structural information about a `tf.Tensor`."""
-
-  def __init__(self, dtype, shape):
-    self._dtype = dtypes.as_dtype(dtype)
-    self._shape = tensor_shape.as_shape(shape)
-
-  def __eq__(self, other):
-    return (isinstance(other, TensorStructure) and tensor_spec.TensorSpec(
-        self._shape, self._dtype) == tensor_spec.TensorSpec(
-            other._shape, other._dtype))
-
-  def __hash__(self):
-    return hash(tensor_spec.TensorSpec(self._shape, self._dtype))
-
-  @property
-  def _flat_shapes(self):
-    return [self._shape]
-
-  @property
-  def _flat_types(self):
-    return [self._dtype]
-
-  def is_compatible_with(self, other):
-    return (isinstance(other, TensorStructure) and
-            self._dtype.is_compatible_with(other._dtype) and
-            self._shape.is_compatible_with(other._shape))
-
-  def _to_tensor_list(self, value):
-    if not self.is_compatible_with(Structure.from_value(value)):
-      raise ValueError("Value %r is not convertible to a tensor with dtype %s "
-                       "and shape %s." % (value, self._dtype, self._shape))
-    return [value]
-
-  def _to_batched_tensor_list(self, value):
-    if self._shape.merge_with(value.shape).ndims == 0:
-      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
-    return [value]
-
-  def _from_tensor_list(self, flat_value):
-    if len(flat_value) != 1:
-      raise ValueError("TensorStructure corresponds to a single tf.Tensor.")
-    if not self.is_compatible_with(Structure.from_value(flat_value[0])):
-      raise ValueError("Cannot convert %r to a tensor with dtype %s and shape "
-                       "%s." % (flat_value[0], self._dtype, self._shape))
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    # TODO(b/112266545): It would be cleaner to create a new `ensure_shape()`
-    # op here and return that, instead of mutating the input's shape using
-    # `Tensor.set_shape()`. However, that would add extra ops on the arguments
-    # of each `tf.data` function, which could impact performance. When this
-    # bug is resolved, we should be able to add the `ensure_shape()` ops and
-    # optimize them away using contextual shape information.
-    flat_value[0].set_shape(self._shape)
-    return flat_value[0]
-
-  @staticmethod
-  def from_value(value):
-    return TensorStructure(value.dtype, value.shape)
-
-  def _to_legacy_output_types(self):
-    return self._dtype
-
-  def _to_legacy_output_shapes(self):
-    return self._shape
-
-  def _to_legacy_output_classes(self):
-    return ops.Tensor
-
-  def _batch(self, batch_size):
-    return TensorStructure(
-        self._dtype,
-        tensor_shape.TensorShape([batch_size]).concatenate(self._shape))
-
-  def _unbatch(self):
-    if self._shape.ndims == 0:
-      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
-    return TensorStructure(self._dtype, self._shape[1:])
-
-
-@tf_export("data.experimental.SparseTensorStructure")
-class SparseTensorStructure(Structure):
-  """Represents structural information about a `tf.SparseTensor`."""
-
-  def __init__(self, dtype, dense_shape):
-    self._dtype = dtypes.as_dtype(dtype)
-    self._dense_shape = tensor_shape.as_shape(dense_shape)
-
-  def __eq__(self, other):
-    return (isinstance(other, SparseTensorStructure) and tensor_spec.TensorSpec(
-        self._dense_shape, self._dtype) == tensor_spec.TensorSpec(
-            other._dense_shape, other._dtype))
-
-  def __hash__(self):
-    return hash(tensor_spec.TensorSpec(self._dense_shape, self._dtype))
-
-  @property
-  def _flat_shapes(self):
-    # NOTE(mrry): The default flat shape of a boxed `SparseTensor` is `(3,)`,
-    # but a `SparseTensorStructure` can also represent a batch of boxed
-    # `SparseTensor` objects with shape `(?, 3)` (and batches of batches, etc.),
-    # so the flat shape must be unknown.
-    return [tensor_shape.unknown_shape(None)]
-
-  @property
-  def _flat_types(self):
-    return [dtypes.variant]
-
-  def is_compatible_with(self, other):
-    return (isinstance(other, SparseTensorStructure) and
-            self._dtype.is_compatible_with(other._dtype) and
-            self._dense_shape.is_compatible_with(other._dense_shape))
-
-  def _to_tensor_list(self, value):
-    return [sparse_ops.serialize_sparse(value, out_type=dtypes.variant)]
-
-  def _to_batched_tensor_list(self, value):
-    if self._dense_shape.merge_with(
-        tensor_util.constant_value_as_shape(value.dense_shape)).ndims == 0:
-      raise ValueError(
-          "Unbatching a sparse tensor is only supported for rank >= 1")
-    return [sparse_ops.serialize_many_sparse(value, out_type=dtypes.variant)]
-
-  def _from_tensor_list(self, flat_value):
-    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
-        not flat_value[0].shape.is_compatible_with(tensor_shape.vector(3))):
-      raise ValueError("SparseTensorStructure corresponds to a single "
-                       "tf.variant vector of length 3.")
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    ret = sparse_ops.deserialize_sparse(
-        flat_value[0], dtype=self._dtype, rank=self._dense_shape.ndims)
-    ret.indices.set_shape([None, self._dense_shape.ndims])
-    ret.dense_shape.set_shape([self._dense_shape.ndims])
-    return ret
-
-  @staticmethod
-  def from_value(value):
-    sparse_tensor = sparse_tensor_lib.SparseTensor.from_value(value)
-    return SparseTensorStructure(
-        sparse_tensor.dtype,
-        tensor_util.constant_value_as_shape(sparse_tensor.dense_shape))
-
-  def _to_legacy_output_types(self):
-    return self._dtype
-
-  def _to_legacy_output_shapes(self):
-    return self._dense_shape
-
-  def _to_legacy_output_classes(self):
-    return sparse_tensor_lib.SparseTensor
-
-  def _batch(self, batch_size):
-    return SparseTensorStructure(
-        self._dtype,
-        tensor_shape.TensorShape([batch_size]).concatenate(self._dense_shape))
-
-  def _unbatch(self):
-    if self._dense_shape.ndims == 0:
-      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
-    return SparseTensorStructure(self._dtype, self._dense_shape[1:])
-
-
-@tf_export("data.experimental.TensorArrayStructure")
-class TensorArrayStructure(Structure):
-  """Represents structural information about a `tf.TensorArray`."""
-
-  def __init__(self, dtype, element_shape, dynamic_size, infer_shape):
-    self._dtype = dtypes.as_dtype(dtype)
-    self._element_shape = tensor_shape.as_shape(element_shape)
-    self._dynamic_size = dynamic_size
-    self._infer_shape = infer_shape
-
-  def __eq__(self, other):
-    return (isinstance(other, TensorArrayStructure) and tensor_spec.TensorSpec(
-        self._element_shape, self._dtype) == tensor_spec.TensorSpec(
-            other._element_shape, other._dtype) and
-            self._dynamic_size == other._dynamic_size and
-            self._infer_shape == other._infer_shape)
-
-  def __hash__(self):
-    return hash((tensor_spec.TensorSpec(self._element_shape, self._dtype),
-                 self._dynamic_size, self._infer_shape))
-
-  @property
-  def _flat_shapes(self):
-    # A TensorArray is represented via its variant object, which is a scalar.
-    return [tensor_shape.scalar()]
-
-  @property
-  def _flat_types(self):
-    return [dtypes.variant]
-
-  def is_compatible_with(self, other):
-    return (isinstance(other, TensorArrayStructure) and
-            self._dtype.is_compatible_with(other._dtype) and
-            self._element_shape.is_compatible_with(other._element_shape) and
-            self._dynamic_size == other._dynamic_size)
-
-  def _to_tensor_list(self, value):
-    if not isinstance(value, tensor_array_ops.TensorArray):
-      raise TypeError("value must be a TensorArray, but saw: {}"
-                      .format(type(value)))
-    if value.flow is not None and value.flow.dtype == dtypes.variant:
-      return [value.flow]
-    else:
-      # Convert to a TF2-style TensorArray.
-      # TODO(ebrevdo): Add an "_as_variant" method to TensorArray class, or
-      # "implementation / as_variant" arg to TensorArray constructor.
-      with ops.name_scope("convert_tensor_array"):
-        flow = list_ops.tensor_list_from_tensor(
-            tensor=value.stack(), element_shape=value.element_shape)
-      return [flow]
-
-  def _to_batched_tensor_list(self, value):
-    raise NotImplementedError("TensorArrayStructure._to_batched_tensor_list")
-
-  def _from_tensor_list(self, flat_value):
-    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
-        not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
-      raise ValueError("TensorArrayStructure corresponds to a single "
-                       "tf.variant scalar.")
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    # This will return a TF2 Graph-style TensorArray because flat_value[0] is
-    # a variant object.  size == -1 implies unknown size.
-    ret = tensor_array_ops.TensorArray(
-        dtype=self._dtype,
-        flow=flat_value[0],
-        dynamic_size=self._dynamic_size,
-        infer_shape=self._infer_shape)
-    ret._element_shape = [self._element_shape]
-    return ret
-
-  @staticmethod
-  def from_value(value):
-    if not isinstance(value, tensor_array_ops.TensorArray):
-      raise TypeError("Expected value to be a TensorArray, but saw: {}".
-                      format(type(value)))
-
-    return TensorArrayStructure(
-        dtype=value.dtype,
-        element_shape=value.element_shape,
-        dynamic_size=value.dynamic_size,
-        infer_shape=value._infer_shape)
-
-  def _to_legacy_output_types(self):
-    return self._dtype
-
-  def _to_legacy_output_shapes(self):
-    # Sneak the dynamic_size and infer_shape values into the legacy shape.
-    return (tensor_shape.matrix(self._dynamic_size, self._infer_shape)
-            .concatenate(self._element_shape))
-
-  def _to_legacy_output_classes(self):
-    return tensor_array_ops.TensorArray
-
-  def _batch(self, batch_size):
-    raise NotImplementedError("TensorArrayStructure._batch")
-
-  def _unbatch(self):
-    raise NotImplementedError("TensorArrayStructure._unbatch")
-
-
-@tf_export("data.experimental.RaggedTensorStructure")
-class RaggedTensorStructure(Structure):
-  """Represents structural information about a `tf.RaggedTensor`."""
-
-  def __init__(self, dtype, shape, ragged_rank):
-    self._dtype = dtypes.as_dtype(dtype)
-    self._shape = tensor_shape.as_shape(shape)
-    self._ragged_rank = ragged_rank
-
-  def __eq__(self, other):
-    return (isinstance(other, RaggedTensorStructure) and tensor_spec.TensorSpec(
-        self._shape, self._dtype) == tensor_spec.TensorSpec(
-            other._shape, other._dtype) and
-            self._ragged_rank == other._ragged_rank)
-
-  def __hash__(self):
-    return hash((tensor_spec.TensorSpec(self._shape, self._dtype),
-                 self._ragged_rank))
-
-  @property
-  def _flat_shapes(self):
-    # A list of shapes matching the shapes of `self._to_tensor_list()`.
-    # NOTE(mishragaurav): The default flat shape of a boxed `RaggedTensor` is
-    # `[]` (scalar), but a `RaggedTensorStructure` can also represent a batch of
-    # boxed `RaggedTensor` objects with shape `(?)` (and batches of batches,
-    # etc.), so the flat shape must be unknown.
-    return [tensor_shape.unknown_shape(None)]
-
-  @property
-  def _flat_types(self):
-    return [dtypes.variant]
-
-  def is_compatible_with(self, other):
-    return (isinstance(other, RaggedTensorStructure) and
-            self._dtype.is_compatible_with(other._dtype) and
-            self._shape.is_compatible_with(other._shape) and
-            self._ragged_rank == other._ragged_rank)
-
-  def _to_tensor_list(self, value):
-    return [value._to_variant()]
-
-  def _to_batched_tensor_list(self, value):
-    return [value._to_variant(batched_input=True)]
-
-  def _from_tensor_list(self, flat_value):
-    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant):
-      raise ValueError("RaggedTensorStructure corresponds to a single "
-                       "tf.variant scalar.")
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    if self._ragged_rank <= 0:
-      raise ValueError(
-          "ragged_rank must be greater than zero. Found ragged_rank: %d" %
-          self._ragged_rank)
-    return ragged_tensor.RaggedTensor._from_variant(
-        flat_value[0], dtype=self._dtype, output_ragged_rank=self._ragged_rank)
-
-  @staticmethod
-  def from_value(value):
-    return RaggedTensorStructure(value.dtype, value.shape, value.ragged_rank)
-
-  def _to_legacy_output_types(self):
-    return self._dtype
-
-  def _to_legacy_output_shapes(self):
-    return self._shape
-
-  def _to_legacy_output_classes(self):
-    return self
-
-  def _batch(self, batch_size):
-    return RaggedTensorStructure(
-        self._dtype,
-        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
-        self._ragged_rank + 1)
-
-  def _unbatch(self):
-    # Note: Any ragged_rank is allowed here because the dataset could be
-    # subsequently batched again. Errors are handled in
-    # RaggedTensorStructure._from_compatible_tensor_list()
-    return RaggedTensorStructure(self._dtype, self._shape[1:],
-                                 self._ragged_rank - 1)
+  return True
+
+
+def type_spec_from_value(element):
+  """Creates a type specification for the given value.
+
+  Args:
+    element: The element to create the type specification for.
+
+  Returns:
+    A nested structure of `TypeSpec`s that represents the type specification
+    of `element`.
+
+  Raises:
+    TypeError: If a `TypeSpec` cannot be built for `element`, because its type
+      is not supported.
+  """
+  spec = type_spec._type_spec_from_value(element)  # pylint: disable=protected-access
+  if spec is not None:
+    return spec
+
+  if isinstance(element, dict):
+    # We create a shallow copy in an attempt to preserve the key order.
+    #
+    # Note that we do not guarantee that the key order is preserved, which is
+    # a limitation inherited from `copy()`. As a consequence, callers of
+    # `type_spec_from_value` should not assume that the key order of a `dict`
+    # in the returned nested structure matches the key order of the
+    # corresponding `dict` in the input value.
+    result = element.copy()
+    for k in element:
+      result[k] = type_spec_from_value(element[k])
+    return result
+
+  if isinstance(element, tuple):
+    if hasattr(element, "_fields") and isinstance(
+        element._fields, collections.Sequence) and all(
+            isinstance(f, six.string_types) for f in element._fields):
+      # `element` is a namedtuple
+      return type(element)(*[type_spec_from_value(v) for v in element])
+    # `element` is not a namedtuple
+    return tuple([type_spec_from_value(v) for v in element])
+
+  # Fallback: try converting value to a tensor.
+  try:
+    tensor = ops.convert_to_tensor(element)
+    spec = type_spec_from_value(tensor)
+    if spec is not None:
+      return spec
+  except (ValueError, TypeError):
+    pass
+
+  raise TypeError("Could not build a TypeSpec for %r with type %s" %
+                  (element, type(element).__name__))

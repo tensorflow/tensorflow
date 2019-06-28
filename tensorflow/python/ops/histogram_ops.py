@@ -55,6 +55,11 @@ def histogram_fixed_width_bins(values,
     A `Tensor` holding the indices of the binned values whose shape matches
     `values`.
 
+  Raises:
+    TypeError: If any unsupported dtype is provided.
+    tf.errors.InvalidArgumentError: If value_range does not
+        satisfy value_range[0] < value_range[1].
+
   Examples:
 
   ```python
@@ -118,6 +123,11 @@ def histogram_fixed_width(values,
 
   Returns:
     A 1-D `Tensor` holding histogram of values.
+
+  Raises:
+    TypeError: If any unsupported dtype is provided.
+    tf.errors.InvalidArgumentError: If value_range does not
+        satisfy value_range[0] < value_range[1].
 
   Examples:
 

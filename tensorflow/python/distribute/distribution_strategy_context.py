@@ -269,7 +269,13 @@ _defaults = {
 
 def _get_default_strategy():
   if _defaults["strategy"] is None:
-    _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    # Make sure distribute_lib module is loaded by accessing some member.
+    _ = distribute_lib._creating_default_strategy_singleton
+    distribute_lib._creating_default_strategy_singleton = True
+    _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+    distribute_lib._creating_default_strategy_singleton = False
+    # pylint: enable=protected-access
   return _defaults["strategy"]
 
 

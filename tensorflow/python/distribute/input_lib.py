@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+import six
+
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
@@ -188,19 +192,12 @@ def _get_next_as_optional(iterator, strategy, name=None):
 class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
-  def __init__(self, input_workers, iterators, strategy, **kwargs):
-    # TODO(b/128995245): Remove this temporary flag once the zero batch case can
-    # be correctly handled.
-    self._enable_get_next_as_optional = False
-    if len(kwargs) > 1:
-      raise ValueError("DistributedIterator constructor only takes one "
-                       "experimental flag now")
-    if len(kwargs) == 1:
-      if "_enable_get_next_as_optional" not in kwargs:
-        raise ValueError("DistributedIterator constructor does not support "
-                         "arguments: {}".format(kwargs))
-      self._enable_get_next_as_optional = (
-          kwargs["_enable_get_next_as_optional"])
+  def __init__(self, input_workers, iterators, strategy):
+    # TODO(b/133073708): we currently need a flag to control the usage because
+    # there is a performance difference between get_next() and
+    # get_next_as_optional().
+    self._enable_get_next_as_optional = getattr(
+        strategy.extended, "experimental_enable_get_next_as_optional", False)
 
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
@@ -325,7 +322,71 @@ class DistributedIteratorV1(DistributedIterator):
     return None
 
 
-class DistributedDataset(object):
+class _IterableInput(object):
+  """Base class for iterable inputs for distribution strategies."""
+
+  def __init__(self, input_workers):
+    assert isinstance(input_workers, InputWorkers)
+    self._input_workers = input_workers
+
+  def __iter__(self):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def _autograph_for_loop(self, extra_test, body, init_state):
+    """Overload of for..in statement that iterates over the input."""
+
+    if extra_test is not None:
+      raise NotImplementedError(
+          "break and return statements are not yet supported in "
+          "for ... in distributed input loops.")
+
+    def reduce_body(state, iterate):
+      new_state = body(iterate, *state)
+      return new_state
+
+    if init_state:
+      return self.reduce(init_state, reduce_body)
+
+    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
+    # empty state tensors - create a dummy state variable that remains unused.
+    # Identify if we need this workaround and remove if unnecessary.
+    def reduce_body_with_dummy_state(state, iterate):
+      reduce_body((), iterate)
+      return state
+    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+    return ()
+
+  def reduce(self, initial_state, reduce_fn):
+    """Execute a `reduce_fn` over all the elements of the input."""
+    iterator = iter(self)
+    has_data, data = _get_next_as_optional(iterator, self._strategy)
+
+    def cond(has_data, data, state):
+      del data, state  # Unused.
+      return has_data
+
+    def loop_body(has_data, data, state):
+      """Executes `reduce_fn` in a loop till the dataset is empty."""
+      del has_data  # Unused.
+      # data is list of lists here. where each list corresponds to one worker.
+      # TODO(b/130570614): Add support for the multiworker and TPU pods use
+      # case.
+      if self._input_workers.num_workers == 1:
+        data = data[0]
+      else:
+        raise ValueError("Dataset iteration within a tf.function is"
+                         " not supported for multiple workers.")
+      per_replica_data = values.regroup(self._input_workers.device_map, data)
+      state = reduce_fn(state, per_replica_data)
+      has_data, data = _get_next_as_optional(iterator, self._strategy)
+      return has_data, data, state
+
+    has_data, data, final_state = control_flow_ops.while_loop(
+        cond, loop_body, [has_data, data, initial_state], parallel_iterations=1)
+    return final_state
+
+
+class DistributedDataset(_IterableInput):
   """Wrapped tf.data.DatasetV2 that supports prefetching to multiple devices."""
 
   def __init__(self,
@@ -333,8 +394,7 @@ class DistributedDataset(object):
                input_workers,
                strategy,
                split_batch_by=None,
-               input_context=None,
-               **kwargs):
+               input_context=None):
     """Distribute the dataset on all workers.
 
     If `split_batch_by` is not None, we "split" each batch of the dataset by
@@ -351,16 +411,29 @@ class DistributedDataset(object):
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
         `num_input_pipelines` in the `InputContext`.
-      **kwargs: Additional experimental flags. Will be removed in future.
     """
+    super(DistributedDataset, self).__init__(input_workers=input_workers)
+
     # We clone and shard the dataset on each worker. The current setup tries to
     # shard the dataset by files if possible so that each worker sees a
     # different subset of files. If that is not possible, will attempt to shard
     # the final input such that each worker will run the entire preprocessing
     # pipeline and only receive its own shard of the dataset.
-    assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+      try:
+        dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+      except errors.InvalidArgumentError as e:
+        if "without encountering a batch" in str(e):
+          six.reraise(
+              ValueError,
+              ValueError(
+                  "Call the `batch` method on the input Dataset in order to be "
+                  "able to split your input across {} replicas.\n Please "
+                  "the tf.distribute.Strategy guide. {}".format(
+                      split_batch_by, e)),
+              sys.exc_info()[2])
+        else:
+          raise
 
     self._cloned_datasets = []
     if input_context:
@@ -387,66 +460,18 @@ class DistributedDataset(object):
     # iterator.
     self._element_structure = dataset._element_structure  # pylint: disable=protected-access
     self._strategy = strategy
-    self._kwargs = kwargs
 
   def __iter__(self):
-    worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
-                                                    self._input_workers)
-    iterator = DistributedIterator(self._input_workers, worker_iterators,
-                                   self._strategy, **self._kwargs)
-    iterator._element_structure = self._element_structure  # pylint: disable=protected-access
-    return iterator
-
-  def _autograph_for_loop(self, extra_test, body, init_state):
-    """Overload of for..in statement that iterates over a DistributedDataset."""
-
-    if extra_test is not None:
-      raise NotImplementedError(
-          "break and return statements are not yet supported in "
-          "for/DistributedDataset loops.")
-
-    def reduce_body(state, iterate):
-      new_state = body(iterate, *state)
-      return new_state
-
-    if init_state:
-      return self.reduce(init_state, reduce_body)
-
-    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
-    # empty state tensors - create a dummy state variable that remains unused.
-    # Identify if we need this workaround and remove if unnecessary.
-    def reduce_body_with_dummy_state(state, iterate):
-      reduce_body((), iterate)
-      return state
-    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
-    return ()
-
-  def reduce(self, initial_state, reduce_fn):
-    """Execute a `reduce_fn` over all the elements of a dataset."""
-    iterator = self.__iter__()
-    has_data, data = _get_next_as_optional(iterator, self._strategy)
-
-    def cond(has_data, data, state):  # pylint: disable=unused-argument
-      return has_data
-
-    def loop_body(has_data, data, state):
-      """Executes `reduce_fn` in a loop till the dataset is empty."""
-      # data is list of lists here. where each list corresponds to one worker.
-      # TODO(b/130570614): Add support for the multiworker and TPU pods use
-      # case.
-      if self._input_workers.num_workers == 1:
-        data = data[0]
-      else:
-        raise ValueError("Dataset iteration within a tf.function is"
-                         " not supported for multiple workers.")
-      per_replica_data = values.regroup(self._input_workers.device_map, data)
-      state = reduce_fn(state, per_replica_data)
-      has_data, data = _get_next_as_optional(iterator, self._strategy)
-      return has_data, data, state
-
-    has_data, data, final_state = control_flow_ops.while_loop(
-        cond, loop_body, [has_data, data, initial_state])
-    return final_state
+    if (context.executing_eagerly() or
+        ops.executing_eagerly_outside_functions()):
+      worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
+                                                      self._input_workers)
+      iterator = DistributedIterator(self._input_workers, worker_iterators,
+                                     self._strategy)
+      iterator._element_structure = self._element_structure  # pylint: disable=protected-access
+      return iterator
+    raise RuntimeError("__iter__() is only supported inside of tf.function "
+                       "or when eager execution is enabled.")
 
 
 class DistributedDatasetV1(DistributedDataset):
@@ -457,19 +482,23 @@ class DistributedDatasetV1(DistributedDataset):
                input_workers,
                strategy,
                split_batch_by=None,
-               input_context=None,
-               **kwargs):
+               input_context=None):
     self._input_workers = input_workers
     super(DistributedDatasetV1, self).__init__(
         dataset,
         input_workers,
         strategy,
         split_batch_by=split_batch_by,
-        input_context=input_context,
-        **kwargs)
+        input_context=input_context)
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for DistributedDatasetV1."""
+    # Graph mode with one shot iterator is disabled because we have to call
+    # `initialize` on the iterator which is only required if we are using a
+    # tf.distribute strategy.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
     return self._get_iterator()
 
   def make_initializable_iterator(self):
@@ -485,9 +514,52 @@ class DistributedDatasetV1(DistributedDataset):
     worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
-                                     self._strategy, **self._kwargs)
+                                     self._strategy)
     iterator._element_structure = self._element_structure  # pylint: disable=protected-access
     return iterator
+
+
+# TODO(priyag): Add other replication modes.
+class DistributedDatasetsFromFunction(_IterableInput):
+  """Inputs created from dataset function."""
+
+  def __init__(self, dataset_fn, input_workers, input_contexts, strategy):
+    """Makes an iterable from datasets created by the given function.
+
+    Args:
+      dataset_fn: A function that returns a `Dataset` given an `InputContext`.
+      input_workers: an `InputWorkers` object.
+      input_contexts: A list of `InputContext` instances to be passed to call(s)
+        to `dataset_fn`. Length and order should match worker order in
+        `worker_device_pairs`.
+      strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
+        handle last partial batch.
+    """
+    super(DistributedDatasetsFromFunction, self).__init__(
+        input_workers=input_workers)
+
+    if input_workers.num_workers != len(input_contexts):
+      raise ValueError(
+          "Number of input workers (%d) is not same as number of "
+          "input_contexts (%d)" %
+          (input_workers.num_workers, len(input_contexts)))
+
+    self._dataset_fn = dataset_fn
+    self._input_workers = input_workers
+    self._input_contexts = input_contexts
+    self._strategy = strategy
+
+  def __iter__(self):
+    iterators = []
+    for i, ctx in enumerate(self._input_contexts):
+      worker = self._input_workers.worker_devices[i]
+      with ops.device(worker):
+        dataset = self._dataset_fn(ctx)
+        devices = self._input_workers.compute_devices_for_worker(i)
+        iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
+        iterators.append(iterator)
+
+    return DistributedIterator(self._input_workers, iterators, self._strategy)
 
 
 # TODO(anjalisridhar): This class will be soon be removed in favor of newer
@@ -495,8 +567,7 @@ class DistributedDatasetV1(DistributedDataset):
 class InputFunctionIterator(DistributedIteratorV1):
   """Iterator created from input function."""
 
-  def __init__(self, input_fn, input_workers, input_contexts, strategy,
-               **kwargs):
+  def __init__(self, input_fn, input_workers, input_contexts, strategy):
     """Make an iterator for input provided via an input function.
 
     Currently implements PER_WORKER mode, in which the `input_fn` is called
@@ -512,7 +583,6 @@ class InputFunctionIterator(DistributedIteratorV1):
         `worker_device_pairs`.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-      **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
     if input_workers.num_workers != len(input_contexts):
@@ -537,7 +607,7 @@ class InputFunctionIterator(DistributedIteratorV1):
         iterators.append(iterator)
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators,
-                                                strategy, **kwargs)
+                                                strategy)
 
 
 # TODO(anjalisridhar): This class will soon be removed and users should move
@@ -550,8 +620,7 @@ class DatasetIterator(DistributedIteratorV1):
                input_workers,
                strategy,
                split_batch_by=None,
-               input_context=None,
-               **kwargs):
+               input_context=None):
     """Make an iterator for the dataset on given devices.
 
     If `split_batch_by` is not None, we "split" each batch of the
@@ -568,7 +637,6 @@ class DatasetIterator(DistributedIteratorV1):
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
         `num_input_pipelines` in the `InputContext`.
-      **kwargs: Additional experimental flags. Will be removed in future.
     """
     dist_dataset = DistributedDatasetV1(
         dataset,
@@ -581,8 +649,7 @@ class DatasetIterator(DistributedIteratorV1):
     super(DatasetIterator, self).__init__(
         input_workers,
         worker_iterators,  # pylint: disable=protected-access
-        strategy,
-        **kwargs)
+        strategy)
     self._element_structure = dist_dataset._element_structure  # pylint: disable=protected-access
 
 
@@ -612,17 +679,13 @@ def _dummy_tensor_fn(value_structure):
 
   result = []
   # pylint: disable=protected-access
-  for feature_shape, feature_type in zip(value_structure._flat_shapes,
-                                         value_structure._flat_types):
+  for feature_shape, feature_type in zip(
+      structure.get_flat_tensor_shapes(value_structure),
+      structure.get_flat_tensor_types(value_structure)):
     result.append(create_dummy_tensor(feature_shape, feature_type))
 
-  if isinstance(value_structure, structure.NestedStructure):
-    result = nest.pack_sequence_as(value_structure._nested_structure, result)
-  else:
-    result = result[0]
+  return nest.pack_sequence_as(value_structure, result)
   # pylint: enable=protected-access
-
-  return result
 
 
 class _SingleWorkerDatasetIterator(object):

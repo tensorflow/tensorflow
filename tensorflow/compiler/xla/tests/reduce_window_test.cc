@@ -211,7 +211,7 @@ TEST_P(ReduceWindowTest, Along2ndMinorDim) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2Dims) {
+TEST_P(ReduceWindowTest, AmongMajor2DimsAdd) {
   Array4D<float> input_array(4, 4, 6, 8);
   input_array.FillWithMinorDimNum();
   const auto input_data_handle =
@@ -231,6 +231,20 @@ TEST_P(ReduceWindowTest, AmongMajor2Dims) {
 
   ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateFromArray(*result), {},
                            DefaultErrorSpec());
+}
+
+TEST_P(ReduceWindowTest, AmongMajor2DimsMax) {
+  Array4D<float> input_array(3, 3, 2, 1);
+  input_array.FillWithMinorDimNum();
+  const auto input_data_handle =
+      CreateConstantFromArray(input_array, &builder_);
+  int win_len = 2;
+  int win_stride = 1;
+  Padding padding = Padding::kValid;
+  // Reduce only along the x and y dimensions, according to the win_len.
+  ReduceWindowMax(input_data_handle, {win_len, win_len, 1, 1},
+                  {win_stride, win_stride, 1, 1}, padding);
+  ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
 TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
@@ -527,32 +541,20 @@ XLA_TEST_P(ReduceWindowTest, Add128In128) {
 TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
   Array2D<float> input_array(14, 14, 1.0f);
   const auto input = CreateConstantFromArray(input_array, &builder_);
-
   int win_len = 3;
   int stride = 1;
   Padding padding = Padding::kSame;
   ReduceWindowAdd(input, {win_len, win_len}, {stride, stride}, padding);
-
-  auto res = ReferenceUtil::ReduceWindow2DAdd(
-      input_array, 0.0f, {win_len, win_len}, {stride, stride}, padding);
-
-  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateFromArray<float>(*res),
-                           {}, DefaultErrorSpec());
+  ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
 TEST_P(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
   Array2D<float> input_array(6, 4, 1.0f);
   XlaOp input = Broadcast(
       CreateConstantFromLiteral(LiteralUtil::One(F32), &builder_), {6, 4});
-
   Padding padding = Padding::kSame;
   ReduceWindowAdd(input, {4, 2}, {3, 3}, padding);
-
-  auto res = ReferenceUtil::ReduceWindow2DAdd(input_array, 0.0f, {4, 2}, {3, 3},
-                                              padding);
-
-  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateFromArray<float>(*res),
-                           {}, DefaultErrorSpec());
+  ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
 INSTANTIATE_TEST_CASE_P(ReduceWindowTestInstance, ReduceWindowTest,
@@ -1056,77 +1058,139 @@ struct R2ReduceWindowTestData {
   int64 base_bounds[2];
   int64 window_bounds[2];
   int64 strides[2];
+  int64 base_dilation[2];
+  int64 window_dilation[2];
   int64 pad_low[2];
   int64 pad_high[2];
   int64 layout[2];
   Reducer reducer;
 } kR2TestCases[] = {
     {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
-     /*strides=*/{1, 2}, /*pad_low=*/{0, 1}, /*pad_high=*/{1, 1},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{1, 1},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{2, 5}, /*window_bounds=*/{2, 4},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 1}, /*pad_high=*/{1, 2},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{1, 2},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{1, 3}, /*window_bounds=*/{2, 3},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 1}, /*pad_high=*/{1, 1},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{1, 1},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{3, 129}, /*window_bounds=*/{1, 100},
-     /*strides=*/{2, 99}, /*pad_low=*/{0, 0}, /*pad_high=*/{35, 35},
+     /*strides=*/{2, 99},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{35, 35},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
 // TODO(b/74260408): This test last failed on GPU on 2018-03-08, likely due to a
 // ptxas bug.
 #ifndef XLA_TEST_BACKEND_GPU
     {/*base_bounds=*/{6, 152}, /*window_bounds=*/{2, 25},
-     /*strides=*/{5, 4}, /*pad_low=*/{0, 1}, /*pad_high=*/{10, 11},
+     /*strides=*/{5, 4},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{10, 11},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
 #endif
     {/*base_bounds=*/{6, 4}, /*window_bounds=*/{4, 2},
-     /*strides=*/{3, 3}, /*pad_low=*/{0, 1}, /*pad_high=*/{0, 1},
+     /*strides=*/{3, 3},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{0, 1},
      /*layout=*/{0, 1},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{5, 147}, /*window_bounds=*/{1, 36},
-     /*strides=*/{4, 5}, /*pad_low=*/{0, 0}, /*pad_high=*/{17, 17},
+     /*strides=*/{4, 5},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{17, 17},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{4, 153}, /*window_bounds=*/{2, 93},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 1}, /*pad_high=*/{46, 46},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{46, 46},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
     // Regression test for a bug that appeared in Inception (b/34784899).
     {/*base_bounds=*/{28, 28}, /*window_bounds=*/{3, 3},
-     /*strides=*/{1, 1}, /*pad_low=*/{1, 1}, /*pad_high=*/{1, 1},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{1, 1}, /*pad_high=*/{1, 1},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
-     /*reducer=*/Reducer::kAdd},
+     /*reducer=*/Reducer::kMax},
+    {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{2, 2},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*layout=*/{1, 0},
+     /*reducer=*/Reducer::kMax},
+    {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{2, 2}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*layout=*/{1, 0},
+     /*reducer=*/Reducer::kMax},
+    {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
+     /*strides=*/{2, 2},
+     /*base_dilation=*/{2, 2}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*layout=*/{1, 0},
+     /*reducer=*/Reducer::kMax},
+    {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
+     /*strides=*/{2, 2},
+     /*base_dilation=*/{2, 2}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{3, 3}, /*pad_high=*/{3, 3},
+     /*layout=*/{1, 0},
+     /*reducer=*/Reducer::kMax},
+    {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
+     /*strides=*/{2, 2},
+     /*base_dilation=*/{2, 2}, /*window_dilation=*/{2, 2},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*layout=*/{1, 0},
+     /*reducer=*/Reducer::kMax},
     // Regression test for a bug that appeared in Inception (b/34784899).
     {/*base_bounds=*/{4, 32}, /*window_bounds=*/{2, 2},
-     /*strides=*/{2, 2}, /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*strides=*/{2, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
     // Regression test for b/73903312: bf16 lacks precision to store result of
     // very large windows. Testing with a reasonable window larger than 128.
     {/*base_bounds=*/{8, 130}, /*window_bounds=*/{1, 130},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 130}, /*pad_high=*/{0, 0},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 130}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{8, 256}, /*window_bounds=*/{1, 4},
-     /*strides=*/{1, 64}, /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
+     /*strides=*/{1, 64},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
     {/*base_bounds=*/{4096, 4096}, /*window_bounds=*/{1, 4},
-     /*strides=*/{1, 1024}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
+     /*strides=*/{1, 1024},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
     // Regression test for b/72234705: bf16 lacks precision to store incremental
     // results on very large windows. Using smaller window with minor dim 128.
     {/*base_bounds=*/{8, 128}, /*window_bounds=*/{2, 128},
-     /*strides=*/{1, 1}, /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
+     /*strides=*/{1, 1},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
 };
 
@@ -1135,9 +1199,11 @@ string R2ReduceWindowTestDataToString(
         ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
   string str = absl::StrCat(
-      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
-      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
-      "__strides_", absl::StrJoin(param.strides, "x"),              //
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),            //
+      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),      //
+      "__strides_", absl::StrJoin(param.strides, "x"),                  //
+      "__base_dilation_", absl::StrJoin(param.base_dilation, "x"),      //
+      "__window_dilation_", absl::StrJoin(param.window_dilation, "x"),  //
       "__pad_low_", absl::StrJoin(param.pad_low, "x"), "__pad_high_",
       absl::StrJoin(param.pad_high, "x"), "__layout_", param.layout[0], "_",
       param.layout[1],  //
@@ -1158,14 +1224,18 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
     XlaBuilder b(TestName());
     const auto& param = ::testing::get<0>(GetParam());
 
-    const float kInitValue = 0.0f;
     Array2D<float> input(param.base_bounds[0], param.base_bounds[1], 1.0f);
+    if (!::testing::get<1>(GetParam())) {
+      // We only do this in F32 mode, to avoid precision issues with BF16.
+      input = *MakeLinspaceArray2D(0, 100, param.base_bounds[0],
+                                   param.base_bounds[1]);
+    }
     Literal input_literal = LiteralUtil::CreateR2FromArray2DWithLayout(
         input, LayoutUtil::MakeLayout(param.layout));
 
     XlaOp parameter;
-    auto input_arg = CreateParameterAndTransferLiteral(0, input_literal, "p0",
-                                                       &b, &parameter);
+    CreateParameterAndTransferLiteral(0, input_literal, "p0", &b, &parameter);
+
     std::vector<std::pair<int64, int64>> padding(2);
     for (int i = 0; i < 2; ++i) {
       padding[i] = {param.pad_low[i], param.pad_high[i]};
@@ -1173,6 +1243,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
     auto computation = param.reducer == kAdd
                            ? CreateScalarAddComputation(FloatType(), &b)
                            : CreateScalarMaxComputation(FloatType(), &b);
+    const float kInitValue = 0.0f;
     auto init_value =
         CreateConstantFromLiteral(LiteralUtil::CreateR0(kInitValue), &b);
     ReduceWindowWithGeneralPadding(
@@ -1181,20 +1252,12 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         /*computation=*/computation,
         /*window_dimensions=*/param.window_bounds,
         /*window_strides=*/param.strides,
-        /*base_dilations=*/{},
-        /*window_dilations=*/{},
+        /*base_dilations=*/param.base_dilation,
+        /*window_dilations=*/param.window_dilation,
         /*padding=*/padding);
 
-    auto reduce_func = param.reducer == kAdd
-                           ? +[](float a, float b) { return a + b; }
-                           : +[](float a, float b) { return std::max(a, b); };
-    auto expected = ReferenceUtil::ReduceWindow2DGeneric(
-        /*operand=*/input, /*init=*/kInitValue, /*reduce_func=*/reduce_func,
-        /*window=*/param.window_bounds,
-        /*stride=*/param.strides, /*padding=*/padding);
-
-    ComputeAndCompareLiteral(&b, LiteralUtil::CreateFromArray(*expected),
-                             {input_arg.get()}, DefaultErrorSpec());
+    ComputeAndCompare(&b, {MaybeConvertLiteralToBfloat16(input_literal)},
+                      DefaultErrorSpec());
   }
 };
 
@@ -1484,7 +1547,10 @@ ENTRY R3Window {
   operand = f32[1,1,1]{2,1,0} parameter(0)
   negate = f32[1,1,1]{2,1,0} negate(operand)
   constant = f32[] constant(1)
-  ROOT reduce-window = f32[1,1,1]{2,1,0} reduce-window(negate, constant), window={size=1x1x1 pad=0_0x0_0x0_0}, to_apply=mul
+  ROOT reduce-window = f32[1,1,1]{2,1,0}
+    reduce-window(negate, constant),
+    window={size=1x1x1 pad=0_0x0_0x0_0},
+    to_apply=mul
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
@@ -1500,7 +1566,30 @@ identity.pad_to_reduce_window {
 ENTRY reduce-window-identity {
   operand = f32[1,32,64]{2,1,0} parameter(0)
   constant.4466 = f32[] constant(0)
-  ROOT reduce-window = f32[1,33,64]{2,1,0} reduce-window(operand, constant.4466), window={size=1x1x1 pad=0_0x1_0x0_0}, to_apply=identity.pad_to_reduce_window
+  ROOT reduce-window = f32[1,33,64]{2,1,0}
+    reduce-window(operand, constant.4466),
+      window={size=1x1x1 pad=0_0x1_0x0_0},
+      to_apply=identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceWindowIdentityNoPadding) {
+  const string hlo_string = R"(
+HloModule ReduceWindowIdentity
+identity.pad_to_reduce_window {
+  param0 = f32[] parameter(0)
+  ROOT param1 = f32[] parameter(1)
+}
+ENTRY reduce-window-identity {
+  operand = f32[1,32,64]{2,1,0} parameter(0)
+  constant.4466 = f32[] constant(0)
+  ROOT reduce-window = f32[1,32,64]{2,1,0}
+    reduce-window(operand, constant.4466),
+      window={size=1x1x1 pad=0_0x0_0x0_0},
+      to_apply=identity.pad_to_reduce_window
 }
 
 )";

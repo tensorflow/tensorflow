@@ -16,15 +16,14 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/conv_3d.h"
-
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
@@ -187,7 +186,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
 struct Conv3dAutoTuneGroup {
@@ -436,6 +435,7 @@ struct LaunchConvOp<GPUDevice, T> {
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
@@ -474,10 +474,25 @@ struct LaunchConvOp<GPUDevice, T> {
         }
       }
       LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                             se::dnn::ToDataType<T>::value, input_desc,
-                             filter_desc, output_desc, conv_desc,
-                             stream->parent(), results);
+                             se::dnn::ToDataType<T>::value, input_ptr,
+                             filter_ptr, output_ptr, input_desc, filter_desc,
+                             output_desc, conv_desc, stream->parent(), results);
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+      ProfileResult best_result;
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                          filter_ptr, conv_desc, output_desc,
+                                          &output_ptr, &scratch_allocator,
+                                          AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                  errors::NotFound("Failed to find conv algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
@@ -521,7 +536,8 @@ namespace functor {
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      const GPUDevice& d, FilterTensorFormat src_filter_format,       \
+      typename TTypes<T, 5>::ConstTensor in,                          \
       typename TTypes<T, 5>::Tensor out);                             \
   template <>                                                         \
   void PadInput<GPUDevice, T, int, 5>::operator()(                    \
@@ -555,6 +571,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     Conv3DOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

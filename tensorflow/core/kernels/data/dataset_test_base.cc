@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/versions.pb.h"
+
 namespace tensorflow {
 namespace data {
 
@@ -54,6 +58,8 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
+    TF_CALL_uint32(CASE);
+    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:
@@ -284,25 +290,84 @@ Status DatasetOpsTestBase::RunOpKernel(OpKernel* op_kernel,
   return context->status();
 }
 
+Status DatasetOpsTestBase::RunFunction(
+    const FunctionDef& fdef, test::function::Attrs attrs,
+    const std::vector<Tensor>& args,
+    const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
+  std::unique_ptr<Executor> exec;
+  InstantiationResult result;
+  auto GetOpSig = [](const string& op, const OpDef** sig) {
+    return OpRegistry::Global()->LookUpOpDef(op, sig);
+  };
+  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
+
+  DataTypeVector arg_types = result.arg_types;
+  DataTypeVector ret_types = result.ret_types;
+
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  TF_RETURN_IF_ERROR(
+      ConvertNodeDefsToGraph(graph_options, result.nodes, g.get()));
+
+  const int version = g->versions().producer();
+  LocalExecutorParams params;
+  params.function_library = flr_;
+  params.device = device_.get();
+  params.create_kernel = [this, version](const NodeDef& ndef,
+                                         OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+                                 kernel);
+  };
+  params.delete_kernel = [](OpKernel* kernel) {
+    DeleteNonCachedKernel(kernel);
+  };
+  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                 Rendezvous** r) {
+    *r = new IntraProcessRendezvous(device_mgr);
+    return Status::OK();
+  };
+
+  Executor* cur_exec;
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  exec.reset(cur_exec);
+  FunctionCallFrame frame(arg_types, ret_types);
+  TF_RETURN_IF_ERROR(frame.SetArgs(args));
+  Executor::Args exec_args;
+  exec_args.call_frame = &frame;
+  exec_args.runner = runner_;
+  TF_RETURN_IF_ERROR(exec->Run(exec_args));
+  std::vector<Tensor> computed;
+  TF_RETURN_IF_ERROR(frame.GetRetvals(&computed));
+  if (computed.size() != rets.size()) {
+    return errors::InvalidArgument(
+        "The result does not match the expected number of return outpus",
+        ". Expected: ", rets.size(), ". Actual: ", computed.size());
+  }
+  for (int i = 0; i < rets.size(); ++i) {
+    *(rets[i]) = computed[i];
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateOpKernelContext(
     OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext>* context) {
   params_ = absl::make_unique<OpKernelContext::Params>();
+  cancellation_manager_ = absl::make_unique<CancellationManager>();
+  params_->cancellation_manager = cancellation_manager_.get();
   params_->device = device_.get();
-  params_->resource_manager = device_->resource_manager();
   params_->frame_iter = FrameAndIter(0, 0);
+  params_->function_library = flr_;
   params_->inputs = inputs;
   params_->op_kernel = kernel;
-  params_->function_library = flr_;
-  params_->runner = &runner_;
-  step_container_ =
-      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
-  params_->step_container = step_container_.get();
   params_->resource_manager = resource_mgr_.get();
+  params_->runner = &runner_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params_->slice_reader_cache = slice_reader_cache_.get();
+  step_container_ =
+      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+  params_->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
   allocator_attrs_.clear();

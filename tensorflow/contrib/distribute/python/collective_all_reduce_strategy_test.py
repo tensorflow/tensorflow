@@ -115,7 +115,7 @@ class CollectiveAllReduceStrategyTestBase(
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, tucker): enable it to reuse collective keys in different
+    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
     # tests.
     CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
@@ -133,11 +133,11 @@ class CollectiveAllReduceStrategyTestBase(
         use_core_strategy=use_core_strategy)
 
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
+        group_key_start=10 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_start=num_gpus * 100 +
+        op_instance_key_start=100 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
     strategy.extended._cross_device_ops._collective_keys = (collective_keys)
@@ -498,8 +498,13 @@ class DistributedCollectiveAllReduceStrategyTest(
       self.assertEqual('grpc', server_def.protocol)
       mock_called[0] = True
 
+    def mock_configure_collective_ops(*args, **kwargs):
+      del args, kwargs
+
     with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops):
+                                mock_enable_collective_ops), \
+         test.mock.patch.object(context.context(), 'configure_collective_ops',
+                                mock_configure_collective_ops):
       strategy, _, _ = self._get_test_object(
           task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
     self.assertTrue(strategy.extended._std_server_started)

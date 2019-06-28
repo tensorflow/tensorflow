@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/introduce_floating_point_jitter_pass.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
+#include "tensorflow/compiler/jit/report_clustering_info_pass.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
@@ -36,12 +37,8 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
                       IntroduceFloatingPointJitterPass);
 
 // from
-// third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
+// tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
 // FunctionalizeControlFlowPass: 27
-//
-// from
-// third_party/tensorflow/compiler/tf2xla/rearrange_function_argument_pass_registration.cc
-// RearrangeFunctionArgumentPass: 28
 //
 // This pass looks at the graph and all associated FunctionDefs, and turns
 // traditional control flow structure (Switch/Merge/etc.) into functional
@@ -62,15 +59,22 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 20,
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 30,
                       PartiallyDeclusterPass);
 
+// ReportClusteringInfoPass pass needs to run after all of the auto-clustering
+// passes have run but before encapsulation has run.  This way it can easily
+// compute a summary of the clustering decisions we made and broadcast it via
+// xla_activity_listener.
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 40,
+                      ReportClusteringInfoPass);
+
 // The EncapsulateSubgraphs pass must run after the MarkForCompilationPass. We
 // also need to run it after the graph been rewritten to have _Send nodes added
 // for fetches. Before the _Send nodes are added, fetch nodes are identified by
 // name, and encapsulation might remove that node from the graph.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 40,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 50,
                       EncapsulateSubgraphsPass);
 
 // Must run after EncapsulateSubgraphsPass.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 50,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 60,
                       BuildXlaOpsPass);
 
 }  // namespace tensorflow

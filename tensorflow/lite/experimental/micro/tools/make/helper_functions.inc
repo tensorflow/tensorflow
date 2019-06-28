@@ -107,9 +107,6 @@ endef
 # can invoke to create the standalone project.
 define generate_arduino_project
 
-ARDUINO_SRCS := $(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/%,third_party/%,$(patsubst %.cc,%.cpp,$(3)))
-ARDUINO_HDRS := $(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/,third_party/,$(4))
-
 $(PRJDIR)$(2)/arduino/src/%.cpp: %.cc
 	@mkdir -p $$(dir $$@)
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
@@ -140,7 +137,7 @@ $(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experi
 $(PRJDIR)$(2)/arduino/%: tensorflow/lite/experimental/micro/tools/make/templates/%
 	@mkdir -p $$(dir $$@)
 	sed -E 's#\%\{SRCS\}\%#$(3)#g' $$< | \
-	sed -E 's#\%\{EXECUTABLE\}\%#$(1)#g' | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(2)#g' | \
 	sed -E 's#\%\{LINKER_FLAGS\}\%#$(5)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CC_FLAGS\}\%#$(7)#g' > $$@
@@ -153,7 +150,15 @@ $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h: tensorflow/lite/experimental/micro/t
 	@mkdir -p $$(dir $$@)
 	cp $$< $$@
 
-generate_$(2)_arduino_project: $(addprefix $(PRJDIR)$(2)/arduino/src/,$(ARDUINO_SRCS) $(ARDUINO_HDRS)) $(addprefix $(PRJDIR)$(2)/arduino/,$(1)) $(PRJDIR)$(2)/arduino/examples/$(2)/$(2).ino $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h
+# This would be cleaner if we broke up the list of dependencies into variables,
+# but these get hard to define with the evaluation approach used to define make
+# functions.
+generate_$(2)_arduino_project: $(addprefix $(PRJDIR)$(2)/arduino/src/,\
+$(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/%,third_party/%,$(patsubst %.cc,%.cpp,$(3))) \
+$(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/,third_party/,$(4))) \
+$(addprefix $(PRJDIR)$(2)/arduino/,$(1)) \
+$(PRJDIR)$(2)/arduino/examples/$(2)/$(2).ino \
+$(PRJDIR)$(2)/arduino/src/TensorFlowLite.h
 
 generate_$(2)_arduino_library_zip: generate_$(2)_arduino_project
 	cd $(PRJDIR)$(2) && cp -r arduino $(2) && zip -r $(2).zip $(2)

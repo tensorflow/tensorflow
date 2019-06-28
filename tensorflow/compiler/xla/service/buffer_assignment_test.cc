@@ -1720,6 +1720,42 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
 }
 
+TEST_F(BufferAssignmentTest, InPlaceBuffer) {
+  const char* hlo_text = R"(
+HloModule Module
+
+ENTRY main {
+  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128]{2,1,0} broadcast(constant.1), dimensions={}
+  get-tuple-element.4 = f32[1280,1,128]{2,1,0} get-tuple-element(state), index=1
+  get-tuple-element.3 = s32[] get-tuple-element(state), index=0
+  constant.2 = s32[] constant(128)
+  add.5 = s32[] add(get-tuple-element.3, constant.2)
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* parameter =
+      m->entry_computation()->GetInstructionWithName("get-tuple-element.4");
+  HloInstruction* dus =
+      m->entry_computation()->GetInstructionWithName("dynamic-update-slice.5");
+
+  auto buffers = RunBufferAssignment(m.get());
+
+  {
+    const BufferAllocation& parameter_alloc =
+        GetTopLevelAllocation(*buffers, parameter);
+
+    const BufferAllocation& dus_alloc = GetTopLevelAllocation(*buffers, dus);
+    EXPECT_NE(parameter_alloc, dus_alloc);
+  }
+}
+
 TEST_F(BufferAssignmentTest, ConstantBuffersAreNotReused) {
   const char* hlo_text = R"(
 HloModule Module

@@ -20,10 +20,16 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.core.protobuf.cluster_pb2 import ClusterDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
+from tensorflow.python.training import server_lib
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+
+_GRPC_PREFIX = "grpc://"
 
 
 @tf_export("config.experimental_connect_to_host")
@@ -50,31 +56,72 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   ```
 
   Args:
-    remote_host: The addr of the remote server in host-port format.
+    remote_host: a single or a list the remote server addr in host-port format.
     job_name: The job name under which the new server will be accessible.
 
   Raises:
     ValueError: if remote_host is None.
   """
-  if remote_host is None:
-    raise ValueError("Must provide an remote_host")
+  if not remote_host:
+    raise ValueError("Must provide at least one remote_host")
 
-  grpc_prefix = "grpc://"
-  if remote_host.startswith(grpc_prefix):
-    remote_host = remote_host[len(grpc_prefix):]
+  remote_hosts = nest.flatten(remote_host)
+  cluster_spec = server_lib.ClusterSpec(
+      {job_name: [_strip_prefix(host, _GRPC_PREFIX) for host in remote_hosts]})
 
-  cluster_def = ClusterDef()
-  job_def = cluster_def.job.add()
-  job_def.name = job_name
-  job_def.tasks[0] = "127.0.0.1:0"
-  job_def.tasks[1] = remote_host
+  connect_to_cluster(cluster_spec)
+
+
+# TODO(cjfj): Export this function?
+def connect_to_cluster(
+    cluster_spec_or_resolver,
+    job_name="localhost",
+    task_index=0,
+    protocol="grpc"):
+  """Connects to the given cluster.
+
+  Will make devices on the cluster available to use. Note that calling this more
+  than once will work, but will invalidate any tensor handles on the old remote
+  devices.
+
+  If the given local job name is not present in the cluster specification, it
+  will be automatically added, using an unused port on the localhost.
+
+  Args:
+    cluster_spec_or_resolver: A `ClusterSpec` or `ClusterResolver` describing
+      the cluster.
+    job_name: The name of the local job.
+    task_index: The local task index.
+    protocol: The communication protocol.
+  """
+  if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
+    cluster_spec = cluster_spec_or_resolver
+  elif isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
+    cluster_spec = cluster_spec_or_resolver.cluster_spec()
+  else:
+    raise ValueError(
+        "`cluster_spec_or_resolver` must be a `ClusterSpec` or a "
+        "`ClusterResolver`.")
+
+  cluster_def = cluster_spec.as_cluster_def()
+
+  # Automatically add local job, if not part of the cluster spec.
+  if job_name not in cluster_spec.jobs:
+    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    job_def = cluster_def.job.add()
+    job_def.name = job_name
+    # TODO(fishx): Update this to make sure remote worker has valid ip address
+    # to connect with local.
+    job_def.tasks[0] = "localhost:{}".format(local_port)
 
   server_def = ServerDef(
-      cluster=cluster_def,
-      job_name=job_name,
-      task_index=0,
-      protocol="grpc")
+      cluster=cluster_def, job_name=job_name, task_index=task_index,
+      protocol=protocol)
 
   # TODO(nareshmodi): Make this default since it works in more situations.
   os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
   context.set_server_def(server_def)
+
+
+def _strip_prefix(s, prefix):
+  return s[len(prefix):] if s.startswith(prefix) else s

@@ -363,19 +363,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+      LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
   // a non-OK status if "grad.function_name()" was not found in the library, OK
   // otherwise.
-  Status ReplaceGradient(const GradientDef& grad);
+  Status ReplaceGradient(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
   // Removes the function corresponding to 'func'. Returns a non-OK status if
   // 'func' was not found in the library, OK otherwise.
   // Please be careful when removing function: make sure there are no other
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
-  Status RemoveFunction(const string& func);
+  Status RemoveFunction(const string& func) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
@@ -546,7 +547,7 @@ class FunctionLibraryRuntime {
     // shape for input resources.
     // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
     // argument type must be DT_RESOURCE.
-    std::unordered_map<int, std::pair<DataType, TensorShape>>
+    std::unordered_map<int, DtypeAndPartialTensorShape>
         input_resource_dtypes_and_shapes;
 
     // This interface is EXPERIMENTAL and subject to change.
@@ -792,6 +793,9 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+  virtual void CleanUp(uint64 step_id,
+                       FunctionLibraryRuntime::LocalHandle handle,
+                       FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // DeviceMgr with *all* available devices.
   virtual DeviceMgr* remote_device_mgr() const = 0;

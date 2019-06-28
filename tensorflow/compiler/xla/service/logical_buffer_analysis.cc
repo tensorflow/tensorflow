@@ -159,6 +159,12 @@ Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // The top-level buffer (index={}) for kCopy is newly created, but all other
+  // buffers (in the case of a tuple shape) come from the operand.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});

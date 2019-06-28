@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <unordered_map>
 
@@ -190,6 +190,9 @@ class AutoTuneSingleton {
 // Logs convolution results to customized back-storage.
 void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             se::dnn::DataType element_type,
+                            se::DeviceMemoryBase input_buffer,
+                            se::DeviceMemoryBase filter_buffer,
+                            se::DeviceMemoryBase output_buffer,
                             const se::dnn::BatchDescriptor& input_desc,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
@@ -199,7 +202,10 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
 
 // Logs fused convolution results to customized back-storage.
 void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -214,6 +220,6 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_

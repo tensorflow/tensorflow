@@ -374,6 +374,11 @@ std::vector<DotTestParam> CreateDotTestParameters() {
     }
   };
 
+  add_matrix_matrix_dot_test(/*m=*/1, /*k=*/23, /*n=*/42);
+  add_matrix_matrix_dot_test(/*m=*/23, /*k=*/1, /*n=*/42);
+  add_matrix_matrix_dot_test(/*m=*/23, /*k=*/42, /*n=*/1);
+  add_matrix_matrix_dot_test(/*m=*/1, /*k=*/23, /*n=*/1);
+  add_matrix_matrix_dot_test(/*m=*/1, /*k=*/1, /*n=*/1);
   add_matrix_matrix_dot_test(/*m=*/12, /*k=*/117, /*n=*/7);
   add_matrix_matrix_dot_test(/*m=*/270, /*k=*/270, /*n=*/520);
   add_matrix_matrix_dot_test(/*m=*/260, /*k=*/3, /*n=*/520);

@@ -48,7 +48,7 @@ def to_h(_, varname, directory=''):
   xstr += '#include <cstdint>\n\n'
   xstr += 'extern const int g_{}_size;\n'.format(varname)
   xstr += 'extern const int16_t g_{}[];\n\n'.format(varname)
-  xstr += '#endif'
+  xstr += '#endif  // {}{}_H_'.format(tf_prepend, varname.upper())
 
   with open(directory + varname + '.h', 'w') as f:
     f.write(xstr)

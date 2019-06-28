@@ -59,7 +59,7 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
   RUY_DCHECK_LE(start_col, end_col);
   RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
   RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
-#if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
+#if RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
@@ -148,8 +148,8 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
   using AccumScalar = typename Spec::AccumScalar;
-  using LhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
-  using RhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using LhsLayout = typename Spec::StandardCppKernelLhsLayout;
+  using RhsLayout = typename Spec::StandardCppKernelRhsLayout;
   explicit Kernel(Tuning) {}
   void Run(const PackedMatrix<LhsScalar>& lhs,
            const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,
@@ -198,8 +198,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         accum += dst->zero_point;
         accum = std::min<AccumScalar>(accum, spec.clamp_max);
         accum = std::max<AccumScalar>(accum, spec.clamp_min);
-        relaxed_atomic_store(ElementPtr(dst, i, j),
-                             static_cast<DstScalar>(accum));
+        *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
       }
     }
   }
@@ -217,12 +216,13 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
 #define RUY_ASM_FLAG_HAS_RHS_SUMS 0x4
 #define RUY_ASM_FLAG_HAS_PERCHANNEL 0x8
+#define RUY_ASM_FLAG_NEEDS_LEFT_SHIFT 0x10
 
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
@@ -334,10 +334,14 @@ void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
   params->depth = depth;
   params->prod_zp_depth = lhs.zero_point * rhs.zero_point * depth;
   if (spec.multiplier_fixedpoint_perchannel) {
+    params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
     params->flags |= RUY_ASM_FLAG_HAS_PERCHANNEL;
     params->multiplier_fixedpoint = spec.multiplier_fixedpoint_perchannel;
     params->multiplier_exponent = spec.multiplier_exponent_perchannel;
   } else {
+    if (spec.multiplier_exponent > 0) {
+      params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
+    }
     params->multiplier_fixedpoint = params->multiplier_fixedpoint_buf;
     params->multiplier_exponent = params->multiplier_exponent_buf;
     for (int i = 0; i < LhsCols; i++) {
@@ -523,7 +527,7 @@ struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
   }
 };
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy
 

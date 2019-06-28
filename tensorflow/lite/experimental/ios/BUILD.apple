@@ -1,12 +1,13 @@
 # TensorFlow Lite for iOS
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_IOS_BUILD_VERSION", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 apple_bundle_version(
     name = "TensorFlowLiteC_version",

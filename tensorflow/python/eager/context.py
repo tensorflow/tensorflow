@@ -22,13 +22,15 @@ import collections
 import contextlib
 import copy
 import random
-import six
 import threading
+import numpy as np
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -55,8 +57,17 @@ DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
 DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
+
 SYNC = 0
 ASYNC = 1
+
+MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
+MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
+
+_tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
+                                  "Whether tf2.enable() is called.")
+
+_tf2_gauge.get_cell().set(tf2.enabled())
 
 
 class _EagerTensorCache(object):
@@ -327,6 +338,7 @@ class Context(object):
     if device_policy is None:
       device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
+    self._mirroring_policy = None
     if execution_mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
@@ -335,6 +347,10 @@ class Context(object):
     self._execution_mode = execution_mode
     self._server_def = server_def
     self._collective_ops_server_def = None
+    self._collective_leader = None
+    self._collective_scoped_allocator_enabled_ops = None
+    self._collective_use_nccl_communication = None
+    self._collective_device_filters = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -355,7 +371,14 @@ class Context(object):
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
-    self._rng = random.Random(self._seed)
+    # `random.Random(seed)` needs `seed` to be hashable, while values of type
+    # e.g. `np.int64` or `np.ndarray` are not. We use `int(...)` to convert them
+    # to int.
+    try:
+      hash(seed)
+    except TypeError:
+      seed = int(np.array(seed))
+    self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
@@ -407,6 +430,9 @@ class Context(object):
         if self._device_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
               opts, self._device_policy)
+        if self._mirroring_policy is not None:
+          pywrap_tensorflow.TFE_ContextOptionsSetMirroringPolicy(
+              opts, self._mirroring_policy)
         if self._execution_mode == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
@@ -466,9 +492,7 @@ class Context(object):
       self._initialize_logical_devices()
 
   def enable_collective_ops(self, server_def):
-    """Enable collective ops with an appropriate server_def.
-
-    If previously enabled, this cannot be re-enabled.
+    """Enable distributed collective ops with an appropriate server_def.
 
     Args:
       server_def: A tensorflow::ServerDef proto. Enables execution on remote
@@ -476,18 +500,58 @@ class Context(object):
 
     Raises:
       ValueError: if server_def is None.
+      RuntimeError: if this method is not called at program startup.
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._collective_ops_server_def = server_def
-    else:
-      server_def_str = server_def.SerializeToString()
-      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
-                                                server_def_str)
 
-      self._clear_caches()
-      self._initialize_logical_devices()
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be enabled at program startup")
+
+    self._collective_ops_server_def = server_def
+
+  def configure_collective_ops(
+      self,
+      collective_leader="",
+      scoped_allocator_enabled_ops=("CollectiveReduce",),
+      use_nccl_communication=False,
+      device_filters=None):
+    """Configure collective ops.
+
+      Collective group leader is necessary for collective ops to run, other
+      configurations are mainly for the purpose of performance.
+
+    Args:
+      collective_leader: a device string for collective leader, e.g.
+        "/job:worker/replica:0/task:"; empty string means local execution of
+          collective ops.
+      scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
+        allocator to run with.
+      use_nccl_communication: whether to use nccl communication for collective
+        ops.
+      device_filters: a tuple or a list of device strings. If set, corresponding
+        task can only see the devices filtered by these device filters.
+
+    Raises:
+      RuntimeError: if this method is not called at program startup.
+    """
+    if self._collective_leader is not None:
+      if (self._collective_leader != collective_leader or
+          self._collective_scoped_allocator_enabled_ops !=
+          scoped_allocator_enabled_ops or
+          self._collective_use_nccl_communication != use_nccl_communication or
+          self._collective_device_filters != device_filters):
+        raise ValueError("Collective ops are already configured.")
+      else:
+        return
+
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be configured at program startup")
+
+    self._collective_leader = collective_leader
+    self._collective_scoped_allocator_enabled_ops = scoped_allocator_enabled_ops
+    self._collective_use_nccl_communication = use_nccl_communication
+    self._collective_device_filters = device_filters
 
   @property
   def _handle(self):
@@ -747,6 +811,23 @@ class Context(object):
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
 
+    # Configure collective ops
+    if self._collective_leader:
+      config.experimental.collective_group_leader = self._collective_leader
+    if self._collective_scoped_allocator_enabled_ops:
+      rewrite_options = config.graph_options.rewrite_options
+      rewrite_options.scoped_allocator_optimization = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      del rewrite_options.scoped_allocator_opts.enable_op[:]
+      for op in self._collective_scoped_allocator_enabled_ops:
+        rewrite_options.scoped_allocator_opts.enable_op.append(op)
+    if self._collective_use_nccl_communication:
+      config.experimental.collective_nccl = True
+    if self._collective_device_filters:
+      del config.device_filters[:]
+      for f in self._collective_device_filters:
+        config.device_filters.append(f)
+
     return config
 
   def _compute_gpu_options(self):
@@ -754,12 +835,15 @@ class Context(object):
     visible_device_list = []
     virtual_devices = []
     gpu_index = -1
+    memory_growths = set()
     for dev in self.list_physical_devices("GPU"):
       gpu_index += 1
 
       if dev not in self._visible_device_list:
         continue
 
+      growth = self._memory_growth_map[dev]
+      memory_growths.add(growth)
       visible_device_list.append(str(gpu_index))
 
       if self._virtual_device_map:
@@ -774,8 +858,7 @@ class Context(object):
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
-    if not virtual_devices and self._memory_growth_map:
-      memory_growths = set(self._memory_growth_map.values())
+    if not virtual_devices and memory_growths:
       if len(memory_growths) > 1:
         raise ValueError("Memory growth cannot differ between GPU devices")
       allow_growth = memory_growths.pop()
@@ -1022,9 +1105,6 @@ class Context(object):
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
-    if self._context_handle is not None:
-      raise RuntimeError("Visible devices must be set at program startup")
-
     self._initialize_physical_devices()
 
     if not isinstance(devices, list):
@@ -1036,14 +1116,22 @@ class Context(object):
       if device_type is not None and d.device_type != device_type:
         raise ValueError("Unrecognized device: %s" % repr(d))
 
-    if device_type is None:
-      self._visible_device_list = []
-    else:
-      self._visible_device_list = [
+    visible_device_list = []
+    if device_type is not None:
+      visible_device_list = [
           d for d in self._visible_device_list if d.device_type != device_type
       ]
 
-    self._visible_device_list += devices
+    visible_device_list += devices
+
+    if self._visible_device_list == visible_device_list:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Visible devices cannot be modified after being initialized")
+
+    self._visible_device_list = visible_device_list
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1056,9 +1144,6 @@ class Context(object):
 
   def set_memory_growth(self, dev, enable):
     """Set if memory growth should be enabled for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Memory growth must be set at program startup")
-
     self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
@@ -1067,6 +1152,16 @@ class Context(object):
     if dev in self._virtual_device_map:
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
+
+    if dev.device_type != "GPU":
+      raise ValueError("Cannot set memory growth on non-GPU devices")
+
+    if self._memory_growth_map.get(dev) == enable:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Physical devices cannot be modified after being initialized")
 
     self._memory_growth_map[dev] = enable
 
@@ -1081,9 +1176,6 @@ class Context(object):
 
   def set_virtual_device_configuration(self, dev, virtual_devices):
     """Set the virtual device configuration for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Virtual devices must be set at program startup")
-
     self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
@@ -1102,6 +1194,13 @@ class Context(object):
     else:
       raise ValueError("Virtual devices are not supported for %s" %
                        dev.device_type())
+
+    if self._virtual_device_map.get(dev) == virtual_devices:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
 
@@ -1171,9 +1270,12 @@ class Context(object):
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
+    if self._intra_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Intra op parallelism must be set at program startup")
+          "Intra op parallelism cannot be modified after initialization.")
 
     self._intra_op_parallelism_threads = num_threads
 
@@ -1183,9 +1285,12 @@ class Context(object):
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
+    if self._inter_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Inter op parallelism must be set at program startup")
+          "Inter op parallelism cannot be modified after initialization.")
 
     self._inter_op_parallelism_threads = num_threads
 
@@ -1235,6 +1340,27 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
+
+  @property
+  def mirroring_policy(self):
+    # Only get the policy from the context if it has already been initialized
+    if self._context_handle is not None:
+      return pywrap_tensorflow.TFE_ContextGetMirroringPolicy(self._handle)
+
+    return self._device_policy
+
+  @mirroring_policy.setter
+  def mirroring_policy(self, policy):
+    if policy is None:
+      policy = MIRRORING_NONE
+
+    if self._mirroring_policy != policy:
+      self._mirroring_policy = policy
+
+      # Only set the policy if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetThreadLocalMirroringPolicy(
+            self._handle, self._mirroring_policy)
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -1524,6 +1650,18 @@ def device_policy(policy):
     yield
   finally:
     ctx.device_policy = old_policy
+
+
+@tf_contextlib.contextmanager
+def mirroring_policy(policy):
+  """Context manager for setting mirroring policy for current thread."""
+  ctx = context()
+  old_policy = ctx.mirroring_policy
+  try:
+    ctx.mirroring_policy = policy
+    yield
+  finally:
+    ctx.mirroring_policy = old_policy
 
 
 def set_execution_mode(mode):

@@ -83,13 +83,15 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* output_dtypes = new DataTypeVector({DT_VARIANT});
+      static DataTypeVector* output_dtypes =
+          new DataTypeVector(input_->output_dtypes().size(), {DT_VARIANT});
       return *output_dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
       static std::vector<PartialTensorShape>* output_shapes =
-          new std::vector<PartialTensorShape>({TensorShape({})});
+          new std::vector<PartialTensorShape>(input_->output_shapes().size(),
+                                              TensorShape({}));
       return *output_shapes;
     }
 

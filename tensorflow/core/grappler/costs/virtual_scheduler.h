@@ -73,12 +73,16 @@ struct NodeState {
   // How many times this node has been executed, e.g. in a while loop.
   int execution_count;
 
+  // Output shape incompatible between shape annotation and shape inference.
+  bool shape_incompatible;
+
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
     execution_count = 0;
+    shape_incompatible = false;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -115,6 +119,21 @@ struct DeviceState {
 
   int64 memory_usage;      // Current temporary memory usage
   int64 max_memory_usage;  // Max temporary memory usage
+
+  // Shape annotation statistics.
+  struct ShapeAnnotationStats {
+    // Number of ops with shape annotated.
+    int64 num_ops_annotated = 0;
+    // Number of ops executed multiple times (e.g. in a loop).
+    int64 num_ops_executed_more_than_once = 0;
+    // Number of ops executed: account for execution count.
+    int64 num_ops_executed = 0;
+    // Number of ops with dynamic shapes (e.g. shape changes in a loop).
+    int64 num_ops_with_dynamic_shapes = 0;
+    // Number of ops with incompatible shapes between annotation and shape
+    // inference.
+    int64 num_ops_with_incompatible_shapes = 0;
+  } shape_annotation_stats;
 
   DeviceState() {
     device_costs = Costs::ZeroCosts();
@@ -316,13 +335,15 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
-  // Generate RunMetadata's step_stats and partition_graphs fields from results
+  // Generates RunMetadata's step_stats and partition_graphs fields from results
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata);
 
-  // Return per device peak memory usage.
+  // Returns per device memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
+  const std::unordered_map<string, int64> GetPersistentMemoryUsage() const;
 
+  // Returns VirtualScheduler (read only) device and node states.
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
     return &device_;
   }

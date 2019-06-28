@@ -69,6 +69,22 @@ manual_symbol_renames = {
         "tf.io.gfile.stat",
     "tf.gfile.Walk":
         "tf.io.gfile.walk",
+    "tf.contrib.cluster_resolver.ClusterResolver":
+        "tf.distribute.cluster_resolver.ClusterResolver",
+    "tf.contrib.cluster_resolver.GceClusterResolver":
+        "tf.distribute.cluster_resolver.GCEClusterResolver",
+    "tf.contrib.cluster_resolver.KubernetesClusterResolver":
+        "tf.distribute.cluster_resolver.KubernetesClusterResolver",
+    "tf.contrib.cluster_resolver.SimpleClusterResolver":
+        "tf.distribute.cluster_resolver.SimpleClusterResolver",
+    "tf.contrib.cluster_resolver.SlurmClusterResolver":
+        "tf.distribute.cluster_resolver.SlurmClusterResolver",
+    "tf.contrib.cluster_resolver.TFConfigClusterResolver":
+        "tf.distribute.cluster_resolver.TFConfigClusterResolver",
+    "tf.contrib.cluster_resolver.TPUClusterResolver":
+        "tf.distribute.cluster_resolver.TPUClusterResolver",
+    "tf.contrib.cluster_resolver.UnionClusterResolver":
+        "tf.distribute.cluster_resolver.UnionClusterResolver",
     "tf.contrib.data.AUTOTUNE":
         "tf.data.experimental.AUTOTUNE",
     "tf.contrib.data.Counter":
@@ -257,6 +273,10 @@ manual_symbol_renames = {
         "tf.compat.v1.tpu.shard",
     "tf.contrib.tpu.shutdown_system":
         "tf.compat.v1.tpu.shutdown_system",
+    "tf.contrib.training.checkpoints_iterator":
+        "tf.train.checkpoints_iterator",
+    "tf.contrib.layers.recompute_grad":
+        "tf.recompute_grad",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":
@@ -510,8 +530,69 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
+    "tf.floor_div":
+        "tf.math.floordiv",
+    "tf.where":
+        "tf.compat.v1.where",
+    "tf.where_v2":
+        "tf.compat.v2.where",
 }
 # pylint: enable=line-too-long
 
 symbol_renames = renames_v2.renames
 symbol_renames.update(manual_symbol_renames)
+
+addons_symbol_mappings = {
+    "tf.contrib.layers.poincare_normalize":
+        "tfa.layers.PoincareNormalize",
+    "tf.contrib.layers.maxout":
+        "tfa.layers.Maxout",
+    "tf.contrib.layers.group_norm":
+        "tfa.layers.GroupNormalization",
+    "tf.contrib.layers.instance_norm":
+        "tfa.layers.InstanceNormalization",
+    "tf.contrib.sparsemax.sparsemax":
+        "tfa.activations.sparsemax",
+    "tf.contrib.losses.metric_learning.contrastive_loss":
+        "tfa.losses.ContrastiveLoss",
+    "tf.contrib.losses.metric_learning.lifted_struct_loss":
+        "tfa.losses.LiftedStructLoss",
+    "tf.contrib.sparsemax.sparsemax_loss":
+        "tfa.losses.SparsemaxLoss",
+    "tf.contrib.losses.metric_learning.triplet_semihard_loss":
+        "tfa.losses.TripletSemiHardLoss",
+    "tf.contrib.opt.LazyAdamOptimizer":
+        "tfa.optimizers.LazyAdam",
+    "tf.contrib.opt.MovingAverageOptimizer":
+        "tfa.optimizers.MovingAverage",
+    "tf.contrib.opt.MomentumWOptimizer":
+        "tfa.optimizers.SGDW",
+    "tf.contrib.opt.AdamWOptimizer":
+        "tfa.optimizers.AdamW",
+    "tf.contrib.opt.extend_with_decoupled_weight_decay":
+        "tfa.optimizers.extend_with_decoupled_weight_decay",
+    "tf.contrib.text.skip_gram_sample":
+        "tfa.text.skip_gram_sample",
+    "tf.contrib.text.skip_gram_sample_with_text_vocab":
+        "tfa.text.skip_gram_sample_with_text_vocab",
+    "tf.contrib.image.dense_image_warp":
+        "tfa.image.dense_image_warp",
+    "tf.contrib.image.adjust_hsv_in_yiq":
+        "tfa.image.adjust_hsv_in_yiq",
+    "tf.contrib.image.compose_transforms":
+        "tfa.image.compose_transforms",
+    "tf.contrib.image.random_hsv_in_yiq":
+        "tfa.image.random_hsv_in_yiq",
+    "tf.contrib.image.angles_to_projective_transforms":
+        "tfa.image.angles_to_projective_transforms",
+    "tf.contrib.image.matrices_to_flat_transforms":
+        "tfa.image.matricies_to_flat_transforms",
+    "tf.contrib.image.rotate":
+        "tfa.image.rotate",
+    "tf.contrib.image.transform":
+        "tfa.image.transform",
+    "tf.contrib.rnn.NASCell":
+        "tfa.rnn.NASCell",
+    "tf.contrib.rnn.LayerNormBasicLSTMCell":
+        "tfa.rnn.LayerNormLSTMCell"
+}

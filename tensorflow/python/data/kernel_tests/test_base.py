@@ -22,6 +22,7 @@ import re
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -29,11 +30,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
-class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
+class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
   @classmethod
@@ -42,6 +42,10 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
       dataset_ops.Dataset = dataset_ops.DatasetV2
     else:
       dataset_ops.Dataset = dataset_ops.DatasetV1
+
+  def assert_op_cancelled(self, op):
+    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+      self.evaluate(op)
 
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
@@ -103,7 +107,7 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
         if sparse_tensor.is_sparse(result_value):
           self.assertSparseValuesEqual(result_value, expected_value)
         elif ragged_tensor.is_ragged(result_value):
-          self.assertRaggedEqual(result_value, expected_value)
+          self.assertAllEqual(result_value, expected_value)
         else:
           self.assertAllEqual(
               result_value,
@@ -177,10 +181,11 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
-    self.assertTrue(dataset_ops.get_structure(dataset1).is_compatible_with(
-        dataset_ops.get_structure(dataset2)))
-    self.assertTrue(dataset_ops.get_structure(dataset2).is_compatible_with(
-        dataset_ops.get_structure(dataset1)))
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset1),
+            dataset_ops.get_structure(dataset2)))
+
     flattened_types = nest.flatten(
         dataset_ops.get_legacy_output_types(dataset1))
 
@@ -203,7 +208,7 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
         if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
         elif ragged_tensor.is_ragged(op1[i]):
-          self.assertRaggedEqual(op1[i], op2[i])
+          self.assertAllEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:
@@ -233,28 +238,30 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
                                    re.escape(expected_message)):
         self.evaluate(next2())
 
-  def structuredDataset(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredDataset(self, dataset_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns a singleton dataset with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if dataset_structure is None:
       return dataset_ops.Dataset.from_tensors(
           array_ops.zeros(shape, dtype=dtype))
     else:
       return dataset_ops.Dataset.zip(
           tuple([
               self.structuredDataset(substructure, shape, dtype)
-              for substructure in structure
+              for substructure in dataset_structure
           ]))
 
-  def structuredElement(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredElement(self, element_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns an element with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if element_structure is None:
       return array_ops.zeros(shape, dtype=dtype)
     else:
       return tuple([
           self.structuredElement(substructure, shape, dtype)
-          for substructure in structure
+          for substructure in element_structure
       ])

@@ -329,6 +329,21 @@ message RPCOptions {
   int32 compression_level = 3;
 }
 
+// Metadata about the session.
+//
+// This can be used by the runtime and the Ops for debugging, monitoring, etc.
+//
+// The (name, version) tuple is expected to be a unique identifier for
+// sessions within the same process.
+//
+// NOTE: This is currently used and propagated only by the direct session.
+message SessionMetadata {
+  string name = 1;
+
+  // The version is optional. If set, needs to be >= 0.
+  int64 version = 2;
+}
+
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
 message ConfigProto {
@@ -498,6 +513,22 @@ message ConfigProto {
     // This is helpful when a worker wants to partition a graph
     // (for example during a PartitionedCallOp).
     bool share_cluster_devices_in_session = 10;
+
+    // Metadata about the session.
+    //
+    // If set, this can be used by the runtime and the Ops for debugging,
+    // monitoring, etc.
+    //
+    // NOTE: This is currently used and propagated only by the direct session.
+    SessionMetadata session_metadata = 11;
+
+    // If true, the session may treat the graph as being static for optimization
+    // purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef must be passed in a single call to Session::Create(), and
+    // Session::Extend() may not be supported.
+    bool optimize_for_static_graph = 12;
   };
 
   Experimental experimental = 16;

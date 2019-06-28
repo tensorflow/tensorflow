@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.python.compat import compat
+from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -30,10 +32,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import util as losses_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -250,9 +254,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
@@ -329,9 +333,9 @@ def weighted_cross_entropy_with_logits(labels=None,
   The usual cross-entropy cost is defined as:
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
@@ -365,6 +369,100 @@ def weighted_cross_entropy_with_logits(labels=None,
   """
   labels = deprecated_argument_lookup("labels", labels, "targets", targets)
   return weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name)
+
+
+@tf_export("nn.compute_average_loss")
+def compute_average_loss(per_example_loss,
+                         sample_weight=None,
+                         global_batch_size=None):
+  """Scales per-example losses with sample_weights and computes their average.
+
+  Usage with distribution strategy and custom training loop:
+
+  ```python
+  with strategy.scope():
+    def compute_loss(labels, predictions, sample_weight=None):
+
+      # If you are using a `Loss` class instead, set reduction to `NONE` so that
+      # we can do the reduction afterwards and divide by global batch size.
+      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
+          labels, predictions)
+
+      # Compute loss that is scaled by sample_weight and by global batch size.
+      return tf.compute_average_loss(
+          per_example_loss,
+          sample_weight=sample_weight,
+          global_batch_size=GLOBAL_BATCH_SIZE)
+  ```
+
+  Args:
+    per_example_loss: Per-example loss.
+    sample_weight: Optional weighting for each example.
+    global_batch_size: Optional global batch size value. Defaults to (size of
+      first dimension of `losses`) * (number of replicas).
+
+  Returns:
+    Scalar loss value.
+  """  # pylint: disable=g-doc-exception
+  per_example_loss = ops.convert_to_tensor(per_example_loss)
+  input_dtype = per_example_loss.dtype
+
+  with losses_util.check_per_example_loss_rank(per_example_loss):
+    if sample_weight is not None:
+      per_example_loss = losses_util.scale_losses_by_sample_weight(
+          per_example_loss, sample_weight)
+    per_example_loss = math_ops.cast(per_example_loss, input_dtype)
+
+    if global_batch_size is None:
+      if ds.has_strategy() and ds.in_cross_replica_context():
+        raise RuntimeError(
+            "You are calling `compute_average_loss` in cross replica context, "
+            "while it was expected to be called in replica context.")
+
+      num_replicas = ds.get_strategy().num_replicas_in_sync
+      per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
+      global_batch_size = per_replica_batch_size * num_replicas
+      global_batch_size = math_ops.cast(global_batch_size, input_dtype)
+
+    return math_ops.reduce_sum(per_example_loss) / global_batch_size
+
+
+@tf_export("nn.scale_regularization_loss")
+def scale_regularization_loss(regularization_loss):
+  """Scales the sum of the given regularization losses by number of replicas.
+
+  Usage with distribution strategy and custom training loop:
+
+  ```python
+  with strategy.scope():
+    def compute_loss(self, label, predictions):
+      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
+          labels, predictions)
+
+      # Compute loss that is scaled by sample_weight and by global batch size.
+      loss = tf.compute_average_loss(
+          per_example_loss,
+          sample_weight=sample_weight,
+          global_batch_size=GLOBAL_BATCH_SIZE)
+
+      # Add scaled regularization losses.
+      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      return loss
+  ```
+
+  Args:
+    regularization_loss: Regularization loss.
+
+  Returns:
+    Scalar loss value.
+  """  # pylint: disable=g-doc-exception
+  if ds.has_strategy() and ds.in_cross_replica_context():
+    raise RuntimeError(
+        "You are calling `scale_regularization_loss` in cross replica context, "
+        "while it was expected to be called in replica context.")
+
+  num_replicas = ds.get_strategy().num_replicas_in_sync
+  return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 
 @tf_export(v1=["nn.relu_layer"])
@@ -432,6 +530,59 @@ def swish(features):
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
   return features * math_ops.sigmoid(features)
+
+
+# pylint: disable=redefined-builtin
+@tf_export("linalg.normalize")
+def normalize(tensor, ord="euclidean", axis=None, name=None):
+  """Normalizes `tensor` along dimension `axis` using specified norm.
+
+  This uses `tf.linalg.norm` to compute the norm along `axis`.
+
+  This function can compute several different vector norms (the 1-norm, the
+  Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
+
+  Args:
+    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`, `1`,
+      `2`, `np.inf` and any positive real number yielding the corresponding
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
+      `tensor` is a matrix and equivalent to 2-norm for vectors.
+      Some restrictions apply: a) The Frobenius norm `'fro'` is not defined for
+        vectors, b) If axis is a 2-tuple (matrix norm), only `'euclidean'`,
+        '`fro'`, `1`, `2`, `np.inf` are supported. See the description of `axis`
+        on how to compute norms for a batch of vectors or matrices stored in a
+        tensor.
+    axis: If `axis` is `None` (the default), the input is considered a vector
+      and a single vector norm is computed over the entire set of values in the
+      tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+      `norm(reshape(tensor, [-1]), ord=ord)`. If `axis` is a Python integer, the
+      input is considered a batch of vectors, and `axis` determines the axis in
+      `tensor` over which to compute vector norms. If `axis` is a 2-tuple of
+      Python integers it is considered a batch of matrices and `axis` determines
+      the axes in `tensor` over which to compute a matrix norm.
+      Negative indices are supported. Example: If you are passing a tensor that
+        can be either a matrix or a batch of matrices at runtime, pass
+        `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+        computed.
+    name: The name of the op.
+
+  Returns:
+    normalized: A normalized `Tensor` with the same shape as `tensor`.
+    norm: The computed norms with the same shape and dtype `tensor` but the
+      final axis is 1 instead. Same as running
+      `tf.cast(tf.linalg.norm(tensor, ord, axis keepdims=True), tensor.dtype)`.
+
+  Raises:
+    ValueError: If `ord` or `axis` is invalid.
+  """
+  with ops.name_scope(name, "normalize", [tensor]) as name:
+    tensor = ops.convert_to_tensor(tensor)
+    norm = linalg_ops.norm(tensor, ord, axis, keepdims=True)
+    norm = math_ops.cast(norm, tensor.dtype)
+    normalized = tensor / norm
+    return normalized, norm
 
 
 @tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
@@ -1298,9 +1449,20 @@ def fused_batch_norm(
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
-  # currently only use the V2 version for float16 inputs, which is not supported
-  # by the V1 version.
+
+  if compat.forward_compatible(2019, 6, 6):
+    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, batch_mean, batch_var
+
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
     fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:

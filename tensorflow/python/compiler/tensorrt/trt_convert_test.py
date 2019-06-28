@@ -70,8 +70,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         precision_mode="INT8",
         minimum_segment_size=10,
         is_dynamic_op=True,
-        maximum_cached_engines=2,
-        cached_engine_batches=[1, 128])
+        maximum_cached_engines=2)
     rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
         conversion_params=conversion_params)
     self.assertEqual(["constfold", "layout", "constfold"],
@@ -86,8 +85,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertTrue(trt_optimizer is not None)
     for key in [
         "minimum_segment_size", "max_batch_size", "is_dynamic_op",
-        "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines",
-        "cached_engine_batches"
+        "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines"
     ]:
       self.assertTrue(key in trt_optimizer.parameter_map)
     self.assertEqual(10, trt_optimizer.parameter_map["minimum_segment_size"].i)
@@ -99,8 +97,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         trt_convert._to_bytes("INT8"),
         trt_optimizer.parameter_map["precision_mode"].s)
     self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
-    self.assertEqual(
-        [1, 128], trt_optimizer.parameter_map["cached_engine_batches"].list.i)
 
   def _GetConfigProto(self):
     """Get ConfigProto for session creation."""
@@ -168,9 +164,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
             "v1": "Const",
             "add/ReadVariableOp": "Identity",
             "input": "Placeholder",
-            "add": "Add",
+            "add": "AddV2",
             "mul": "Mul",
-            "add_1": "Add",
+            "add_1": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
     return graph_def
@@ -411,9 +407,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         {
             "add/ReadVariableOp": "Const",
             "input": "Placeholder",
-            "add": "Add",
+            "add": "AddV2",
             "mul": "Mul",
-            "add_1": "Add",
+            "add_1": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
 

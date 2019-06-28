@@ -393,7 +393,7 @@ Status ValidateOutsideCompilationCallNode(Node* call_node) {
 // Replace outside compilation function call node with XlaHostCompute node.
 // If the function call node has no input/output edges, we will just remove it
 // and not create a XlaHostCompute node.
-Status ReplaceOrRemoveOutsideCompilationCallNode(
+xla::StatusOr<Node*> ReplaceOrRemoveOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
     const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
   // If the function call node has no input/output edges, just remove it.
@@ -413,7 +413,7 @@ Status ReplaceOrRemoveOutsideCompilationCallNode(
   if (!has_edge) {
     VLOG(4) << "Did not add HostCompute node for " << call_node->DebugString();
     g->RemoveNode(call_node);
-    return Status::OK();
+    return nullptr;
   }
 
   // Build XlaHostCompute NodeDef.
@@ -424,7 +424,7 @@ Status ReplaceOrRemoveOutsideCompilationCallNode(
                       ReplaceNode(g, call_node, node_def));
   VLOG(4) << "Added HostCompute node: " << host_compute_node->DebugString();
 
-  return Status::OK();
+  return host_compute_node;
 }
 
 // Resets "device_ordinal" attr to placeholder value for related nodes
@@ -1634,7 +1634,7 @@ Status ExtractOutsideCompilationForFunction(
   RewriteOutsideCompilationSubgraphFn rewrite_fn(
       xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name);
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
-      outside_compilation_attr_name, "", *fbody->graph, rewrite_fn,
+      outside_compilation_attr_name, *fbody->graph, rewrite_fn,
       /*reuse_existing_functions=*/true, &graph_out, fld));
 
   // Replace outside_compilation function nodes with HostCompute ops.
@@ -1670,10 +1670,35 @@ Status ExtractOutsideCompilationForFunction(
       }
     }
   }
+  std::map<string, Node*> host_compute_nodes;
   for (Node* n : outside_compilation_nodes) {
     TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
-    TF_RETURN_IF_ERROR(ReplaceOrRemoveOutsideCompilationCallNode(
-        graph_out.get(), n, host_compute_core, *cluster_deps));
+    auto host_compute_node_or = ReplaceOrRemoveOutsideCompilationCallNode(
+        graph_out.get(), n, host_compute_core, *cluster_deps);
+    TF_RETURN_IF_ERROR(host_compute_node_or.status());
+    Node* host_compute_node = host_compute_node_or.ValueOrDie();
+    if (host_compute_node) {
+      host_compute_nodes[host_compute_node->name()] = host_compute_node;
+    }
+  }
+  // For XlaHostCompute nodes with dependencies, add control edges between them
+  // so XlaCompiler can handle them in correct order.
+  for (auto iter : host_compute_nodes) {
+    Node* host_compute_node = iter.second;
+    std::vector<string> token_input_node_names;
+    TF_RETURN_IF_ERROR(GetNodeAttr(host_compute_node->def(),
+                                   kXlaTokenInputNodesAttrName,
+                                   &token_input_node_names));
+    for (const string& node_name : token_input_node_names) {
+      if (node_name == kXlaTokenArgNodeName) {
+        continue;
+      }
+
+      auto iter = host_compute_nodes.find(node_name);
+      if (iter != host_compute_nodes.end()) {
+        graph_out->AddControlEdge(iter->second, host_compute_node);
+      }
+    }
   }
 
   // Handle nodes with associated functions.

@@ -198,7 +198,7 @@ message GradientAccumulationStatus {
 
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
-message HotIdOptimizerConfiguration {
+message HotIdReplicationConfiguration {
   // Whether to enable or disable hot ID optimization.
   // If UNSPECIFIED (default), hot ID optimization is DISABLED.
   enum Status {
@@ -207,28 +207,6 @@ message HotIdOptimizerConfiguration {
     DISABLED = 2;
   }
   Status status = 1;
-
-  // The following fields are never expected to be set by the TF model. However,
-  // a TF model could set them if it chooses to. If the fields are not set,
-  // meaningful default values will be chosen by the TPU software.
-
-  // Frequency above which an embedding ID is classified as hot. The valid
-  // range for the frequency is [0.0, 1.0]. The frequency of an embedding ID is
-  // defined as the ratio of the number of lookups for that ID to the total
-  // number of lookups for the embedding table.
-  float frequency_threshold = 2;
-
-  // The maximum number of hot IDs for the embedding table. If greater than
-  // max_id_count hot IDs exist for the table, the IDs with the highest
-  // frequencies are chosen.
-  int32 max_id_count = 3;
-
-  // The maximum number of slots reserved in HBM (across the entire TPU system)
-  // for storing the replicas of hot IDs for the embedding table. In future, the
-  // number of replicas for a particular hot ID could be adjusted based on its
-  // frequency. The max_slot_count value captures the total number of replicas
-  // across all hot IDs for the table.
-  int32 max_slot_count = 4;
 }
 
 message OptimizationParameters {
@@ -257,9 +235,9 @@ message OptimizationParameters {
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
 
-  // Configuration proto for hot ID optimization. This is an experimental
+  // Configuration proto for hot ID replication. This is an experimental
   // feature that is currently disabled (by default).
-  HotIdOptimizerConfiguration hot_id_optimizer_configuration = 18;
+  HotIdReplicationConfiguration hot_id_replication_configuration = 18;
 
   // Optimization algorithm parameters; which field is selected determines which
   // algorithm to use.

@@ -19,8 +19,10 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace eager {
@@ -88,12 +91,18 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
+  std::vector<DeviceAttributes> cluster_device_attributes;
+  cluster_device_attributes.reserve(
+      request->cluster_device_attributes().size());
+  for (const auto& cluster_device : request->cluster_device_attributes()) {
+    cluster_device_attributes.push_back(cluster_device);
+  }
 
   auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
   auto session_name = strings::StrCat("eager_", request->rendezvous_id());
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
-      session_name, request->server_def(), true));
+      session_name, request->server_def(), request->cluster_device_attributes(),
+      true));
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
@@ -104,10 +113,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
+  std::function<Rendezvous*(const int64)> rendezvous_creator =
+      [worker_session, this](const int64 step_id) {
+        auto* r = env_->rendezvous_mgr->Find(step_id);
+        r->Initialize(worker_session.get()).IgnoreError();
+        return r;
+      };
+
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, nullptr);
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
+      device_mgr, false, r, GetDefaultCustomKernelCreator(),
+      worker_session->cluster_flr.get(), std::move(rendezvous_creator),
+      worker_session->remote_device_mgr());
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -163,12 +182,16 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
 
-  for (const auto& remote_handle : operation.inputs()) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
-        RemoteTensorHandleInternal(remote_handle), &handle));
+  {
+    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                               profiler::TraceMeLevel::kVerbose);
+    for (const auto& remote_handle : operation.inputs()) {
+      tensorflow::TensorHandle* handle;
+      TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
+          RemoteTensorHandleInternal(remote_handle), &handle));
 
-    op->AddInput(handle);
+      op->AddInput(handle);
+    }
   }
 
   for (const auto& attr : operation.attrs()) {
@@ -194,6 +217,11 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response) {
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
+      },
+      profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
@@ -278,12 +306,11 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle =
-        new TensorHandle(tensor, nullptr, nullptr, nullptr);
-
+    TensorHandle* tensor_handle = nullptr;
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
-                                         request->device_name().c_str(),
+                                         request->device_name().c_str(), false,
                                          &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();

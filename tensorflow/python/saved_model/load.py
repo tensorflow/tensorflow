@@ -21,11 +21,16 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -42,7 +47,56 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-class _Loader(object):
+def _unused_handle():
+  """Returns a placeholder as handle that is not supposed to be accessed."""
+  error_message = ("Trying to access a placeholder that is not supposed to be "
+                   "executed. This means you are executing a graph generated "
+                   "from cross-replica context in an in-replica context.")
+
+  assert_op = control_flow_ops.Assert(
+      array_ops.placeholder_with_default(False, shape=()),
+      [error_message])
+
+  with ops.control_dependencies([assert_op]):
+    return array_ops.placeholder(dtype=dtypes.resource)
+
+
+class _WrapperFunction(function.ConcreteFunction):
+  """A class wraps a concrete function to handle different distributed contexts.
+
+  The reason for wrapping a concrete function is because the _captured_inputs
+  fields used for in-replica context and cross-replica context are different.
+  When `load()` is called from within a tf.distribute.strategy scope, the
+  captured inputs are distributed variables. When using these distributed
+  variables during calling the function, we need different approaches when it is
+  in-replica and when it is not in-replica. When it is in replica, naturally we
+  should use the corresponding component of the distributed variable; when it is
+  not in-replica, calling the function should mean that it is constructing a
+  graph that is not actually going to be used. A typical use case is when
+  constructing a functional model. In this case, return a placeholder with a
+  control dependency to ensure that is is never accessed.
+  """
+
+  def __init__(self, concrete_function):
+    # Shallow copy the concrete_function
+    self.__dict__.update(vars(concrete_function))
+
+  def _call_flat(self, args, captured_inputs):
+    def get_in_replica_handle(x):
+      return x.handle if ds_values.is_distributed_variable(x) else x
+
+    def get_cross_replica_handle(x):
+      return _unused_handle() if ds_values.is_distributed_variable(x) else x
+
+    if ds_context.get_replica_context() is not None:  # in-replica context
+      captured_inputs = list(map(get_in_replica_handle, captured_inputs))
+    else:  # cross-replica context
+      captured_inputs = list(
+          map(get_cross_replica_handle, captured_inputs))
+    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
+
+
+class Loader(object):
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
@@ -55,6 +109,12 @@ class _Loader(object):
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
+
+    for name, concrete_function in self._concrete_functions.items():
+      # Wrap all the concrete function so that they are capable of dealing with
+      # both in replica and cross replica cases.
+      self._concrete_functions[name] = _WrapperFunction(concrete_function)
+
     self._load_all()
     # TODO(b/124045874): There are limitations with functions whose captures
     # trigger other functions to be executed. For now it is only guaranteed to
@@ -122,7 +182,9 @@ class _Loader(object):
     """Resolves a node id into a tensor to be captured for a function."""
     with ops.init_scope():
       obj = self._nodes[node_id]
-      if resource_variable_ops.is_resource_variable(obj):
+      if ds_values.is_distributed_variable(obj):
+        return obj
+      elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
       elif isinstance(obj, tracking.TrackableAsset):
         return obj.asset_path
@@ -184,7 +246,7 @@ class _Loader(object):
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
-        if reference.local_name == "__call__":
+        if reference.local_name == "__call__" and not callable(obj):
           setattr(type(obj), "__call__", _call_attribute)
 
   def _restore_checkpoint(self):
@@ -243,15 +305,19 @@ class _Loader(object):
     """Instantiates a SavedUserObject."""
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
-      # Note: each user object has its own class. This allows to make each one
-      # individually callable by adding a `__call__` method to the classes of
-      # the objects instances that have a `__call__` property.
-
-      class _UserObject(tracking.AutoTrackable):
-        pass
-
-      return _UserObject(), setattr
+      return self._recreate_base_user_object(proto)
     return looked_up
+
+  def _recreate_base_user_object(self, proto):
+    del proto
+    # Note: each user object has its own class. This allows to make each one
+    # individually callable by adding a `__call__` method to the classes of
+    # the objects instances that have a `__call__` property.
+
+    class _UserObject(tracking.AutoTrackable):
+      pass
+
+    return _UserObject(), setattr
 
   def _recreate_asset(self, proto):
     filename = os.path.join(
@@ -277,13 +343,25 @@ class _Loader(object):
         variables.validate_synchronization_aggregation_trainable(
             proto.synchronization, proto.aggregation, proto.trainable,
             name=dbg_name))
-    return resource_variable_ops.UninitializedVariable(
-        shape=proto.shape,
-        dtype=proto.dtype,
-        name=name,
-        trainable=trainable,
-        synchronization=synchronization,
-        aggregation=aggregation), setattr
+
+    def uninitialized_variable_creator(next_creator, **kwargs):
+      """A variable creator that creates uninitialized variables."""
+      del next_creator
+      return resource_variable_ops.UninitializedVariable(**kwargs)
+
+    # Create a variable_creator_scope that creates uninitialized variables with
+    # a lower priority such that a potential distributed variable_creator_scope
+    # can take precedence.
+    with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
+        uninitialized_variable_creator,
+        priority=50):
+      return variables.Variable(
+          shape=proto.shape,
+          dtype=proto.dtype,
+          name=name,
+          trainable=trainable,
+          synchronization=synchronization,
+          aggregation=aggregation), setattr
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
@@ -309,7 +387,7 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
     # base class to re-wrap the polymorphic functions into
     # another layer of `tf.function`.
@@ -349,6 +427,22 @@ def load(export_dir, tags=None):
   assert 6. == imported.f(x=tf.constant(2.)).numpy()
   ```
 
+  _Loading Keras models_
+
+  Keras models are trackable, so they can be saved to SavedModel. The object
+  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
+  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
+  available: `.variables`, `.trainable_variables` and `.__call__`.
+
+  ```python
+  model = tf.keras.Model(...)
+  tf.saved_model.save(model, path)
+  imported = tf.saved_model.load(path)
+  outputs = imported(inputs)
+  ```
+
+  Use `tf.keras.models.load_model` to restore the Keras model.
+
   _Importing SavedModels from TensorFlow 1.x_
 
   SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
@@ -385,6 +479,11 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
+  return load_internal(export_dir, tags)
+
+
+def load_internal(export_dir, tags=None, loader_cls=Loader):
+  """Loader implementation."""
   if tags is not None and not isinstance(tags, set):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
     # sequences for nest.flatten, so we put those through as-is.
@@ -402,9 +501,9 @@ def load(export_dir, tags=None):
           .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
     object_graph_proto = meta_graph_def.object_graph_def
     with ops.init_scope():
-      loader = _Loader(object_graph_proto,
-                       saved_model_proto,
-                       export_dir)
+      loader = loader_cls(object_graph_proto,
+                          saved_model_proto,
+                          export_dir)
       root = loader.get(0)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (

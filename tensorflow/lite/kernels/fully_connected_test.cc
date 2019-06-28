@@ -136,7 +136,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
   BaseFullyConnectedOpModel(
       TfLiteRegistration* registration, int units, int batches,
       const TensorData& input, const TensorData& output = {TensorType_FLOAT32},
-      bool bias_tensor_optional = false,
+      bool keep_num_dims = false, bool bias_tensor_optional = false,
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT)
@@ -169,10 +169,11 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
       AddOutput({TensorType_UINT8, input.shape});
     }
 
-    SetBuiltinOp(
-        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
-        CreateFullyConnectedOptions(builder_, activation_func, weights_format)
-            .Union());
+    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
+                 BuiltinOptions_FullyConnectedOptions,
+                 CreateFullyConnectedOptions(builder_, activation_func,
+                                             weights_format, keep_num_dims)
+                     .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
     BuildInterpreter(
@@ -211,6 +212,7 @@ class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
   }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 };
 
 class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
@@ -311,6 +313,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
   int input_size() { return input_size_; }
   int num_units() { return units_; }
@@ -386,6 +389,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
 
   m.Invoke();
 
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
 }
 
@@ -404,6 +408,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
 
   m.Invoke();
 
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
 }
 
@@ -413,6 +418,7 @@ TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
                                /*units=*/1, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {2, 2}},
                                /*output=*/{TensorType_FLOAT32},
+                               /*keep_num_dims=*/false,
                                /*bias_tensor_optional=*/true);
   m.SetWeights({
       2, 4,  // u = 0
@@ -425,6 +431,7 @@ TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
 
   m.Invoke();
 
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(10, 8));
 }
 
@@ -591,6 +598,7 @@ void SimpleTestQuantizedInt16OutputCase(
       /*input=*/
       {TensorType_UINT8, {batches, input_depth}, kInputMin, kInputMax},
       /*output=*/{TensorType_INT16, {}, kOutputMin, kOutputMax},
+      /*keep_num_dims=*/false,
       /*bias_tensor_optional=*/false,
       /*activation_func=*/ActivationFunctionType_NONE, weights_format);
 
@@ -700,7 +708,8 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
   HybridFullyConnectedOpModel m(
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_UINT8, {3, 10}, -63.5, 64});  // Hybrid
+      /*weights=*/
+      {TensorType_UINT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});  // Hybrid
 
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
@@ -728,7 +737,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   HybridFullyConnectedOpModel m(
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_INT8, {3, 10}, -63.5, 64});  // Hybrid
+      /*weights=*/{TensorType_INT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});  // Hybrid
 
   m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
@@ -773,11 +782,59 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
 
   m.Invoke();
 
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  24, 25, 26,  // first batch
                                  58, 59, 60,  // second batch
                              }));
 }
+
+TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
+  // Note that it is not required that the first dimension be the number of
+  // batches. All we care is that the input can be evenly distributed in
+  // batches. In this case, we need the input to have multiples of '2'.
+  FloatFullyConnectedOpModel m(GetRegistration(),
+                               /*units=*/3, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {1, 2, 1, 10}},
+                               /*output=*/{TensorType_FLOAT32},
+                               /*keep_num_dims=*/true);
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // first batch
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // second batch
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 1, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 24, 25, 26,  // first batch
+                                 58, 59, 60,  // second batch
+                             }));
+}
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInputInvalidShape) {
+  // Note that it is not required that the first dimension be the number of
+  // batches. But it is required that the last dimension is the 'input_dim'.
+  //
+  // For this particular test, it is required for the output to be reformattable
+  // into a shape of form {4, 1, 5, ?} but since the output size (the product of
+  // output dimensions: units times batches) is 6, this is not possible.
+  EXPECT_DEATH(FloatFullyConnectedOpModel m(
+                   GetRegistration(), /*units=*/3, /*batches=*/2,
+                   /*input=*/{TensorType_FLOAT32, {4, 1, 5, 1}},
+                   /*output=*/{TensorType_FLOAT32},
+                   /*keep_num_dims=*/true),
+               "Cannot allocate tensors");
+}
+#endif
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantizedUint8) {
   QuantizedFullyConnectedOpModel m(
@@ -905,9 +962,3 @@ TEST_P(FloatFullyConnectedOpTest, BlackBoxTest) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

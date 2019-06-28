@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -96,6 +98,10 @@ class GrapplerTest : public ::testing::Test {
     Tensor tensor(DTYPE, shape);
     for (auto i = 0; i < tensor.NumElements(); i++) tensor.flat<T>()(i) = value;
     return tensor;
+  }
+
+  inline tensorflow::Scope CreateScopeWithDevice(absl::string_view device) {
+    return tensorflow::Scope::NewRootScope().WithDevice(string(device));
   }
 
  private:

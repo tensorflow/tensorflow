@@ -20,6 +20,7 @@ limitations under the License.
 #include <deque>
 #include <mutex>  // NOLINT
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -379,9 +380,15 @@ bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
   return true;
 }
 
+bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
+  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
+         gpu_info.major_version > 3;
+}
+
 }  // namespace
 
 Status Compile(const CompilationOptions& options, const GraphFloat32& model,
+               const std::unordered_set<int>& tflite_graph_io,
                const NodeShader& node_shader,
                const WorkgroupsCalculator& workgroup_calculator,
                std::unique_ptr<CompiledModel>* compiled_model) {
@@ -390,12 +397,17 @@ Status Compile(const CompilationOptions& options, const GraphFloat32& model,
   }
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
+  if (!IsOpenGl31OrAbove(gpu_info)) {
+    return InternalError(
+        "OpenGL ES 3.1 or above is required to use OpenGL inference.");
+  }
   auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
   compiled_model_impl->set_dynamic_batch(options.dynamic_batch);
   auto compiler = NewCompiler(&node_shader, &gpu_info, options);
-  RETURN_IF_ERROR(compiler->Compile(model, [&](ShaderCode code) -> Status {
-    return compiled_model_impl->Add(workgroup_calculator, std::move(code));
-  }));
+  RETURN_IF_ERROR(
+      compiler->Compile(model, tflite_graph_io, [&](ShaderCode code) -> Status {
+        return compiled_model_impl->Add(workgroup_calculator, std::move(code));
+      }));
   *compiled_model = std::move(compiled_model_impl);
   return OkStatus();
 }
@@ -405,6 +417,10 @@ Status ReadSerializedModel(const std::vector<uint8_t>& serialized_model,
                            std::unique_ptr<CompiledModel>* compiled_model) {
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
+  if (!IsOpenGl31OrAbove(gpu_info)) {
+    return InternalError(
+        "OpenGL ES 3.1 or above is required to use OpenGL inference.");
+  }
   auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
   RETURN_IF_ERROR(DeserializeCompiledModel(
       absl::MakeConstSpan(serialized_model), compiled_model_impl.get()));

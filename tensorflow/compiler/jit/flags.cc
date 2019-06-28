@@ -92,7 +92,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags
                 ->tf_xla_disable_deadness_safety_checks_for_debugging,
            "Disable deadness related safety checks when clustering (this is "
-           "unsound).")};
+           "unsound)."),
+      Flag("tf_xla_disable_resource_variable_safety_checks_for_debugging",
+           &mark_for_compilation_flags
+                ->tf_xla_disable_resource_variable_safety_checks_for_debugging,
+           "Disable resource variables related safety checks when clustering "
+           "(this is unsound).")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -100,6 +105,7 @@ void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
   build_ops_flags->tf_xla_print_cluster_outputs = false;
+  build_ops_flags->tf_xla_disable_constant_folding = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
@@ -114,6 +120,8 @@ void AllocateAndParseFlags() {
       std::numeric_limits<int64>::max();
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
+  mark_for_compilation_flags
+      ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;

@@ -4,20 +4,19 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
-)
-
-package(
-    default_visibility = [":friends"],
 )
 
 # Filegroup used to collect source files for the dependency check.
@@ -473,7 +472,7 @@ tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     provide_cc_alias = True,
 )
 
@@ -675,6 +674,27 @@ cc_library(
         ":device_memory",
         ":platform",
         ":stream_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tf_allocator_adapter",
+    srcs = ["tf_allocator_adapter.cc"],
+    hdrs = ["tf_allocator_adapter.h"],
+    deps = [
+        ":device_memory",
+        ":device_memory_allocator",
+        ":platform",
+        "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",

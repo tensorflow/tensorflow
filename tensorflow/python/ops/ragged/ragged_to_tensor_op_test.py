@@ -19,17 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                                  parameterized.TestCase):
 
   def testDocStringExamples(self):
@@ -105,10 +104,9 @@ class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
     self.assertIsInstance(dt, ops.Tensor)
     self.assertEqual(rt.dtype, dt.dtype)
     self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    self.assertAllEqual(self.eval_to_list(dt), expected)
     if expected_shape is not None:
-      dt_shape = array_ops.shape(dt)
-      self.assertAllEqual(dt_shape, expected_shape)
+      expected = np.ndarray(expected_shape, buffer=np.array(expected))
+    self.assertAllEqual(dt, expected)
 
   @parameterized.parameters(
       {

@@ -1,4 +1,17 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -12,20 +25,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
     ],
-)
-
-package(
-    default_visibility = [":internal"],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 generate_backend_suites()
@@ -264,7 +263,6 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -313,6 +311,21 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "matrix_inverse_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_inverse_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -471,6 +484,9 @@ tf_xla_py_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -556,6 +572,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -593,6 +610,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -954,7 +984,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "ternary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ternary_ops_test.py"],
     deps = [
         ":xla_test",
@@ -969,6 +999,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["notap"],  # b/136030724
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1143,6 +1174,11 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+    tags = [
+        # TODO(b/134780716): Re-enable this test.
+        "nogpu",
+        "no_cuda_on_cpu_tap",
+    ],
 )
 
 cuda_py_test(
@@ -1192,6 +1228,26 @@ tf_cuda_cc_test(
         "notap",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    srcs = ["unary_ops_composition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
 )
 
 py_library(

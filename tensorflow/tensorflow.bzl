@@ -57,7 +57,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "1.13.1"
+VERSION = "1.14.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 def if_v2(a):
@@ -71,6 +71,9 @@ def if_not_v2(a):
         clean_dep("//tensorflow:api_version_2"): [],
         "//conditions:default": a,
     })
+
+def if_cuda_is_configured_compat(x):
+    return if_cuda_is_configured(x)
 
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
@@ -270,7 +273,6 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
     # To clear this value, and allow the CROSSTOOL default
     # to be used, pass android_optimization_level_override=None
     android_copts = [
-        "-std=c++11",
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
         "-fomit-frame-pointer",
@@ -626,10 +628,21 @@ register_extension_info(
 def tf_native_cc_binary(
         name,
         copts = tf_copts(),
+        linkopts = [],
         **kwargs):
     native.cc_binary(
         name = name,
         copts = copts,
+        linkopts = select({
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+            ],
+        }) + linkopts + _rpath_linkopts(name),
         **kwargs
     )
 
@@ -735,7 +748,9 @@ def tf_gen_op_wrappers_cc(
         include_internal_ops = 0,
         visibility = None,
         # ApiDefs will be loaded in the order specified in this list.
-        api_def_srcs = []):
+        api_def_srcs = [],
+        # Any extra dependencies that the wrapper generator might need.
+        extra_gen_deps = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
     internalsrcs = other_srcs_internal[:]
@@ -748,6 +763,7 @@ def tf_gen_op_wrappers_cc(
             include_internal_ops = include_internal_ops,
             op_gen = op_gen,
             pkg = pkg,
+            deps = [pkg + ":" + n + "_op_lib"] + extra_gen_deps,
         )
         subsrcs += ["ops/" + n + ".cc"]
         subhdrs += ["ops/" + n + ".h"]
@@ -1265,7 +1281,7 @@ def _cuda_copts(opts = []):
         "@local_config_cuda//cuda:using_clang": ([
             "-fcuda-flush-denormals-to-zero",
         ]),
-    }) + if_cuda(opts)
+    }) + if_cuda_is_configured_compat(opts)
 
 # Build defs for TensorFlow kernels
 
@@ -1290,7 +1306,7 @@ def tf_gpu_kernel_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
-        deps = deps + if_cuda_is_configured([
+        deps = deps + if_cuda_is_configured_compat([
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
@@ -1330,7 +1346,7 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     native.cc_library(
-        deps = deps + if_cuda_is_configured(cuda_deps + [
+        deps = deps + if_cuda_is_configured_compat(cuda_deps + [
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
@@ -1363,6 +1379,7 @@ def tf_kernel_library(
         deps = None,
         alwayslink = 1,
         copts = None,
+        gpu_copts = None,
         is_external = False,
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
@@ -1394,6 +1411,8 @@ def tf_kernel_library(
         deps = []
     if not copts:
         copts = []
+    if not gpu_copts:
+        gpu_copts = []
     textual_hdrs = []
     copts = copts + tf_copts(is_external = is_external)
 
@@ -1431,6 +1450,7 @@ def tf_kernel_library(
             name = name + "_gpu",
             srcs = gpu_srcs,
             deps = deps,
+            copts = gpu_copts,
             **kwargs
         )
         cuda_deps.extend([":" + name + "_gpu"])
@@ -1658,7 +1678,7 @@ def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kw
 
 def tf_custom_op_library_additional_deps():
     return [
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
     ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
@@ -1668,7 +1688,7 @@ def tf_custom_op_library_additional_deps():
 # exporting symbols from _pywrap_tensorflow.dll on Windows.
 def tf_custom_op_library_additional_deps_impl():
     return [
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
         "@nsync//:nsync_cpp",
         # for //third_party/eigen3
         clean_dep("//third_party/eigen3"),
@@ -1707,7 +1727,7 @@ def _check_deps_impl(ctx):
     for input_dep in ctx.attr.deps:
         if not hasattr(input_dep, "tf_collected_deps"):
             continue
-        for dep in input_dep.tf_collected_deps:
+        for dep in input_dep.tf_collected_deps.to_list():
             for disallowed_dep in disallowed_deps:
                 if dep == disallowed_dep.label:
                     fail(
@@ -1757,7 +1777,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             features = if_cuda(["-use_header_modules"]),
-            deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+            deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
         )
         cuda_deps.extend([":" + basename + "_gpu"])
@@ -1769,12 +1789,12 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
         ],
-        deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
     )
     tf_cc_shared_object(
         name = name,
         srcs = srcs,
-        deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
         data = if_static([name + "_check_deps"]),
         copts = copts + tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
@@ -1968,6 +1988,7 @@ def tf_py_wrap_cc(
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], **kwargs):
+    # Python version placeholder
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -1996,6 +2017,8 @@ def py_binary(name, deps = [], **kwargs):
         name = name + "_deps",
         deps = deps,
     )
+
+    # Python version placeholder
     native.py_binary(
         name = name,
         deps = select({
@@ -2039,6 +2062,8 @@ def tf_py_test(
         additional_deps = additional_deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         additional_deps = additional_deps + tf_additional_grpc_deps_py()
+
+    # Python version placeholder
     py_test(
         name = name,
         size = size,
@@ -2455,3 +2480,6 @@ def if_cuda_or_rocm(if_true, if_false = []):
         "@local_config_rocm//rocm:using_hipcc": if_true,
         "//conditions:default": if_false,
     })
+
+def tf_jit_compilation_passes_extra_deps():
+    return []

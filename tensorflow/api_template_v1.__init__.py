@@ -59,7 +59,7 @@ except ImportError:
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
-WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
+The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
   * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
   * https://github.com/tensorflow/addons
@@ -78,6 +78,8 @@ if '__all__' in vars():
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 # The 'app' module will be imported as part of the placeholder section above.
 app.flags = flags  # pylint: disable=undefined-variable
+if '__all__' in vars():
+  vars()['__all__'].append('flags')
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -139,4 +141,6 @@ try:
     vars()['__all__'].remove('compiler')
 except NameError:
   pass
+
+compat.v2.compat.v1 = compat.v1
 # pylint: enable=undefined-variable

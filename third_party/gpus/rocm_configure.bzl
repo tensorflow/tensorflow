@@ -23,6 +23,7 @@ load(
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
 _TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
@@ -33,6 +34,22 @@ _DEFAULT_ROCM_VERSION = ""
 _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
+
+def _get_win_rocm_defines(repository_ctx):
+    """Return CROSSTOOL defines for Windows"""
+
+    # Return fake vaules for Windows specific fields.
+    # This ensures the CROSSTOOL file parser is happy.
+    return {
+        "%{msvc_env_tmp}": "msvc_not_used",
+        "%{msvc_env_path}": "msvc_not_used",
+        "%{msvc_env_include}": "msvc_not_used",
+        "%{msvc_env_lib}": "msvc_not_used",
+        "%{msvc_cl_path}": "msvc_not_used",
+        "%{msvc_ml_path}": "msvc_not_used",
+        "%{msvc_link_path}": "msvc_not_used",
+        "%{msvc_lib_path}": "msvc_not_used",
+    }
 
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
@@ -164,6 +181,11 @@ def _rocm_include_path(repository_ctx, rocm_config):
     # Add HIP headers
     inc_dirs.append("/opt/rocm/include/hip")
     inc_dirs.append("/opt/rocm/include/hip/hcc_detail")
+    inc_dirs.append("/opt/rocm/hip/include")
+
+    # Add HIP-Clang headers
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/8.0/include")
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/9.0.0/include")
 
     # Add rocrand and hiprand headers
     inc_dirs.append("/opt/rocm/rocrand/include")
@@ -242,11 +264,59 @@ def _hipcc_env(repository_ctx):
         "HIP_VDI_HOME",
         "HIPCC_VERBOSE",
         "HIPCC_COMPILE_FLAGS_APPEND",
+        "HIPPCC_LINK_FLAGS_APPEND",
+        "HCC_AMDGPU_TARGET",
+        "HIP_PLATFORM",
     ]:
         if name in repository_ctx.os.environ:
             hipcc_env = (hipcc_env + " " + name + "=\"" +
                          repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
+
+def _hipcc_is_hipclang(repository_ctx):
+    """Returns if hipcc is based on hip-clang toolchain.
+
+    Args:
+        repository_ctx: The repository context.
+
+    Returns:
+        A string "True" if hipcc is based on hip-clang toolchain.
+        The functions returns "False" if not (ie: based on HIP/HCC toolchain).
+    """
+
+    #  check user-defined hip-clang environment variables
+    for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
+        if name in repository_ctx.os.environ:
+            return "True"
+
+    # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
+    grep_result = _execute(
+        repository_ctx,
+        ["grep", "HIP_COMPILER=clang", "/opt/rocm/hip/lib/.hipInfo"],
+        empty_stdout_fine = True,
+    )
+    result = grep_result.stdout
+    if result == "HIP_COMPILER=clang":
+        return "True"
+    return "False"
+
+def _if_hipcc_is_hipclang(repository_ctx, if_true, if_false = []):
+    """
+    Returns either the if_true or if_false arg based on whether hipcc
+    is based on the hip-clang toolchain
+
+    Args :
+        repository_ctx: The repository context.
+        if_true : value to return if hipcc is hip-clang based
+        if_false : value to return if hipcc is not hip-clang based
+                   (optional, defaults to empty list)
+
+    Returns :
+        either the if_true arg or the of_False arg
+    """
+    if _hipcc_is_hipclang(repository_ctx) == "True":
+        return if_true
+    return if_false
 
 def _crosstool_verbose(repository_ctx):
     """Returns the environment variable value CROSSTOOL_VERBOSE.
@@ -291,7 +361,7 @@ def _lib_name(lib, cpu_value, version = "", static = False):
     Returns:
       The platform-specific name of the library.
     """
-    if cpu_value in ("Linux"):
+    if cpu_value in ("Linux", "FreeBSD"):
         if static:
             return "lib%s.a" % lib
         else:
@@ -666,28 +736,75 @@ def _create_local_rocm_repository(repository_ctx):
 
     # Set up crosstool/
     cc = find_cc(repository_ctx)
-    host_compiler_includes = to_list_of_strings(
-        _host_compiler_includes(repository_ctx, cc),
-    )
-    rocm_defines = {
-        "%{linker_files}": ":empty",
-        "%{win_linker_files}": ":empty",
-        "%{cxx_builtin_include_directories}": to_list_of_strings(
-            host_compiler_includes + _rocm_include_path(
-                repository_ctx,
-                rocm_config,
-            ),
-        ),
-        "%{clang_path}": str(cc),
-        "%{unfiltered_compile_flags}": "\"-DTENSORFLOW_USE_ROCM\"",
-    }
 
-    # Set up crosstool/
+    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
+
+    host_compiler_prefix = "/usr/bin"
+    if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
+        host_compiler_prefix = repository_ctx.os.environ[_GCC_HOST_COMPILER_PREFIX].strip()
+
+    rocm_defines = {}
+
+    rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
+
+    rocm_defines["%{linker_bin_path}"] = "/opt/rocm/hcc/compiler/bin"
+
+    # For gcc, do not canonicalize system header paths; some versions of gcc
+    # pick the shortest possible path for system includes when creating the
+    # .d file - given that includes that are prefixed with "../" multiple
+    # time quickly grow longer than the root of the tree, this can lead to
+    # bazel's header check failing.
+    rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+
+    rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
+        "-DTENSORFLOW_USE_ROCM=1",
+        "-D__HIP_PLATFORM_HCC__",
+        "-DEIGEN_USE_HIP",
+    ] + _if_hipcc_is_hipclang(repository_ctx, [
+        #
+        # define "TENSORFLOW_COMPILER_IS_HIP_CLANG" when we are using clang
+        # based hipcc to compile/build tensorflow
+        #
+        # Note that this #define should not be used to check whether or not
+        # tensorflow is being built with ROCm support
+        # (only TENSORFLOW_USE_ROCM should be used for that purpose)
+        #
+        "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1",
+    ]))
+
+    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+
+    # # Enable a few more warnings that aren't part of -Wall.
+    # compiler_flag: "-Wunused-but-set-parameter"
+
+    # # But disable some that are problematic.
+    # compiler_flag: "-Wno-free-nonheap-object" # has false positives
+
+    rocm_defines["%{host_compiler_warnings}"] = to_list_of_strings(["-Wunused-but-set-parameter", "-Wno-free-nonheap-object"])
+
+    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
+                                                                            _rocm_include_path(repository_ctx, rocm_config))
+
+    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+
+    rocm_defines["%{win_linker_files}"] = ":empty"
+
+    # Add the dummy defines for windows...requried to pass the "verify_build_defines" check
+    rocm_defines.update(_get_win_rocm_defines(repository_ctx))
+
     verify_build_defines(rocm_defines)
+
+    # Only expand template variables in the BUILD file
     _tpl(repository_ctx, "crosstool:BUILD", rocm_defines)
 
     # No templating of cc_toolchain_config - use attributes and templatize the
     # BUILD file.
+    _tpl(
+        repository_ctx,
+        "crosstool:hipcc_cc_toolchain_config.bzl",
+        out = "crosstool/cc_toolchain_config.bzl",
+    )
+
     _tpl(
         repository_ctx,
         "crosstool:clang/bin/crosstool_wrapper_driver_rocm",
@@ -695,6 +812,9 @@ def _create_local_rocm_repository(repository_ctx):
             "%{cpu_compiler}": str(cc),
             "%{hipcc_path}": "/opt/rocm/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
+            "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx),
+            "%{rocr_runtime_path}": "/opt/rocm/lib",
+            "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": "/opt/rocm/hip/lib",
             "%{hip_runtime_library}": "hip_hcc",
             "%{hcc_runtime_path}": "/opt/rocm/hcc/lib",
@@ -705,6 +825,7 @@ def _create_local_rocm_repository(repository_ctx):
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
         },
+        out = "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
     )
 
     # Set up rocm_config.h, which is used by
@@ -729,21 +850,26 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
         {
             "%{rocm_is_configured}": "True",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
-                repository_ctx,  #_compute_capabilities(repository_ctx)
+                repository_ctx,
+                [],  #_compute_capabilities(repository_ctx)
             ),
         },
     )
-    _tpl(
-        repository_ctx,
-        "rocm:remote.BUILD",
-        {
-            "%{remote_rocm_repo}": remote_config_repo,
-        },
+    repository_ctx.template(
         "rocm/BUILD",
+        Label(remote_config_repo + "/rocm:BUILD"),
+        {},
     )
-    _tpl(repository_ctx, "crosstool:remote.BUILD", {
-        "%{remote_rocm_repo}": remote_config_repo,
-    }, "crosstool/BUILD")
+    repository_ctx.template(
+        "rocm/build_defs.bzl",
+        Label(remote_config_repo + "/rocm:build_defs.bzl"),
+        {},
+    )
+    repository_ctx.template(
+        "rocm/rocm/rocm_config.h",
+        Label(remote_config_repo + "/rocm:rocm/rocm_config.h"),
+        {},
+    )
 
 def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""
@@ -761,6 +887,7 @@ rocm_configure = repository_rule(
     implementation = _rocm_autoconf_impl,
     environ = [
         _GCC_HOST_COMPILER_PATH,
+        _GCC_HOST_COMPILER_PREFIX,
         "TF_NEED_ROCM",
         _ROCM_TOOLKIT_PATH,
         _TF_ROCM_VERSION,

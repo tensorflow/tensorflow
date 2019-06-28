@@ -12,7 +12,8 @@ by reading <a href="#what_is_image_classification">What is image
 classification?</a>
 
 To learn how to use image classification in a mobile app, we recommend exploring
-our <a href="example_applications">Example applications and guides</a>.
+our <a href="#example_applications_and_guides">Example applications and
+guides</a>.
 
 If you are using a platform other than Android or iOS, or you are already
 familiar with the TensorFlow Lite APIs, you can download our starter image

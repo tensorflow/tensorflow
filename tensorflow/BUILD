@@ -2,19 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(default_visibility = [":internal"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files([
-    "LICENSE",
-    "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
-    "leakr_badwords.dic",
-    "leakr_badfiles.dic",
-    "leakr_file_type_recipe.ftrcp",
-])
-
 load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
@@ -40,6 +27,24 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files([
+    "LICENSE",
+    "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
+])
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V2 = (
@@ -437,11 +442,6 @@ package_group(
     ],
 )
 
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
-
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
@@ -453,6 +453,7 @@ filegroup(
 
 cc_library(
     name = "grpc",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc_unsecure"],
         "//conditions:default": ["@grpc"],
@@ -461,6 +462,7 @@ cc_library(
 
 cc_library(
     name = "grpc++",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc++_unsecure"],
         "//conditions:default": ["@grpc//:grpc++"],
@@ -491,12 +493,48 @@ cc_library(
 # global symbol table in order to support op registration. This means that
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
+#
+# DEBUGGING DUPLICATE INITIALIZATION
+# ----------------------------------
+#
+# Having a dynamic library introduces a diamond dependency problem:
+# if a target X is depended on by both libtensorflow_framework.so and the
+# users of libtensorflow_framework.so, the definitions will get duplicated.
+# This causes global initializers which need to be run exactly once (e.g.
+# protobuf registration) to crash, as the initialization is run once from the
+# statically linked in global, and one by the global which comes in from
+# libtensorflow_framework.so.
+# Even worse, global objects which need to be singletons for semantical
+# correctness (e.g. registers) might get dupliacted.
+#
+# In order to avoid these HARD TO DEBUG CRASHES, it is sufficient to follow
+# these rules:
+#  - All globals with non-trivial static constructors or for which a
+#    single identity is required (e.g. registers) need to live in `*_impl`
+#    targets.
+#
+#  - An `*_impl` target has to be (transitively) included into
+#    `libtensorflow_framework.so`.
+#
+#  - A target T1 can depend on `*_impl` target T2 only if:
+#
+#    -> It's a tf_cc_shared_object, and there is no other tf_cc_shared_object
+#       transitively depending on T2.
+#    -> It's an `*_impl` target by itself
+#    -> The dependency is guarded by `if_static`. This is discouraged,
+#       as it diverges dependency topology between static and dynamic TF.
+#
+# TODO(cheshire): write tests to check for rule violations
 tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
+        "//tensorflow:freebsd": [
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            "-lexecinfo",
+        ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],
@@ -739,6 +777,16 @@ genrule(
     }),
 )
 
+genrule(
+    name = "virtual_root_init_gen",
+    srcs = select({
+        "api_version_2": [":virtual_root_template_v2.__init__.py"],
+        "//conditions:default": [":virtual_root_template_v1.__init__.py"],
+    }),
+    outs = ["virtual_root.__init__.py"],
+    cmd = "cp $(SRCS) $(OUTS)",
+)
+
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
     srcs = [
@@ -803,7 +851,9 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"] + [
+    }) + [
+        ":root_init_gen",
+        ":virtual_root_init_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",

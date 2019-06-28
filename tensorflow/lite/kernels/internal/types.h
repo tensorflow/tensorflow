@@ -265,9 +265,7 @@ class RuntimeShape {
     int buffer_size = 1;
     const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }
@@ -872,6 +870,38 @@ struct LocalResponseNormalizationParams {
   double bias;
   double alpha;
   double beta;
+};
+
+struct HardSwishParams {
+  // uint8 inference params
+
+  // Contains input->params.zero_point
+  int32_t input_zero_point;
+
+  // when computing relu6(x+3), we scale input by using bit-shift
+  // to avoid loss of precision when doing computation in uint8 (and 6 might not
+  // be exactly representable in that scale.
+  // This flag contains number of bits to shift.
+  int32_t clip_input_shift;
+
+  // Added to the final output to bring the output's zero_point in order.
+  int32_t output_offset;
+
+  // Scale that converts x*relu6(x+3) computed in input range
+  // into output range x * relu6(x + 3) / 6.
+  // This takes into account that hardswish is quadratic
+  // so we have in_scale^2/out_scale.
+  // This is the integer nominator pat of the multiplier
+  int32_t scale;
+
+  // this is the denominator 2^shift of the multiplier
+  int shift;
+
+  // 3 in input 0-centered scale
+  int32_t three_input;
+
+  // 6 in input 0-centered scale
+  int32_t six_input;
 };
 
 struct LogisticParams {

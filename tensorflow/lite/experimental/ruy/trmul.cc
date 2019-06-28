@@ -169,10 +169,10 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
   return clamp(guess, 1, context->max_num_threads);
 }
 
-LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
-                               int depth) {
+LoopStructure GetLoopStructure(int thread_count, int rows, int cols, int depth,
+                               int cache_friendly_traversal_threshold) {
   if (thread_count == 1 &&
-      (rows + cols) * depth < kCacheFriendlyLoopThreshold) {
+      (rows + cols) * depth < cache_friendly_traversal_threshold) {
     return LoopStructure::kSimple;
   }
   return LoopStructure::kGeneral;
@@ -195,7 +195,9 @@ void TrMul(TrMulParams* params, Context* context) {
   const int cols_rounded_up = packed_rhs.layout.cols;
 
   int thread_count = GetThreadCount(context, rows, cols, depth);
-  const auto loop_structure = GetLoopStructure(thread_count, rows, cols, depth);
+  const auto loop_structure =
+      GetLoopStructure(thread_count, rows, cols, depth,
+                       params->cache_friendly_traversal_threshold);
   Allocator* allocator = context->GetMainAllocator();
 
   if (!params->lhs_is_prepacked) {
@@ -231,7 +233,7 @@ void TrMul(TrMulParams* params, Context* context) {
   MakeBlockMap(rows_rounded_up, cols_rounded_up, depth,
                packed_lhs.layout.kernel.cols, packed_rhs.layout.kernel.cols,
                packed_lhs.data_type.size, packed_rhs.data_type.size,
-               &block_map);
+               params->cache_friendly_traversal_threshold, &block_map);
   std::uint16_t num_blocks_of_rows = NumBlocksOfRows(block_map);
   std::uint16_t num_blocks_of_cols = NumBlocksOfCols(block_map);
   std::uint32_t num_blocks = NumBlocks(block_map);

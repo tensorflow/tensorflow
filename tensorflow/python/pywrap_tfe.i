@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
 
 %ignore "";
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
-%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
 %rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
@@ -34,7 +38,9 @@ limitations under the License.
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextGetMirroringPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetAsyncForThread;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
@@ -48,6 +54,7 @@ limitations under the License.
 %rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -64,6 +71,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
@@ -73,9 +81,14 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
+%rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
+%rename("%s") TFE_Py_ForwardAccumulatorWatch;
+%rename("%s") TFE_Py_ForwardAccumulatorJVP;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetMirroringPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
@@ -310,6 +323,10 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 %rename("%s") TFE_DEVICE_PLACEMENT_WARN;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
+
+%rename("%s") TFE_ContextMirroringPolicy;
+%rename("%s") TFE_MIRRORING_NONE;
+%rename("%s") TFE_MIRRORING_ALL;
 
 %include "tensorflow/c/eager/c_api.h"
 
