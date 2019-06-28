@@ -81,12 +81,6 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 # pylint: disable=protected-access
 _TensorLike = tensor_like._TensorLike
-_tensor_conversion_func_registry = \
-    tensor_conversion_registry._tensor_conversion_func_registry
-_tensor_conversion_func_cache = \
-    tensor_conversion_registry._tensor_conversion_func_cache
-_tensor_conversion_func_lock = \
-    tensor_conversion_registry._tensor_conversion_func_lock
 # pylint: enable=protected-access
 
 
@@ -1180,19 +1174,7 @@ def internal_convert_to_tensor(value,
           (dtype.name, value.dtype.name, value))
     return value
 
-  unwrapped_type = type(value)
-  conversion_func_list = _tensor_conversion_func_cache.get(unwrapped_type, None)
-  if conversion_func_list is None:
-    with _tensor_conversion_func_lock:
-      conversion_func_list = []
-      for _, funcs_at_priority in sorted(
-          _tensor_conversion_func_registry.items()):
-        for base_type, conversion_func in funcs_at_priority:
-          if isinstance(value, base_type):
-            conversion_func_list.append((base_type, conversion_func))
-      _tensor_conversion_func_cache[unwrapped_type] = conversion_func_list
-
-  for base_type, conversion_func in conversion_func_list:
+  for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
     ret = None
