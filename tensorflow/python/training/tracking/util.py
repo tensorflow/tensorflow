@@ -109,11 +109,54 @@ class _ObjectGraphProtoPrettyPrinter(object):
       for slot_reference in node.slot_variables:
         node_names[slot_reference.slot_variable_node_id] = (
             "{}'s state '{}' for {}".format(
-                node_names[node_id],
-                slot_reference.slot_name,
+                node_names[node_id], slot_reference.slot_name,
                 node_names[slot_reference.original_variable_node_id]))
     self._node_name_cache = node_names
     return node_names
+
+
+class _CheckpointRestoreCoordinatorDeleter(object):
+  """Deleter to avoid overriding _CheckpointRestoreCoordinator.__del__()."""
+
+  def __init__(self, expect_partial, object_graph_proto, matched_proto_ids,
+               unused_attributes):
+    self.expect_partial = expect_partial
+    self.object_graph_proto = object_graph_proto
+    self.matched_proto_ids = matched_proto_ids
+    self.unused_attributes = unused_attributes
+
+  def set_expect_partial(self, expect_partial):
+    self.expect_partial = expect_partial
+
+  def __del__(self):
+    if self.expect_partial:
+      return
+    if logging is None:
+      # The logging module may have been unloaded when __del__ is called.
+      log_fn = print
+    else:
+      log_fn = logging.warning
+    printed_warning = False
+    pretty_printer = _ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
+    for node_id in range(len(self.object_graph_proto.nodes)):
+      if node_id not in self.matched_proto_ids:
+        log_fn("Unresolved object in checkpoint: {}"
+               .format(pretty_printer.node_names[node_id]))
+        printed_warning = True
+    for node_id, attribute_name in self.unused_attributes.items():
+      log_fn(("Unused attribute in object {}: {}"
+              .format(pretty_printer.node_names[node_id], attribute_name)))
+      printed_warning = True
+    if printed_warning:
+      log_fn(
+          "A checkpoint was restored (e.g. tf.train.Checkpoint.restore or "
+          "tf.keras.Model.load_weights) but not all checkpointed values were "
+          "used. See above for specific issues. Use expect_partial() on the "
+          "load status object, e.g. "
+          "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
+          "warnings, or use assert_consumed() to make the check explicit. See "
+          "https://www.tensorflow.org/alpha/guide/checkpoints#loading_mechanics"
+          " for details.")
 
 
 class _CheckpointRestoreCoordinator(object):
@@ -179,7 +222,7 @@ class _CheckpointRestoreCoordinator(object):
     self.slot_restorations = {}
     # Controls whether errors are printed in __del__ if some objects did not
     # match.
-    self.expect_partial = False
+    self.expect_partial_attr = False
     for node_index, node in enumerate(self.object_graph_proto.nodes):
       for slot_reference in node.slot_variables:
         # `node` refers to an `Optimizer`, since only these have slot variables.
@@ -189,6 +232,21 @@ class _CheckpointRestoreCoordinator(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
+
+    self._deleter = _CheckpointRestoreCoordinatorDeleter(
+        self.expect_partial_attr,
+        self.object_graph_proto,
+        self.matched_proto_ids,
+        self.unused_attributes)
+
+  @property
+  def expect_partial(self):
+    return self.expect_partial_attr
+
+  @expect_partial.setter
+  def expect_partial(self, expect_partial):
+    self.expect_partial_attr = expect_partial
+    self._deleter.set_expect_partial(expect_partial)
 
   def new_restore_ops(self, new_ops):
     self.restore_ops.extend(new_ops)
@@ -235,36 +293,6 @@ class _CheckpointRestoreCoordinator(object):
           assert name not in self.restore_ops_by_name
           self.restore_ops_by_name[name] = restore_op
     return restore_ops
-
-  def __del__(self):
-    if self.expect_partial:
-      return
-    if logging is None:
-      # The logging module may have been unloaded when __del__ is called.
-      log_fn = print
-    else:
-      log_fn = logging.warning
-    printed_warning = False
-    pretty_printer = _ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
-    for node_id in range(len(self.object_graph_proto.nodes)):
-      if node_id not in self.matched_proto_ids:
-        log_fn("Unresolved object in checkpoint: {}"
-               .format(pretty_printer.node_names[node_id]))
-        printed_warning = True
-    for node_id, attribute_name in self.unused_attributes.items():
-      log_fn(("Unused attribute in object {}: {}"
-              .format(pretty_printer.node_names[node_id], attribute_name)))
-      printed_warning = True
-    if printed_warning:
-      log_fn(
-          "A checkpoint was restored (e.g. tf.train.Checkpoint.restore or "
-          "tf.keras.Model.load_weights) but not all checkpointed values were "
-          "used. See above for specific issues. Use expect_partial() on the "
-          "load status object, e.g. "
-          "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
-          "warnings, or use assert_consumed() to make the check explicit. See "
-          "https://www.tensorflow.org/alpha/guide/checkpoints#loading_mechanics"
-          " for details.")
 
 
 class _NameBasedRestoreCoordinator(object):
