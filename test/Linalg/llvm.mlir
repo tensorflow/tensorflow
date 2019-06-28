@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | FileCheck %s
 
-func @buffer_size(%arg0: !linalg.buffer<f32>) {
-  %s = linalg.buffer_size %arg0 : !linalg.buffer<f32>
+func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
+  %s = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
   return
 }
 // CHECK-LABEL: func @buffer_size(%arg0: !llvm<"{ float*, i64 }">) {
@@ -21,7 +21,7 @@ func @range(%arg0: index) {
 //  CHECK-NEXT:   %4 = llvm.insertvalue %arg0, %3[1] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   %5 = llvm.insertvalue %1, %4[2] : !llvm<"{ i64, i64, i64 }">
 
-func @view(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range) {
+func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
   %0 = linalg.view %arg0[%arg1] : !linalg.view<?xf32>
   return
 }
@@ -40,7 +40,7 @@ func @view(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   %11 = llvm.sub %10, %9 : !llvm.i64
 //  CHECK-NEXT:   %12 = llvm.insertvalue %11, %8[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 
-func @view3d(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: !linalg.range) {
+func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: !linalg.range) {
   %0 = linalg.view %arg0[%arg1, %arg2, %arg3] : !linalg.view<?x?x?xf32>
   return
 }
@@ -55,7 +55,7 @@ func @view3d(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range, %arg2: !linalg.ra
 //  CHECK-NEXT:   %15 = llvm.mul %13, %14 : !llvm.i64
 //  CHECK-NEXT:   %16 = llvm.insertvalue %15, %12[3, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 
-func @slice(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range) {
+func @slice(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
   %0 = linalg.view %arg0[%arg1] : !linalg.view<?xf32>
   %1 = linalg.slice %0[%arg1] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
   return

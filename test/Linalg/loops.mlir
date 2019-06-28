@@ -4,7 +4,7 @@
 // CHECK-DAG: #[[S2D3:.*]] = (d0, d1) -> (d0 * 2 + d1 * 4)
 // CHECK-DAG: #[[S3D2:.*]] = (d0, d1) -> (d0 * 3 + d1 * 5)
 
-func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
@@ -16,7 +16,7 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
   linalg.matmul(%A, %B, %C) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
   return
 }
-// CHECK-LABEL: func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+// CHECK-LABEL: func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
 //       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
@@ -33,7 +33,7 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //   CHECK-DAG:       %[[res:.*]] = addf %[[c]], %[[inc]] : f32
 //       CHECK:       linalg.store %[[res]], %[[C]][%i0, %i1] : !linalg.view<?x?xf32>
 
-func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
@@ -44,7 +44,7 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
   linalg.matvec(%2, %3, %4) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
   return
 }
-// CHECK-LABEL: func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+// CHECK-LABEL: func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
 //       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
@@ -59,7 +59,7 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //   CHECK-DAG:     %[[res:.*]] = addf %[[c]], %[[inc]] : f32
 //       CHECK:     linalg.store %[[res]], %[[C]][%i0] : !linalg.view<?xf32>
 
-func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+func @dot(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
@@ -69,7 +69,7 @@ func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) 
   linalg.dot(%1, %2, %3) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
   return
 }
-// CHECK-LABEL: func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
+// CHECK-LABEL: func @dot(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
 //       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       CHECK: %[[C:.*]] = linalg.view %arg0[] : !linalg.view<f32>

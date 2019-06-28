@@ -53,12 +53,15 @@ public:
   // Used for generic hooks in TypeBase.
   using Base::Base;
   /// Construction hook.
-  static BufferType get(MLIRContext *context, Type elementType);
+  static BufferType get(MLIRContext *context, Type elementType,
+                        int64_t bufferSize = -1);
   /// Used to implement llvm-style cast.
   static bool kindof(unsigned kind) { return kind == LinalgTypes::Buffer; }
 
   // Type-specific functionality.
   Type getElementType();
+  bool hasConstantSize();
+  Optional<int64_t> getBufferSize();
 };
 
 /// A RangeType represents a minimal range abstraction (min, max, step).

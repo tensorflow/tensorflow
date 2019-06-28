@@ -50,8 +50,10 @@ struct mlir::linalg::BufferTypeStorage : public TypeStorage {
   /// Underlying Key type to transport the payload needed to construct a custom
   /// type in a generic way.
   struct Key {
-    Key(Type elementType) : elementType(elementType) {}
+    Key(Type elementType, int64_t bufferSize = -1)
+        : elementType(elementType), bufferSize(bufferSize) {}
     Type elementType;
+    int64_t bufferSize;
   };
   /// `KeyTy` is a necessary typename hook for MLIR's custom type unique'ing.
   using KeyTy = Key;
@@ -64,29 +66,46 @@ struct mlir::linalg::BufferTypeStorage : public TypeStorage {
 
   /// Equality operator for hashing.
   bool operator==(const Key &key) const {
-    return elementType == key.elementType;
+    return elementType == key.elementType && bufferSize == key.bufferSize;
   }
 
   /// Hashing for unique'ing.
   static unsigned hashKey(const Key &key) {
-    return llvm::hash_combine(key.elementType);
+    return llvm::hash_combine(key.elementType, key.bufferSize);
   }
 
-  Type getElementType() { return elementType; };
+  Type getElementType() { return elementType; }
+  bool hasConstantSize() { return bufferSize >= 0; }
+  Optional<int64_t> getBufferSize() {
+    if (hasConstantSize()) {
+      return bufferSize;
+    }
+    return llvm::None;
+  }
 
 private:
-  BufferTypeStorage(const Key &key) : elementType(key.elementType) {}
+  BufferTypeStorage(const Key &key)
+      : elementType(key.elementType), bufferSize(key.bufferSize) {}
 
   Type elementType;
+  int64_t bufferSize;
 };
 
-BufferType mlir::linalg::BufferType::get(MLIRContext *context,
-                                         Type elementType) {
-  return Base::get(context, LinalgTypes::Buffer, elementType);
+BufferType mlir::linalg::BufferType::get(MLIRContext *context, Type elementType,
+                                         int64_t bufferSize) {
+  return Base::get(context, LinalgTypes::Buffer, elementType, bufferSize);
 }
 
 Type mlir::linalg::BufferType::getElementType() {
   return getImpl()->getElementType();
+}
+
+bool mlir::linalg::BufferType::hasConstantSize() {
+  return getImpl()->hasConstantSize();
+}
+
+Optional<int64_t> mlir::linalg::BufferType::getBufferSize() {
+  return getImpl()->getBufferSize();
 }
 
 Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
@@ -97,8 +116,24 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
     return RangeType::get(getContext());
   else if (spec.consume_front("buffer")) {
     if (spec.consume_front("<") && spec.consume_back(">")) {
+      // Check for '?'
+      int64_t bufferSize = -1;
+      if (!spec.consume_front("?")) {
+        unsigned parsedBufferSize;
+        if (!spec.consumeInteger(10, parsedBufferSize)) {
+          emitError(loc, "expected buffer size to be an unsigned integer");
+          return Type();
+        }
+        bufferSize = static_cast<int64_t>(parsedBufferSize);
+      }
+      if (!spec.consume_front("x")) {
+        emitError(loc, "missing x in buffer type descrition : ") << spec;
+        return Type();
+      }
       if (auto t = mlir::parseType(spec, context))
-        return BufferType::get(getContext(), t);
+        return (bufferSize == -1
+                    ? BufferType::get(getContext(), t)
+                    : BufferType::get(getContext(), t, bufferSize));
     }
   } else if (spec.consume_front("view")) {
     if (spec.consume_front("<") && spec.consume_back(">")) {
@@ -173,7 +208,14 @@ unsigned mlir::linalg::ViewType::getRank() { return getImpl()->getRank(); }
 
 /// BufferType prints as "buffer<element_type>".
 static void print(BufferType bt, raw_ostream &os) {
-  os << "buffer<" << bt.getElementType() << ">";
+  os << "buffer<";
+  auto bs = bt.getBufferSize();
+  if (bs) {
+    os << bs.getValue();
+  } else {
+    os << "?";
+  }
+  os << "x" << bt.getElementType() << ">";
 }
 
 /// RangeType prints as just "range".
