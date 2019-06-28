@@ -442,9 +442,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
   def _get_variable_creator_initial_value(self,
-                                          replica_id=0,
-                                          device=None,
-                                          primary_var=None,
+                                          replica_id,
+                                          device,
+                                          primary_var,
                                           **kwargs):
     """Return the initial value for variables on a replica."""
     if replica_id == 0:
