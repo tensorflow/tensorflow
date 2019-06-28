@@ -99,19 +99,25 @@ def get_replica_context():
   2. switches to cross-replica context (in which case this will return
      `None`) when entering a `with tf.distribute.Strategy.scope():` block;
   3. switches to a (non-default) replica context inside
-     `extended.call_for_each_replica(fn, ...)`;
+     `strategy.experimental_run_v2(fn, ...)`;
   4. if `fn` calls `get_replica_context().merge_call(merge_fn, ...)`, then
      inside `merge_fn` you are back in the cross-replica context (and again
      this function will return `None`).
 
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-replica context for the default `tf.distribute.Strategy`. You may
-  also switch from the cross-replica context of 4 to a replica context by
-  calling `extended.call_for_each_replica()`, jumping back to step 3.
-
   Most `tf.distribute.Strategy` methods may only be executed in
   a cross-replica context, in a replica context you should use the
-  `ReplicaContext` API instead.
+  API of the `ReplicaContext` object returned by this method instead.
+
+  ```
+  assert tf.distribute.get_replica_context() is not None  # default
+  with strategy.scope():
+    assert tf.distribute.get_replica_context() is None
+
+    def f():
+      assert tf.distribute.get_replica_context() is not None  # for strategy
+
+    strategy.experimental_run_v2(f)
+  ```
 
   Returns:
     The current `ReplicaContext` object when in a replica context scope,
@@ -131,24 +137,6 @@ def get_cross_replica_context():
   DEPRECATED: Please use `in_cross_replica_context()` and
   `get_strategy()` instead.
 
-  Note that execution:
-
-  1. starts in the default (single-replica) replica context;
-  2. switches to cross-replica context when entering a
-     `with tf.distribute.Strategy.scope():` block;
-  3. switches to a (non-default) replica context inside
-     `call_for_each_replica(fn, ...)`;
-  4. if `fn` calls `get_replica_context()->merge_call(merge_fn, ...)`, then
-     inside `merge_fn` you are back in the cross-replica context.
-
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-replica context for the default `tf.distribute.Strategy`. You may
-  also switch from the cross-replica context of 4 to a replica context by
-  calling `call_for_each_replica()`, jumping back to step 3.
-
-  Most `tf.distribute.Strategy` methods may only be executed in
-  a cross-replica context.
-
   Returns:
     Returns the current `tf.distribute.Strategy` object in a cross-replica
     context, or `None`.
@@ -161,13 +149,24 @@ def get_cross_replica_context():
 
 @tf_export("distribute.in_cross_replica_context")
 def in_cross_replica_context():
-  """Returns True if in a cross-replica context.
+  """Returns `True` if in a cross-replica context.
 
   See `tf.distribute.get_replica_context` for details.
 
+  ```
+  assert not tf.distribute.in_cross_replica_context()
+  with strategy.scope():
+    assert tf.distribute.in_cross_replica_context()
+
+    def f():
+      assert not tf.distribute.in_cross_replica_context()
+
+    strategy.experimental_run_v2(f)
+  ```
+
   Returns:
-    True if in a cross-replica context (`get_replica_context()` returns
-    `None`), or False if in a replica context (`get_replica_context()` returns
+    `True` if in a cross-replica context (`get_replica_context()` returns
+    `None`), or `False` if in a replica context (`get_replica_context()` returns
     non-`None`).
   """
   return _get_per_thread_mode().cross_replica_context is not None
@@ -196,6 +195,12 @@ def get_strategy():
 @tf_export("distribute.has_strategy")
 def has_strategy():
   """Return if there is a current non-default `tf.distribute.Strategy`.
+
+  ```
+  assert not tf.distribute.has_strategy()
+  with strategy.scope():
+    assert tf.distribute.has_strategy()
+  ```
 
   Returns:
     True if inside a `with strategy.scope():`.
