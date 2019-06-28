@@ -1312,6 +1312,7 @@ cc_test(
     name = "neg_test",
     size = "small",
     srcs = ["neg_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
