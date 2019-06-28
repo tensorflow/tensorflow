@@ -382,6 +382,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
+    self.experimental_enable_get_next_as_optional = True
+
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
     # coordinator as well.
