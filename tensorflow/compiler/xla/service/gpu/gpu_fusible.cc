@@ -162,8 +162,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
-  // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
-  return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
+  return ShapeUtil::EqualIgnoringElementType(get_loop_shape(instr_1),
                                              get_loop_shape(instr_2));
 }
 
