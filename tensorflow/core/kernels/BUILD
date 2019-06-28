@@ -175,6 +175,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -2898,6 +2899,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2929,6 +2931,7 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -5270,6 +5273,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5724,6 +5728,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":variable_ops",
         ":inplace_ops",
+        "//tensorflow/core:training_op_helpers",
     ],
 )
 
@@ -6037,6 +6042,7 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -6135,6 +6141,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:training_op_helpers",
     ],
 )
 
