@@ -1370,6 +1370,7 @@ cc_test(
     name = "expand_dims_test",
     size = "small",
     srcs = ["expand_dims_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

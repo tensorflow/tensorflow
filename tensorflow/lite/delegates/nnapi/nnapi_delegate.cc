@@ -1760,6 +1760,25 @@ class NNAPIDelegateKernel {
           };
         }
         break;
+      case kTfLiteBuiltinExpandDims: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        const auto axis = context->tensors[node->inputs->data[1]];
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat16 || input_type == kTfLiteFloat32 ||
+             input_type == kTfLiteInt32 || input_type == kTfLiteUInt8) &&
+            // TFLite supports axis also as int64 but NNAPI only int32
+            (axis.type == kTfLiteInt32 &&
+             axis.allocation_type == kTfLiteMmapRo)) {
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            const TfLiteTensor& axis_param =
+                mapping_args.context
+                    ->tensors[mapping_args.node->inputs->data[1]];
+            mapping_args.builder->AddScalarInt32Operand(*axis_param.data.i32);
+            return ANEURALNETWORKS_EXPAND_DIMS;
+          };
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -2223,6 +2242,10 @@ class NNAPIDelegateKernel {
         } else if (reg->builtin_code == kTfLiteBuiltinGather) {
           // Everything is added during Map since input tensors
           // have different order.
+          continue;
+        } else if (reg->builtin_code == kTfLiteBuiltinExpandDims &&
+                   input_pos == 1) {
+          // The axis param is added during Map
           continue;
         } else {
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
