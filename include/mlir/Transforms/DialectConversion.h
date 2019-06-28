@@ -221,13 +221,13 @@ public:
   /// one result type by generating a cast operation of some kind. The generated
   /// operation should produce one result, of 'resultType', with the provided
   /// 'inputs' as operands. This hook must be overridden when a type conversion
-  /// results in more than one type.
+  /// results in more than one type, or if a type conversion may persist after
+  /// the conversion has finished.
   virtual Operation *materializeConversion(PatternRewriter &rewriter,
                                            Type resultType,
                                            ArrayRef<Value *> inputs,
                                            Location loc) {
-    llvm_unreachable("expected 'materializeConversion' to be overridden when "
-                     "generating 1->N type conversions");
+    llvm_unreachable("expected 'materializeConversion' to be overridden");
   }
 };
 
@@ -337,14 +337,13 @@ private:
 
 /// Convert the given module with the provided conversion patterns and type
 /// conversion object. This function returns failure if a type conversion
-/// failed, potentially leaving the IR in an invalid state.
+/// failed.
 LLVM_NODISCARD LogicalResult applyConversionPatterns(
     Module &module, ConversionTarget &target, TypeConverter &converter,
     OwningRewritePatternList &&patterns);
 
 /// Convert the given functions with the provided conversion patterns. This
-/// function returns failure if a type conversion failed, potentially leaving
-/// the IR in an invalid state.
+/// function returns failure if a type conversion failed.
 LLVM_NODISCARD
 LogicalResult applyConversionPatterns(ArrayRef<Function *> fns,
                                       ConversionTarget &target,

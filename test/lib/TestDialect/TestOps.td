@@ -245,5 +245,9 @@ def TestReturnOp : TEST_Op<"return", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 def TestCastOp : TEST_Op<"cast">,
   Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
+def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
+  Arguments<(ins Variadic<AnyType>:$inputs)>;
+def TestValidOp : TEST_Op<"valid", [Terminator]>,
+  Arguments<(ins Variadic<AnyType>:$inputs)>;
 
 #endif // TEST_OPS

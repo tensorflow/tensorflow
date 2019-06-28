@@ -331,6 +331,14 @@ protected:
       return array.toMemref();
     return t;
   }
+
+  /// Materialize a conversion to allow for partial lowering of types.
+  Operation *materializeConversion(PatternRewriter &rewriter, Type resultType,
+                                   ArrayRef<Value *> inputs,
+                                   Location loc) override {
+    assert(inputs.size() == 1 && "expected only one input value");
+    return rewriter.create<toy::TypeCastOp>(loc, inputs[0], resultType);
+  }
 };
 
 /// This is lowering to Linalg the parts that can be (matmul and add on arrays)

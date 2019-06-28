@@ -78,6 +78,17 @@ struct TestDropOp : public ConversionPattern {
     return matchSuccess();
   }
 };
+/// This pattern simply updates the operands of the given operation.
+struct TestPassthroughInvalidOp : public ConversionPattern {
+  TestPassthroughInvalidOp(MLIRContext *ctx)
+      : ConversionPattern("test.invalid", 1, ctx) {}
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const final {
+    rewriter.replaceOpWithNewOp<TestValidOp>(op, llvm::None, operands,
+                                             llvm::None);
+    return matchSuccess();
+  }
+};
 /// This pattern handles the case of a split return value.
 struct TestSplitReturnType : public ConversionPattern {
   TestSplitReturnType(MLIRContext *ctx)
@@ -139,7 +150,7 @@ struct TestTypeConverter : public TypeConverter {
 
 struct TestConversionTarget : public ConversionTarget {
   TestConversionTarget(MLIRContext &ctx) : ConversionTarget(ctx) {
-    addLegalOp<LegalOpA>();
+    addLegalOp<LegalOpA, TestValidOp>();
     addDynamicallyLegalOp<TestReturnOp>();
   }
   bool isDynamicallyLegal(Operation *op) const final {
@@ -155,6 +166,7 @@ struct TestLegalizePatternDriver
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
     RewriteListBuilder<TestRegionRewriteBlockMovement, TestDropOp,
+                       TestPassthroughInvalidOp,
                        TestSplitReturnType>::build(patterns, &getContext());
 
     TestTypeConverter converter;
