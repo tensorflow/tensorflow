@@ -40,11 +40,11 @@ class GcsFileSystem;
 // The environment variable that overrides the block size for aligned reads from
 // GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
 constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
-constexpr size_t kDefaultBlockSize = 16 * 1024 * 1024;
+constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
 // The environment variable that overrides the max size of the LRU cache of
 // blocks read from GCS. Specified in MB.
 constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
-constexpr size_t kDefaultMaxCacheSize = kDefaultBlockSize;
+constexpr size_t kDefaultMaxCacheSize = 0;
 // The environment variable that overrides the maximum staleness of cached file
 // contents. Once any block of a file reaches this staleness, all cached blocks
 // will be evicted on the next read.
@@ -334,6 +334,10 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<ZoneProvider> zone_provider_;
+
+  // Reads smaller than block_size_ will trigger a read of block_size_.
+  uint64 block_size_;
+
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
