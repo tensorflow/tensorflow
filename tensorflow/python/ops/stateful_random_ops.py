@@ -543,7 +543,7 @@ class Generator(tracking.AutoTrackable):
     # Probability of success.
     probs = [0.8, 0.9]
 
-    rng = tf.random.experimental.Generator(seed=234)
+    rng = tf.random.experimental.Generator.from_seed(seed=234)
     binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
     ```
 
@@ -551,15 +551,20 @@ class Generator(tracking.AutoTrackable):
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
-        distribution.
-      probs: A 0/1-D Tensor or Python value`. The probability of success for the
-        binomial distribution.
+      counts: A 0/1-D Tensor or Python value. The counts of the binomial
+        distribution.  Must be broadcastable with the leftmost dimension
+        defined by `shape`.
+      probs: A 0/1-D Tensor or Python value. The probability of success for the
+        binomial distribution.  Must be broadcastable with the leftmost
+        dimension defined by `shape`.
       dtype: The type of the output. Default: tf.int32
       name: A name for the operation (optional).
 
     Returns:
-      A tensor of the specified shape filled with random binomial values.
+      samples: A Tensor of the specified shape filled with random binomial
+        values.  For each i, each samples[i, ...] is an independent draw from
+        the binomial distribution on counts[i] trials with probability of
+        success probs[i].
     """
     dtype = dtypes.as_dtype(dtype)
     with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:
