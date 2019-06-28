@@ -1048,6 +1048,24 @@ cc_library(
 )
 
 cc_library(
+    name = "training_op_helpers",
+    srcs = [
+        "framework/training_op_helpers.cc",
+    ],
+    hdrs = [
+        "framework/training_op_helpers.h",
+    ],
+    deps = [
+        ":framework",
+        ":lib",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "stats_calculator_portable",
     srcs = [
         "util/stat_summarizer_options.h",
@@ -2810,6 +2828,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
         "framework/fake_input.*",
         "framework/op_gen_lib.*",
         "framework/reader_base.*",
+        "framework/training_op_helpers.*",
         "util/memmapped_file_system.*",
         "util/memmapped_file_system_writer.*",
         "util/session_message.*",
@@ -2908,6 +2927,7 @@ tf_cuda_library(
             "framework/cpu_allocator_impl.cc",
             "framework/allocator_registry.cc",
             "framework/tracking_allocator.cc",
+            "framework/training_op_helpers.cc",
             "example/example_parser_configuration.*",
             "example/feature_util.cc",
             "util/reporter.cc",
@@ -3431,19 +3451,6 @@ cc_library(
         ":protos_all_cc",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "training_op_helpers",
-    srcs = ["framework/training_op_helpers.cc"],
-    hdrs = ["framework/training_op_helpers.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/kernels:dense_update_functor",
-        "//tensorflow/core/kernels:variable_ops",
-        ":framework",
-        ":lib",
-    ],
 )
 
 tf_cuda_library(
