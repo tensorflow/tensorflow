@@ -59,7 +59,7 @@ void zero_buffers(XlaCompiledCpuFunction* computation) {
 
 // Trivial test that runs the generated function to ensure it doesn't crash.
 TEST(TEST_NAME, NoCrash) {
-  Eigen::ThreadPool pool(port::NumSchedulableCPUs());
+  Eigen::ThreadPool pool(port::MaxParallelism());
   Eigen::ThreadPoolDevice device(&pool, pool.NumThreads());
 
   CPP_CLASS computation;
@@ -73,7 +73,7 @@ TEST(TEST_NAME, NoCrash) {
 void BM_NAME(int iters) {
   testing::StopTiming();
 
-  Eigen::ThreadPool pool(port::NumSchedulableCPUs());
+  Eigen::ThreadPool pool(port::MaxParallelism());
   Eigen::ThreadPoolDevice device(&pool, pool.NumThreads());
 
   CPP_CLASS computation;
