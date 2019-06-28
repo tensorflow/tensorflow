@@ -1035,13 +1035,12 @@ Attribute Parser::parseAttribute(Type type) {
     auto val = getToken().getStringValue();
     consumeToken(Token::string);
 
-    // Parse the optional trailing colon type.
-    if (!type && consumeIf(Token::colon)) {
-      Type stringType = parseType();
-      return stringType ? StringAttr::get(val, stringType) : Attribute();
-    }
+    // Parse the optional trailing colon type if one wasn't explicitly provided.
+    if (!type && consumeIf(Token::colon) && !(type = parseType()))
+      return Attribute();
 
-    return builder.getStringAttr(val);
+    return type ? StringAttr::get(val, type)
+                : StringAttr::get(val, getContext());
   }
 
   // Parse a 'unit' attribute.
