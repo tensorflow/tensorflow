@@ -120,22 +120,6 @@ class DeprecationWrapper(types.ModuleType):
           self._dw_warning_count += 1
     return attr
 
-  def __setattr__(self, arg, val):  # pylint: disable=super-on-old-class
-    if arg.startswith('_dw_'):
-      super(DeprecationWrapper, self).__setattr__(arg, val)
-    else:
-      setattr(self._dw_wrapped_module, arg, val)
-      self.__dict__[arg] = val
-
-  def __dir__(self):
-    return dir(self._dw_wrapped_module)
-
-  def __delattr__(self, name):  # pylint: disable=super-on-old-class
-    if name.startswith('_dw_'):
-      super(DeprecationWrapper, self).__delattr__(name)
-    else:
-      delattr(self._dw_wrapped_module, name)
-
   def __repr__(self):
     return self._dw_wrapped_module.__repr__()
 
