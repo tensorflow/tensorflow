@@ -74,9 +74,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    params.prefix = prefix;
     return absl::make_unique<Iterator>(Iterator::Params{
-        this, name_utils::IteratorPrefix(kDatasetType, params)});
+        this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
   const DataTypeVector& output_dtypes() const override {

@@ -59,17 +59,15 @@ string DatasetDebugString(const string& dataset_type,
 }
 
 string IteratorPrefix(const string& dataset_type, const string& prefix) {
-  IteratorPrefixParams params;
-  params.prefix = prefix;
-  return IteratorPrefix(dataset_type, params);
+  return IteratorPrefix(dataset_type, prefix, IteratorPrefixParams());
 }
 
-string IteratorPrefix(const string& dataset_type,
+string IteratorPrefix(const string& dataset_type, const string& prefix,
                       const IteratorPrefixParams& params) {
   if (params.op_version == 1) {
-    return strings::StrCat(params.prefix, kDelimiter, dataset_type);
+    return strings::StrCat(prefix, kDelimiter, dataset_type);
   }
-  return strings::StrCat(params.prefix, kDelimiter, dataset_type, kVersion,
+  return strings::StrCat(prefix, kDelimiter, dataset_type, kVersion,
                          params.op_version);
 }
 

@@ -1020,10 +1020,9 @@ TEST_F(PaddedBatchDatasetOpTest, IteratorOutputPrefix) {
                                                   "Iterator", &iterator));
   name_utils::IteratorPrefixParams params;
   params.op_version = kOpVersion;
-  params.prefix = "Iterator";
-  EXPECT_EQ(
-      iterator->prefix(),
-      name_utils::IteratorPrefix(PaddedBatchDatasetOp::kDatasetType, params));
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(PaddedBatchDatasetOp::kDatasetType,
+                                       "Iterator", params));
 }
 
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, Roundtrip) {

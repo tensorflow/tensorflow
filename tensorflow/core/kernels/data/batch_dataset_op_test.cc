@@ -620,9 +620,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
       batch_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
   name_utils::IteratorPrefixParams params;
   params.op_version = kOpVersion;
-  params.prefix = "Iterator";
   EXPECT_EQ(iterator->prefix(),
-            name_utils::IteratorPrefix(BatchDatasetOp::kDatasetType, params));
+            name_utils::IteratorPrefix(BatchDatasetOp::kDatasetType, "Iterator",
+                                       params));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {

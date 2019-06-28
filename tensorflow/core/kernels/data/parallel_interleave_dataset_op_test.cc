@@ -893,10 +893,9 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorOutputPrefix) {
       iterator_ctx.get(), "Iterator", &iterator));
   name_utils::IteratorPrefixParams params;
   params.op_version = kOpVersion;
-  params.prefix = "Iterator";
   EXPECT_EQ(iterator->prefix(),
             name_utils::IteratorPrefix(
-                ParallelInterleaveDatasetOp::kDatasetType, params));
+                ParallelInterleaveDatasetOp::kDatasetType, "Iterator", params));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {

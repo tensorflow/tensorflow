@@ -44,7 +44,6 @@ struct DatasetDebugStringParams {
 
 struct IteratorPrefixParams {
   int op_version = 1;
-  string prefix = "";
 };
 
 // Merge the given args in the format of "(arg1, arg2, ..., argn)".
@@ -97,10 +96,9 @@ string IteratorPrefix(const string& dataset_type, const string& prefix);
 // e.g.
 // IteratorPrefixParams params;
 // params.op_version = 2;
-// params.prefix = "Iterator::Range";
-// IteratorPrefix(BatchDatasetOp::KDatasetType, params) ->
+// IteratorPrefix(BatchDatasetOp::KDatasetType, "Iterator::Range", params) ->
 // "Iterator::Range::BatchV2".
-string IteratorPrefix(const string& dataset_type,
+string IteratorPrefix(const string& dataset_type, const string& prefix,
                       const IteratorPrefixParams& params);
 
 }  // namespace name_utils
