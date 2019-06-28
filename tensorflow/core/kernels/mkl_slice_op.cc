@@ -313,6 +313,7 @@ class MklSliceOp : public OpKernel {
     bool done = false;
 
     CheckCommonCasesForMklInputs<T>(context, &begin, &size, &done);
+
     if (!context->status().ok() || done == true) return;
 
     // Though MKL-DNN supports more than 8 dimension and
@@ -393,8 +394,12 @@ class MklSliceOp : public OpKernel {
       if (input_mkl_shape.IsMklTensor()) {
         auto input_mkl_format = input_mkl_shape.GetTfDataFormat();
         auto input_tf_format = MklDnnDataFormatToTFDataFormat(input_mkl_format);
-        begin_dims = MklDnnDimsInNCHW(begin_dims, input_tf_format);
-        size_dims = MklDnnDimsInNCHW(size_dims, input_tf_format);
+
+        bool is_slice2d = (input_mkl_shape.GetDimension() == 4);
+        begin_dims = is_slice2d ? MklDnnDimsInNCHW(begin_dims, input_tf_format)
+                                : MklDnnDimsInNCDHW(begin_dims, input_tf_format);
+        size_dims = is_slice2d ? MklDnnDimsInNCHW(size_dims, input_tf_format)
+                               : MklDnnDimsInNCDHW(size_dims, input_tf_format);
         auto input_md = input_mkl_shape.GetMklLayout();
         src.SetUsrMem(input_md, &input_tensor);
       } else {
