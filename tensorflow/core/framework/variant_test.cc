@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/variant.h"
-
+#if defined(__x86_64__)
 #include <xmmintrin.h>
-
+#endif
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
@@ -240,7 +240,7 @@ TEST(VariantTest, Int) {
   EXPECT_EQ(*x.get<int>(), 3);
   EXPECT_EQ(x.TypeName(), "int");
 }
-
+#if defined(__x86_64__)
 struct MayCreateAlignmentDifficulties {
   int a;
   __m128 b;
@@ -269,7 +269,7 @@ TEST(VariantTest, NotAlignable) {
   EXPECT_EQ(z_val->a, -1);
   EXPECT_TRUE(M128AllEqual(z_val->b, v));
 }
-
+#endif
 template <bool BIG>
 void TestBasic() {
   Variant x;
