@@ -4032,6 +4032,17 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "mem_wasted_on_passthrough_params",
+    srcs = ["mem_wasted_on_passthrough_params.cc"],
+    hdrs = ["mem_wasted_on_passthrough_params.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+    ],
+)
+
+cc_library(
     name = "ar_crs_combiner",
     srcs = ["ar_crs_combiner.cc"],
     hdrs = ["ar_crs_combiner.h"],
