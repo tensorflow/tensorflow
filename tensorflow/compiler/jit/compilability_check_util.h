@@ -78,7 +78,7 @@ class RecursiveCompilabilityChecker {
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
-    // their memory effects in jit/resource_variable_safety_analysis.
+    // their memory effects in jit/resource_operation_safety_analysis.
     bool allow_resource_ops_in_called_functions;
 
     // Whether Stack operations are allowed.  We avoid auto-clustering Stack
