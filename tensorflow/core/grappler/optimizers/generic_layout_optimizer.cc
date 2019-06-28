@@ -159,16 +159,12 @@ Status EraseCancellableNodes(TransposeContext* context) {
     }
     const auto& regular_fanin_0 = node->GetRegularFanin(0);
     auto* fanin_node = regular_fanin_0.node_view();
-    if (!IsCancellableNodePair(*node, *fanin_node)) {
+    // TODO(lyandy): Lift restriction once original nodes in the graph can be
+    // pruned away.
+    if (fanin_node->node_index() < original_num_nodes) {
       continue;
     }
-    // Skip transpose not added by optimizer.
-    if ((node->GetRegularFanouts().size() != 1 &&
-         node->NumControlledFanouts() != 0) ||
-        (fanin_node->GetRegularFanouts().size() != 1 &&
-         fanin_node->NumControlledFanouts() != 0)) {
-      VLOG(1) << "There is always only a single output for a Transpose "
-                 "node, due to the way it is added by Layout Optimizer.";
+    if (!IsCancellableNodePair(*node, *fanin_node)) {
       continue;
     }
     const auto& fanin_to_forward = fanin_node->GetRegularFanin(0);
