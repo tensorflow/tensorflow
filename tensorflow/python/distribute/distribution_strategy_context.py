@@ -106,7 +106,8 @@ def get_replica_context():
 
   Most `tf.distribute.Strategy` methods may only be executed in
   a cross-replica context, in a replica context you should use the
-  API of the `ReplicaContext` object returned by this method instead.
+  API of the `tf.distribute.ReplicaContext` object returned by this
+  method instead.
 
   ```
   assert tf.distribute.get_replica_context() is not None  # default
@@ -114,14 +115,17 @@ def get_replica_context():
     assert tf.distribute.get_replica_context() is None
 
     def f():
-      assert tf.distribute.get_replica_context() is not None  # for strategy
+      replica_context = tf.distribute.get_replica_context()  # for strategy
+      assert replica_context is not None
+      tf.print("Replica id: ", replica_context.replica_id_in_sync_group,
+               " of ", replica_context.num_replicas_in_sync)
 
     strategy.experimental_run_v2(f)
   ```
 
   Returns:
-    The current `ReplicaContext` object when in a replica context scope,
-    else `None`.
+    The current `tf.distribute.ReplicaContext` object when in a replica context
+    scope, else `None`.
 
     Within a particular block, exactly one of these two things will be true:
 
