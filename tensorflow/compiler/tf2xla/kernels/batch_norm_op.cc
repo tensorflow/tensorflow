@@ -110,11 +110,11 @@ class FusedBatchNormOp : public XlaOpKernel {
       int total_scale_size = ctx->InputShape(1).num_elements();
       int sample_size = total_input_size / total_scale_size;
       int sample_size_minus_one = std::max(1, sample_size - 1);
+      double factor = static_cast<double>(sample_size) /
+                      static_cast<double>(sample_size_minus_one);
 
-      xla::XlaOp factor =
-          xla::Div(xla::ScalarLike(variance, sample_size),
-                   xla::ScalarLike(variance, sample_size_minus_one));
-      xla::XlaOp corrected = xla::Mul(variance, factor);
+      xla::XlaOp corrected =
+          xla::Mul(variance, xla::ScalarLike(variance, factor));
       ctx->SetOutput(2, corrected);
 
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
