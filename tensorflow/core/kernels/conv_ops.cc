@@ -608,6 +608,7 @@ typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
     AutoTuneConv;
 
+#if GOOGLE_CUDA
 // Check the passed allocator for redzone violations.
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
@@ -646,6 +647,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
     LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
+#endif  // GOOGLE_CUDA
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
