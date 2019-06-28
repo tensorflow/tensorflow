@@ -2345,9 +2345,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_cc(

@@ -453,6 +453,7 @@ filegroup(
 
 cc_library(
     name = "grpc",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc_unsecure"],
         "//conditions:default": ["@grpc"],
@@ -461,6 +462,7 @@ cc_library(
 
 cc_library(
     name = "grpc++",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc++_unsecure"],
         "//conditions:default": ["@grpc//:grpc++"],
