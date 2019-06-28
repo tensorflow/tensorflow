@@ -769,7 +769,9 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    return self._captured_inputs + [x() for x in self._captured_closures]
+    from_closures = nest.flatten([x() for x in self._captured_closures],
+                                 expand_composites=True)
+    return self._captured_inputs + from_closures
 
   @property
   def function_def(self):

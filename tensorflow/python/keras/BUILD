@@ -69,6 +69,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
     ],
@@ -269,7 +270,10 @@ py_library(
 
 py_library(
     name = "base_preprocessing_layer",
-    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs = [
+        "engine/base_preprocessing_layer.py",
+        "engine/base_preprocessing_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":backend",

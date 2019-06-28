@@ -1658,6 +1658,13 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_NOT_EQUAL>;
         }
       } break;
+      case kTfLiteBuiltinNeg: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteInt32)) {
+          return BasicMappingFn<ANEURALNETWORKS_NEG>;
+        }
+      } break;
       case kTfLiteBuiltinTopkV2: {
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           const auto& input = context->tensors[node->outputs->data[0]];

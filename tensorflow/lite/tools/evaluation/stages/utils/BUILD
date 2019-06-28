@@ -12,15 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow V1 version of the Normalization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
-from tensorflow.python.keras.engine.base_preprocessing_layer_v1 import CombinerPreprocessingLayer
-from tensorflow.python.keras.layers.preprocessing import normalization
+package(
+    default_visibility = ["//tensorflow/lite:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
+cc_library(
+    name = "image_metrics",
+    srcs = ["image_metrics.cc"],
+    hdrs = ["image_metrics.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
 
-class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
-  pass
+cc_test(
+    name = "image_metrics_test",
+    srcs = ["image_metrics_test.cc"],
+    linkopts = tflite_linkopts(),
+    linkstatic = 1,
+    deps = [
+        ":image_metrics",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

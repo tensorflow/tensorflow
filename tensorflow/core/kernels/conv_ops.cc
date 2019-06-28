@@ -647,7 +647,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
     LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
-#endif
+#endif  // GOOGLE_CUDA
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(

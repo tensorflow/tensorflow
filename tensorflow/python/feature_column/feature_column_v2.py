@@ -633,6 +633,7 @@ class _LinearModelLayer(Layer):
     return cls(feature_columns=columns, **config_cp)
 
 
+# TODO(tanzheny): Cleanup it with respect to Premade model b/132690565.
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 

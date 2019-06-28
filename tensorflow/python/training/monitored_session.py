@@ -856,7 +856,7 @@ class _MonitoredSession(object):
     return exception_type is None
 
   class _CoordinatedSessionCreator(SessionCreator):
-    """Factory for the _RecoverableSession."""
+    """Factory for _CoordinatedSession."""
 
     def __init__(self, session_creator, hooks, stop_grace_period_secs):
       self._session_creator = session_creator
