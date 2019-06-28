@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -109,7 +110,7 @@ class AddingPreprocessingLayer(
 
 class AddingPreprocessingLayerV1(
     AddingPreprocessingLayer,
-    base_preprocessing_layer.CombinerPreprocessingLayerV1):
+    base_preprocessing_layer_v1.CombinerPreprocessingLayer):
   pass
 
 

@@ -270,7 +270,10 @@ py_library(
 
 py_library(
     name = "base_preprocessing_layer",
-    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs = [
+        "engine/base_preprocessing_layer.py",
+        "engine/base_preprocessing_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
