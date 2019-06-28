@@ -35,7 +35,7 @@ If you want to contribute, start working through the MLIR codebase, navigate to 
 
 *   Follow coding style (see below).
 *   Ensure that you use the correct license. Examples are provided below.
-*   Include unit tests when you contribute new features, as they help to a)
+*   Include tests when you contribute new features, as they help to a)
     prove that your code works correctly, and b) guard against future breaking
     changes to lower the maintenance cost.
 *   Bug fixes also generally require unit tests, because the presence of bugs
@@ -52,24 +52,3 @@ Include a license at the top of new files.
 
 Changes to MLIR C++ code should conform to
 [LLVM Coding standards](https://llvm.org/docs/CodingStandards.html).
-
-#### Python coding style
-
-Changes to MLIR Python code should conform to
-[Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
-
-Use `pylint` to check your Python changes. To install `pylint` and
-retrieve 
-
-'s custom style definition:
-
-```bash
-pip install pylint
-wget -O /tmp/pylintrc https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/ci_build/pylintrc
-```
-
-To check a file with `pylint`:
-
-```bash
-pylint --rcfile=/tmp/pylintrc myfile.py
-```
