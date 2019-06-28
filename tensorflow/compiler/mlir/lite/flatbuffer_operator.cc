@@ -81,6 +81,17 @@ static int ConvertI32AttrForOptionWriter(
   return i.getSExtValue();
 }
 
+static flatbuffers::Offset<flatbuffers::Vector<int32_t>>
+ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
+                                   flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<int32_t> intVec;
+  intVec.reserve(attrArray.getValue().size());
+  for (auto attr : attrArray.getValue()) {
+    intVec.push_back(attr.cast<mlir::IntegerAttr>().getInt());
+  }
+  return builder->CreateVector(intVec);
+}
+
 // F32Attr already returns a float as required by flatbuffer builders.
 static float ConvertF32AttrForOptionWriter(
     llvm::APFloat f, flatbuffers::FlatBufferBuilder* builder) {

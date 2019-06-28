@@ -709,6 +709,45 @@ size 1.
   let hasOptions = 1;
 }
 
+def TFL_SqueezeOp: TFL_Op<"squeeze", [NoSideEffect,
+                                      TFL_SameOperandsAndResultsScale]> {
+  let summary = "Removes dimensions of size 1 from the shape of a tensor.";
+
+  let description = [{
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`axis`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+  }];
+
+  let arguments = (ins
+    AnyTensor:$input,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$squeeze_dims
+  );
+
+  let results = (outs
+    AnyTensor:$output
+  );
+
+  let hasOptions = 1;
+
+  let customOption = "SqueezeOptions";
+}
+
 def TFL_FillOp: TFL_Op<"fill", [NoSideEffect]> {
   let summary = "Fill the tensor with given value.";
   let description = [{
