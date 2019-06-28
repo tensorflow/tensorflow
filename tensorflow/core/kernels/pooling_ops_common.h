@@ -274,6 +274,7 @@ template <>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
+#if GOOGLE_CUDA
     bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
         reinterpret_cast<const int32*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
@@ -286,6 +287,11 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
       context->SetStatus(errors::Internal(
           "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
     }
+#else
+    // ROCm TODO: add support __vmaxs4 on ROCm
+    context->SetStatus(errors::Internal(
+        "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+#endif
   }
 };
 #endif
