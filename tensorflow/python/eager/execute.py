@@ -192,16 +192,20 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
     # remaining values.
     ret = []
     for t in l:
-      ret.append(internal_convert_to_tensor(
-          t, dtype,
-          preferred_dtype=default_dtype,
-          ctx=ctx,
-          accept_symbolic_tensors=False))
+      ret.append(
+          internal_convert_to_tensor(
+              t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
     ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
+  # TODO(slebedev): consider removing this as it leaks a Keras concept.
+  # pylint: disable=protected-access
+  if any(ops._is_keras_symbolic_tensor(x) for x in ret):
+    raise core._SymbolicException(
+        "Using the symbolic output of a Keras layer during eager execution.")
+  # pylint: enable=protected-access
   return dtype.as_datatype_enum, ret
 
 

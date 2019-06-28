@@ -1170,7 +1170,6 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_symbolic_tensors=True,
                                accept_composite_tensors=False):
   """Implementation of the public convert_to_tensor."""
   if ctx is None:
@@ -1187,18 +1186,6 @@ def internal_convert_to_tensor(value,
         raise RuntimeError("Attempting to capture an EagerTensor without "
                            "building a function.")
       return graph.capture(value, name=name)
-  elif ((not accept_symbolic_tensors) and isinstance(value, Tensor) and
-        ctx.executing_eagerly()):
-    # Found a symbolic tensor in an eager context.
-    # This happens when we use the Keras functional API (i.e. calling layers
-    # on the output of `keras.Input()`, which is symbolic) while eager
-    # execution is enabled.
-    if _is_keras_symbolic_tensor(value):
-      # If the graph of the tensor isn't the Keras graph, we should still
-      # fail, for the time being. TODO(fchollet): consider allowing
-      # all symbolic tensors to raise this exception in this case.
-      raise core._SymbolicException(  # pylint: disable=protected-access
-          "Using the symbolic output of a Keras layer during eager execution.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
