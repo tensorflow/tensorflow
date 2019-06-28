@@ -1130,7 +1130,6 @@ struct R2ReduceWindowTestData {
      /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kMax},
-#if 0
     {/*base_bounds=*/{4, 4}, /*window_bounds=*/{2, 2},
      /*strides=*/{1, 1},
      /*base_dilation=*/{1, 1}, /*window_dilation=*/{2, 2},
@@ -1161,7 +1160,6 @@ struct R2ReduceWindowTestData {
      /*pad_low=*/{0, 0}, /*pad_high=*/{0, 0},
      /*layout=*/{1, 0},
      /*reducer=*/Reducer::kMax},
-#endif
     // Regression test for a bug that appeared in Inception (b/34784899).
     {/*base_bounds=*/{4, 32}, /*window_bounds=*/{2, 2},
      /*strides=*/{2, 2},
