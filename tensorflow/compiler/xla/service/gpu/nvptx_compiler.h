@@ -41,7 +41,7 @@ namespace gpu {
 // The GPU compiler generates efficient GPU executables.
 class NVPTXCompiler : public LLVMCompiler {
  public:
-  NVPTXCompiler();
+  NVPTXCompiler(se::Platform::Id platform_id);
   ~NVPTXCompiler() override {}
 
   // Bring in
@@ -74,6 +74,8 @@ class NVPTXCompiler : public LLVMCompiler {
   }
 
  private:
+  se::Platform::Id platform_id_;
+
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64 pointer_size_;
 

@@ -456,9 +456,10 @@ void WarnIfBadDriverJITVersion() {
 
 }  // namespace
 
-NVPTXCompiler::NVPTXCompiler()
+NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
     : pointer_size_(llvm::DataLayout(kDataLayout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(platform_id) {}
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -734,7 +735,7 @@ NVPTXCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 }
 
 se::Platform::Id NVPTXCompiler::PlatformId() const {
-  return se::cuda::kCudaPlatformId;
+  return platform_id_;
 }
 
 }  // namespace gpu
@@ -743,7 +744,7 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(stream_executor::cuda::kCudaPlatformId); });
   return true;
 }
 static bool module_initialized = InitModule();
