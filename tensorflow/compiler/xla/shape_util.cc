@@ -128,6 +128,17 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return equal;
 }
 
+/* static */ bool ShapeUtil::EqualIgnoringElementType(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = Shape::Equal().IgnoreElementType()(lhs, rhs);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringElementType differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
 /* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
                                                       const Shape& rhs) {
   bool equal = Shape::Equal().IgnoreFpPrecision()(lhs, rhs);

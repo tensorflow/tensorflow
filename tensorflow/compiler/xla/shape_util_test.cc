@@ -176,6 +176,27 @@ TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
       ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
+TEST(ShapeUtilTest, EqualIgnoringElementType) {
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(S32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, UnequalIgnoringElementType) {
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 4}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {1, 0})));
+}
+
 TEST(ShapeUtilTest, EqualDynamicShapes) {
   EXPECT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
