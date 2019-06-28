@@ -50,16 +50,18 @@ Include a license at the top of new files.
 
 #### C++ coding style
 
-Changes to TensorFlow C++ code should conform to
+Changes to MLIR C++ code should conform to
 [LLVM Coding standards](https://llvm.org/docs/CodingStandards.html).
 
 #### Python coding style
 
-Changes to TensorFlow Python code should conform to
+Changes to MLIR Python code should conform to
 [Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
 
 Use `pylint` to check your Python changes. To install `pylint` and
-retrieve TensorFlow's custom style definition:
+retrieve 
+
+'s custom style definition:
 
 ```bash
 pip install pylint
