@@ -1,0 +1,62 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_FLOAT -tf-input-shapes='' -tf-output-arrays=out:1,out -o - | FileCheck %s
+
+node {
+  name: "input"
+  op: "Placeholder"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 1
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Relu"
+  op: "Relu"
+  input: "input"
+  device: "/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "out"
+  op: "IdentityN"
+  input: "Relu"
+  input: "Relu"
+  attr: {
+    key: "T"
+    value: {
+      list: {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+
+}
+versions {
+  producer: 27
+}
+
+# CHECK: func @main(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>)
+# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "out"}} {
+# CHECK-NEXT:  %0:2 = "_tf.Placeholder.input"(%arg0) {device = "/device:CPU:0", dtype = "tfdtype$DT_FLOAT", name = "input", shape = "tfshape$"} : (tensor<f32>) -> (tensor<f32>, !_tf.control)
+# CHECK-NEXT:  %1:2 = "_tf.Relu"(%0#0) {T = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "Relu"} : (tensor<f32>) -> (tensor<f32>, !_tf.control)
+# CHECK-NEXT:  %2:3 = "_tf.IdentityN"(%1#0, %1#0) {T = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], device = "", name = "out"} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, !_tf.control)
+# CHECK-NEXT:  return %2#1, %2#0 : tensor<f32>, tensor<f32>
+# CHECK-NEXT: }

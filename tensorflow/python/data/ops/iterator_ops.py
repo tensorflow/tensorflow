@@ -660,7 +660,11 @@ class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
-      return structure.from_compatible_tensor_list(self._structure, ret)
+      try:
+        # Fast path for the case `self._structure` is not a nested structure.
+        return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
+      except AttributeError:
+        return structure.from_compatible_tensor_list(self._structure, ret)
 
   @property
   def _type_spec(self):

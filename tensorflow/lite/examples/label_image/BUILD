@@ -1,12 +1,12 @@
 # Description:
 # TensorFlow Lite Example Label Image.
 
+load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
 exports_files(glob([
     "testdata/*.bmp",
@@ -32,6 +32,7 @@ cc_binary(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profiler",
+        "@com_google_absl//absl/memory",
     ],
 )
 

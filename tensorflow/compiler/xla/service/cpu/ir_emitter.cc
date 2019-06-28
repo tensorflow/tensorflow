@@ -2753,18 +2753,26 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
 }
 
 Status IrEmitter::HandleRng(HloInstruction* rng) {
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : rng->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArrayFor(operand).EmitReadArrayElement(index, &b_);
-    };
-  }
+  return Unimplemented("Rng should be expanded for CPU.");
+}
 
-  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
-  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      rng, elemental_emitter.MakeElementGenerator(rng, operand_to_generator)));
+Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
+  VLOG(2) << "RngGetAndUpdateState: " << rng_state->ToString();
+  llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
+      Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
+      &b_);
 
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rng_state));
+  llvm::Value* address = GetEmittedValueFor(rng_state);
+
+  // The buffer has an array type while the value has a i128. Cast the
+  // buffer to i128 type to store the value.
+  address = BitCast(address, llvm::PointerType::get(
+                                 old_state->getType()->getScalarType(),
+                                 address->getType()->getPointerAddressSpace()));
+  llvm::StoreInst* store = Store(old_state, address);
+  store->setAlignment(IrEmitter::MinimumAlignmentForPrimitiveType(
+      rng_state->shape().element_type()));
 
   return Status::OK();
 }

@@ -342,9 +342,9 @@ static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
                             device.host_to_device_stream()->parent()));
     definition_event->RecordOnStream(device.host_to_device_stream());
   }
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer =
-      PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(buffer),
-                                                   definition_event);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer =
+      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(buffer),
+                                                 definition_event);
   if (device.synchronous_deallocation()) {
     device.ThenReleaseOnWorkerThread(device.host_to_device_stream(),
                                      device_buffer);
@@ -448,13 +448,12 @@ PyLocalBuffer::FromPythonValues(
     const std::vector<PyLocalBuffer*> buffers,
     std::shared_ptr<PyLocalClient> client, int device_ordinal) {
   std::vector<xla::Shape> host_shapes;
-  std::vector<std::shared_ptr<PySharedDeviceBuffer>> device_buffers;
+  std::vector<std::shared_ptr<SharedDeviceBuffer>> device_buffers;
   host_shapes.reserve(buffers.size());
   device_buffers.reserve(buffers.size());
   for (const PyLocalBuffer* buffer : buffers) {
     TF_RET_CHECK(buffer->device_ordinal() == device_ordinal);
-    std::shared_ptr<PySharedDeviceBuffer> device_buffer =
-        buffer->DeviceBuffer();
+    std::shared_ptr<SharedDeviceBuffer> device_buffer = buffer->DeviceBuffer();
     if (!device_buffer) {
       return InvalidArgument(
           "Invalid buffer passed to MakeTuple() as argument %d.",
@@ -473,10 +472,10 @@ PyLocalBuffer::FromPythonValues(
                         BufferDefinitionEvent::Create(
                             device.host_to_device_stream()->parent()));
   }
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<PySharedDeviceBuffer> tuple_buffer,
-                      PySharedDeviceBuffer::MakeTuple(
-                          device_buffers, transfer_manager, allocator,
-                          device_ordinal, definition_event));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<SharedDeviceBuffer> tuple_buffer,
+      SharedDeviceBuffer::MakeTuple(device_buffers, transfer_manager, allocator,
+                                    device_ordinal, definition_event));
   auto buffer = absl::make_unique<PyLocalBuffer>(
       ShapeUtil::MakeTupleShape(host_shapes), tuple_buffer, std::move(client));
 
@@ -502,9 +501,9 @@ PyLocalBuffer::FromPythonValues(
   return buffer;
 }
 
-PyLocalBuffer::PyLocalBuffer(
-    Shape on_host_shape, std::shared_ptr<PySharedDeviceBuffer> device_buffer,
-    std::shared_ptr<PyLocalClient> client)
+PyLocalBuffer::PyLocalBuffer(Shape on_host_shape,
+                             std::shared_ptr<SharedDeviceBuffer> device_buffer,
+                             std::shared_ptr<PyLocalClient> client)
     : client_(std::move(client)),
       on_host_shape_(std::move(on_host_shape)),
       device_ordinal_(device_buffer->device_ordinal()),
@@ -517,7 +516,7 @@ void PyLocalBuffer::Delete() {
 }
 
 Status PyLocalBuffer::CopyToHostAsync() {
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer;
+  std::shared_ptr<SharedDeviceBuffer> device_buffer;
   std::shared_ptr<HostValue> host_value;
   {
     absl::MutexLock lock(&mu_);
@@ -547,7 +546,7 @@ Status PyLocalBuffer::CopyToHostAsync() {
 
 StatusOr<py::object> PyLocalBuffer::ToPython() {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToPython");
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer = DeviceBuffer();
+  std::shared_ptr<SharedDeviceBuffer> device_buffer = DeviceBuffer();
   if (!device_buffer) {
     return InvalidArgument("ToPython() called on invalid buffer.");
   }
@@ -570,7 +569,7 @@ StatusOr<py::object> PyLocalBuffer::ToPython() {
   return LiteralToPython(std::move(literal));
 }
 
-std::shared_ptr<PySharedDeviceBuffer> PyLocalBuffer::DeviceBuffer() const {
+std::shared_ptr<SharedDeviceBuffer> PyLocalBuffer::DeviceBuffer() const {
   absl::MutexLock lock(&mu_);
   return device_buffer_;
 }
@@ -613,7 +612,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::CopyToDevice");
   client_->py_ref_manager().CollectGarbage();
   py::gil_scoped_release gil_release;
-  std::shared_ptr<PySharedDeviceBuffer> src_device_buffer = DeviceBuffer();
+  std::shared_ptr<SharedDeviceBuffer> src_device_buffer = DeviceBuffer();
   if (dst_device_ordinal == device_ordinal_) {
     return absl::make_unique<PyLocalBuffer>(on_host_shape_, src_device_buffer,
                                             client_);
@@ -674,16 +673,16 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     definition_event->RecordOnStream(src_device_to_device_stream);
   }
 
-  std::shared_ptr<PySharedDeviceBuffer> dst_device_buffer =
-      PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(dst_buffer),
-                                                   definition_event);
+  std::shared_ptr<SharedDeviceBuffer> dst_device_buffer =
+      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(dst_buffer),
+                                                 definition_event);
   return absl::make_unique<PyLocalBuffer>(
       on_host_shape_, std::move(dst_device_buffer), client_);
 }
 
 Status PyLocalBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::BlockHostUntilReady");
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer = DeviceBuffer();
+  std::shared_ptr<SharedDeviceBuffer> device_buffer = DeviceBuffer();
   if (!device_buffer) {
     return InvalidArgument("BlockHostUntilReady() called on invalid buffer.");
   }
@@ -727,7 +726,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   absl::flat_hash_set<BufferDefinitionEvent*> events;
-  std::vector<std::shared_ptr<PySharedDeviceBuffer>> device_buffers;
+  std::vector<std::shared_ptr<SharedDeviceBuffer>> device_buffers;
   std::vector<ShapedBuffer> argument_buffers;
   std::vector<const ShapedBuffer*> argument_buffer_ptrs;
   device_buffers.reserve(argument_handles.size() + 1);
@@ -735,8 +734,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   argument_buffer_ptrs.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PyLocalBuffer* handle = argument_handles[i];
-    std::shared_ptr<PySharedDeviceBuffer> device_buffer =
-        handle->DeviceBuffer();
+    std::shared_ptr<SharedDeviceBuffer> device_buffer = handle->DeviceBuffer();
     if (!device_buffer) {
       return InvalidArgument(
           "Deleted buffer passed to Execute() as argument "
@@ -797,8 +795,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     definition_event->RecordOnStream(device.compute_stream());
   }
   Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
-  std::shared_ptr<PySharedDeviceBuffer> out_buffer =
-      PySharedDeviceBuffer::FromScopedShapedBuffer(
+  std::shared_ptr<SharedDeviceBuffer> out_buffer =
+      SharedDeviceBuffer::FromScopedShapedBuffer(
           std::move(result_buffer.ValueOrDie()), definition_event);
 
   if (device.synchronous_deallocation()) {

@@ -214,13 +214,18 @@ class PyLocalClient {
  protected:
   std::string platform_name_;
   LocalClient* client_;
+
+  // py_ref_manager_ must come after devices_ in the class destruction order
+  // (i.e., appear first in the class.)
+  // Destruction of devices waits for them to quiesce; callbacks on device
+  // streams may refer to py_ref_manager_ and we must wait for them to complete.
+  PythonRefManager py_ref_manager_;
+
   std::vector<std::unique_ptr<Device>> devices_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
-
-  PythonRefManager py_ref_manager_;
 };
 
 // Holds a reference from Python to one or more device buffers.
@@ -248,7 +253,7 @@ class PyLocalBuffer {
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
-                std::shared_ptr<PySharedDeviceBuffer> device_buffer,
+                std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client);
 
   PyLocalBuffer(const PyLocalBuffer&) = delete;
@@ -272,7 +277,7 @@ class PyLocalBuffer {
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
   // invalid.
-  std::shared_ptr<PySharedDeviceBuffer> DeviceBuffer() const;
+  std::shared_ptr<SharedDeviceBuffer> DeviceBuffer() const;
 
   // Deletes the device memory associated with this buffer, leaving it in an
   // invalid state.
@@ -297,7 +302,7 @@ class PyLocalBuffer {
   const Shape on_host_shape_;
   const int device_ordinal_;
   mutable absl::Mutex mu_;
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToPython. Once a value has been fetched to

@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
 
+#include <algorithm>
+#include <iterator>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace evaluation {
@@ -136,6 +140,46 @@ EvaluationStageMetrics ImageClassificationStage::LatestMetrics() {
   }
   metrics.set_num_runs(inference_metrics.num_runs());
   return metrics;
+}
+
+TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
+                                     std::vector<ImageLabel>* image_labels) {
+  if (!blacklist_file_path.empty()) {
+    std::vector<std::string> lines;
+    if (!tflite::evaluation::ReadFileLines(blacklist_file_path, &lines)) {
+      LOG(ERROR) << "Could not read: " << blacklist_file_path;
+      return kTfLiteError;
+    }
+    std::vector<int> blacklist_ids;
+    blacklist_ids.reserve(lines.size());
+    // Populate blacklist_ids with indices of images.
+    std::transform(lines.begin(), lines.end(),
+                   std::back_inserter(blacklist_ids),
+                   [](const std::string& val) { return std::stoi(val) - 1; });
+
+    std::vector<ImageLabel> filtered_images;
+    std::sort(blacklist_ids.begin(), blacklist_ids.end());
+    const size_t size_post_filtering =
+        image_labels->size() - blacklist_ids.size();
+    filtered_images.reserve(size_post_filtering);
+    int blacklist_index = 0;
+    for (int image_index = 0; image_index < image_labels->size();
+         image_index++) {
+      if (blacklist_index < blacklist_ids.size() &&
+          blacklist_ids[blacklist_index] == image_index) {
+        blacklist_index++;
+        continue;
+      }
+      filtered_images.push_back((*image_labels)[image_index]);
+    }
+
+    if (filtered_images.size() != size_post_filtering) {
+      LOG(ERROR) << "Invalid number of filtered images";
+      return kTfLiteError;
+    }
+    *image_labels = filtered_images;
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace evaluation

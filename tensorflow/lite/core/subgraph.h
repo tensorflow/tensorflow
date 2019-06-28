@@ -421,6 +421,7 @@ class Subgraph {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
+  // WARNING: This is an experimental API and subject to change.
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
@@ -428,8 +429,20 @@ class Subgraph {
   // be reallocated if the graph was modified (i.e., the caller does *not* need
   // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
   // they will remain unallocated after delegate application.
-  // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
+  // This un-applies all delegates that have been applied till now, but retains
+  // pointers to them.
+  // The old execution plan and nodes are restored.
+  TfLiteStatus UndoAllDelegates();
+
+  // This re-applies all delegates that were undone.
+  // Does nothing if UndoAllDelegates wasn't previously called.
+  TfLiteStatus RedoAllDelegates();
+
+  // Cleanups up data reserved for the given node. Does not remove the {node,
+  // registration} pair from nodes_and_registrations_.
+  void CleanupNode(int node_index);
 
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
   // capacity. Calling this function may invalidate existing pointers to
@@ -466,6 +479,8 @@ class Subgraph {
 
   // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
   // function pointers to actual implementation.
+  // Nodes should appear in the order in which they are instantiated at runtime.
+  // Delegated nodes are appended after all the original ones.
   std::vector<std::pair<TfLiteNode, TfLiteRegistration>>
       nodes_and_registration_;
 
@@ -512,6 +527,17 @@ class Subgraph {
   // plan. In particular, it is valid for this ordering to contain only a
   // subset of the node indices.
   std::vector<int> execution_plan_;
+
+  // This is a copy of the first execution_plan_ before any delegates were
+  // applied. It is empty if no delegates were applied to this Subgraph.
+  std::vector<int> pre_delegation_execution_plan_;
+
+  // Contains a list of delegates applied by the user so far, in order.
+  std::vector<TfLiteDelegate*> delegates_applied_;
+
+  // Set to true if UndoAllDelegates was called, and to false during
+  // RedoAllDelegates.
+  bool delegates_undone_ = false;
 
   // In the future, we'd like a TfLiteIntArray compatible representation.
   // TODO(aselle): replace execution_plan_ with this.

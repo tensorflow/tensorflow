@@ -251,7 +251,7 @@ tensorflow/examples/speech_commands:train -- \
 --wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 --quantize=1
 ```
 
-After build is over follow the rest of the instrucitons from this tutorial. And
+After build is over follow the rest of the instructions from this tutorial. And
 finally do not forget to remove the instance when training is done:
 
 ```

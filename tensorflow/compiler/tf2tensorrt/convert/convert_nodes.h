@@ -353,23 +353,27 @@ class Converter;
 
 // Parameters for each op converter.
 struct OpConverterParams {
-  OpConverterParams(Converter* arg_converter, const NodeDef& arg_node_def,
-                    const std::vector<TRT_TensorOrWeights>& arg_inputs,
-                    std::vector<TRT_TensorOrWeights>* arg_outputs,
-                    bool arg_validation_only, TrtWeightStore* arg_weight_store)
-      : converter(arg_converter),
-        node_def(arg_node_def),
-        inputs(arg_inputs),
-        outputs(arg_outputs),
-        validation_only(arg_validation_only),
-        weight_store(arg_weight_store) {}
+  // Constructor used for validation only.
+  OpConverterParams(const NodeDef& node_def,
+                    const std::vector<TRT_TensorOrWeights>& inputs,
+                    std::vector<TRT_TensorOrWeights>* outputs,
+                    TrtWeightStore* weight_store,
+                    TrtPrecisionMode precision_mode, bool use_calibration);
 
-  Converter* converter;
+  // Constructor used for conversion.
+  OpConverterParams(Converter* converter, const NodeDef& node_def,
+                    const std::vector<TRT_TensorOrWeights>& inputs,
+                    std::vector<TRT_TensorOrWeights>* outputs,
+                    TrtWeightStore* weight_store);
+
+  Converter* converter = nullptr;
   const NodeDef& node_def;
   const std::vector<TRT_TensorOrWeights>& inputs;
   std::vector<TRT_TensorOrWeights>* outputs;
   const bool validation_only;
   TrtWeightStore* weight_store;
+  const TrtPrecisionMode precision_mode;
+  const bool use_calibration;
 };
 
 using OpConverter = std::function<Status(OpConverterParams*)>;
@@ -381,7 +385,7 @@ class TrtNodeValidator {
   // checked by IsTensorRTCandidate() later. It is used to get the shape and
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
-                   TrtPrecisionMode precision_mode);
+                   TrtPrecisionMode precision_mode, bool use_calibration);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -418,6 +422,8 @@ class TrtNodeValidator {
 
   // Quantization ops are only converted when using quantized precisions.
   const TrtPrecisionMode precision_mode_;
+
+  const bool use_calibration_;
 
   friend class ValidatorTest;
   friend class OpConverterTest;

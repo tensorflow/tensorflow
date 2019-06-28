@@ -1696,5 +1696,27 @@ TEST(XlaCompilationTest, DontClusterTheSpecialIdentityDrivingConstsInLoop) {
   EXPECT_EQ(clusters["identity"], "");
 }
 
+TEST(XlaCompilationTest, UnsupportedEnterExitPattern) {
+  // Regression test for b/32350199, where the autoclustering code introduced a
+  // deadlock in a graph containing a while loop.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
+  auto enter_0 = ops::internal::Enter(root.WithOpName("enter_a"), a, "frame");
+  auto exit_0 = ops::internal::Exit(root.WithOpName("exit_a"), enter_0);
+  auto tanh = ops::Tanh(root.WithOpName("tanh"), exit_0);
+  auto enter_1 =
+      ops::internal::Enter(root.WithOpName("enter_1"), tanh, "frame");
+  auto exit_1 = ops::internal::Exit(root.WithOpName("exit_1"), enter_1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+
+  // Nothing should be compiled.
+  EXPECT_EQ(0, clusters.size());
+}
+
 }  // namespace
 }  // namespace tensorflow

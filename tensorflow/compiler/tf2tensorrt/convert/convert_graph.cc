@@ -718,7 +718,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment::SegmentNodesVector initial_segments;
-  TrtNodeValidator validator(*params.graph_properties, params.precision_mode);
+  TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
+                             params.use_calibration);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,

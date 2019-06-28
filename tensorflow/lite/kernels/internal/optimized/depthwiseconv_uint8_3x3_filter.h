@@ -5786,7 +5786,8 @@ struct WorkspacePrefetchWrite<
 
 #endif  // __aarch64__
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
 // Dot product ops hard-coded
 
 template <>

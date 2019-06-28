@@ -2068,7 +2068,7 @@ XlaOp XlaBuilder::CrossReplicaSum(
     }
 
     if (channel_id.has_value()) {
-      instr.set_all_reduce_id(channel_id->handle());
+      instr.set_channel_id(channel_id->handle());
     }
 
     AddCalledComputation(computation, &instr);

@@ -144,6 +144,7 @@ tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.BUILD
 tensorflow/third_party/systemlibs/astor.BUILD
 tensorflow/third_party/systemlibs/six.BUILD
+tensorflow/third_party/systemlibs/opt_einsum.BUILD
 tensorflow/third_party/systemlibs/absl_py.absl.testing.BUILD
 tensorflow/third_party/systemlibs/boringssl.BUILD
 tensorflow/third_party/systemlibs/nsync.BUILD
@@ -176,6 +177,11 @@ tensorflow/third_party/ngraph/nlohmann_json.BUILD
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
+tensorflow/third_party/mlir/BUILD
+tensorflow/third_party/mlir/mlir_configure.bzl
+tensorflow/third_party/mlir/bindings/python/BUILD
+tensorflow/third_party/mlir/test/BUILD
+tensorflow/third_party/mlir/tblgen.bzl
 tensorflow/third_party/gast.BUILD
 tensorflow/third_party/llvm/BUILD
 tensorflow/third_party/llvm/expand_cmake_vars.py
@@ -214,6 +220,7 @@ tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/pybind11.BUILD
+tensorflow/third_party/opt_einsum.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/sqlite.BUILD
 tensorflow/third_party/common.bzl

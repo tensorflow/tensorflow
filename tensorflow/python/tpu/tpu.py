@@ -1624,7 +1624,9 @@ def prune_unconnected_ops_from_xla(prune_graph):
       removing the tpu_replicate attribute.
   """
   # Scan over the top level graph and all function graphs.
-  for graph in [prune_graph] + list(prune_graph._functions.values()):  # pylint: disable=protected-access
+  for graph in [prune_graph] + [
+      f for f in prune_graph._functions.values() if isinstance(f, ops.Graph)  # pylint: disable=protected-access
+  ]:
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue
