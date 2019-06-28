@@ -20,7 +20,7 @@ import argparse
 
 
 def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
-    """Writes a Python that describes the build.
+  """Writes a Python that describes the build.
 
   Args:
     filename: filename to write to.
@@ -33,33 +33,33 @@ def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
     ValueError: If `key_value_list` includes the key "is_cuda_build", which
       would clash with one of the default fields.
   """
-    module_docstring = "\"\"\"Generates a Python module containing information "
-    module_docstring += "about the build.\"\"\""
+  module_docstring = "\"\"\"Generates a Python module containing information "
+  module_docstring += "about the build.\"\"\""
 
-    build_config_rocm_bool = "False"
-    build_config_cuda_bool = "False"
+  build_config_rocm_bool = "False"
+  build_config_cuda_bool = "False"
 
-    if is_config_rocm == "True":
-        build_config_rocm_bool = "True"
-    elif is_config_cuda == "True":
-        build_config_cuda_bool = "True"
+  if is_config_rocm == "True":
+    build_config_rocm_bool = "True"
+  elif is_config_cuda == "True":
+    build_config_cuda_bool = "True"
 
-    key_value_pair_stmts = []
-    if key_value_list:
-        for arg in key_value_list:
-            key, value = arg.split("=")
-            if key == "is_cuda_build":
-                raise ValueError(
-                    "The key \"is_cuda_build\" cannot be passed as one of "
-                    "the --key_value arguments.")
-            if key == "is_rocm_build":
-                raise ValueError(
-                    "The key \"is_rocm_build\" cannot be passed as one of "
-                    "the --key_value arguments.")
-            key_value_pair_stmts.append("%s = %r" % (key, value))
-    key_value_pair_content = "\n".join(key_value_pair_stmts)
+  key_value_pair_stmts = []
+  if key_value_list:
+    for arg in key_value_list:
+      key, value = arg.split("=")
+      if key == "is_cuda_build":
+        raise ValueError(
+            "The key \"is_cuda_build\" cannot be passed as one of "
+            "the --key_value arguments.")
+      if key == "is_rocm_build":
+        raise ValueError(
+            "The key \"is_rocm_build\" cannot be passed as one of "
+            "the --key_value arguments.")
+      key_value_pair_stmts.append("%s = %r" % (key, value))
+  key_value_pair_content = "\n".join(key_value_pair_stmts)
 
-    contents = """
+  contents = """
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -85,7 +85,7 @@ is_cuda_build = %s
 %s
 """ % (module_docstring, build_config_rocm_bool, build_config_cuda_bool,
        key_value_pair_content)
-    open(filename, "w").write(contents)
+  open(filename, "w").write(contents)
 
 
 parser = argparse.ArgumentParser(
@@ -109,9 +109,9 @@ parser.add_argument("--key_value",
 args = parser.parse_args()
 
 if (args.raw_generate is not None) and (args.is_config_cuda is not None) and (
-        args.is_config_rocm is not None):
-    write_build_info(args.raw_generate, args.is_config_cuda,
-                     args.is_config_rocm, args.key_value)
+    args.is_config_rocm is not None):
+  write_build_info(args.raw_generate, args.is_config_cuda,
+                   args.is_config_rocm, args.key_value)
 else:
-    raise RuntimeError(
-        "--raw_generate, --is_config_cuda and --is_config_rocm must be used")
+  raise RuntimeError(
+      "--raw_generate, --is_config_cuda and --is_config_rocm must be used")
