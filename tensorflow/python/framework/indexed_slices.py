@@ -188,7 +188,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
   value_type = property(lambda self: IndexedSlices)
 
   def __init__(self, shape=None, dtype=dtypes.float32,
-               indices_dtype=dtypes.int64, dense_shape_dtype=True,
+               indices_dtype=dtypes.int64, dense_shape_dtype=None,
                indices_shape=None):
     """Constructs a type specification for a `tf.IndexedSlices`.
 
@@ -226,7 +226,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
     if self._dense_shape_dtype is not None:
       specs.append(
           tensor_spec.TensorSpec([self._shape.ndims], self._dense_shape_dtype))
-    return specs
+    return tuple(specs)
 
   def _to_components(self, value):
     if value.dense_shape is None:

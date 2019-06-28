@@ -37,7 +37,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
@@ -47,7 +46,7 @@ from tensorflow.python.platform import test
 #
 # TODO(jsimsa): Add tests for OptionalStructure and DatasetStructure.
 class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
-                    ragged_test_util.RaggedTensorTestCase):
+                    test_util.TensorFlowTestCase):
 
   # pylint: disable=g-long-lambda,protected-access
   @parameterized.named_parameters(
@@ -348,7 +347,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       elif isinstance(
           b,
           (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
-        self.assertRaggedEqual(b, a)
+        self.assertAllEqual(b, a)
       else:
         self.assertAllEqual(b, a)
 
@@ -707,7 +706,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       if sparse_tensor.is_sparse(expected):
         self.assertSparseValuesEqual(expected, actual)
       elif ragged_tensor.is_ragged(expected):
-        self.assertRaggedEqual(expected, actual)
+        self.assertAllEqual(expected, actual)
       else:
         self.assertAllEqual(expected, actual)
 

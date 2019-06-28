@@ -42,6 +42,8 @@ message AutotuneResult {
       ConvKey reference_conv = 11;
       GemmKey reference_gemm = 12;
     }
+
+    int64 buffer_address = 13;
   }
 
   message ConvKey {
@@ -63,7 +65,7 @@ message AutotuneResult {
     GemmKey gemm = 6;
   }
 
-  // Next ID: 12
+  // Next ID: 14
 }
 
 message AutotuningLog {

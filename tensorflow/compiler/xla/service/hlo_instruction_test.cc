@@ -984,12 +984,13 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
 
   int visit_num = 0;
   absl::flat_hash_map<HloInstruction*, int> visit_order;
-  EXPECT_IS_OK(add->Accept([&visit_num, &visit_order](HloInstruction* inst) {
+  FunctionVisitor visitor([&visit_num, &visit_order](HloInstruction* inst) {
     EXPECT_FALSE(visit_order.contains(inst));
     visit_order[inst] = visit_num;
     visit_num++;
     return Status::OK();
-  }));
+  });
+  EXPECT_IS_OK(add->Accept(&visitor));
 
   EXPECT_EQ(0, visit_order.at(param));
   // negate and exp can be visited in an arbitrary order.

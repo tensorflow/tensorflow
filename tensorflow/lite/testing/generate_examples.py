@@ -73,6 +73,10 @@ parser.add_argument(
     "--make_edgetpu_tests",
     action="store_true",
     help="Whether to generate test cases for edgetpu.")
+parser.add_argument(
+    "--make_forward_compat_test",
+    action="store_true",
+    help="Make tests by setting TF forward compatibility horizon to the future")
 
 
 # Toco binary path provided by the generate rule.
@@ -90,6 +94,7 @@ def main(unused_args):
   options.save_graphdefs = FLAGS.save_graphdefs
   options.run_with_flex = FLAGS.run_with_flex
   options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
+  options.make_forward_compat_test = FLAGS.make_forward_compat_test
 
   generate_examples_lib.generate_examples(options)
 

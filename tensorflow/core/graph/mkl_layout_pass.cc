@@ -650,6 +650,31 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          // CheckForMklOp
          FuseConv2D,
          CopyAttrsConv});
+
+    // Transpose + Conv3d + Transpose:
+    std::vector<int> transpose_to_ndhwc = {NCDHW::dim::N, NCDHW::dim::D,
+                                           NCDHW::dim::H, NCDHW::dim::W,
+                                           NCDHW::dim::C};
+    std::vector<int> transpose_to_ncdhw = {NDHWC::dim::N, NDHWC::dim::C,
+                                           NDHWC::dim::D, NDHWC::dim::H,
+                                           NDHWC::dim::W};
+
+    auto CheckForTransposeToNDHWC =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_ndhwc);
+    auto CheckForConv3dOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.conv3d);
+    auto CheckForTransposeToNCDHW =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_ncdhw);
+    auto FuseConv3D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCDHW");
+
+    finfo_.push_back(
+        {"transpose-elimination for Conv3D",
+         {CheckForTransposeToNDHWC, CheckForConv3dOp, CheckForTransposeToNCDHW},
+         // CheckForMklOp
+         FuseConv3D,
+         CopyAttrsConv});
   }
 
   // Standard interface to run pass

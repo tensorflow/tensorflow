@@ -178,6 +178,8 @@ load(
     "mkl_deps",
 )
 
+package_group(name = "experimental_access")
+
 exports_files(["ops/ops.pbtxt"])
 
 # -----------------------------------------------------------------------------
@@ -661,6 +663,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -784,6 +787,7 @@ cc_library(
         "lib/core/threadpool_options.h",
     ],
     visibility = [
+        ":experimental_access",
         "//tensorflow/cc:__pkg__",
     ],
     deps = [

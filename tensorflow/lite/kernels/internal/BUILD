@@ -807,17 +807,11 @@ cc_library(
     name = "cpu_check",
     hdrs = [
         "optimized/cpu_check.h",
+        "optimized/neon_check.h",
     ],
     deps = [
         "//tensorflow/lite/kernels:cpu_backend_context",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "@androidndk//:cpufeatures",
-            ],
-            "//conditions:default": [],
-        },
-    ) + select({
+    ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
         ":k8": tflite_deps_intel,

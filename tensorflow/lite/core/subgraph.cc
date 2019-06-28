@@ -135,6 +135,9 @@ class InterpreterInfo : public GraphInfo {
     int node_index = subgraph_->execution_plan()[index];
     return subgraph_->nodes_and_registration()[node_index].first;
   }
+  size_t node_index(size_t index) const override {
+    return subgraph_->execution_plan()[index];
+  }
   const std::vector<int>& inputs() const override {
     return subgraph_->inputs();
   }

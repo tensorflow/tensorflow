@@ -46,10 +46,16 @@ constexpr int kWidth = 10;
 constexpr int kHeight = 10;
 constexpr int kDepthIn = 8;
 constexpr int kKernel = 2;
-constexpr int kStride = 2;
+constexpr int kStride1 = 2;
+constexpr int kStride2 = 4;
 constexpr int kOutWidth = 5;
 constexpr int kOutHeight = 5;
 constexpr int kDepthOut = 16;
+constexpr int kDilation = 2;
+constexpr int kPaddingTop = 1;
+constexpr int kPaddingBottom = 2;
+constexpr int kPaddingLeft = 3;
+constexpr int kPaddingRight = 4;
 constexpr char kSrcFormat[] = "NHWC";
 constexpr char kDstFormat[] = "NCHW";
 constexpr char kGPU[] = "GPU";
@@ -104,7 +110,7 @@ Output SimpleConv2D(const Scope* scope, const DataType& data_type = DT_FLOAT) {
                          {kHeight, kWidth, kDepthIn, kDepthOut}, data_type);
   auto conv2d = ops::Conv2D(
       scope->WithOpName("conv2d").WithDevice("/device:GPU:0"), input, filter,
-      {1, 2, 4, 1}, "SAME", ops::Conv2D::DataFormat(kSrcFormat));
+      {1, kStride1, kStride2, 1}, "SAME", ops::Conv2D::DataFormat(kSrcFormat));
 
   return conv2d;
 }
@@ -158,7 +164,7 @@ Status CreateSimpleMaxPoolGrad(GraphDef* graph) {
   auto maxpool_grad = ops::internal::MaxPoolGrad(
       scope.WithOpName("maxpool_grad").WithDevice("/device:GPU:0"), input,
       output_data, output_grad, {1, kKernel, kKernel, 1},
-      {1, kStride, kStride, 1}, "VALID");
+      {1, kStride1, kStride1, 1}, "VALID");
 
   auto output = ops::Identity(scope.WithOpName("output"), maxpool_grad);
 
@@ -177,7 +183,8 @@ Status CreateSimpleBiasAddGrad(GraphDef* graph, const Input& shape) {
 }
 
 Status CreateSimpleConv2DBackpropFilter(GraphDef* graph,
-                                        const DataType& data_type = DT_FLOAT) {
+                                        const DataType& data_type = DT_FLOAT,
+                                        absl::string_view padding = "SAME") {
   Scope scope = Scope::NewRootScope();
   auto input =
       ops::RandomUniform(scope.WithOpName("input"),
@@ -185,12 +192,27 @@ Status CreateSimpleConv2DBackpropFilter(GraphDef* graph,
   auto out_backprop =
       ops::RandomUniform(scope.WithOpName("out_backprop"),
                          {kBatchSize, kHeight, kWidth, kDepthOut}, data_type);
-  auto conv2d_backprop_filter = ops::Conv2DBackpropFilter(
-      scope.WithOpName("conv2d_backprop_filter").WithDevice("/device:GPU:0"),
-      input, {kHeight, kWidth, kDepthIn, kDepthOut}, out_backprop, {1, 2, 4, 1},
-      "SAME", ops::Conv2DBackpropFilter::DataFormat(kSrcFormat));
-  auto output =
-      ops::Identity(scope.WithOpName("output"), conv2d_backprop_filter);
+  if (padding == "EXPLICIT") {
+    auto attrs = ops::Conv2DBackpropFilter::Attrs()
+                     .Dilations({1, kDilation, kDilation, 1})
+                     .ExplicitPaddings({0, 0, kPaddingTop, kPaddingBottom,
+                                        kPaddingLeft, kPaddingRight, 0, 0})
+                     .DataFormat(kSrcFormat);
+    auto conv2d_backprop_filter = ops::Conv2DBackpropFilter(
+        scope.WithOpName("conv2d_backprop_filter").WithDevice("/device:GPU:0"),
+        input, {kHeight, kWidth, kDepthIn, kDepthOut}, out_backprop,
+        {1, 2, 4, 1}, padding, attrs);
+    auto output =
+        ops::Identity(scope.WithOpName("output"), conv2d_backprop_filter);
+  } else {
+    auto conv2d_backprop_filter = ops::Conv2DBackpropFilter(
+        scope.WithOpName("conv2d_backprop_filter").WithDevice("/device:GPU:0"),
+        input, {kHeight, kWidth, kDepthIn, kDepthOut}, out_backprop,
+        {1, 2, 4, 1}, padding,
+        ops::Conv2DBackpropFilter::DataFormat(kSrcFormat));
+    auto output =
+        ops::Identity(scope.WithOpName("output"), conv2d_backprop_filter);
+  }
 
   return scope.ToGraphDef(graph);
 }
@@ -211,7 +233,7 @@ Status CreateSimpleConv2DBackpropInput(GraphDef* graph,
                          {kBatchSize, kHeight, kWidth, kDepthOut}, data_type);
   auto conv2d_backprop_input = ops::Conv2DBackpropInput(
       scope.WithOpName("conv2d_backprop_input").WithDevice("/device:GPU:0"),
-      input_sizes, filter, out_backprop, {1, kStride, kStride, 1}, "VALID");
+      input_sizes, filter, out_backprop, {1, kStride1, kStride1, 1}, "VALID");
   auto output =
       ops::Identity(scope.WithOpName("output"), conv2d_backprop_input);
 
@@ -357,7 +379,7 @@ TEST_F(TransposerTest, CreateConstPermNode) {
   utils::MutationNewNode added_node;
   EXPECT_FALSE(context.graph_view->HasNode(kNodeName));
   TF_ASSERT_OK(transposer.CreateConstPermNode(&context, kNodeName, kDevice,
-                                              {0, 3, 1, 2}, &added_node));
+                                              {0, 3, 1, 2}, "", &added_node));
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   utils::MutableNodeView* const_perm_node =
@@ -685,6 +707,13 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestConv2D) {
   VerifyRegularFaninMatch(conv2d_node, 0, input_transpose_node->GetName(), 0);
   VerifyRegularFaninMatch(conv2d_node, 1, "filter", 0);
   VerifyDataFormatAttributeMatch(conv2d_node, kDstFormat);
+  const auto* strides_attr = conv2d_node->GetAttr("strides");
+  ASSERT_NE(strides_attr, nullptr);
+  ASSERT_EQ(strides_attr->list().i_size(), 4);
+  EXPECT_EQ(strides_attr->list().i(0), 1);
+  EXPECT_EQ(strides_attr->list().i(1), 1);
+  EXPECT_EQ(strides_attr->list().i(2), kStride1);
+  EXPECT_EQ(strides_attr->list().i(3), kStride2);
 
   auto* output_transpose_node = context.graph_view->GetNode(
       "conv2d-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
@@ -869,6 +898,46 @@ TEST_F(TransposerTest, Conv2DBackpropFilterTransposerTest) {
   ASSERT_NE(output_node, nullptr);
   ASSERT_EQ(output_node->NumRegularFanins(), 1);
   VerifyRegularFaninMatch(output_node, 0, conv2d_bf_node->GetName(), 0);
+}
+
+TEST_F(TransposerTest, NodeAttributes) {
+#if !GOOGLE_CUDA
+  GTEST_SKIP() << "CUDA is not enabled";
+#endif  // !GOOGLE_CUDA
+  GrapplerItem item;
+  TransposeContext context;
+  TF_ASSERT_OK(
+      CreateSimpleConv2DBackpropFilter(&item.graph, DT_FLOAT, "EXPLICIT"));
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
+
+  Conv2DBackpropFilterTransposer transposer;
+  auto* conv2d_bf = context.graph_view->GetNode("conv2d_backprop_filter");
+  ASSERT_NE(conv2d_bf, nullptr);
+  TF_ASSERT_OK(transposer.TransposeNode(&context, conv2d_bf));
+
+  auto* conv2d_bf_node = context.graph_view->GetNode("conv2d_backprop_filter");
+  ASSERT_NE(conv2d_bf_node, nullptr);
+  ASSERT_EQ(conv2d_bf_node->NumRegularFanins(), 3);
+  VerifyDataFormatAttributeMatch(conv2d_bf_node, kDstFormat);
+  auto* dilations_attr = conv2d_bf_node->GetAttr("dilations");
+  ASSERT_NE(dilations_attr, nullptr);
+  ASSERT_EQ(dilations_attr->list().i_size(), 4);
+  EXPECT_EQ(dilations_attr->list().i(0), 1);
+  EXPECT_EQ(dilations_attr->list().i(1), 1);
+  EXPECT_EQ(dilations_attr->list().i(2), kDilation);
+  EXPECT_EQ(dilations_attr->list().i(3), kDilation);
+  auto* explicit_paddings_attr = conv2d_bf_node->GetAttr("explicit_paddings");
+  ASSERT_NE(explicit_paddings_attr, nullptr);
+  ASSERT_EQ(explicit_paddings_attr->list().i_size(), 8);
+  EXPECT_EQ(explicit_paddings_attr->list().i(0), 0);
+  EXPECT_EQ(explicit_paddings_attr->list().i(1), 0);
+  EXPECT_EQ(explicit_paddings_attr->list().i(2), 0);
+  EXPECT_EQ(explicit_paddings_attr->list().i(3), 0);
+  EXPECT_EQ(explicit_paddings_attr->list().i(4), kPaddingTop);
+  EXPECT_EQ(explicit_paddings_attr->list().i(5), kPaddingBottom);
+  EXPECT_EQ(explicit_paddings_attr->list().i(6), kPaddingLeft);
+  EXPECT_EQ(explicit_paddings_attr->list().i(7), kPaddingRight);
 }
 
 TEST_F(TransposerTest, Conv2DBackpropInputTransposerTest) {
@@ -3645,7 +3714,7 @@ TEST_F(TransposerNoTransposeTest, FusedBatchNormGrad) {
 TEST(PermutationTest, PermutesVector) {
   std::vector<int64> input{32, 16, 8, 4};
   std::vector<int64> expected{4, 8, 16, 32};
-  TF_ASSERT_OK(Permute({3, 2, 1, 0}, &input));
+  TF_ASSERT_OK(PermuteSingle({3, 2, 1, 0}, &input));
   ASSERT_EQ(input.size(), 4);
   for (int i = 0; i < input.size(); ++i) {
     EXPECT_EQ(input[i], expected[i]);
@@ -3656,21 +3725,43 @@ TEST(PermutationTest, PermutesRepeatedField) {
   TensorShapeProto input_shape = MakeTensorShapeFromDimensions({1, 2, 3, 4});
   TensorShapeProto expected_shape = MakeTensorShapeFromDimensions({1, 4, 2, 3});
 
-  TF_ASSERT_OK(Permute({0, 3, 1, 2}, input_shape.mutable_dim()));
+  TF_ASSERT_OK(PermuteSingle({0, 3, 1, 2}, input_shape.mutable_dim()));
   EXPECT_EQ(input_shape.DebugString(), expected_shape.DebugString());
+}
+
+TEST(PermutationTest, PermutesDoubleRepeatedField) {
+  {
+    // NHWC -> NCHW
+    TensorShapeProto input =
+        MakeTensorShapeFromDimensions({1, 2, 3, 4, 5, 6, 7, 8});
+    TensorShapeProto expected =
+        MakeTensorShapeFromDimensions({1, 2, 7, 8, 3, 4, 5, 6});
+
+    TF_ASSERT_OK(PermuteDouble({0, 3, 1, 2}, input.mutable_dim()));
+    EXPECT_EQ(input.DebugString(), expected.DebugString());
+  }
+  {
+    // NCHW -> NHWC
+    TensorShapeProto input =
+        MakeTensorShapeFromDimensions({1, 2, 3, 4, 5, 6, 7, 8});
+    TensorShapeProto expected =
+        MakeTensorShapeFromDimensions({1, 2, 5, 6, 7, 8, 3, 4});
+    TF_ASSERT_OK(PermuteDouble({0, 2, 3, 1}, input.mutable_dim()));
+    EXPECT_EQ(input.DebugString(), expected.DebugString());
+  }
 }
 
 TEST(PermutationTest, PermutesDataFormat) {
   string input = "NHWC";
   string expected = "NCHW";
-  TF_ASSERT_OK(Permute({0, 3, 1, 2}, &input));
+  TF_ASSERT_OK(PermuteSingle({0, 3, 1, 2}, &input));
   EXPECT_EQ(input, expected);
 }
 
 TEST(PermutationTest, PermutesString) {
   string input = "ABCD";
   string expected = "ACBD";
-  TF_ASSERT_OK(Permute({0, 2, 1, 3}, &input));
+  TF_ASSERT_OK(PermuteSingle({0, 2, 1, 3}, &input));
   EXPECT_EQ(input, expected);
 }
 

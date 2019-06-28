@@ -43,7 +43,6 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
 void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                TF_Status* status) {
-  AttrValue attr_val;
 
   mutex_lock l(graph->mu);
   op->node.ClearAttr(attr_name);

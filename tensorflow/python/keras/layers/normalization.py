@@ -990,6 +990,8 @@ class LayerNormalization(Layer):
     else:
       self.beta = None
 
+    self.built = True
+
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape

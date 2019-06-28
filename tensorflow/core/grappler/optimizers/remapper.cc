@@ -823,6 +823,13 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
         IsInPreserveSet(ctx, relu_fanin_0_node_def))
       return false;
 
+    // Add node supports broadcasting, FusedBatchNormEx does not.
+    const auto& props =
+        ctx.graph_properties.GetInputProperties(relu_fanin_0_node_def->name());
+    if (props.size() < 2 ||
+        !ShapesSymbolicallyEqual(props[0].shape(), props[1].shape()))
+      return false;
+
     if (relu_fanin_0_node_view->NumRegularFanins() < 2) return false;
     const auto& add_regular_fanin_0 =
         relu_fanin_0_node_view->GetRegularFanin(0);

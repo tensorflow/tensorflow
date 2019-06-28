@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
@@ -258,7 +259,8 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
     auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
     auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
     auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
-    auto side_input = Placeholder(s.WithOpName("side_input"), DT_FLOAT);
+    auto side_input = Placeholder(s.WithOpName("side_input"), DT_FLOAT,
+                                  ops::Placeholder::Shape(input_shape));
     auto side_input_cast =
         ops::Cast(s.WithOpName("side_input_cast"), side_input, DT_HALF);
 

@@ -303,10 +303,27 @@ Status BuildComputation(
       handle = identity_op(handle);
 
       // Set layout of the retval to device representation layout.
-      if (resource->representation_shape().has_value()) {
-        retval_index_and_layout.emplace_back(
-            elems.size(), resource->representation_shape()->layout());
+      absl::optional<xla::Shape> representation_shape;
+      if (shape_representation_fn) {
+        TF_ASSIGN_OR_RETURN(
+            xla::Shape xla_shape,
+            shape_representation_fn(resource->shape(), resource->type()));
+        representation_shape = xla_shape;
       }
+      if (resource->representation_shape().has_value()) {
+        const xla::Shape& xla_shape = resource->representation_shape().value();
+        if (representation_shape) {
+          TF_RET_CHECK(
+              xla::ShapeUtil::Compatible(*representation_shape, xla_shape));
+        } else {
+          representation_shape = xla_shape;
+        }
+      }
+      if (representation_shape) {
+        retval_index_and_layout.emplace_back(elems.size(),
+                                             representation_shape->layout());
+      }
+
       elems.push_back(handle);
     }
   }

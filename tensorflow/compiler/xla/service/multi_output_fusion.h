@@ -104,11 +104,6 @@ class MultiOutputFusion : public HloModulePass {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
- protected:
-  void SetComputation(HloComputation* computation) {
-    computation_ = computation;
-  }
-
  private:
   // Update the internal data structures after instr1 and instr2 are fused into
   // one fusion instruction.

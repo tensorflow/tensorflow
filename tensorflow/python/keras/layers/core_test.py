@@ -79,6 +79,16 @@ class DropoutLayersTest(keras_parameterized.TestCase):
         kwargs={'rate': 0.5, 'data_format': 'channels_first'},
         input_shape=(2, 3, 4, 4, 5))
 
+  def test_dropout_partial_noise_shape(self):
+    inputs = keras.Input(shape=(5, 10))
+    layer = keras.layers.Dropout(0.5, noise_shape=(None, 1, None))
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    out = model(np.ones((20, 5, 10)), training=True)
+    out_np = keras.backend.get_value(out)
+    # Test that dropout mask is shared across second dim.
+    self.assertAllClose(out_np[:, 0, :], out_np[:, 1, :])
+
 
 @keras_parameterized.run_all_keras_modes
 class LambdaLayerTest(keras_parameterized.TestCase):

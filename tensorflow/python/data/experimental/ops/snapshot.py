@@ -61,7 +61,7 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         writer_path_prefix=self._writer_path_prefix,
         shard_size_bytes=self._shard_size_bytes,
         pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 

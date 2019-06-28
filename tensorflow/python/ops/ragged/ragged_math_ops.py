@@ -117,6 +117,9 @@ def _infer_matching_dtype(tensors, dtype_hierarchy):
   return [math_ops.cast(t, inferred_dtype) for t in tensors]
 
 
+ops.no_gradient('RaggedRange')
+
+
 #===============================================================================
 # ragged_segment_<AGGREGATE>
 #===============================================================================

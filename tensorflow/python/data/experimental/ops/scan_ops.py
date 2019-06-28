@@ -128,7 +128,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
         self._scan_func.function.captured_inputs,
         f=self._scan_func.function,
         preserve_cardinality=True,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
