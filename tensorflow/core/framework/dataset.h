@@ -321,7 +321,7 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::NumSchedulableCPUs();
+        runner_threadpool_size = port::MaxParallelism();
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
