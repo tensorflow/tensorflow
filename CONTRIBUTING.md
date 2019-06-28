@@ -2,7 +2,7 @@
 
 Everyone is welcome to contribute to MLIR. There are several ways of getting involved and contributing including reporting bugs, improving documentation, writing models or tutorials. 
 
-Please read our our [Code of Conduct](https://github.com/tensorflow/swift/blob/master/CODE_OF_CONDUCT.md) before participating.
+Please read our our [Code of Conduct](https://github.com/tensorflow/tensorflow/blob/master/CODE_OF_CONDUCT.md) before participating.
 
 ## Community Guidelines
 
@@ -24,12 +24,12 @@ Follow either of the two links above to access the appropriate CLA and instructi
 
 ### Contributing code
 
-If you have improvements to TensorFlow, send us your pull requests! For those
+If you have improvements to MLIR, send us your pull requests! For those
 just getting started, Github has a [howto](https://help.github.com/articles/using-pull-requests/).
 
 MLIR team members will be assigned to review your pull requests. Once the pull requests are approved and pass continuous integration checks, a team member will merge your pull request submitted to our internal repository. After the change has been submitted internally, your pull request will be merged automatically on GitHub.
 
-If you want to contribute, start working through the TensorFlow codebase, navigate to [Github "issues" tab](https://github.com/tensorflow/mlir/issues) and start looking through interesting issues. If you decide to start on an issue, leave a comment so that other people know that you're working on it. If you want to help out, but not alone, use the issue comment thread to coordinate.
+If you want to contribute, start working through the MLIR codebase, navigate to [Github "issues" tab](https://github.com/tensorflow/mlir/issues) and start looking through interesting issues. If you decide to start on an issue, leave a comment so that other people know that you're working on it. If you want to help out, but not alone, use the issue comment thread to coordinate.
 
 ### Contribution guidelines and standards
 
@@ -45,8 +45,8 @@ If you want to contribute, start working through the TensorFlow codebase, naviga
 
 Include a license at the top of new files.
 
-* [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
-* [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
+* [C/C++ license example](https://github.com/tensorflow/mlir/blob/master/examples/toy/Ch1/toyc.cpp)
+* [Python license example](https://github.com/tensorflow/mlir/blob/master/bindings/python/test/test_py2and3.py)
 
 #### C++ coding style
 
