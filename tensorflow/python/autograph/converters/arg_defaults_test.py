@@ -27,7 +27,10 @@ from tensorflow.python.platform import test
 class ArgDefaultsTransformerTest(converter_testing.TestCase):
 
   def assertTransformedFirstLineIs(self, node, expected):
-    self.assertEqual(compiler.ast_to_source(node).split('\n')[0], expected)
+    self.assertEqual(
+        compiler.ast_to_source(node,
+                               include_encoding_marker=False).split('\n')[0],
+        expected)
 
   def test_no_args(self):
 
