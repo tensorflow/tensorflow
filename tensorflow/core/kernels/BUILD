@@ -3534,7 +3534,12 @@ cc_library(
 
 tf_kernel_library(
     name = "roll_op",
-    prefix = "roll_op",
+    srcs = ["roll_op.cc"],
+    hdrs = ["roll_op.h"],
+    gpu_srcs = [
+        "roll_op_gpu.cu.cc",
+        "roll_op.h",
+    ],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
