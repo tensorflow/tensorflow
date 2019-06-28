@@ -41,7 +41,6 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import nest
 
 
 def _per_replica_execution_function(model, mode):
@@ -600,8 +599,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                                   optimizer=model.optimizer)
     dist_utils.validate_inputs(x, y)
 
-    batch_size, steps_per_epoch = self._process_batch_and_step_size(
-        model, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+    batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps_per_epoch,
+        ModeKeys.TRAIN)
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
     dataset = model._distribution_standardize_user_data(
@@ -627,8 +627,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
       val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
           validation_data)
       dist_utils.validate_inputs(val_x, val_y)
-      _, validation_steps = self._process_batch_and_step_size(
-          model, val_x, batch_size, validation_steps, ModeKeys.TEST)
+      _, validation_steps = dist_utils.process_batch_and_step_size(
+          model._distribution_strategy, val_x, batch_size, validation_steps,
+          ModeKeys.TEST)
 
       val_dataset = model._distribution_standardize_user_data(
           val_x, val_y,
@@ -690,8 +691,8 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                **kwargs):
     """Evaluate loop for Distribution Strategies."""
     dist_utils.validate_inputs(x, y)
-    batch_size, steps = self._process_batch_and_step_size(
-        model, x, batch_size, steps, ModeKeys.TEST)
+    batch_size, steps = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps, ModeKeys.TEST)
     batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
     dataset = model._distribution_standardize_user_data(
         x, y,
@@ -729,8 +730,8 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
               **kwargs):
     """Predict loop for Distribution Strategies."""
     dist_utils.validate_inputs(x=x, y=None)
-    batch_size, steps = self._process_batch_and_step_size(
-        model, x, batch_size, steps, ModeKeys.PREDICT)
+    batch_size, steps = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps, ModeKeys.PREDICT)
     batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
     dataset = model._distribution_standardize_user_data(
         x,
@@ -752,22 +753,6 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         verbose=verbose,
         steps=steps,
         callbacks=callbacks)
-
-  def _process_batch_and_step_size(
-      self, model, inputs, batch_size, steps_per_epoch, mode):
-    first_x_value = nest.flatten(inputs)[0]
-    if isinstance(first_x_value, np.ndarray):
-      # Until support for partial batch is implemented across all
-      # functions and distribution strategy, we pass `mode` to selectively
-      # relax the constraint to consume all the training samples.
-      steps_per_epoch, batch_size = (
-          dist_utils.get_input_params(
-              model._distribution_strategy,
-              first_x_value,
-              steps_per_epoch,
-              batch_size,
-              mode=mode))
-    return batch_size, steps_per_epoch
 
 
 def train_with_multi_worker(fn):
