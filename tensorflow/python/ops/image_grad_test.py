@@ -24,8 +24,10 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.platform import test
 
 
@@ -455,6 +457,38 @@ class CropAndResizeOpTest(test.TestCase):
                     x_init_value=[image, boxes])
 
               self.assertLess(err, 2e-3)
+
+@test_util.run_all_in_graph_and_eager_modes
+class RGBToHSVOpTest(test.TestCase):
+
+  TYPES = [np.float32, np.float64]
+
+  def testShapeIsCorrectAfterOp(self):
+    in_shape = [2, 20, 30, 3]
+    out_shape = [2, 20, 30, 3]
+
+    for nptype in self.TYPES:
+      x = np.random.randint(0, high=255, size=[2, 20, 30, 3]).astype(nptype)
+      with self.cached_session(use_gpu=True):
+        rgb_input_tensor = constant_op.constant(x, shape=in_shape)
+        hsv_out = gen_image_ops.rgb_to_hsv(rgb_input_tensor)
+        self.assertEqual(out_shape, list(hsv_out.get_shape()))
+
+        hsv_out = self.evaluate(hsv_out)
+      self.assertEqual(out_shape, list(hsv_out.shape))
+
+  def testRGBToHSVGrad(self):
+    in_shape = [2, 20, 30, 3]
+    def f(x):
+      return gen_image_ops.rgb_to_hsv(x)
+
+    x = np.random.rand(2, 20, 30, 3).astype(np.float32)
+    rgb_input_tensor = constant_op.constant(x, shape=in_shape)
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        f, [rgb_input_tensor])
+    self.assertLess(
+        gradient_checker_v2.max_error(analytical, numerical), 1e-2)
+
 
 
 if __name__ == "__main__":

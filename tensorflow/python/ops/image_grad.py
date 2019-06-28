@@ -23,8 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.array_ops import stack
-
 
 @ops.RegisterGradient("ResizeNearestNeighbor")
 def _ResizeNearestNeighborGrad(op, grad):
@@ -157,7 +155,7 @@ def _CropAndResizeGrad(op, grad):
   return [grad0, grad1, None, None]
 
 
-def _CustomReciprocal(x, my_eps=1e-10):
+def _CustomReciprocal(x):
   """
   Performs reciprocal with an eps added to the input. This is to avoid
   inversion errors or divide by zeros or NaNs.
@@ -360,15 +358,15 @@ def _RGBToHSVGrad(op, grad):
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
 
   # Gradients wrt to inputs
-  dv_drgb = stack([grad[..., 2] * dv_dr,
-                   grad[..., 2] * dv_dg,
-                   grad[..., 2] * dv_db], axis=-1)
-  ds_drgb = stack([grad[..., 1] * ds_dr,
-                   grad[..., 1] * ds_dg,
-                   grad[..., 1] * ds_db], axis=-1)
-  dh_drgb = stack([grad[..., 0] * dh_dr,
-                   grad[..., 0] * dh_dg,
-                   grad[..., 0] * dh_db], axis=-1)
+  dv_drgb = array_ops.stack([grad[..., 2] * dv_dr,
+                             grad[..., 2] * dv_dg,
+                             grad[..., 2] * dv_db], axis=-1)
+  ds_drgb = array_ops.stack([grad[..., 1] * ds_dr,
+                             grad[..., 1] * ds_dg,
+                             grad[..., 1] * ds_db], axis=-1)
+  dh_drgb = array_ops.stack([grad[..., 0] * dh_dr,
+                             grad[..., 0] * dh_dg,
+                             grad[..., 0] * dh_db], axis=-1)
 
   gradient_input = math_ops.add(math_ops.add(dv_drgb, ds_drgb), dh_drgb)
 
