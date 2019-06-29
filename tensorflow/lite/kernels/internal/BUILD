@@ -568,16 +568,62 @@ cc_library(
         ":common",
         ":compatibility",
         ":cpu_check",
-        ":neon_tensor_utils",
-        ":portable_tensor_utils",
-        ":sse_tensor_utils",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
+        "@arm_neon_2_x86_sse",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
-        "@arm_neon_2_x86_sse",
         "@gemmlowp//:fixedpoint",
-    ],
+    ] + select({
+        ":aarch64": [
+            ":neon_tensor_utils",
+        ],
+        ":arm": [
+            ":neon_tensor_utils",
+        ],
+        ":arm64-v8a": [
+            ":neon_tensor_utils",
+        ],
+        ":armeabi-v7a": [
+            ":neon_tensor_utils",
+        ],
+        ":armv7a": [
+            ":neon_tensor_utils",
+        ],
+        ":haswell": [
+            ":sse_tensor_utils",
+        ],
+        ":ios_armv7": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_x86_64": [
+            ":sse_tensor_utils",
+        ],
+        ":x86_64": [
+            ":sse_tensor_utils",
+        ],
+        ":x86": [
+            ":sse_tensor_utils",
+        ],
+        ":k8": [
+            ":sse_tensor_utils",
+        ],
+        ":darwin": [
+            ":sse_tensor_utils",
+        ],
+        ":darwin_x86_64": [
+            ":sse_tensor_utils",
+        ],
+        ":freebsd": [
+            ":sse_tensor_utils",
+        ],
+        "//conditions:default": [
+            ":portable_tensor_utils",
+        ],
+    }),
 )
 
 cc_library(
