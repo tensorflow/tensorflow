@@ -24,32 +24,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if defined(INTEL_MKL_ML_ONLY) || defined(INTEL_MKL_DNN_ONLY)
-#ifndef INTEL_MKL
-#error "INTEL_MKL_{ML,DNN}_ONLY require INTEL_MKL"
-#endif
-#endif
-
-#if defined(INTEL_MKL_ML_ONLY) && defined(INTEL_MKL_DNN_ONLY)
-#error "at most one of INTEL_MKL_ML_ONLY and INTEL_MKL_DNN_ONLY may be defined"
-#endif
-
-#ifdef INTEL_MKL_ML_ONLY
-#error "Please use INTEL MKL DNN (the default option for --config=mkl)."
-#endif
-
-#ifdef INTEL_MKL_ML_ONLY
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "mkl_service.h"
-#include "mkl_trans.h"
-#endif
-
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -58,16 +39,11 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#ifndef INTEL_MKL_ML_ONLY
-#include "mkldnn.hpp"
-#include "tensorflow/core/lib/core/stringpiece.h"
-
 using mkldnn::engine;
 using mkldnn::memory;
 using mkldnn::padding_kind;
 using mkldnn::primitive;
 using mkldnn::reorder;
-#endif
 
 #ifdef _WIN32
 typedef unsigned int uint;
@@ -83,7 +59,6 @@ namespace tensorflow {
 // MKL operation, and did not go through a conversion to a standard
 // Tensorflow tensor.
 
-// For use with MKL ML, has been deprecated
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
 
 // The dimensions order that MKL-DNN internally uses for 2D activations
@@ -140,7 +115,7 @@ typedef enum {
   MKL_GROUP_FILTER_DIM_W = 4
 } MklDnnFilterGroupDims;
 
-// Enum used to templatize MklOp kernel implementations
+// Enum used to templatize MklOp kernel implementation
 // that support both fp32 and int8 versions.
 enum class MklQuantization {
   QUANTIZED_VERSION,
@@ -148,269 +123,6 @@ enum class MklQuantization {
 };
 
 static const int kSmallBatchSize = 32;
-
-#ifdef INTEL_MKL_ML_ONLY
-class MklShape {
- public:
-  MklShape() {}
-  TF_DISALLOW_COPY_AND_ASSIGN(MklShape);  // Cannot copy
-
-  ~MklShape() {
-    if (sizes_) delete[] sizes_;
-    if (strides_) delete[] strides_;
-    if (mklLayout_) CHECK_EQ(dnnLayoutDelete_F32(mklLayout_), E_SUCCESS);
-    if (tfLayout_) CHECK_EQ(dnnLayoutDelete_F32(tfLayout_), E_SUCCESS);
-    if (tf_to_mkl_dim_map_) delete[] tf_to_mkl_dim_map_;
-  }
-
-  const bool IsMklTensor() const { return isMklTensor_; }
-
-  void SetMklTensor(const bool isMklTensor) { isMklTensor_ = isMklTensor; }
-
-  void SetDimensions(const size_t dimension) { dimension_ = dimension; }
-
-  void SetMklLayout(dnnLayout_t mklLayout) { mklLayout_ = mklLayout; }
-
-  void SetMklLayout(const void* primitive, size_t resourceType) {
-    CHECK_EQ(
-        dnnLayoutCreateFromPrimitive_F32(&mklLayout_, (dnnPrimitive_t)primitive,
-                                         (dnnResourceType_t)resourceType),
-        E_SUCCESS);
-  }
-
-  void SetTfLayout(const size_t dimension, const size_t* sizes,
-                   const size_t* strides) {
-    dimension_ = dimension;
-    if (dimension > 0) {  // MKl doesn't support zero dimension tensors
-      sizes_ = new size_t[dimension];
-      strides_ = new size_t[dimension];
-
-      for (int ii = 0; ii < dimension; ii++) {
-        sizes_[ii] = sizes[ii];
-        strides_[ii] = strides[ii];
-      }
-      CHECK_EQ(dnnLayoutCreate_F32(&tfLayout_, dimension, sizes, strides),
-               E_SUCCESS);
-    }
-  }
-
-  // Default case - MKL dim ordering is opposite of TF dim ordering
-  // MKL -> (DIMS-1)...0 where (DIMS-1) is outermost dim and 0 is innermost dim
-  // TF  -> 0...(DIMS-1) where 0 is outermost dim and (DIMS-1) is innermost dim
-  // For layers that rely on data_format semantics (conv, pooling etc.)
-  // or operate only on certain dimensions (relu, concat, split etc.),
-  // Mkl APIs might require us to reorder these dimensions. In such cases,
-  // kernels should explicitly set this map
-  void SetTfDimOrder(const size_t dimension) {
-    CHECK(dimension == dimension_);
-    if (tf_to_mkl_dim_map_ == nullptr) {
-      tf_to_mkl_dim_map_ = new size_t[dimension];
-    }
-    for (size_t ii = 0; ii < dimension; ii++) {
-      tf_to_mkl_dim_map_[ii] = dimension - (ii + 1);
-    }
-  }
-
-  void SetTfDimOrder(const size_t dimension, const size_t* tf_to_mkl_dim_map) {
-    CHECK(dimension == dimension_);
-    if (tf_to_mkl_dim_map_ == nullptr) {
-      tf_to_mkl_dim_map_ = new size_t[dimension];
-    }
-    for (size_t ii = 0; ii < dimension; ii++) {
-      tf_to_mkl_dim_map_[ii] = tf_to_mkl_dim_map[ii];
-    }
-  }
-
-  void SetTfDimOrder(const size_t dimension, TensorFormat data_format) {
-    CHECK_EQ(dimension, 4);
-    CHECK(dimension == dimension_);
-    if (tf_to_mkl_dim_map_ == nullptr) {
-      tf_to_mkl_dim_map_ = new size_t[dimension];
-    }
-    tf_to_mkl_dim_map_[GetTensorDimIndex<2>(data_format, 'W')] = MklDims::W;
-    tf_to_mkl_dim_map_[GetTensorDimIndex<2>(data_format, 'H')] = MklDims::H;
-    tf_to_mkl_dim_map_[GetTensorDimIndex<2>(data_format, 'C')] = MklDims::C;
-    tf_to_mkl_dim_map_[GetTensorDimIndex<2>(data_format, 'N')] = MklDims::N;
-  }
-
-  const dnnLayout_t GetMklLayout() const { return mklLayout_; }
-  const dnnLayout_t GetTfLayout() const { return tfLayout_; }
-  const dnnLayout_t GetCurLayout() const {
-    return isMklTensor_ ? mklLayout_ : tfLayout_;
-  }
-  size_t GetDimension() const { return dimension_; }
-  const size_t* GetSizes() const { return sizes_; }
-  int64 dim_size(int index) const { return sizes_[index]; }
-  int64 tf_dim_size(int index) const {
-    return sizes_[tf_to_mkl_dim_map_[index]];
-  }
-  const size_t* GetStrides() const { return strides_; }
-  const size_t* GetTfToMklDimMap() const { return tf_to_mkl_dim_map_; }
-  size_t tf_dim_idx(int index) const { return tf_to_mkl_dim_map_[index]; }
-
-  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
-  // corresponds to MKL's Channel dimension.
-  bool IsMklChannelDim(int d) const { return tf_dim_idx(d) == MklDims::C; }
-  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
-  // corresponds to MKL's Batch dimension.
-  bool IsMklBatchDim(int d) const { return tf_dim_idx(d) == MklDims::N; }
-  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
-  // corresponds to MKL's Width dimension.
-  bool IsMklWidthDim(int d) const { return tf_dim_idx(d) == MklDims::W; }
-  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
-  // corresponds to MKL's Height dimension.
-  bool IsMklHeightDim(int d) const { return tf_dim_idx(d) == MklDims::H; }
-
-  // Check if the TF-Mkl dimension ordering map specifies if the input
-  // tensor is in NCHW format.
-  bool IsTensorInNCHWFormat() const {
-    TensorFormat data_format = FORMAT_NCHW;
-    return (IsMklBatchDim(GetTensorDimIndex<2>(data_format, 'N')) &&
-            IsMklChannelDim(GetTensorDimIndex<2>(data_format, 'C')) &&
-            IsMklHeightDim(GetTensorDimIndex<2>(data_format, 'H')) &&
-            IsMklWidthDim(GetTensorDimIndex<2>(data_format, 'W')));
-  }
-
-  // Check if the TF-Mkl dimension ordering map specifies if the input
-  // tensor is in NHWC format.
-  bool IsTensorInNHWCFormat() const {
-    TensorFormat data_format = FORMAT_NHWC;
-    return (IsMklBatchDim(GetTensorDimIndex<2>(data_format, 'N')) &&
-            IsMklChannelDim(GetTensorDimIndex<2>(data_format, 'C')) &&
-            IsMklHeightDim(GetTensorDimIndex<2>(data_format, 'H')) &&
-            IsMklWidthDim(GetTensorDimIndex<2>(data_format, 'W')));
-  }
-
-  void GetConvertedFlatData(dnnLayout_t targetLayout, void* input,
-                            void* output) const {
-    dnnLayout_t curLayout;
-    if (isMklTensor_)
-      curLayout = mklLayout_;
-    else
-      curLayout = tfLayout_;
-    dnnPrimitive_t convert;
-    CHECK_EQ(dnnConversionCreate_F32(&convert, curLayout, targetLayout),
-             E_SUCCESS);
-    CHECK_EQ(dnnConversionExecute_F32(convert, input, output), E_SUCCESS);
-    CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
-  }
-
-  // The following methods are used for serializing and de-serializing the
-  // contents of the mklshape object.
-  // The data is serialized in this order
-  // isMklTensor_
-  // dimension_
-  // sizes_
-  // strides_
-  // mklLayout_
-  // tfLayout_
-  // tf_to_mkl_dim_map_
-
-#define SIZE_OF_MKL_DNN_BUF \
-  (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
-                                            // serialize dnn_layout pointer
-
-  // Size of buffer to hold the serialized object, the size is computed as
-  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
-  // sizeof(strides_)
-  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-  // + sizeof(tf_to_mkl_dim_map_)
-
-#define SIZE_OF_MKL_SERIAL_DATA(dims) \
-  (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
-
-  // First we need to define some macro for offsets into the serial buffer where
-  // different elements of Mklshape is written/read from
-
-#define IS_MKL_TENSOR_OFFSET 0
-// Location from start of buffer where isMklTensor_ is serialized
-#define DIMS_OFFSET \
-  (IS_MKL_TENSOR_OFFSET + sizeof(size_t))  // Location of dimension_
-// Location of sizes. Note dim is not used here, left here
-// to make macros consistent.
-#define SIZES_OFFSET(dims) (DIMS_OFFSET + sizeof(size_t))
-#define STRIDES_OFFSET(dims) \
-  (SIZES_OFFSET(dims) + dims * sizeof(size_t))  // Location of strides
-#define MKL_LAYOUT_OFFSET(dims) \
-  (STRIDES_OFFSET(dims) + dims * sizeof(size_t))  // Location of mklLayout_
-#define TF_LAYOUT_OFFSET(dims) \
-  (MKL_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)  // Location of tfLayout_
-// Location of tf_to_mkl_dim_map_
-#define TF_TO_MKL_DIM_MAP_OFFSET(dims) \
-  (TF_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)
-
-  // TODO(agramesh1) make sure to create a const to share with rewrite pass
-  // for min size of MKL metadata tensor.
-
-  void DeSerializeMklShape(const unsigned char* buf, size_t buf_size) {
-    CHECK(buf_size >= sizeof(size_t)) << "Bufsize too small in DeSerialize";
-    // Make sure buffer holds at least  isMklTensor_
-    isMklTensor_ =
-        *reinterpret_cast<const size_t*>(buf + IS_MKL_TENSOR_OFFSET) != 0;
-
-    if (isMklTensor_) {  // If it is an MKL Tensor then read the rest
-      dimension_ = *(reinterpret_cast<const size_t*>(buf + DIMS_OFFSET));
-      CHECK(buf_size >= SIZE_OF_MKL_SERIAL_DATA(dimension_))
-          << "Bufsize too small in DeSerialize";
-      sizes_ = new size_t[dimension_];
-      strides_ = new size_t[dimension_];
-      tf_to_mkl_dim_map_ = new size_t[dimension_];
-      for (int i = 0; i < dimension_; i++) {
-        sizes_[i] =
-            reinterpret_cast<const size_t*>(buf + SIZES_OFFSET(dimension_))[i];
-        strides_[i] = reinterpret_cast<const size_t*>(
-            buf + STRIDES_OFFSET(dimension_))[i];
-        tf_to_mkl_dim_map_[i] = reinterpret_cast<const size_t*>(
-            buf + TF_TO_MKL_DIM_MAP_OFFSET(dimension_))[i];
-      }
-      CHECK_EQ(dnnLayoutDeserialize_F32(&mklLayout_,
-                                        buf + MKL_LAYOUT_OFFSET(dimension_)),
-               E_SUCCESS);
-      CHECK_EQ(dnnLayoutDeserialize_F32(&tfLayout_,
-                                        buf + TF_LAYOUT_OFFSET(dimension_)),
-               E_SUCCESS);
-    }
-  }
-
-  void SerializeMklShape(unsigned char* buf, size_t buf_size) const {
-    CHECK(buf_size >= SIZE_OF_MKL_SERIAL_DATA(dimension_))
-        << "Bufsize too small to Serialize";
-    *reinterpret_cast<size_t*>(buf + IS_MKL_TENSOR_OFFSET) =
-        isMklTensor_ ? 1 : 0;
-    if (isMklTensor_) {
-      *(reinterpret_cast<size_t*>(buf + DIMS_OFFSET)) = dimension_;
-      for (int i = 0; i < dimension_; i++) {
-        reinterpret_cast<size_t*>(buf + SIZES_OFFSET(dimension_))[i] =
-            sizes_[i];
-        reinterpret_cast<size_t*>(buf + STRIDES_OFFSET(dimension_))[i] =
-            strides_[i];
-        reinterpret_cast<size_t*>(buf +
-                                  TF_TO_MKL_DIM_MAP_OFFSET(dimension_))[i] =
-            tf_to_mkl_dim_map_[i];
-      }
-      CHECK_EQ(dnnLayoutSerialize_F32(mklLayout_,
-                                      buf + MKL_LAYOUT_OFFSET(dimension_)),
-               E_SUCCESS);
-      CHECK_EQ(
-          dnnLayoutSerialize_F32(tfLayout_, buf + TF_LAYOUT_OFFSET(dimension_)),
-          E_SUCCESS);
-    }
-  }
-
- private:
-  bool isMklTensor_ =
-      false;  // Flag to indicate if the tensor is an  MKL tensor or not
-  dnnLayout_t mklLayout_ = nullptr;  // Pointer to the MKL layout
-  dnnLayout_t tfLayout_ = nullptr;   // Pointer to layout of corresponding
-  // Tensorflow tensor, used when conversion from MKL to standard tensor
-  size_t dimension_ = 0;
-  size_t* sizes_ = nullptr;    // Required by MKL for conversions
-  size_t* strides_ = nullptr;  // Required by MKL for conversions
-  size_t* tf_to_mkl_dim_map_ =
-      nullptr;  // TF dimension corresponding to this MKL dimension
-};
-
-#else
 
 // Forward decl
 TensorFormat MklDnn3DDataFormatToTFDataFormat(memory::format format);
@@ -681,8 +393,7 @@ class MklDnnShape {
     return IsMklTensor() ? GetMklLayout() : GetTfLayout();
   }
 
-  // nhasabni - I've removed SetTfDimOrder that was setting default order in
-  // case of MKL-ML. We don't need a case of default dimension order because
+  // We don't need a case of default dimension order because
   // when an operator that does not get data_format attribute gets all inputs
   // in Tensorflow format, it will produce output in Tensorflow format.
   inline void SetTfDimOrder(const size_t dimension, const mkldnn_dims_t map) {
@@ -731,11 +442,13 @@ class MklDnnShape {
   inline bool IsMklChannelDim(int d) const {
     return TfDimIdx(d) == MklDnnDims::Dim_C;
   }
+
   /// Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
   /// corresponds to MKL's Batch dimension.
   inline bool IsMklBatchDim(int d) const {
     return TfDimIdx(d) == MklDnnDims::Dim_N;
   }
+
   /// Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
   /// corresponds to MKL's Width dimension.
   inline bool IsMklWidthDim(int d) const {
@@ -796,52 +509,9 @@ class MklDnnShape {
   }
 };
 
-#endif
-
 // List of MklShape objects. Used in Concat/Split layers.
-
-#ifndef INTEL_MKL_ML_ONLY
 typedef std::vector<MklDnnShape> MklDnnShapeList;
-#else
-typedef std::vector<MklShape> MklShapeList;
-#endif
 
-#ifdef INTEL_MKL_ML_ONLY
-// Check if all tensors specified by MklShapes are MKL tensors.
-inline bool AreAllMklTensors(const MklShapeList& shapes) {
-  for (auto& s : shapes) {
-    if (!s.IsMklTensor()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-template <typename T>
-inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
-                             const MklShape& mkl_shape) {
-  Tensor output_tensor;
-  TensorShape output_shape;
-
-  for (size_t j = 0; j < mkl_shape.GetDimension(); j++) {
-    // Outermost to innermost dimension
-    output_shape.AddDim(mkl_shape.GetSizes()[mkl_shape.tf_dim_idx(j)]);
-  }
-
-  // Allocate output tensor.
-  context->allocate_temp(DataTypeToEnum<T>::v(), output_shape, &output_tensor);
-
-  dnnLayout_t output_layout = static_cast<dnnLayout_t>(mkl_shape.GetTfLayout());
-  void* input_buffer = const_cast<T*>(mkl_tensor.flat<T>().data());
-  void* output_buffer = const_cast<T*>(output_tensor.flat<T>().data());
-
-  if (mkl_tensor.NumElements() != 0) {
-    mkl_shape.GetConvertedFlatData(output_layout, input_buffer, output_buffer);
-  }
-
-  return output_tensor;
-}
-#else
 using mkldnn::stream;
 template <typename T>
 class MklDnnData;
@@ -880,28 +550,15 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
 }
-#endif
 
 // Get the MKL shape from the second string tensor
-#ifdef INTEL_MKL_ML_ONLY
-inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
-  mklshape->DeSerializeMklShape(
-      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
-          .flat<uint8>()
-          .data(),
-      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
-              .flat<uint8>()
-              .size() *
-          sizeof(uint8));
-}
-#else
 inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
   mklshape->DeSerializeMklDnnShape(
       ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
@@ -912,7 +569,6 @@ inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
               .size() *
           sizeof(uint8));
 }
-#endif
 
 // Gets the actual input
 inline const Tensor& MklGetInput(OpKernelContext* ctext, int n) {
@@ -924,22 +580,6 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
   CHECK_NOTNULL(input_tensors);
   ctext->input_list(name, input_tensors);
 }
-
-#ifdef INTEL_MKL_ML_ONLY
-
-inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
-                            MklShapeList* mkl_shapes) {
-  OpInputList input_mkl_tensors;
-  GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
-
-  for (int i = 0; i < input_mkl_tensors.size(); i++) {
-    (*mkl_shapes)[i].DeSerializeMklShape(
-        input_mkl_tensors[i].flat<uint8>().data(),
-        input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
-  }
-}
-
-#else
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
                             MklDnnShapeList* mkl_shapes) {
@@ -953,9 +593,6 @@ inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
   }
 }
 
-#endif
-
-#ifndef INTEL_MKL_ML_ONLY
 /// Get shape of input tensor pointed by 'input_idx' in TensorShape format.
 /// If the input tensor is in MKL layout, then obtains TensorShape from
 /// MklShape.
@@ -973,25 +610,7 @@ inline TensorShape GetTfShape(OpKernelContext* context, size_t input_idx) {
     return t.shape();
   }
 }
-#endif
 
-#ifdef INTEL_MKL_ML_ONLY
-// Allocate the second output tensor that will contain
-// the MKL shape serialized
-inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
-                                      const MklShape& mkl_shape) {
-  Tensor* second_tensor = nullptr;
-  TensorShape second_shape;
-  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
-  OP_REQUIRES_OK(ctext, ctext->allocate_output(
-                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
-                            second_shape, &second_tensor));
-  mkl_shape.SerializeMklShape(
-      second_tensor->flat<uint8>().data(),
-      second_tensor->flat<uint8>().size() * sizeof(uint8));
-}
-
-#else
 // Allocate the second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -1006,30 +625,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
-#endif
 
-#ifdef INTEL_MKL_ML_ONLY
-// Allocate the output tensor, create a second output tensor that will contain
-// the MKL shape serialized
-inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
-                                      Tensor** output,
-                                      const TensorShape& tf_shape,
-                                      const MklShape& mkl_shape) {
-  Tensor* second_tensor = nullptr;
-  TensorShape second_shape;
-  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
-  OP_REQUIRES_OK(
-      ctext, ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
-                                    tf_shape, output));
-  OP_REQUIRES_OK(ctext, ctext->allocate_output(
-                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
-                            second_shape, &second_tensor));
-  mkl_shape.SerializeMklShape(
-      second_tensor->flat<uint8>().data(),
-      second_tensor->flat<uint8>().size() * sizeof(uint8));
-}
-
-#else
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -1049,11 +645,8 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
-#endif
 
 // Allocates a temp tensor and returns the data buffer for temporary storage.
-// Currently
-#ifndef INTEL_MKL_ML_ONLY
 template <typename T>
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                            const memory::primitive_desc& pd, void** buf_out) {
@@ -1064,21 +657,7 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                                                  tf_shape, tensor_out));
   *buf_out = static_cast<void*>(tensor_out->flat<T>().data());
 }
-#else
-inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
-                           dnnLayout_t lt_buff, void** buf_out) {
-  TensorShape tf_shape;
 
-  tf_shape.AddDim(
-      dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(lt_buff)) /
-          sizeof(float) +
-      1);
-  OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<float>::v(),
-                                                 tf_shape, tensor_out));
-  *buf_out = static_cast<void*>(tensor_out->flat<float>().data());
-}
-
-#endif
 template <typename T>
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                            TensorShape tf_shape) {
@@ -1102,34 +681,6 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
-#ifdef INTEL_MKL_ML_ONLY
-inline void MklSizesToTFSizes(OpKernelContext* context,
-                              TensorFormat data_format_,
-                              const MklShape& mkl_shape,
-                              TensorShape* tf_shape) {
-  size_t tf_dim = mkl_shape.GetDimension();
-  const size_t* tf_sizes = mkl_shape.GetSizes();
-
-  OP_REQUIRES(context, tf_dim == 4,
-              errors::InvalidArgument("MKLSizesToTFSizes: size must be 4-dim"));
-  std::vector<int32> sizes;
-
-  sizes.push_back(tf_sizes[3]);
-
-  if (data_format_ == FORMAT_NHWC) {
-    sizes.push_back(tf_sizes[1]);
-    sizes.push_back(tf_sizes[0]);
-    sizes.push_back(tf_sizes[2]);
-  } else {
-    sizes.push_back(tf_sizes[2]);
-    sizes.push_back(tf_sizes[1]);
-    sizes.push_back(tf_sizes[0]);
-  }
-
-  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tf_shape));
-}
-#endif
-
 inline int32 GetMklTensorDimIndex(char dimension) {
   switch (dimension) {
     case 'N':
@@ -1145,15 +696,6 @@ inline int32 GetMklTensorDimIndex(char dimension) {
       return -1;  // Avoid compiler warning about missing return value
   }
 }
-
-#ifdef INTEL_MKL_ML_ONLY
-inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
-  int index = GetMklTensorDimIndex(dimension);
-  CHECK(index >= 0 && index < mkl_shape.GetDimension())
-      << "Invalid index from the dimension: " << index << ", " << dimension;
-  return mkl_shape.dim_size(index);
-}
-#endif
 
 inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
                                  int idx_out) {
@@ -1176,25 +718,6 @@ inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
   context->set_output(idx_meta_out, meta_output);
 }
 
-#ifdef INTEL_MKL_ML_ONLY
-inline void CopyTfTensorInToOutWithShape(OpKernelContext* context, int idx_in,
-                                         int idx_out,
-                                         const TensorShape& shape) {
-  int num_inputs = context->num_inputs();
-  int num_outputs = context->num_outputs();
-  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
-  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
-
-  const Tensor& data = context->input(idx_data_in);
-  MklShape mkl_shape_output;
-  mkl_shape_output.SetMklTensor(false);
-  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
-  Tensor output(data.dtype());
-  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
-  CHECK(output.CopyFrom(data, shape));
-  context->set_output(idx_data_out, output);
-}
-#else
 inline void CopyTfTensorInToOutWithShape(OpKernelContext* context, int idx_in,
                                          int idx_out,
                                          const TensorShape& shape) {
@@ -1212,28 +735,6 @@ inline void CopyTfTensorInToOutWithShape(OpKernelContext* context, int idx_in,
   CHECK(output.CopyFrom(data, shape));
   context->set_output(idx_data_out, output);
 }
-#endif
-
-#ifdef INTEL_MKL_ML_ONLY
-
-inline void ForwardTfTensorInToOut(OpKernelContext* context, int idx_in,
-                                   int idx_out) {
-  int num_inputs = context->num_inputs();
-  int num_outputs = context->num_outputs();
-  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
-  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
-
-  MklShape mkl_shape_output;
-  mkl_shape_output.SetMklTensor(false);
-  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
-  if (IsRefType(context->input_dtype(idx_data_in))) {
-    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
-  } else {
-    context->set_output(idx_data_out, context->input(idx_data_in));
-  }
-}
-
-#else
 
 inline void ForwardTfTensorInToOut(OpKernelContext* context, int idx_in,
                                    int idx_out) {
@@ -1251,8 +752,6 @@ inline void ForwardTfTensorInToOut(OpKernelContext* context, int idx_in,
     context->set_output(idx_data_out, context->input(idx_data_in));
   }
 }
-
-#endif
 
 inline void ForwardMklTensorInToOut(OpKernelContext* context, int idx_in,
                                     int idx_out) {
@@ -1272,7 +771,6 @@ inline void ForwardMklTensorInToOut(OpKernelContext* context, int idx_in,
   }
 }
 
-#ifndef INTEL_MKL_ML_ONLY
 // Set a dummy MKLDNN shape (called when the output is in TF format)
 inline void SetDummyMklDnnShapeOutput(OpKernelContext* context,
                                       uint32 idx_data_out) {
@@ -1297,7 +795,6 @@ inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
     context->set_output(idx_data_out, context->input(idx_data_in));
   }
 }
-#endif
 
 // Forward the MKL shape ONLY (used in elementwise and other ops where
 // we call the eigen implementation and MKL shape is not used)
@@ -1316,124 +813,7 @@ inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
   }
 }
 
-#ifdef INTEL_MKL_ML_ONLY
-// Set a dummy MKL shape (called when the output is in TF format)
-inline void SetDummyMklShapeOutput(OpKernelContext* context,
-                                   uint32 idx_data_out) {
-  MklShape mkl_shape_output;
-  mkl_shape_output.SetMklTensor(false);
-  AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
-}
-// We don't need these functions in MKLDNN. We have defined equality operator
-// on MklDnnShape class directly.
-
-// Checks if the TF shape for both MKL tensors is the same or not
-// Returns: true if both TF shapes are the same, false otherwise
-inline bool MklCompareShapes(const MklShape* input_shape_0,
-                             const MklShape* input_shape_1) {
-  // Check for number of dimensions
-  if (input_shape_0->GetDimension() != input_shape_1->GetDimension()) {
-    return false;
-  }
-
-  // Check size of each dimension
-  size_t ndims = input_shape_0->GetDimension();
-  for (size_t i = 0; i < ndims; i++) {
-    if (input_shape_0->dim_size(i) != input_shape_1->dim_size(i)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// Checks if the TF shape for both tensors is the same or not
-// Returns: true if TF shapes for both are the same, false otherwise
-inline bool MklCompareShapes(const MklShape* input_shape_0,
-                             const TensorShape* input_shape_1) {
-  // Check for number of dimensions
-  if (input_shape_0->GetDimension() != input_shape_1->dims()) {
-    return false;
-  }
-
-  // Check size of each dimension
-  size_t ndims = input_shape_0->GetDimension();
-  for (size_t i = 0; i < ndims; i++) {
-    if (input_shape_0->tf_dim_size(i) != input_shape_1->dim_size(i)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// Checks if the TF shape for both tensors is the same or not
-// Returns: true if TF shapes for both are the same, false otherwise
-inline bool MklCompareShapes(const TensorShape* input_shape_0,
-                             const MklShape* input_shape_1) {
-  return MklCompareShapes(input_shape_1, input_shape_0);
-}
-
-// Checks if the TF shape for both tensors is the same or not
-// Returns: true if TF shapes for both are the same, false otherwise
-inline bool MklCompareShapes(const TensorShape* input_shape_0,
-                             const TensorShape* input_shape_1) {
-  // Check for number of dimensions
-  if (input_shape_0->dims() != input_shape_1->dims()) {
-    return false;
-  }
-
-  // Check size of each dimension
-  size_t ndims = input_shape_0->dims();
-  for (size_t i = 0; i < ndims; i++) {
-    if (input_shape_0->dim_size(i) != input_shape_1->dim_size(i)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// These functions do not compile with MKL-DNN since mkl.h is missing.
-// We may need to remove them later.
-// TODO(intel_tf): Remove this routine when faster MKL layout conversion is
-// out.
-inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
-  const float* buf_in = input.flat<float>().data();
-  float* buf_out = (*output)->flat<float>().data();
-
-  int64 N = input.dim_size(0);
-  int64 H = input.dim_size(1);
-  int64 W = input.dim_size(2);
-  int64 C = input.dim_size(3);
-  int64 stride_n = H * W * C;
-#pragma omp parallel for num_threads(16)
-  for (int64 n = 0; n < N; ++n) {
-    mkl_somatcopy('R', 'T', H * W, C, 1, buf_in + n * stride_n, C,
-                  buf_out + n * stride_n, H * W);
-  }
-}
-
-inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
-  const float* buf_in = input.flat<float>().data();
-  float* buf_out = (*output)->flat<float>().data();
-
-  int64 N = (*output)->dim_size(0);
-  int64 H = (*output)->dim_size(1);
-  int64 W = (*output)->dim_size(2);
-  int64 C = (*output)->dim_size(3);
-  int64 stride_n = H * W * C;
-#pragma omp parallel for num_threads(16)
-  for (int64 n = 0; n < N; ++n) {
-    mkl_somatcopy('R', 'T', C, H * W, 1, buf_in + n * stride_n, H * W,
-                  buf_out + n * stride_n, C);
-  }
-}
-
-#endif
 // -------------------------------------------------------------------
-
-#ifndef INTEL_MKL_ML_ONLY
 
 /// Return MKL-DNN data type (memory::data_type) for input type T
 ///
@@ -1448,14 +828,17 @@ template <>
 memory::data_type MklDnnType<float>() {
   return memory::data_type::f32;
 }
+
 template <>
 memory::data_type MklDnnType<quint8>() {
   return memory::data_type::u8;
 }
+
 template <>
 memory::data_type MklDnnType<qint8>() {
   return memory::data_type::s8;
 }
+
 template <>
 memory::data_type MklDnnType<qint32>() {
   return memory::data_type::s32;
@@ -1515,8 +898,7 @@ inline TensorFormat MklDnnDataFormatToTFDataFormat(memory::format format) {
 ///
 /// This function will simply map input TensorShape into MKL-DNN dims
 /// naively. So it will preserve the order of dimensions. E.g., if
-/// input tensor is in NHWC format, then dims will be in NHWC format
-/// also.
+/// input tensor is in NHWC format, then dims will be in NHWC format also.
 ///
 /// @input TensorShape object in shape
 /// @return memory::dims corresponding to TensorShape
@@ -1554,7 +936,7 @@ inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
 
 inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
                                                TensorFormat format) {
-  // Check validity of format.
+  // Validate format.
   CHECK_NE(TFDataFormatToMklDnn3DDataFormat(format),
            memory::format::format_undef);
 
@@ -1572,7 +954,7 @@ inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
 /// self-explanatory.
 inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
                                      TensorFormat format) {
-  // Check validity of format.
+  // Validate format.
   CHECK_NE(TFDataFormatToMklDnnDataFormat(format),
            memory::format::format_undef);
 
@@ -1665,10 +1047,9 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
 
 template <typename T>
 inline primitive FindOrCreateReorder(const memory* from, const memory* to);
-/*
- * Class to represent all the resources corresponding to a tensor in TensorFlow
- * that are required to execute an operation (such as Convolution).
- */
+
+// Class to represent all the resources corresponding to a tensor in TensorFlow
+// that are required to execute an operation (such as Convolution).
 template <typename T>
 class MklDnnData {
  private:
@@ -1712,7 +1093,6 @@ class MklDnnData {
   }
 
   void SetIs3DData(bool bIs3D_) { bIs3D = bIs3D_; }
-
   bool GetIs3D() { return bIs3D; }
 
   /// Set user memory primitive using specified dimensions, memory format and
@@ -1974,9 +1354,9 @@ class MklDnnData {
     return false;
   }
 
-  /// TODO: this is a faster path with reorder primitive cache compared with
-  /// CheckReorderToOpMem(..., std::vector<primitive>* net), will remove
-  /// slow path in the future
+  /// This is a faster path with reorder primitive cache compared with
+  /// CheckReorderToOpMem(..., std::vector<primitive>* net).
+  /// The slower path will be removed in the future
   inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
                                   void* reorder_data_handle) {
     CHECK_NOTNULL(reorder_data_handle);
@@ -2073,7 +1453,6 @@ class MklDnnData {
 };
 
 /// Base class for operations with reuse of primitives
-///
 class MklPrimitive {
  public:
   virtual ~MklPrimitive() {}
@@ -2398,8 +1777,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
           ((strides[0] != 1) || (strides[1] != 1)));
 }
-
-#endif  // INTEL_MKL_DNN
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -16,13 +16,10 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/util/mkl_util.h"
-
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
-
-#ifndef INTEL_MKL_ML_ONLY
 
 TEST(MklUtilTest, MklDnnTfShape) {
   auto cpu_engine = engine(engine::cpu, 0);
@@ -118,7 +115,6 @@ TEST(MklUtilTest, LRUCacheTest) {
   }
 }
 
-#endif  // INTEL_MKL_ML_ONLY
 }  // namespace
 }  // namespace tensorflow
 
