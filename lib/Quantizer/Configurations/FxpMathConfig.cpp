@@ -177,8 +177,7 @@ struct FxpMathTargetConfigImpl : public FxpMathTargetConfig {
         layerStatsAttr.getValue({0}).cast<FloatAttr>().getValueAsDouble();
     layerStats.maxValue =
         layerStatsAttr.getValue({1}).cast<FloatAttr>().getValueAsDouble();
-    UniformConstraintsBuilder(cag).applyStats(resultNode,
-                                              std::move(layerStats));
+    UniformConstraintsBuilder(cag).applyStats(resultNode, layerStats);
   }
 
   void handleAdd(Operation *op, CAGSlice &cag) const {
