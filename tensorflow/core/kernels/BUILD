@@ -6049,7 +6049,7 @@ filegroup(
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
-        "//tensorflow/c/kernels:android_all_ops",
+        "//tensorflow/c/kernels:android_all_op_kernels",
     ],
 )
 
@@ -6392,7 +6392,7 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
+    srcs = ["//tensorflow/c/kernels:android_all_op_kernels"] + glob(
         [
             "*.cc",
             "*.h",
