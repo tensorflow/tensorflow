@@ -450,6 +450,7 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
   def testFlush(self):
     records = list(map(self._Record, range(self._num_records)))
+    # pylint: disable=invalid-name
     def childProcess(writer, rs):
       for r in rs:
         writer.write(r)
