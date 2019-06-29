@@ -325,7 +325,7 @@ class Interpreter {
   }
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
-  /// for tensor indices that are inputs.
+  /// for tensor indices that are inputs or variables.
   /// Returns status of failure or success.
   /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
   ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
