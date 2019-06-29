@@ -38,7 +38,7 @@ limitations under the License.
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
-#if defined __ANDROID__ || defined __unix__
+#if defined __ANDROID__ || defined __unix__ || defined __APPLE__
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
