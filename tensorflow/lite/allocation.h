@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
-
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/simple_memory_arena.h"
@@ -31,13 +30,8 @@ namespace tflite {
 // A memory allocation handle. This could be a mmap or shared memory.
 class Allocation {
  public:
+  Allocation(ErrorReporter* error_reporter) : error_reporter_(error_reporter) {}
   virtual ~Allocation() {}
-
-  enum class Type {
-    kMMap,
-    kFileCopy,
-    kMemory,
-  };
 
   // Base pointer of this allocation
   virtual const void* base() const = 0;
@@ -45,16 +39,9 @@ class Allocation {
   virtual size_t bytes() const = 0;
   // Whether the allocation is valid
   virtual bool valid() const = 0;
-  // Return the type of the Allocation.
-  Type type() const { return type_; }
 
  protected:
-  Allocation(ErrorReporter* error_reporter, Type type)
-      : error_reporter_(error_reporter), type_(type) {}
   ErrorReporter* error_reporter_;
-
- private:
-  const Type type_;
 };
 
 class MMAPAllocation : public Allocation {
@@ -64,8 +51,6 @@ class MMAPAllocation : public Allocation {
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
-
-  int fd() const { return mmap_fd_; }
 
   static bool IsSupported();
 
