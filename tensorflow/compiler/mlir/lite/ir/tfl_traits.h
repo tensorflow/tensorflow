@@ -22,6 +22,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 
+// exp10() is not a standard function
+#if defined(__APPLE__)
+#define exp10(x) __exp10(x)
+#endif
+
 namespace mlir {
 namespace OpTrait {
 namespace TFL {
