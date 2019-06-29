@@ -401,6 +401,9 @@ def _packed_nest_with_indices(structure, flat, index, is_seq):
     else:
       packed.append(flat[index])
       index += 1
+      # workaround for issue 27543 to save model successfully when input is not used directly in model
+      if index > len(flat)-1:
+        break
   return index, packed
 
 
