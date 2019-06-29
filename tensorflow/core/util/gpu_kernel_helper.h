@@ -53,8 +53,6 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-
 // macro wrapper to declare dynamic shared memory
 #if GOOGLE_CUDA
 
