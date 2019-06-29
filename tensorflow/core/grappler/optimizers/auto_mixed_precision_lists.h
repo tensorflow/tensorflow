@@ -62,7 +62,7 @@ class AutoMixedPrecisionLists {
 
     auto list = gtl::FlatSet<string> {
 #if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
-      "BatchMatMul",
+      "BatchMatMul", "BatchMatMulV2",
 #endif
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",
