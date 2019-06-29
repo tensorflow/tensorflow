@@ -50,7 +50,7 @@ class FilterDatasetOpTest : public DatasetOpsTestBase {
     return Status::OK();
   }
 
-  // Creates a new `ParallelInterleaveDataset` op kernel context.
+  // Creates a new `FilterDataset` op kernel context.
   Status CreateFilterDatasetContext(
       OpKernel *const op_kernel,
       gtl::InlinedVector<TensorValue, 4> *const inputs,

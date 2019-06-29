@@ -39,6 +39,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -105,13 +106,13 @@ class DefunnedMiniModel(MiniModel):
 
 
 def _example_indexed_slices_with_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]),
       constant_op.constant([2]))
 
 
 def _example_indexed_slices_without_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]))
 
 
@@ -3098,6 +3099,85 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     value0 = 2.0
     value1 = 3.0
     self.assertAllEqual(lazy_capture(2.0), 10.0)
+
+  def testDeferredCaptureTypeError(self):
+    value = constant_op.constant(1.0)
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(()))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+
+    # dtype mismatch
+    value = constant_op.constant(1)
+    with self.assertRaisesRegexp(ValueError, 'Value .* to a tensor with dtype'):
+      lazy_capture(2.0)
+
+    # shape mismatch
+    value = constant_op.constant([1.0])
+    with self.assertRaisesRegexp(ValueError, 'Value .* shape'):
+      lazy_capture(2.0)
+
+  def testDeferredCaptureReturnNestWithCompositeTensor(self):
+    i_s = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    r_t = ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    s_t = sparse_tensor.SparseTensor(
+        values=[1, 2, 3], indices=[[0], [8], [10]], dense_shape=[20])
+
+    @def_function.function
+    def lazy_capture():
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: {'i': i_s, 't': (r_t, s_t)},
+          {'i': indexed_slices.IndexedSlicesSpec(
+              dtype=dtypes.int32, dense_shape_dtype=dtypes.int32),
+           't': (ragged_tensor.RaggedTensorSpec([2, None, None], dtypes.int32),
+                 sparse_tensor.SparseTensorSpec([None], dtypes.int32))})
+      return y['i'], y['t']
+
+    i, (r, s) = lazy_capture()
+    self.assertAllEqual(i_s.values, i.values)
+    self.assertAllEqual(i_s.indices, i.indices)
+    self.assertAllEqual(i_s.dense_shape, i.dense_shape)
+    self.assertAllEqual(r_t, r)
+    self.assertAllEqual(s_t.indices, s.indices)
+    self.assertAllEqual(s_t.values, s.values)
+    self.assertAllEqual(s_t.dense_shape, s.dense_shape)
+
+  def testDeferredCaptureCompositeTensorSpecTypeMismatch(self):
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64))
+
+    @def_function.function
+    def lazy_capture():
+      return ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          indexed_slices.IndexedSlicesSpec(dtype=dtypes.int32))
+
+    # Type matches spec.
+    lazy_capture()
+
+    # Extra dense shape component.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
+    # Index dtype mismatch int32 vs. int64.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

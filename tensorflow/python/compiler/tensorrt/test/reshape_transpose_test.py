@@ -84,29 +84,11 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
         inp, [0, 3, 1, 2], name="transpose-1")
     compatible_transpose = array_ops.transpose(
         compatible_transpose, [0, 2, 3, 1], name="transposeback")
-
-    # Add an incompatible op so the first block will not be in the same
-    # subgraph where the following block belongs.
-    bridge = self.trt_incompatible_op(compatible_transpose)
-
-    # Add a block with incompatible transposes.
-    #
-    # Note: by default Grappler will run the TRT optimizer twice. At the
-    # first time it will group the two transpose ops below to same segment
-    # then fail the conversion due to the expected batch dimension problem.
-    # At the second time, since the input of bridge op is TRTEngineOp_0, it
-    # will fail to do shape inference which then cause conversion to fail.
-    # TODO(laigd): support shape inference, make TRT optimizer run only
-    # once, and fix this.
-    incompatible_transpose = array_ops.transpose(
-        bridge, [2, 1, 0, 3], name="transpose-2")
-    excluded_transpose = array_ops.transpose(
-        incompatible_transpose, [0, 2, 3, 1], name="transpose-3")
-    return array_ops.identity(excluded_transpose, name="output_0")
+    return array_ops.identity(compatible_transpose, name="output_0")
 
   def GetParams(self):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 24, 24, 2]],
-                            [[24, 100, 2, 24]])
+                            [[100, 24, 24, 2]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -121,6 +103,25 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
     """Whether to run the test."""
     return (not trt_test.IsQuantizationMode(run_params.precision_mode) and
             not run_params.dynamic_engine)
+
+
+class IncompatibleTransposeTest(TransposeTest):
+
+  def GraphFn(self, inp):
+    # Add a block with incompatible transposes.
+    incompatible_transpose = array_ops.transpose(
+        inp, [2, 1, 0, 3], name="transpose-2")
+    excluded_transpose = array_ops.transpose(
+        incompatible_transpose, [0, 2, 3, 1], name="transpose-3")
+    return array_ops.identity(excluded_transpose, name="output_0")
+
+  def GetParams(self):
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 24, 24, 2]],
+                            [[24, 100, 2, 24]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
 
 
 if __name__ == "__main__":

@@ -53,6 +53,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import server_lib
 
@@ -957,8 +958,10 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
   def __init__(self):
     # used for remote benchmarks
     os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
-    self._cached_server = server_lib.Server.create_local_server()
-    self._cached_server_target = self._cached_server.target[len("grpc://"):]
+    self._cached_server1 = server_lib.Server.create_local_server()
+    self._cached_server_target1 = self._cached_server1.target[len("grpc://"):]
+    self._cached_server2 = server_lib.Server.create_local_server()
+    self._cached_server_target2 = self._cached_server2.target[len("grpc://"):]
 
   def _run(self, func, num_iters=10000, execution_mode=None):
     total_time = run_benchmark(func, num_iters, execution_mode)
@@ -968,9 +971,9 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
         wall_time=mean_us,
         extras={"examples_per_sec": num_iters / total_time})
 
-  # TODO(gjn): Fix continuous benchmark runs
-  def _DISABLED_benchmark_mirroring_off(self):
-    remote.connect_to_remote_host(self._cached_server_target)
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_off(self):
+    remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
 
@@ -985,9 +988,9 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     context.context().mirroring_policy = context.MIRRORING_NONE
     self._run(lambda: func(x))
 
-  # TODO(gjn): Fix continuous benchmark runs
-  def _DISABLED_benchmark_mirroring_on(self):
-    remote.connect_to_remote_host(self._cached_server_target)
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_on(self):
+    remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
 
@@ -1001,6 +1004,44 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_ALL
     self._run(lambda: func(x))
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_off(self):
+    remote.connect_to_remote_host(
+        [self._cached_server_target1, self._cached_server_target2])
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_func():
+      return 1.0 + v
+
+    def func():
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func()
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+    self._run(func)
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_on(self):
+    remote.connect_to_remote_host(
+        [self._cached_server_target1, self._cached_server_target2])
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_func():
+      return 1.0 + v
+
+    def func():
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func()
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+    self._run(func)
 
 
 if __name__ == "__main__":

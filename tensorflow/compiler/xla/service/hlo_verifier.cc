@@ -1210,8 +1210,8 @@ Status CheckSameChannel(const HloInstruction* instr1,
     return InternalError(
         "Expected to have the same channel id, actual channel ids are: %s "
         "(%d), %s (%d)",
-        instr1->ToString(), instr1->channel_id(), instr2->ToString(),
-        instr2->channel_id());
+        instr1->ToString(), *instr1->channel_id(), instr2->ToString(),
+        *instr2->channel_id());
   }
   return Status::OK();
 }
@@ -1282,14 +1282,14 @@ Status VerifySendsAndRecvs(const HloModule& module) {
         DynCast<const HloSendRecvInstruction>(instruction);
     if (sendrecv->is_host_transfer()) {
       auto it_inserted =
-          host_channels.insert({sendrecv->channel_id(), sendrecv});
+          host_channels.insert({*sendrecv->channel_id(), sendrecv});
       if (!it_inserted.second) {
         return FailedPrecondition(
             "Channel %d is used for multiple host send/recv instructions: "
             "%s "
             "and "
             "%s",
-            sendrecv->channel_id(), sendrecv->ToString(),
+            *sendrecv->channel_id(), sendrecv->ToString(),
             it_inserted.first->second->ToString());
       }
     }
@@ -1574,9 +1574,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleAllReduce(HloInstruction* crs) override {
-    if (crs->all_reduce_id().has_value()) {
-      TF_RET_CHECK(crs->all_reduce_id().value() > 0)
-          << "All reduce id must be greater than 0 for "
+    if (crs->channel_id().has_value()) {
+      TF_RET_CHECK(crs->channel_id().value() > 0)
+          << "All reduce channel id must be greater than 0 for "
           << crs->ToShortString();
     }
     return Status::OK();

@@ -810,7 +810,7 @@ class NNAPIDelegateKernel {
 
   // Return a function that knows how to translate a node into its operands
   // when called. You can use this function to see if a node is supported
-  // (i.e. that MappingFn is not nullptr).
+  // (i.e. if the returned MappingFn is null, then the node is not supported).
   static MappingFn Map(const TfLiteContext* context, int builtin_code,
                        int version, int android_sdk_version,
                        const TfLiteNode* node) {
@@ -1199,6 +1199,9 @@ class NNAPIDelegateKernel {
       case kTfLiteBuiltinDequantize:
         if (version == 1 || version == 2) {
           const auto& input = context->tensors[node->inputs->data[0]];
+          if (input.type == kTfLiteFloat16) {
+            return nullptr;
+          }
           const auto zero_point = input.params.zero_point;
           // NN API supports int8 type since version 1.2 but only for symmetric
           // quantization.
@@ -1655,6 +1658,13 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_NOT_EQUAL>;
         }
       } break;
+      case kTfLiteBuiltinNeg: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteInt32)) {
+          return BasicMappingFn<ANEURALNETWORKS_NEG>;
+        }
+      } break;
       case kTfLiteBuiltinTopkV2: {
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           const auto& input = context->tensors[node->outputs->data[0]];
@@ -1674,6 +1684,22 @@ class NNAPIDelegateKernel {
           } else {
             return nullptr;
           }
+        }
+      } break;
+      case kTfLiteBuiltinSelect: {
+        const auto value_type = context->tensors[node->inputs->data[1]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (value_type == kTfLiteFloat32 || value_type == kTfLiteUInt8 ||
+             value_type == kTfLiteInt32)) {
+          TfLiteIntArray* condition_shape =
+              context->tensors[node->inputs->data[0]].dims;
+          TfLiteIntArray* input_shape =
+              context->tensors[node->inputs->data[1]].dims;
+          // The Android Q-variant of select does not support broadcasting.
+          if (!TfLiteIntArrayEqual(condition_shape, input_shape)) {
+            return nullptr;
+          }
+          return BasicMappingFn<ANEURALNETWORKS_SELECT>;
         }
       } break;
       case kTfLiteBuiltinGather: {
@@ -1741,6 +1767,25 @@ class NNAPIDelegateKernel {
           };
         }
         break;
+      case kTfLiteBuiltinExpandDims: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        const auto axis = context->tensors[node->inputs->data[1]];
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat16 || input_type == kTfLiteFloat32 ||
+             input_type == kTfLiteInt32 || input_type == kTfLiteUInt8) &&
+            // TFLite supports axis also as int64 but NNAPI only int32
+            (axis.type == kTfLiteInt32 &&
+             axis.allocation_type == kTfLiteMmapRo)) {
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            const TfLiteTensor& axis_param =
+                mapping_args.context
+                    ->tensors[mapping_args.node->inputs->data[1]];
+            mapping_args.builder->AddScalarInt32Operand(*axis_param.data.i32);
+            return ANEURALNETWORKS_EXPAND_DIMS;
+          };
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -2204,6 +2249,10 @@ class NNAPIDelegateKernel {
         } else if (reg->builtin_code == kTfLiteBuiltinGather) {
           // Everything is added during Map since input tensors
           // have different order.
+          continue;
+        } else if (reg->builtin_code == kTfLiteBuiltinExpandDims &&
+                   input_pos == 1) {
+          // The axis param is added during Map
           continue;
         } else {
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,

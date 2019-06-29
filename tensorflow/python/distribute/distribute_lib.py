@@ -1540,6 +1540,7 @@ class StrategyExtendedV2(object):
 
   @property
   def experimental_require_static_shapes(self):
+    """Returns `True` if static shape is required; `False` otherwise."""
     return self._require_static_shapes
 
   @property
@@ -1570,6 +1571,8 @@ class StrategyExtendedV2(object):
     Args:
       var_list: The list of variables being optimized, needed with the
         default `tf.distribute.Strategy`.
+    Returns:
+      A sequence of devices for non-slot variables.
     """
     raise NotImplementedError("must be implemented in descendants")
 

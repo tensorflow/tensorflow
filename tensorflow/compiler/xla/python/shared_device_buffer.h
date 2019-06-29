@@ -80,39 +80,39 @@ class BufferDefinitionEvent {
 // Class that represents a node in a reference-counted DAG of device buffers.
 // Unlike a ShapedBuffer, which owns none of its buffers, and
 // ScopedShapedBuffer, which owns an entire buffer tree, the reference counting
-// in a PySharedDeviceBuffer DAG is done at the level of individual device
+// in a SharedDeviceBuffer DAG is done at the level of individual device
 // buffers. Reference counting buffer individually is more convenient when
 // manipulating on-device tuples where a tuple and its elements may have
 // different lifetimes.
-class PySharedDeviceBuffer {
+class SharedDeviceBuffer {
  public:
   // Converts a ScopedShapedBuffer into a Buffer tree. Takes ownership of the
   // contents of the shaped_buffer.
-  static std::shared_ptr<PySharedDeviceBuffer> FromScopedShapedBuffer(
+  static std::shared_ptr<SharedDeviceBuffer> FromScopedShapedBuffer(
       ScopedShapedBuffer shaped_buffer,
       const std::shared_ptr<BufferDefinitionEvent>& definition_event);
 
   // Makes a tuple buffer. Does not initialize the tuple table.
-  static StatusOr<std::shared_ptr<PySharedDeviceBuffer>> MakeTuple(
-      std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
+  static StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeTuple(
+      std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
       TransferManager* transfer_manager, se::DeviceMemoryAllocator* allocator,
       int device_ordinal,
       std::shared_ptr<BufferDefinitionEvent> definition_event);
 
   // Makes an uninitialized array buffer.
-  static StatusOr<std::shared_ptr<PySharedDeviceBuffer>> MakeArray(
+  static StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeArray(
       Shape on_device_shape, TransferManager* transfer_manager,
       se::DeviceMemoryAllocator* allocator, int device_ordinal,
       std::shared_ptr<BufferDefinitionEvent> definition_event);
 
   // Builds a ShapedBuffer view onto the buffers of 'tree'. Since
-  // PySharedDeviceBuffer does not maintain the on-host shape, the caller must
+  // SharedDeviceBuffer does not maintain the on-host shape, the caller must
   // provide it. We require but do not verify that
   // TransferManager::HostShapeToDeviceShape(on_host_shape) == on_device_shape()
   ShapedBuffer AsShapedBuffer(const Shape& on_host_shape) const;
 
   const Shape& on_device_shape() const { return on_device_shape_; }
-  const std::vector<std::shared_ptr<PySharedDeviceBuffer>>& children() const {
+  const std::vector<std::shared_ptr<SharedDeviceBuffer>>& children() const {
     return children_;
   }
   const se::OwningDeviceMemory& device_memory() const { return device_memory_; }
@@ -121,11 +121,11 @@ class PySharedDeviceBuffer {
     return definition_event_;
   }
 
-  PySharedDeviceBuffer() = default;
-  PySharedDeviceBuffer(
-      Shape on_device_shape, se::OwningDeviceMemory device_memory,
-      std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
-      std::shared_ptr<BufferDefinitionEvent> definition_event);
+  SharedDeviceBuffer() = default;
+  SharedDeviceBuffer(Shape on_device_shape,
+                     se::OwningDeviceMemory device_memory,
+                     std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
+                     std::shared_ptr<BufferDefinitionEvent> definition_event);
 
  private:
   // We only represent the on-device shape. The on-host shape may not be
@@ -133,7 +133,7 @@ class PySharedDeviceBuffer {
   // awkwardness we maintain on-host shapes separately.
   Shape on_device_shape_;
   se::OwningDeviceMemory device_memory_;
-  std::vector<std::shared_ptr<PySharedDeviceBuffer>> children_;
+  std::vector<std::shared_ptr<SharedDeviceBuffer>> children_;
 
   // An event that is triggered when the content of one or more buffers is
   // ready during multistream execution. May be nullptr, which is used in the
@@ -145,11 +145,11 @@ class PySharedDeviceBuffer {
 // Populates 'events' with the set of buffer definition events for all buffers
 // in the buffer DAG rooted at 'buffer'.
 void GetDeviceBufferDefinitionEvents(
-    const PySharedDeviceBuffer& buffer,
+    const SharedDeviceBuffer& buffer,
     absl::flat_hash_set<BufferDefinitionEvent*>* events);
 
 // Waits for all of the buffer definition events in a buffer DAG on 'stream'.
-void WaitForBufferDefinitionEventsOnStream(const PySharedDeviceBuffer& buffer,
+void WaitForBufferDefinitionEventsOnStream(const SharedDeviceBuffer& buffer,
                                            se::Stream* stream);
 
 }  // namespace xla

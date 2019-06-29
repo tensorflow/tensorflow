@@ -35,7 +35,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
+#include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profiler.h"
@@ -243,8 +246,9 @@ void RunInference(Settings* s) {
       exit(-1);
   }
 
-  profiling::Profiler* profiler = new profiling::Profiler();
-  interpreter->SetProfiler(profiler);
+  auto profiler =
+      absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
+  interpreter->SetProfiler(profiler.get());
 
   if (s->profiling) profiler->StartProfiling();
   if (s->loop_count > 1)
@@ -356,6 +360,7 @@ int Main(int argc, char** argv) {
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
+        {"max_profiling_buffer_entries", required_argument, nullptr, 'e'},
         {"warmup_runs", required_argument, nullptr, 'w'},
         {"gl_backend", required_argument, nullptr, 'g'},
         {nullptr, 0, nullptr, 0}};
@@ -363,7 +368,7 @@ int Main(int argc, char** argv) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:d:f:g:i:l:m:p:r:s:t:v:w:", long_options,
+    c = getopt_long(argc, argv, "a:b:c:d:e:f:g:i:l:m:p:r:s:t:v:w:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -382,6 +387,10 @@ int Main(int argc, char** argv) {
         break;
       case 'd':
         s.old_accel =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'e':
+        s.max_profiling_buffer_entries =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'f':

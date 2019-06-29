@@ -612,7 +612,7 @@ cc_library(
             ":sse_tensor_utils",
         ],
         ":darwin": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":darwin_x86_64": [
             ":sse_tensor_utils",

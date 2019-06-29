@@ -824,6 +824,11 @@ table Operator {
   // If the list is empty, no variable is mutated in this operator.
   // The list either has the same length as `inputs`, or is empty.
   mutating_variable_inputs:[bool];
+
+  // Intermediate tensors record the tensor indices that are internal to an Op.
+  // Those tensors contains quantization information for complicated ops such as
+  // LSTM.
+  intermediates:[int];
 }
 
 // The root type, defining a subgraph, which typically represents an entire

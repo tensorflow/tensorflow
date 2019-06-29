@@ -32,6 +32,7 @@ VALID_LIBS = [
     "lmdb",
     "nasm",
     "nsync",
+    "opt_einsum_archive",
     "org_sqlite",
     "pasta",
     "pcre",

@@ -81,12 +81,6 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 # pylint: disable=protected-access
 _TensorLike = tensor_like._TensorLike
-_tensor_conversion_func_registry = \
-    tensor_conversion_registry._tensor_conversion_func_registry
-_tensor_conversion_func_cache = \
-    tensor_conversion_registry._tensor_conversion_func_cache
-_tensor_conversion_func_lock = \
-    tensor_conversion_registry._tensor_conversion_func_lock
 # pylint: enable=protected-access
 
 
@@ -1030,15 +1024,6 @@ class _EagerTensorBase(Tensor):
 EagerTensor = c_api.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
-def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
-  _ = name, as_ref
-  if dtype and not dtype.is_compatible_with(t.dtype):
-    raise ValueError(
-        "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-        (dtype.name, t.dtype.name, str(t)))
-  return t
-tensor_conversion_registry.register_tensor_conversion_function(
-    Tensor, _TensorTensorConversionFunction, 0)
 register_dense_tensor_like_type(Tensor)
 
 
@@ -1170,51 +1155,26 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_symbolic_tensors=True,
                                accept_composite_tensors=False):
   """Implementation of the public convert_to_tensor."""
-  if ctx is None:
-    ctx = context.context()
-  if isinstance(value, EagerTensor):
-    if ctx.executing_eagerly():
-      if dtype is not None:
-        dtype = dtypes.as_dtype(dtype)
-        value = _TensorTensorConversionFunction(value, dtype=dtype)
-      return value
-    else:
-      graph = get_default_graph()
-      if not graph.building_function:
-        raise RuntimeError("Attempting to capture an EagerTensor without "
-                           "building a function.")
-      return graph.capture(value, name=name)
-  elif ((not accept_symbolic_tensors) and isinstance(value, Tensor) and
-        ctx.executing_eagerly()):
-    # Found a symbolic tensor in an eager context.
-    # This happens when we use the Keras functional API (i.e. calling layers
-    # on the output of `keras.Input()`, which is symbolic) while eager
-    # execution is enabled.
-    if _is_keras_symbolic_tensor(value):
-      # If the graph of the tensor isn't the Keras graph, we should still
-      # fail, for the time being. TODO(fchollet): consider allowing
-      # all symbolic tensors to raise this exception in this case.
-      raise core._SymbolicException(  # pylint: disable=protected-access
-          "Using the symbolic output of a Keras layer during eager execution.")
-
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  unwrapped_type = type(value)
-  conversion_func_list = _tensor_conversion_func_cache.get(unwrapped_type, None)
-  if conversion_func_list is None:
-    with _tensor_conversion_func_lock:
-      conversion_func_list = []
-      for _, funcs_at_priority in sorted(
-          _tensor_conversion_func_registry.items()):
-        for base_type, conversion_func in funcs_at_priority:
-          if isinstance(value, base_type):
-            conversion_func_list.append((base_type, conversion_func))
-      _tensor_conversion_func_cache[unwrapped_type] = conversion_func_list
+  if ctx is None:
+    ctx = context.context()
+  if isinstance(value, EagerTensor) and not ctx.executing_eagerly():
+    graph = get_default_graph()
+    if not graph.building_function:
+      raise RuntimeError("Attempting to capture an EagerTensor without "
+                         "building a function.")
+    return graph.capture(value, name=name)
+  elif isinstance(value, Tensor):
+    if dtype is not None and not dtype.is_compatible_with(value.dtype):
+      raise ValueError(
+          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
+          (dtype.name, value.dtype.name, value))
+    return value
 
-  for base_type, conversion_func in conversion_func_list:
+  for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
     ret = None

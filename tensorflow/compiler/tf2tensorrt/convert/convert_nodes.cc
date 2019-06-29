@@ -1425,6 +1425,32 @@ void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
   quantization_ranges_[tensor] = symmetric_range;
 }
 
+namespace {
+
+bool IsConvolution(const nvinfer1::ILayer* layer) {
+  return layer->getType() == nvinfer1::LayerType::kCONVOLUTION;
+}
+
+bool IsScale(const nvinfer1::ILayer* layer) {
+  return layer->getType() == nvinfer1::LayerType::kSCALE;
+}
+
+bool IsClipOrRelu(const nvinfer1::ILayer* layer) {
+  if (layer->getType() != nvinfer1::LayerType::kACTIVATION) {
+    return false;
+  }
+  auto activation_type = static_cast<const nvinfer1::IActivationLayer*>(layer)
+                             ->getActivationType();
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  return activation_type == nvinfer1::ActivationType::kRELU ||
+         activation_type == nvinfer1::ActivationType::kCLIP;
+#else
+  return activation_type == nvinfer1::ActivationType::kRELU;
+#endif
+}
+
+}  // namespace
+
 void Converter::MaybeApplyQuantizationRanges() {
   if (precision_mode() != TrtPrecisionMode::INT8) return;
 
@@ -1442,34 +1468,120 @@ void Converter::MaybeApplyQuantizationRanges() {
   }
 #endif
 
-  // Warn user about tensors that are missing ranges. If TRT fuses some layers
-  // then these tensors may not actually be required, which is why this is
-  // just a warning. If we are still missing ranges even after fusion,
-  // Builder::buildCudaEngine() will return nullptr and we will catch the
-  // error at that point.
-  if (!use_calibration()) {
-    // Get all tensors from network
-    std::set<nvinfer1::ITensor*> all_tensors;
-    for (int i = 0; i < this->network()->getNbLayers(); i++) {
-      nvinfer1::ILayer* layer = this->network()->getLayer(i);
-      for (int j = 0; j < layer->getNbInputs(); j++) {
-        all_tensors.insert(layer->getInput(j));
+  if (use_calibration()) return;
+  // Attempt to find tensors that are missing ranges, and set the corresponding
+  // layer's precision to FP16 to avoid Builder::buildCudaEngine() failing.
+  // TensorRT doesn't need ranges for intermediate tensors when layers are fused
+  // so find fused layers first.
+  // Get all tensors from network and deduce fused ops.
+  std::map<nvinfer1::ILayer*, std::vector<nvinfer1::ILayer*>> layer_consumers;
+  std::map<nvinfer1::ITensor*, nvinfer1::ILayer*> tensor_layer;
+  std::set<nvinfer1::ITensor*> all_tensors;
+  for (int i = 0; i < this->network()->getNbLayers(); i++) {
+    nvinfer1::ILayer* layer = this->network()->getLayer(i);
+    layer_consumers[layer] = {};
+    for (int j = 0; j < layer->getNbInputs(); j++) {
+      all_tensors.insert(layer->getInput(j));
+    }
+    for (int j = 0; j < layer->getNbOutputs(); j++) {
+      tensor_layer[layer->getOutput(j)] = layer;
+      all_tensors.insert(layer->getOutput(j));
+    }
+  }
+  for (int i = 0; i < this->network()->getNbLayers(); i++) {
+    nvinfer1::ILayer* layer = this->network()->getLayer(i);
+    layer_consumers[layer] = {};
+    for (int j = 0; j < layer->getNbInputs(); j++) {
+      nvinfer1::ITensor* input_tensor = layer->getInput(j);
+      auto input_layer = tensor_layer.find(input_tensor);
+      if (input_layer != tensor_layer.end()) {
+        auto consumed_layer = layer_consumers.find(input_layer->second);
+        if (consumed_layer != layer_consumers.end()) {
+          consumed_layer->second.push_back(layer);
+        }
       }
-      for (int j = 0; j < layer->getNbOutputs(); j++) {
-        all_tensors.insert(layer->getOutput(j));
+      all_tensors.insert(input_tensor);
+    }
+  }
+  // Identify fused tensors.
+  // Conv+BiasAdd+Activation(Clip or Relu), Conv+BiasAdd,
+  // Conv+Activation(Clip or Relu) are fused.
+  std::set<nvinfer1::ITensor*> fused_tensors;
+  typedef std::function<bool(const nvinfer1::ILayer*)> matcher;
+  const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
+      {"Fused Conv+Bias+Activation",
+       {
+           IsConvolution,
+           IsScale,
+           IsClipOrRelu,
+       }},
+      {"Fused Conv+Bias",
+       {
+           IsConvolution,
+           IsScale,
+       }},
+      {"Fused Conv+Activation",
+       {
+           IsConvolution,
+           IsClipOrRelu,
+       }},
+  };
+  for (int i = 0; i < this->network()->getNbLayers(); i++) {
+    for (const auto& pattern : fused_patterns) {
+      size_t last_matcher = pattern.second.size() - 1;
+      nvinfer1::ILayer* layer = this->network()->getLayer(i);
+      // We should skip this layer if its outputs are already marked as fused,
+      // but all the current patterns start with a convolution and are ordered
+      // in decreasing pattern length, so that is not necessary (yet).
+      std::vector<nvinfer1::ILayer*> fused_candidates;
+      for (size_t index = 0; index <= last_matcher; ++index) {
+        if ((!pattern.second[index](layer)) ||
+            (index < last_matcher && layer_consumers[layer].size() != 1)) {
+          fused_candidates.clear();
+          break;
+        }
+        if (index < last_matcher) {
+          fused_candidates.push_back(layer);
+        }
+        layer = layer_consumers[layer].front();
+      }
+      if (!fused_candidates.empty()) {
+        VLOG(1) << pattern.first;
+        for (const auto& fused_layer : fused_candidates) {
+          for (int i = 0; i < fused_layer->getNbOutputs(); i++) {
+            VLOG(1) << "  Fused output tensor:"
+                    << fused_layer->getOutput(i)->getName();
+            fused_tensors.insert(fused_layer->getOutput(i));
+          }
+        }
+        break;  // Don't try other patterns on this layer.
       }
     }
-    // Find tensors with no ranges
-    for (auto tensor : all_tensors) {
-      if (!quantization_ranges_.count(tensor)) {
-        // Note: there may be some warnings for "(Unnamed ITensor* N)". These
-        // are tensors which are created internally by TF-TRT. The ranges for
-        // these unnamed ITensors are always inferred from user provided ranges,
-        // thus there will also be a warning for the range(s) the user missed.
-        LOG(WARNING) << "Quantization range was not found for "
-                     << tensor->getName() << ". "
-                     << "This is okay if TensorRT does not need the range "
-                     << "(e.g. due to node fusion).";
+  }
+  // Find tensors with no ranges that are not fused and force their layers to
+  // not be quantized.
+  for (auto tensor : all_tensors) {
+    if (!quantization_ranges_.count(tensor) &&
+        fused_tensors.find(tensor) == fused_tensors.end()) {
+      // Note: there may be some warnings for "(Unnamed ITensor* N)". These
+      // are tensors which are created internally by TF-TRT. The ranges for
+      // these unnamed ITensors are always inferred from user provided ranges,
+      // thus there will also be a warning for the range(s) the user missed.
+      LOG(WARNING) << "Quantization range was not found for "
+                   << tensor->getName() << ". "
+                   << "Setting invalid quantization range.";
+      // Set the range to something unusable so the engine will fail if it
+      // tries to actually use the tensor's range.
+      tensor->setDynamicRange(0, 0);
+      auto layer = tensor_layer.find(tensor);
+      // If the tensor is the output of a layer, set the layer's precision
+      // to fp16 so that it isn't quantized.
+      // Shuffle doesn't support setting precision.
+      if (layer != tensor_layer.end() &&
+          layer->second->getType() != nvinfer1::LayerType::kSHUFFLE) {
+        VLOG(1) << "And setting layer " << layer->second->getName()
+                << " precision to fp16.";
+        layer->second->setPrecision(nvinfer1::DataType::kHALF);
       }
     }
   }
@@ -1570,7 +1682,7 @@ Status CheckInputsWeights(
                                    " must be a constant, at ", node_def.name());
     }
     // TODO(tmorris): Remove this check and provide a method to automatically
-    // retrive an input as a tensor, converting via CreateConstantLayer if it
+    // retrieve an input as a tensor, converting via CreateConstantLayer if it
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
     if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
@@ -2096,7 +2208,8 @@ template <typename Container>
 Status ConvertStridedSliceHelper(OpConverterParams* params,
                                  const TRT_TensorOrWeights& input,
                                  Container begin, Container size,
-                                 const Container& stride) {
+                                 const Container& stride,
+                                 const nvinfer1::Dims* final_shape = nullptr) {
   const auto& node_def = params->node_def;
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
@@ -2135,7 +2248,14 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
 
   nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
       *input.tensor(), begin_dims, size_dims, stride_dims);
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  nvinfer1::ITensor* tensor = layer->getOutput(0);
+  // Reshape for shrink_axis.
+  if (final_shape) {
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
+        &tensor));
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(tensor));
   return Status::OK();
 #else
   // Use IPaddingLayer.
@@ -2253,8 +2373,13 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
         tensor, inv_transpose_order, &tensor));
   }
-  // Restore reshape
-  if (need_reshape) {
+  // Reshape for shrink_axis.
+  if (final_shape) {
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
+        &tensor));
+  } else if (need_reshape) {
+    // Restore reshape.
     // Calculate output dimensions
     for (int i = 0; i < pad_dims.size(); i++) {
       const int axis = pad_dims[i];
@@ -2338,17 +2463,17 @@ Status ConvertStridedSlice(OpConverterParams* params) {
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
 
   TFAttrs attrs(node_def);
-  // Unsupported mask options.
-  for (const string& attr : {"new_axis_mask", "shrink_axis_mask"}) {
-    int attr_val = attrs.get<int64>(attr);
-    if (attr_val != 0) {
-      return errors::Unimplemented(
-          attr, " is not supported for StridedSlice, at ", node_def.name());
-    }
+  // new_axis_mask is not supported.
+  const int32 new_axis_mask = attrs.get<int64>("new_axis_mask");
+  if (new_axis_mask != 0) {
+    return errors::Unimplemented(
+        "new_axis_mask is not supported for StridedSlice, at ",
+        node_def.name());
   }
   const int32 begin_mask = attrs.get<int64>("begin_mask");
   const int32 end_mask = attrs.get<int64>("end_mask");
   const int32 ellipsis_mask = attrs.get<int64>("ellipsis_mask");
+  const int32 shrink_axis_mask = attrs.get<int64>("shrink_axis_mask");
 
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
@@ -2380,9 +2505,9 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
       &begin_weights.GetTensor(), &end_weights.GetTensor(),
       stride_weights.GetTensor(), input_shape, begin_mask, end_mask,
-      ellipsis_mask, /*new_axis_mask=*/0,
-      /*shrink_axis_mask=*/0, &processing_shape, &final_shape, &is_identity,
-      &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+      ellipsis_mask, new_axis_mask, shrink_axis_mask, &processing_shape,
+      &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
+      &strides));
 
   // Negative or zero strides currently not supported.
   for (int stride : strides) {
@@ -2416,13 +2541,29 @@ Status ConvertStridedSlice(OpConverterParams* params) {
           node_def.name());
     }
   }
+  // Can't shrink axis on batch dimension.
+  if (shrink_axis_mask & 1) {
+    return errors::Unimplemented(
+        "TensorRT does not allow modifications to the batch dimension, at ",
+        node_def.name());
+  }
   // TRT Slice layer uses (begin, size) instead of (begin, end)
   absl::InlinedVector<int64, 4> size(input_dims.size());
   for (int i = 0; i < input_dims.size(); i++) {
     // Divide by stride (round up)
     size[i] = (end[i] - begin[i] + strides[i] - 1) / strides[i];
   }
-  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides);
+
+  // shrink_axis_mask requires a reshape after the slice.
+  nvinfer1::Dims final_shape_dims;
+  nvinfer1::Dims* final_shape_dims_ptr = nullptr;
+  if (shrink_axis_mask) {
+    final_shape_dims =
+        TensorShapeToTrtDims(final_shape, /*ignore_first_dim=*/true);
+    final_shape_dims_ptr = &final_shape_dims;
+  }
+  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides,
+                                   final_shape_dims_ptr);
 }
 
 Status ConvertConv2D(OpConverterParams* params) {
@@ -3626,31 +3767,23 @@ Status ConvertSplitHelper(OpConverterParams* params,
   begin.insert(begin.begin(), 0);
   size.insert(size.begin(), 1);
   stride.insert(stride.begin(), 1);
+  // Create final shape for Unpack/Unstack, where split axis is squeezed.
+  nvinfer1::Dims final_shape_for_unpack;
+  nvinfer1::Dims* final_shape_for_unpack_ptr = nullptr;
+  if (squeeze_after) {
+    std::vector<int> size_after_squeeze(size);
+    size_after_squeeze.erase(size_after_squeeze.begin() + trt_axis + 1);
+    TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(
+        size_after_squeeze, &final_shape_for_unpack, /*ignore_frst_dim=*/true));
+    final_shape_for_unpack_ptr = &final_shape_for_unpack;
+  }
 
   // Slice the input. ConvertStridedSliceHelper will push the outputs onto
   // params->outputs.
   for (int i = 0; i < num_splits; ++i) {
     begin[trt_axis + 1] = i * split_size_on_axis;
-    TF_RETURN_IF_ERROR(
-        ConvertStridedSliceHelper(params, input, begin, size, stride));
-  }
-  if (params->validation_only) return Status::OK();
-
-  // For Unpack/Unstack, remove axis that we split upon.
-  if (squeeze_after) {
-    // Create the new shape.
-    size.erase(size.begin() + trt_axis + 1);
-    nvinfer1::Dims new_dims;
-    TF_RETURN_IF_ERROR(
-        TensorShapeArrayToTrtDims(size, &new_dims, /*ignore_frst_dim=*/true));
-    // Reshape each slice.
-    for (int i = 0; i < params->outputs->size(); i++) {
-      nvinfer1::ITensor* output_tensor = nullptr;
-      TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-          params->outputs->at(i), new_dims, /*validation_only=*/false,
-          &output_tensor));
-      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
-    }
+    TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
+        params, input, begin, size, stride, final_shape_for_unpack_ptr));
   }
   return Status::OK();
 }
@@ -4649,7 +4782,7 @@ Status ConvertResize(OpConverterParams* params) {
   // return after validation if only validation is requested.
   if (params->validation_only) return Status::OK();
 
-  // Tranpose tensor from NHWC to NCHW format.
+  // Transpose tensor from NHWC to NCHW format.
   TF_RETURN_IF_ERROR(
       params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
 

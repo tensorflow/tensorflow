@@ -186,6 +186,12 @@ tf_proto {
         type: TYPE_MESSAGE
         type_name: ".tensorflow.SessionMetadata"
       }
+      field {
+        name: "optimize_for_static_graph"
+        number: 12
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       reserved_range {
         start: 2
         end: 3

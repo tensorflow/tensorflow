@@ -151,6 +151,7 @@ tf_cuda_cc_test(
     tags = [
         "guitar",
         "multi_gpu",
+        "no_gpu",  # flaky, b/136267687
     ],
     deps = [
         ":c_api",

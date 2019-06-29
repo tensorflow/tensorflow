@@ -521,6 +521,14 @@ message ConfigProto {
     //
     // NOTE: This is currently used and propagated only by the direct session.
     SessionMetadata session_metadata = 11;
+
+    // If true, the session may treat the graph as being static for optimization
+    // purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef must be passed in a single call to Session::Create(), and
+    // Session::Extend() may not be supported.
+    bool optimize_for_static_graph = 12;
   };
 
   Experimental experimental = 16;

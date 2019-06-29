@@ -1303,8 +1303,9 @@ tf_kernel_library(
         "where_op_gpu_impl_7.cu.cc",
         "where_op_gpu_impl_8.cu.cc",
     ],
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":cuda_solvers",
+    ]) + if_cuda([
         "@cub_archive//:cub",
     ]) + if_rocm([
         "@rocprim_archive//:rocprim",
@@ -3533,7 +3534,12 @@ cc_library(
 
 tf_kernel_library(
     name = "roll_op",
-    prefix = "roll_op",
+    srcs = ["roll_op.cc"],
+    hdrs = ["roll_op.h"],
+    gpu_srcs = [
+        "roll_op_gpu.cu.cc",
+        "roll_op.h",
+    ],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
