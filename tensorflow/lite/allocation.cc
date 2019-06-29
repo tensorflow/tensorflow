@@ -33,7 +33,7 @@ namespace tflite {
 #ifndef TFLITE_MCU
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
-    : Allocation(error_reporter) {
+    : Allocation(error_reporter, Allocation::Type::kFileCopy) {
   // Obtain the file size, using an alternative method that is does not
   // require fstat for more compatibility.
   std::unique_ptr<FILE, decltype(&fclose)> file(fopen(filename, "rb"), fclose);
@@ -86,7 +86,7 @@ bool FileCopyAllocation::valid() const { return copied_buffer_ != nullptr; }
 
 MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
                                    ErrorReporter* error_reporter)
-    : Allocation(error_reporter) {
+    : Allocation(error_reporter, Allocation::Type::kMemory) {
   buffer_ = ptr;
   buffer_size_bytes_ = num_bytes;
 }

@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -417,11 +419,14 @@ class NNAPIOpBuilder {
   NNAPIOpBuilder(const NnApi* nnapi, TfLiteContext* context,
                  OperandMapping* tensor_mapping,
                  DequantizeMapping* dequantize_mapping,
+                 std::map<const MMAPAllocation*, ANeuralNetworksMemory*>*
+                     allocation_mapping,
                  ANeuralNetworksModel* nn_model)
       : nnapi_(nnapi),
         context_(context),
         operand_mapping_(tensor_mapping),
         dequantize_mapping_(dequantize_mapping),
+        allocation_memory_mapping_(allocation_mapping),
         nn_model_(nn_model) {}
 
   TfLiteStatus AddScalarBoolOperand(bool value) {
@@ -748,11 +753,34 @@ class NNAPIOpBuilder {
               nn_model_, ann_tensor_index, &ann_perchannel_params));
     }
     if (tensor->allocation_type == kTfLiteMmapRo) {
-      // TODO(b/80630405): Use NNAPIAllocation.
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context_,
-          nnapi_->ANeuralNetworksModel_setOperandValue(
-              nn_model_, ann_tensor_index, tensor->data.raw, tensor->bytes));
+      if (tensor->allocation &&
+          static_cast<const Allocation*>(tensor->allocation)->type() ==
+              Allocation::Type::kMMap) {
+        const MMAPAllocation* mmap_alloc =
+            static_cast<const MMAPAllocation*>(tensor->allocation);
+        if (allocation_memory_mapping_->count(mmap_alloc) == 0) {
+          ANeuralNetworksMemory* ann_memory_handle = nullptr;
+          nnapi_->ANeuralNetworksMemory_createFromFd(
+              mmap_alloc->bytes(), PROT_READ, mmap_alloc->fd(), 0,
+              &ann_memory_handle);
+          allocation_memory_mapping_->insert(
+              std::make_pair(mmap_alloc, ann_memory_handle));
+        }
+        ANeuralNetworksMemory* ann_memory_handle =
+            allocation_memory_mapping_->at(mmap_alloc);
+        // Compute the offset to the base pointer of the MMAPAllocation.
+        auto offset = reinterpret_cast<const uint8_t*>(tensor->data.raw) -
+                      reinterpret_cast<const uint8_t*>(mmap_alloc->base());
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context_, nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
+                          nn_model_, ann_tensor_index, ann_memory_handle,
+                          offset, tensor->bytes));
+      } else {
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context_,
+            nnapi_->ANeuralNetworksModel_setOperandValue(
+                nn_model_, ann_tensor_index, tensor->data.raw, tensor->bytes));
+      }
     }
 
     indices->push_back(ann_tensor_index);
@@ -773,6 +801,9 @@ class NNAPIOpBuilder {
   // to tensor #10 (FLOAT32) because a DEQUANTIZE operator was added to convert
   // tensor #4 to a FLOAT32 tensor.
   DequantizeMapping* const dequantize_mapping_;
+
+  std::map<const MMAPAllocation*, ANeuralNetworksMemory*>* const
+      allocation_memory_mapping_;
 
   // The NNAPI model.
   ANeuralNetworksModel* const nn_model_;
@@ -804,6 +835,11 @@ ANeuralNetworksOperationType BasicMappingFn(
 class NNAPIDelegateKernel {
  public:
   NNAPIDelegateKernel() { nnapi_ = NnApiImplementation(); }
+  ~NNAPIDelegateKernel() {
+    for (auto content : allocation_memory_mapping_) {
+      nnapi_->ANeuralNetworksMemory_free(content.second);
+    }
+  }
 
   typedef ANeuralNetworksOperationType (*MappingFn)(
       const NNAPIOpMappingArgs& mapping_args);
@@ -2079,6 +2115,8 @@ class NNAPIDelegateKernel {
   std::vector<int> nodes_;
   // Track indices we use
   OperandMapping operand_mapping_;
+  std::map<const MMAPAllocation*, ANeuralNetworksMemory*>
+      allocation_memory_mapping_;
   // Track memory map
   const std::vector<StatefulNnApiDelegate::MemoryRegistration>*
       tensor_memory_map_;
@@ -2148,7 +2186,8 @@ class NNAPIDelegateKernel {
     // The operand builder allows creating a single op. It is created outside
     // the for loop to avoid reallocating the vectors.
     NNAPIOpBuilder builder(nnapi_, context, &operand_mapping_,
-                           &dequantize_mapping, nn_model_.get());
+                           &dequantize_mapping, &allocation_memory_mapping_,
+                           nn_model_.get());
     // Add Tensors.
     for (auto node_index : nodes_) {
       // Obtain the op and registration.
