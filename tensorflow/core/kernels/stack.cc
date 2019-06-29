@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits.h>
 
 #include <atomic>
+#include <list>
 #include <map>
 #include <queue>
 #include <stack>
@@ -65,9 +66,9 @@ class Stack : public ResourceBase {
       return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
                                      "its max_size (", max_size_, ")");
     }
-    stack_.push_back(value);
     int index = stack_.size() - 1;
-    unswapped_ids_.push(index);
+    unswapped_lru_.push_back(index);
+    stack_.push_back({value, unswapped_lru_.end()});
     return Status::OK();
   }
 
@@ -83,7 +84,11 @@ class Stack : public ResourceBase {
       cond_swapping_ins_[index].wait(l);
       index = stack_.size() - 1;
     }
-    *value = stack_.back();
+    *value = stack_.back().first;
+    auto iter = stack_.back().second;
+    if (iter != unswapped_lru_.end()) {
+      unswapped_lru_.erase(iter);
+    }
     stack_.pop_back();
     return Status::OK();
   }
@@ -114,16 +119,16 @@ class Stack : public ResourceBase {
     mutex_lock l(mu_);
     bool can_swap = false;
     while (!can_swap) {
-      if (unswapped_ids_.empty()) {
+      if (unswapped_lru_.empty()) {
         break;
       }
-      int index = unswapped_ids_.front();
-      unswapped_ids_.pop();
-      if (!cond(stack_[index])) {
+      int index = unswapped_lru_.front();
+      unswapped_lru_.pop_front();
+      if (!cond(stack_[index].first)) {
         continue;
       }
-      swapped_ids_.push(index);
-      *value = &stack_[index];
+      swapped_mru_.push_back(index);
+      *value = &(stack_[index].first);
       can_swap = true;
     }
     return can_swap;
@@ -133,15 +138,15 @@ class Stack : public ResourceBase {
     mutex_lock l(mu_);
     bool can_unswap = false;
     while (!can_unswap) {
-      if (swapped_ids_.empty()) {
+      if (swapped_mru_.empty()) {
         break;
       }
-      *index = swapped_ids_.top();
-      swapped_ids_.pop();
+      *index = swapped_mru_.back();
+      swapped_mru_.pop_back();
       if (*index >= stack_.size()) {
         continue;
       }
-      *value = &stack_[*index];
+      *value = &(stack_[*index].first);
       is_swapping_ins_[*index] = true;
       can_unswap = true;
     }
@@ -160,7 +165,7 @@ class Stack : public ResourceBase {
     if (stack_.empty()) {
       return false;
     }
-    const Tensor& first = stack_.front().tensor;
+    const Tensor& first = stack_.front().first.tensor;
     return !tensor.SharesBufferWith(first);
   }
 
@@ -189,10 +194,11 @@ class Stack : public ResourceBase {
   Tensor handle_;
   int max_size_;
   bool closed_ GUARDED_BY(mu_);
-  std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+  std::vector<std::pair<TensorAndAllocation, std::list<int>::iterator>> stack_
+      GUARDED_BY(mu_);
 
-  std::queue<int> unswapped_ids_ GUARDED_BY(mu_);
-  std::stack<int> swapped_ids_ GUARDED_BY(mu_);
+  std::list<int> unswapped_lru_ GUARDED_BY(mu_);  // holds indices into stack_
+  std::list<int> swapped_mru_ GUARDED_BY(mu_);    // holds indices into stack_
 
   std::map<int, bool> is_swapping_ins_ GUARDED_BY(mu_);
   std::map<int, condition_variable> cond_swapping_ins_;
@@ -366,7 +372,7 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       &(to_swap_out->tensor), "StackPush", device, cpu_tensor,
       [stack, to_swap_out, cpu_tensor, done](const Status& s) {
         if (s.ok()) {
-          stack->SwapOut(to_swap_out, cpu_tensor);
+          stack->MarkAsSwapped(to_swap_out, cpu_tensor);
         }
         done();
         delete cpu_tensor;
@@ -431,7 +437,7 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   // Obtain the most recent swapped TensorAndAllocation.
   Stack::TensorAndAllocation* to_swap_in;
   int to_swap_in_index;
-  if (!stack->GetTensorToSwapIn(&to_swap_in, to_swap_in_index)) {
+  if (!stack->GetTensorToSwapIn(&to_swap_in, &to_swap_in_index)) {
     return;
   }
 
@@ -442,7 +448,7 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       &(to_swap_in->tensor), device, device_tensor,
       [stack, to_swap_in, device_tensor, to_swap_in_index](const Status& s) {
         if (s.ok()) {
-          stack->SwapIn(to_swap_in, device_tensor);
+          stack->MarkAsUnswapped(to_swap_in, device_tensor);
         }
         delete device_tensor;
         stack->FinishSwappingIn(to_swap_in_index);
