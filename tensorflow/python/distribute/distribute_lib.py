@@ -1801,8 +1801,9 @@ class StrategyExtendedV1(StrategyExtendedV2):
 class ReplicaContext(object):
   """`tf.distribute.Strategy` API when in a replica context.
 
-  To be used inside your replicated step function, such as in a
-  `tf.distribute.Strategy.experimental_run_v2` call.
+  You can use `tf.distribute.get_replica_context` to get an instance of
+  `ReplicaContext`. This should be inside your replicated step function, such
+  as in a `tf.distribute.Strategy.experimental_run_v2` call.
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
@@ -1834,8 +1835,8 @@ class ReplicaContext(object):
     """Merge args across replicas and run `merge_fn` in a cross-replica context.
 
     This allows communication and coordination when there are multiple calls
-    to a model function triggered by a call to
-    `strategy.experimental_run_v2(model_fn, ...)`.
+    to the step_fn triggered by a call to
+    `strategy.experimental_run_v2(step_fn, ...)`.
 
     See `tf.distribute.Strategy.experimental_run_v2` for an
     explanation.
@@ -1849,7 +1850,7 @@ class ReplicaContext(object):
     ```
 
     Args:
-      merge_fn: function that joins arguments from threads that are given as
+      merge_fn: Function that joins arguments from threads that are given as
         PerReplica. It accepts `tf.distribute.Strategy` object as
         the first argument.
       args: List or tuple with positional per-thread arguments for `merge_fn`.
@@ -1880,7 +1881,12 @@ class ReplicaContext(object):
 
   @property
   def replica_id_in_sync_group(self):
-    """Which replica is being defined, from 0 to `num_replicas_in_sync - 1`."""
+    """Returns the id of the replica being defined.
+
+    This identifies the replica that is part of a sync group. Currently we
+    assume that all sync groups contain the same number of replicas. The value
+    of the replica id can range from 0 to `num_replica_in_sync` - 1.
+    """
     require_replica_context(self)
     return self._replica_id_in_sync_group
 
@@ -1896,7 +1902,7 @@ class ReplicaContext(object):
     return (device_util.current(),)
 
   def all_reduce(self, reduce_op, value):
-    """All-reduces the given `Tensor` nest across replicas.
+    """All-reduces the given `value Tensor` nest across replicas.
 
     If `all_reduce` is called in any replica, it must be called in all replicas.
     The nested structure and `Tensor` shapes must be identical in all replicas.
@@ -1904,7 +1910,7 @@ class ReplicaContext(object):
     IMPORTANT: The ordering of communications must be identical in all replicas.
 
     Example with two replicas:
-      Replica 0 `value`: {'a': 1, 'b': [40,  1]}
+      Replica 0 `value`: {'a': 1, 'b': [40, 1]}
       Replica 1 `value`: {'a': 3, 'b': [ 2, 98]}
 
       If `reduce_op` == `SUM`:
@@ -1915,8 +1921,8 @@ class ReplicaContext(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value: The nested structure of `Tensor`s to all-reduced.
-        The structure must be compatible with `tf.nest`.
+      value: The nested structure of `Tensor`s to all-reduce. The structure must
+        be compatible with `tf.nest`.
 
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
@@ -1952,7 +1958,8 @@ class ReplicaContext(object):
 
 def _batch_reduce_destination(x):
   """Returns the destinations for batch all-reduce."""
-  if isinstance(x, ops.Tensor):  # One device strategies.
+  if isinstance(x, ops.Tensor):
+    # If this is a one device strategy.
     return x.device
   else:
     return x
