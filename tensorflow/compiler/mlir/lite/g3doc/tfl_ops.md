@@ -1277,6 +1277,41 @@ Element-wise squared difference operation.
 ### Results:
 1. `output`: tensor of any type values
 
+## tfl.squeeze (TFL::SqueezeOp)
+Removes dimensions of size 1 from the shape of a tensor.
+
+### Description:
+
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`axis`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+
+### Operands:
+1. `input`: tensor of any type values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `squeeze_dims` | `ArrayAttr` | 64-bit integer array attribute attribute |
+
+### Results:
+1. `output`: tensor of any type values
+
 ## tfl.strided_slice (TFL::StridedSliceOp)
 StridedSlice Op
 
