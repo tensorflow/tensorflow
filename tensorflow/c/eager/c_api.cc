@@ -129,17 +129,16 @@ tensorflow::Status GetAllRemoteDevices(
 }
 
 tensorflow::Status CreateRemoteContexts(
-    const std::vector<string>& remote_workers, int64 rendezvous_id,
+    const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
-    const tensorflow::eager::CreateContextRequest& base_request,
-    tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
+    const tensorflow::eager::CreateContextRequest& base_request) {
   for (int i = 0; i < remote_workers.size(); i++) {
     const string& remote_worker = remote_workers[i];
 
     tensorflow::eager::CreateContextRequest request(base_request);
     tensorflow::eager::CreateContextResponse response;
-    request.set_rendezvous_id(rendezvous_id);
+    request.set_context_id(context_id);
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
     if (!tensorflow::DeviceNameUtils::ParseFullName(remote_worker,
                                                     &parsed_name)) {
@@ -168,8 +167,6 @@ tensorflow::Status CreateRemoteContexts(
         });
     n.WaitForNotification();
     TF_RETURN_IF_ERROR(status);
-
-    remote_contexts->emplace(remote_worker, response.context_id());
   }
   return tensorflow::Status::OK();
 }
@@ -206,7 +203,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  int64 rendezvous_id = tensorflow::random::New64();
+  tensorflow::uint64 context_id = tensorflow::random::New64();
 
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
@@ -242,16 +239,14 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           &remote_eager_workers));
 
   // Initialize remote eager workers.
-  tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-      remote_workers, rendezvous_id, keep_alive_secs, server_def,
-      remote_eager_workers.get(), ctx->context->Async(), base_request,
-      &remote_contexts));
+      remote_workers, context_id, keep_alive_secs, server_def,
+      remote_eager_workers.get(), ctx->context->Async(), base_request));
 
   tensorflow::RemoteRendezvous* r =
-      grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
+      grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
 
-  auto session_name = tensorflow::strings::StrCat("eager_", rendezvous_id);
+  auto session_name = tensorflow::strings::StrCat("eager_", context_id);
   TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
       session_name, server_def, base_request.cluster_device_attributes(),
       true));
@@ -266,10 +261,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  return ctx->context->InitializeRemote(
+  return ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
       std::move(remote_eager_workers), std::move(remote_device_mgr),
-      remote_contexts, r, device_mgr, keep_alive_secs,
+      remote_workers, context_id, r, device_mgr, keep_alive_secs,
       worker_session->cluster_flr.get());
 #undef LOG_AND_RETURN_IF_ERROR
 }
