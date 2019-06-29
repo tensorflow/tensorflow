@@ -88,7 +88,7 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
-  Status SwapOut(TensorAndAllocation* value, Tensor* cpu_tensor) {
+  Status MarkAsSwapped(TensorAndAllocation* value, Tensor* cpu_tensor) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
 
@@ -98,7 +98,7 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
-  Status SwapIn(TensorAndAllocation* value, Tensor* device_tensor) {
+  Status MarkAsUnswapped(TensorAndAllocation* value, Tensor* device_tensor) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
 
@@ -129,20 +129,20 @@ class Stack : public ResourceBase {
     return can_swap;
   }
 
-  bool GetTensorToSwapIn(TensorAndAllocation** value, int& index) {
+  bool GetTensorToSwapIn(TensorAndAllocation** value, int* index) {
     mutex_lock l(mu_);
     bool can_unswap = false;
     while (!can_unswap) {
       if (swapped_ids_.empty()) {
         break;
       }
-      index = swapped_ids_.top();
+      *index = swapped_ids_.top();
       swapped_ids_.pop();
-      if (index >= stack_.size()) {
+      if (*index >= stack_.size()) {
         continue;
       }
-      *value = &stack_[index];
-      is_swapping_ins_[index] = true;
+      *value = &stack_[*index];
+      is_swapping_ins_[*index] = true;
       can_unswap = true;
     }
     return can_unswap;
