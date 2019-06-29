@@ -57,7 +57,7 @@ class CommonTestUtilities : public OpsTestBase {
                      .Input(FakeInput(dtype))     // Input
                      .Input(FakeInput(DT_UINT8))  // Mkl second tensor
                      .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(tensor.shape(), tensor.flat<T>());
@@ -232,7 +232,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", "SAME")
                      .Attr("fused_ops", fused_ops)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
 
     TF_EXPECT_OK(InitOp());
@@ -432,7 +432,7 @@ class FusedPadConvOpTest : public OpsTestBase {
                      .Attr("data_format", data_format)
                      .Attr("T", dtype)
                      .Attr("strides", {1, stride, stride, 1})
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
 
@@ -526,7 +526,7 @@ class FilterCacheTest : public OpsTestBase {
                      .Attr("is_filter_const", is_filter_const)
                      .Attr("T", dtype)
                      .Attr("strides", {1, stride, stride, 1})
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
 
@@ -724,7 +724,7 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", "VALID")
                      .Attr("fused_ops", fused_ops)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
 
     TF_EXPECT_OK(InitOp());

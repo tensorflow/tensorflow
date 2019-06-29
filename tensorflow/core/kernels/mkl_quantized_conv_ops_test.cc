@@ -55,7 +55,7 @@ class ConvMklToTF : public OpsTestBase {
                      .Input(FakeInput(dtype))     // Input
                      .Input(FakeInput(DT_UINT8))  // MKL metadata tensor
                      .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(input.shape(), input.flat<T>());
