@@ -909,6 +909,46 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
                                                     dimensions());
 }
 
+HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
+                                             HloInstruction* operand,
+                                             int64 inferred_dimension)
+    : HloInstruction(HloOpcode::kReshape, shape),
+      inferred_dimension_(inferred_dimension) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloReshapeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  if (inferred_dimension_ != -1) {
+    proto.add_dimensions(inferred_dimension_);
+  }
+  return proto;
+}
+
+std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (inferred_dimension() == -1) {
+    return {};
+  }
+  return {StrCat("inferred_dimension={", inferred_dimension(), "}")};
+}
+
+bool HloReshapeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloReshapeInstruction&>(other);
+  return inferred_dimension() == casted_other.inferred_dimension();
+}
+
+std::unique_ptr<HloInstruction> HloReshapeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloReshapeInstruction>(shape, new_operands[0],
+                                                  inferred_dimension());
+}
+
 HloMapInstruction::HloMapInstruction(const Shape& shape,
                                      absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation)

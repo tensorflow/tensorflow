@@ -579,6 +579,27 @@ class HloBroadcastInstruction : public HloInstruction {
   std::vector<int64> dimensions_;
 };
 
+class HloReshapeInstruction : public HloInstruction {
+ public:
+  explicit HloReshapeInstruction(const Shape& shape, HloInstruction* operand,
+                                 int64 inferred_dimension);
+  int64 inferred_dimension() const { return inferred_dimension_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+  int64 inferred_dimension_;
+};
+
 class HloMapInstruction : public HloInstruction {
  public:
   explicit HloMapInstruction(const Shape& shape,

@@ -609,6 +609,18 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction =
           CreateGetDimensionSize(shape, operands(0), proto.dimensions(0));
       break;
+    case HloOpcode::kReshape: {
+      int64 inferred_dimension = -1;
+      if (!proto.dimensions().empty()) {
+        inferred_dimension = proto.dimensions()[0];
+      }
+      TF_RET_CHECK(ShapeUtil::ElementsIn(shape) ==
+                   ShapeUtil::ElementsIn(operands(0)->shape()))
+          << "shape: " << ShapeUtil::HumanString(shape)
+          << " operand: " << ShapeUtil::HumanString(operands(0)->shape());
+      instruction = CreateReshape(shape, operands(0), inferred_dimension);
+      break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -1214,15 +1226,14 @@ HloInstruction::CreateBroadcastSequence(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
-    const Shape& shape, HloInstruction* operand) {
+    const Shape& shape, HloInstruction* operand, int64 inferred_dimension) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape),
            ShapeUtil::ElementsIn(operand->shape()))
       << "shape: " << ShapeUtil::HumanString(shape)
       << " operand: " << ShapeUtil::HumanString(operand->shape());
-  auto instruction =
-      absl::WrapUnique(new HloInstruction(HloOpcode::kReshape, shape));
-  instruction->AppendOperand(operand);
-  return instruction;
+
+  return absl::make_unique<HloReshapeInstruction>(shape, operand,
+                                                  inferred_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
@@ -1406,6 +1417,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReduce:
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kReshape:
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
@@ -1506,10 +1518,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcastConvert:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
-      break;
-    case HloOpcode::kReshape:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateReshape(shape, new_operands[0]);
       break;
     case HloOpcode::kDynamicUpdateSlice:
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
@@ -3348,6 +3356,10 @@ int64 HloInstruction::concatenate_dimension() const {
 
 int64 HloInstruction::dimension() const {
   return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
+}
+
+int64 HloInstruction::inferred_dimension() const {
+  return Cast<HloReshapeInstruction>(this)->inferred_dimension();
 }
 
 bool HloInstruction::IsRank2Transpose() const {
