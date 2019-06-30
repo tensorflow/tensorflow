@@ -2755,7 +2755,6 @@ def repeat(x, n):
         <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
         array([[[1, 2],
                 [1, 2]],
-
                [[3, 4],
                 [3, 4]]], dtype=int32)>
       ```
@@ -3010,7 +3009,6 @@ def stack(x, axis=0):
         <tf.Tensor: id=146, shape=(2, 2, 2), dtype=int32, numpy=
         array([[[ 1,  2],
                 [ 3,  4]],
-        
                [[10, 20],
                 [30, 40]]], dtype=int32)>
       ```
