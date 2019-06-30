@@ -179,22 +179,46 @@ def softsign(x):
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified Linear Unit.
+  The Rectified Linear Unit Activation Function is:
+    If the Arguments are set to their default values, it outputs `0` when `x < 0`, and
+    conversely, it outputs a linear function when `x ≥ 0`.
+    ![relu](https://cdn-images-1.medium.com/max/1200/1*DfMRHwxY1gyyDmrIAd-gjQ.png)
 
-  With default values, it returns element-wise `max(x, 0)`.
-
-  Otherwise, it follows:
-  `f(x) = max_value` for `x >= max_value`,
-  `f(x) = x` for `threshold <= x < max_value`,
-  `f(x) = alpha * (x - threshold)` otherwise.
+  If user passes values for the arguments:
+    For a given input `x`,
+    The output of RELU does not exceed `max_value`(if exceeded, outputs `max_value`),
+    for all the values of outputs that lie between [`threshold`,`max_value`) RELU outputs
+    `x` and for all the values of outputs that fall below `threshold`
+    RELU multiplies `(x-threshold)` with `alpha`.
 
   Arguments:
       x: A tensor or variable.
-      alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
-      threshold: float. Threshold value for thresholded activation.
+      alpha: A scalar.This value decides the slope of RELU function for negative values of inputs,
+            it is helpful to tackle the problem of dying RELU.(Default set to `0`)
+      max_value: float.This value clips the output to rectify the problem of exploding gradients.
+                (Default set to `None`)
+      threshold: float.The values of outputs that fall below this value are treated as negative values
+                 in the case of RELU with default settings i.e, the origin is shifted to this value.
+                 (Default set to 'None')
+ (see references for more information)
 
   Returns:
       A tensor.
+
+  Example Usage:
+  ```python3
+  # Model to classify inputs to 7 different classes.
+  model = models.Sequential()
+  model.add(Dense(64, activation='relu',
+  input_shape=(28, 28, 1))))
+  model.add(Dense(32, activation='relu'))
+  model.add(Dense(16, activation='relu'))
+  model.add(Dense(7, activation='softmax'))
+  ```
+
+  References:
+    [Deep Learning using Rectified Linear Units (ReLU),Abien Fred M. Agarap]
+    (https://arxiv.org/abs/1803.08375v2)
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
