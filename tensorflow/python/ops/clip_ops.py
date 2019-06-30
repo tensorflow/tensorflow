@@ -156,6 +156,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
+
+  Raises:
+    ValueError: If the clip_norm tensor is not a 0-D scalar tensor.
+    TypeError: If dtype of the input is not a floating point or
+      complex type.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     values = ops.convert_to_tensor(
