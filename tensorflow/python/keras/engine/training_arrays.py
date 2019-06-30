@@ -207,7 +207,8 @@ def model_iteration(model,
     val_samples_or_steps = validation_steps
   else:
     # Get num samples for printing.
-    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+    vals = val_inputs.values() if isinstance(val_inputs, dict) else val_inputs
+    val_samples_or_steps = vals and vals[0].shape[0] or None
 
   if mode == ModeKeys.TRAIN and verbose:
     _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
