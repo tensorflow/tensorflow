@@ -272,9 +272,6 @@ void TestBasic() {
   }
 }
 
-// Reinterpret the bytes of an rvalue
-#define _CAST(x, T) (*reinterpret_cast<const T*>(&x))
-
 // Type-specific subroutine of SwapBytes test below
 template <typename T>
 void TestByteSwap(const T* forward, const T* swapped, int array_len) {
@@ -283,8 +280,8 @@ void TestByteSwap(const T* forward, const T* swapped, int array_len) {
   // Convert the entire array at once
   std::unique_ptr<T> forward_copy(new T[array_len]);
   std::memcpy(forward_copy.get(), forward, array_len * bytes_per_elem);
-  TF_EXPECT_OK(
-      ByteSwapArray((char*)forward_copy.get(), bytes_per_elem, array_len));
+  TF_EXPECT_OK(ByteSwapArray(reinterpret_cast<char*>(forward_copy.get()),
+                             bytes_per_elem, array_len));
   for (int i = 0; i < array_len; i++) {
     EXPECT_EQ(forward_copy.get()[i], swapped[i]);
   }
@@ -294,9 +291,9 @@ void TestByteSwap(const T* forward, const T* swapped, int array_len) {
   auto dtype = DataTypeToEnum<T>::value;
   Tensor forward_tensor(dtype, shape);
   Tensor swapped_tensor(dtype, shape);
-  std::memcpy((char*)forward_tensor.tensor_data().data(), forward,
+  std::memcpy(const_cast<char*>(forward_tensor.tensor_data().data()), forward,
               array_len * bytes_per_elem);
-  std::memcpy((char*)swapped_tensor.tensor_data().data(), swapped,
+  std::memcpy(const_cast<char*>(swapped_tensor.tensor_data().data()), swapped,
               array_len * bytes_per_elem);
   TF_EXPECT_OK(ByteSwapTensor(&forward_tensor));
   test::ExpectTensorEqual<T>(forward_tensor, swapped_tensor);
@@ -327,30 +324,34 @@ TEST(TensorBundleTest, SwapBytes) {
 
   // 16-bit types
   TestByteSwap(forward_16, swapped_16, arr_len_16);
-  TestByteSwap((int16_t*)forward_16, (int16_t*)swapped_16, arr_len_16);
-  TestByteSwap((bfloat16*)forward_16, (bfloat16*)swapped_16, arr_len_16);
+  TestByteSwap(reinterpret_cast<const int16_t*>(forward_16),
+               reinterpret_cast<const int16_t*>(swapped_16), arr_len_16);
+  TestByteSwap(reinterpret_cast<const bfloat16*>(forward_16),
+               reinterpret_cast<const bfloat16*>(swapped_16), arr_len_16);
 
   // 32-bit types
   TestByteSwap(forward_32, swapped_32, arr_len_32);
-  TestByteSwap((const int32_t*)forward_32, (const int32_t*)swapped_32,
-               arr_len_32);
-  TestByteSwap((const float*)forward_32, (const float*)swapped_32, arr_len_32);
+  TestByteSwap(reinterpret_cast<const int32_t*>(forward_32),
+               reinterpret_cast<const int32_t*>(swapped_32), arr_len_32);
+  TestByteSwap(reinterpret_cast<const float*>(forward_32),
+               reinterpret_cast<const float*>(swapped_32), arr_len_32);
 
   // 64-bit types
   // Cast to uint64*/int64* to make DataTypeToEnum<T> happy
-  TestByteSwap((const uint64*)forward_64, (const uint64*)swapped_64,
-               arr_len_64);
-  TestByteSwap((const int64*)forward_64, (const int64*)swapped_64, arr_len_64);
-  TestByteSwap((const double*)forward_64, (const double*)swapped_64,
-               arr_len_64);
+  TestByteSwap(reinterpret_cast<const uint64*>(forward_64),
+               reinterpret_cast<const uint64*>(swapped_64), arr_len_64);
+  TestByteSwap(reinterpret_cast<const int64*>(forward_64),
+               reinterpret_cast<const int64*>(swapped_64), arr_len_64);
+  TestByteSwap(reinterpret_cast<const double*>(forward_64),
+               reinterpret_cast<const double*>(swapped_64), arr_len_64);
 
   // Complex types.
   // Logic for complex number handling is only in ByteSwapTensor, so don't test
   // ByteSwapArray
-  const float* forward_float = (const float*)forward_32;
-  const float* swapped_float = (const float*)swapped_32;
-  const double* forward_double = (const double*)forward_64;
-  const double* swapped_double = (const double*)swapped_64;
+  const float* forward_float = reinterpret_cast<const float*>(forward_32);
+  const float* swapped_float = reinterpret_cast<const float*>(swapped_32);
+  const double* forward_double = reinterpret_cast<const double*>(forward_64);
+  const double* swapped_double = reinterpret_cast<const double*>(swapped_64);
   Tensor forward_complex64 = Constant_2x3<complex64>(
       std::complex<float>(forward_float[0], forward_float[1]));
   Tensor swapped_complex64 = Constant_2x3<complex64>(
@@ -471,7 +472,6 @@ void TestEndianness() {
     EXPECT_FALSE(reader.Valid());
   }
 }
-
 
 template <typename T>
 void TestNonStandardShapes() {

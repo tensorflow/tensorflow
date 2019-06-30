@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef BYTE_SWAP_H
-#define BYTE_SWAP_H
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -124,4 +124,4 @@ Status ByteSwapTensor(Tensor *t);
 
 }  // namespace tensorflow
 
-#endif  // BYTE_SWAP_H
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
