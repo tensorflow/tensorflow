@@ -30,9 +30,9 @@ namespace mlir {
 
 class Module {
 public:
-  explicit Module(MLIRContext *context) : symbolTable(context) {}
+  explicit Module(MLIRContext *context) : context(context) {}
 
-  MLIRContext *getContext() { return symbolTable.getContext(); }
+  MLIRContext *getContext() { return context; }
 
   /// This is the list of functions in the module.
   using FunctionListType = llvm::iplist<Function>;
@@ -50,15 +50,19 @@ public:
   // Interfaces for working with the symbol table.
 
   /// Look up a function with the specified name, returning null if no such
-  /// name exists.  Function names never include the @ on them.
+  /// name exists. Function names never include the @ on them. Note: This
+  /// performs a linear scan of held symbols.
   Function *getNamedFunction(StringRef name) {
-    return symbolTable.lookup(name);
+    return getNamedFunction(Identifier::get(name, getContext()));
   }
 
   /// Look up a function with the specified name, returning null if no such
-  /// name exists.  Function names never include the @ on them.
+  /// name exists. Function names never include the @ on them. Note: This
+  /// performs a linear scan of held symbols.
   Function *getNamedFunction(Identifier name) {
-    return symbolTable.lookup(name);
+    auto it = llvm::find_if(
+        functions, [name](Function &fn) { return fn.getName() == name; });
+    return it == functions.end() ? nullptr : &*it;
   }
 
   /// Perform (potentially expensive) checks of invariants, used to detect
@@ -78,11 +82,51 @@ private:
     return &Module::functions;
   }
 
-  /// The symbol table used for functions.
-  SymbolTable symbolTable;
+  /// The context attached to this module.
+  MLIRContext *context;
 
   /// This is the actual list of functions the module contains.
   FunctionListType functions;
+};
+
+/// A class used to manage the symbols held by a module. This class handles
+/// ensures that symbols inserted into a module have a unique name, and provides
+/// efficent named lookup to held symbols.
+class ModuleManager {
+public:
+  ModuleManager(Module *module) : module(module), symbolTable(module) {}
+
+  /// Look up a symbol with the specified name, returning null if no such
+  /// name exists. Names must never include the @ on them.
+  template <typename NameTy> Function *getNamedFunction(NameTy &&name) const {
+    return symbolTable.lookup(name);
+  }
+
+  /// Insert a new symbol into the module, auto-renaming it as necessary.
+  void insert(Function *function) {
+    symbolTable.insert(function);
+    module->getFunctions().push_back(function);
+  }
+  void insert(Module::iterator insertPt, Function *function) {
+    symbolTable.insert(function);
+    module->getFunctions().insert(insertPt, function);
+  }
+
+  /// Remove the given symbol from the module symbol table and then erase it.
+  void erase(Function *function) {
+    symbolTable.erase(function);
+    function->erase();
+  }
+
+  /// Return the internally held module.
+  Module *getModule() const { return module; }
+
+  /// Return the context of the internal module.
+  MLIRContext *getContext() const { return module->getContext(); }
+
+private:
+  Module *module;
+  SymbolTable symbolTable;
 };
 
 //===--------------------------------------------------------------------===//

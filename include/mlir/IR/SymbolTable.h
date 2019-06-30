@@ -23,13 +23,15 @@
 
 namespace mlir {
 class Function;
+class Module;
 class MLIRContext;
 
 /// This class represents the symbol table used by a module for function
 /// symbols.
 class SymbolTable {
 public:
-  SymbolTable(MLIRContext *ctx) : context(ctx) {}
+  /// Build a symbol table with the symbols within the given module.
+  SymbolTable(Module *module);
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names never include the @ on them.

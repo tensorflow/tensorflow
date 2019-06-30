@@ -16,9 +16,19 @@
 // =============================================================================
 
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 
 using namespace mlir;
+
+/// Build a symbol table with the symbols within the given module.
+SymbolTable::SymbolTable(Module *module) : context(module->getContext()) {
+  for (auto &func : *module) {
+    auto inserted = symbolTable.insert({func.getName(), &func});
+    (void)inserted;
+    assert(inserted.second &&
+           "expected module to contain uniquely named functions");
+  }
+}
 
 /// Look up a symbol with the specified name, returning null if no such name
 /// exists. Names never include the @ on them.

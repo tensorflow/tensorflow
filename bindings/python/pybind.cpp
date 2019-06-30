@@ -143,7 +143,9 @@ struct PythonFunction {
 
 /// Trivial C++ wrappers make use of the EDSC C API.
 struct PythonMLIRModule {
-  PythonMLIRModule() : mlirContext(), module(new mlir::Module(&mlirContext)) {}
+  PythonMLIRModule()
+      : mlirContext(), module(new mlir::Module(&mlirContext)),
+        moduleManager(module.get()) {}
 
   PythonType makeScalarType(const std::string &mlirElemType,
                             unsigned bitwidth) {
@@ -220,7 +222,7 @@ struct PythonMLIRModule {
   }
 
   PythonFunction getNamedFunction(const std::string &name) {
-    return module->getNamedFunction(name);
+    return moduleManager.getNamedFunction(name);
   }
 
   PythonFunctionContext
@@ -232,6 +234,7 @@ private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
   std::unique_ptr<mlir::Module> module;
+  mlir::ModuleManager moduleManager;
   std::unique_ptr<mlir::ExecutionEngine> engine;
 };
 
@@ -595,7 +598,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
-  module->getFunctions().push_back(func);
+  moduleManager.insert(func);
   return func;
 }
 

@@ -461,8 +461,8 @@ func @return_inside_loop() {
 
 // -----
 
-func @redef()
-func @redef()  // expected-error {{redefinition of function named 'redef'}}
+func @redef()  // expected-note {{see existing symbol definition here}}
+func @redef()  // expected-error {{redefinition of symbol named 'redef'}}
 
 // -----
 

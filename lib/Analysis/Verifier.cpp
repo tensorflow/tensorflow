@@ -367,7 +367,18 @@ LogicalResult Operation::verify() {
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns failure.
 LogicalResult Module::verify() {
-  /// Check that each function is correct.
+  // Check that all functions are uniquely named.
+  llvm::StringMap<Location> nameToOrigLoc;
+  for (auto &fn : *this) {
+    auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
+    if (!it.second)
+      return fn.emitError()
+          .append("redefinition of symbol named '", fn.getName(), "'")
+          .attachNote(it.first->second)
+          .append("see existing symbol definition here");
+  }
+
+  // Check that each function is correct.
   for (auto &fn : *this)
     if (failed(fn.verify()))
       return failure();

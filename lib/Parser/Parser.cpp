@@ -4053,10 +4053,6 @@ ParseResult ModuleParser::parseFunc(Module *module) {
       new Function(getEncodedSourceLocation(loc), name, type, attrs);
   module->getFunctions().push_back(function);
 
-  // Verify no name collision / redefinition.
-  if (function->getName() != name)
-    return emitError(loc, "redefinition of function named '") << name << "'";
-
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
     return failure();

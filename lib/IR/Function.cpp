@@ -52,20 +52,13 @@ Module *llvm::ilist_traits<Function>::getContainingModule() {
 /// keep the module pointer and module symbol table up to date.
 void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
   assert(!function->getModule() && "already in a module!");
-  auto *module = getContainingModule();
-  function->module = module;
-
-  // Add this function to the symbol table of the module.
-  module->symbolTable.insert(function);
+  function->module = getContainingModule();
 }
 
 /// This is a trait method invoked when a Function is removed from a Module.
 /// We keep the module pointer up to date.
 void llvm::ilist_traits<Function>::removeNodeFromList(Function *function) {
   assert(function->module && "not already in a module!");
-
-  // Remove the symbol table entry.
-  function->module->symbolTable.erase(function);
   function->module = nullptr;
 }
 
