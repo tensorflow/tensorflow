@@ -34,8 +34,7 @@ using namespace mlir::linalg;
 mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addTypes<BufferType, RangeType, ViewType>();
-  addOperations<BufferAllocOp, BufferDeallocOp, ForOp, LoadOp, RangeOp, StoreOp,
-                SliceOp, ViewOp>();
+  addOperations<ForOp, LoadOp, RangeOp, StoreOp, SliceOp, ViewOp>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
@@ -119,8 +118,8 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
       // Check for '?'
       int64_t bufferSize = -1;
       if (!spec.consume_front("?")) {
-        unsigned parsedBufferSize;
-        if (!spec.consumeInteger(10, parsedBufferSize)) {
+        unsigned long long parsedBufferSize = 0;
+        if (spec.consumeInteger(10, parsedBufferSize)) {
           emitError(loc, "expected buffer size to be an unsigned integer");
           return Type();
         }

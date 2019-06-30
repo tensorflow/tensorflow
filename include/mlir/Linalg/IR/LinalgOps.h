@@ -29,56 +29,6 @@ class OperationFolder;
 
 namespace linalg {
 
-/// The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
-/// upon which a base view can be laid out to give it indexing semantics.
-/// "buffer_alloc" takes a single argument, the size of the buffer to allocate
-/// (in number of elements).
-///
-/// ```{.mlir}
-///     %0 = linalg.buffer_alloc %arg0 : !linalg.buffer<f32>
-/// ```
-class BufferAllocOp
-    : public Op<BufferAllocOp, OpTrait::OneOperand, OpTrait::OneResult> {
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.buffer_alloc"; }
-  static void build(Builder *b, OperationState *result, Type type, Value *size);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  Value *size() { return getOperand(); }
-  BufferType getBufferType() { return getType().cast<BufferType>(); }
-  Type getElementType() { return getBufferType().getElementType(); }
-};
-
-/// The "buffer_dealloc" op frees a 1-D linalg.buffer of the specified type.
-///
-/// ```{.mlir}
-///     linalg.buffer_dealloc %0 : !linalg.buffer<f32>
-/// ```
-class BufferDeallocOp
-    : public Op<BufferDeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.buffer_dealloc"; }
-  static void build(Builder *b, OperationState *result, Value *buffer);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  Value *getBuffer() { return getOperand(); }
-  BufferType getBufferType() {
-    return getOperand()->getType().cast<BufferType>();
-  }
-};
-
 /// The "linalg.for" operation represents a loop nest taking 3 SSA value as
 /// operands that represent the lower bound, upper bound and step respectively.
 /// The operation defines an SSA value for its induction variable. It has one

@@ -37,76 +37,6 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 
-//////////////////////////////////////////////////////////////////////////////
-// BufferAllocOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::BufferAllocOp::build(Builder *b, OperationState *result,
-                                        Type type, Value *size) {
-  result->addOperands({size});
-  result->addTypes(type);
-}
-
-LogicalResult mlir::linalg::BufferAllocOp::verify() {
-  if (!size() || !size()->getType().isa<IndexType>())
-    return emitOpError("first operand should be of type index");
-  if (!VectorType::isValidElementType(getElementType()) &&
-      !getElementType().isa<VectorType>())
-    return emitOpError("unsupported buffer element type");
-  return success();
-}
-
-// A BufferAllocOp prints as:
-//
-// ```{.mlir}
-//   linalg.alloc %0 : !linalg.buffer<f32>
-// ```
-void mlir::linalg::BufferAllocOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *size() << " : " << getType();
-}
-
-ParseResult mlir::linalg::BufferAllocOp::parse(OpAsmParser *parser,
-                                               OperationState *result) {
-  OpAsmParser::OperandType sizeInfo;
-  BufferType bufferType;
-  auto indexTy = parser->getBuilder().getIndexType();
-  if (parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType))
-    return failure();
-  return failure(parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
-                 parser->addTypeToList(bufferType, result->types));
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// BufferDeallocOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::BufferDeallocOp::build(Builder *b, OperationState *result,
-                                          Value *buffer) {
-  result->addOperands({buffer});
-}
-
-LogicalResult mlir::linalg::BufferDeallocOp::verify() {
-  if (!getBuffer()->getType())
-    return emitOpError("first operand should be of type buffer");
-  return success();
-}
-
-// A BufferDeallocOp prints as:
-//
-// ```{.mlir}
-//   linalg.dealloc %0 : !linalg.buffer<f32>
-// ```
-void mlir::linalg::BufferDeallocOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getBuffer() << " : " << getBufferType();
-}
-
-ParseResult mlir::linalg::BufferDeallocOp::parse(OpAsmParser *parser,
-                                                 OperationState *result) {
-  OpAsmParser::OperandType sizeInfo;
-  BufferType bufferType;
-  return failure(
-      parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType) ||
-      parser->resolveOperands(sizeInfo, bufferType, result->operands));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // ForOp.
 ////////////////////////////////////////////////////////////////////////////////
@@ -604,6 +534,60 @@ void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
 // For such operations that do not correspond to library calls (i.e. defined in
 // LinalgOps.td), we define an overloaded `print` function and a
 // parse`className` function.
+
+static void print(OpAsmPrinter *p, BufferAllocOp op) {
+  *p << op.getOperationName() << " ";
+  if (!llvm::empty(op.size()))
+    *p << *op.getOperand(0);
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getBufferType();
+}
+
+static ParseResult parseBufferAllocOp(OpAsmParser *parser,
+                                      OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 1> sizeInfo;
+  BufferType bufferType;
+  auto indexTy = parser->getBuilder().getIndexType();
+  if (parser->parseOperandList(sizeInfo) || parser->parseColonType(bufferType))
+    return failure();
+  if (sizeInfo.empty())
+    return parser->addTypeToList(bufferType, result->types);
+  return failure(parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
+                 parser->addTypeToList(bufferType, result->types));
+}
+
+static LogicalResult verify(BufferAllocOp op) {
+  if (!op.getBufferType().hasConstantSize()) {
+    if (llvm::size(op.size()) != 1 ||
+        !op.getOperand(0)->getType().isa<IndexType>())
+      return op.emitOpError(
+          "one operand of type index expected for dynamic buffer");
+  } else { // op.getBufferType().hasConstantSize()
+    if (!llvm::empty(op.size()))
+      return op.emitOpError("unexpected static buffer operand");
+    if (op.getBufferType().getBufferSize().getValue() <= 0)
+      return op.emitOpError("expected nonnegative static buffer size");
+  }
+  if (!VectorType::isValidElementType(op.getElementType()) &&
+      !op.getElementType().isa<VectorType>())
+    return op.emitOpError("unsupported buffer element type");
+  return success();
+}
+
+static void print(OpAsmPrinter *p, BufferDeallocOp op) {
+  *p << op.getOperationName() << " " << *op.buffer();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getBufferType();
+}
+
+static ParseResult parseBufferDeallocOp(OpAsmParser *parser,
+                                        OperationState *result) {
+  OpAsmParser::OperandType bufferInfo;
+  BufferType bufferType;
+  if (parser->parseOperand(bufferInfo) || parser->parseColonType(bufferType))
+    return failure();
+  return parser->resolveOperands(bufferInfo, bufferType, result->operands);
+}
 
 static void print(OpAsmPrinter *p, BufferSizeOp op) {
   *p << op.getOperationName() << " " << *op.getOperand();

@@ -39,6 +39,65 @@ class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
+def BufferAllocOp :
+    Linalg_Op<"buffer_alloc">,
+    Arguments<(ins Variadic<Index>:$size)>,
+    Results<(outs Buffer)> {
+  let summary = "buffer allocation operation";
+  let description = [{
+    The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
+    upon which a base view can be laid out to give it indexing semantics.
+    "buffer_alloc" takes a single argument, the size of the buffer to allocate
+    (in number of elements).
+
+    ```{.mlir}
+        %0 = linalg.buffer_alloc(%arg0) : !linalg.buffer<?xf32>
+    ```
+
+    The size argument may be omitted if it is statically known, in which case it
+    must be reflected in the type.
+
+    ```{.mlir}
+        %0 = linalg.buffer_alloc() : !linalg.buffer<4xf32>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, BufferType bufferType", [{
+       result->types.push_back(bufferType);
+     }]
+  >];
+  let extraClassDeclaration = [{
+    BufferType getBufferType() { return getType().cast<BufferType>(); }
+    Type getElementType() { return getBufferType().getElementType(); }
+  }];
+}
+
+def BufferDeallocOp :
+    Linalg_Op<"buffer_dealloc">,
+    Arguments<(ins Buffer:$buffer)>,
+    Results<(outs)> {
+  let summary = "buffer allocation operation";
+  let description = [{
+    The "buffer_dealloc" op frees a 1-D linalg.buffer of the specified type.
+
+    ```{.mlir}
+        linalg.buffer_dealloc %0 : !linalg.buffer<f32>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, BufferType bufferType", [{
+       result->types.push_back(bufferType);
+     }]
+  >];
+  let extraClassDeclaration = [{
+    BufferType getBufferType() {
+      return getOperand()->getType().cast<BufferType>();
+    }
+  }];
+  // Fully specified by traits.
+  let verifier = ?;
+}
+
 def BufferSizeOp :
     Linalg_Op<"buffer_size", [NoSideEffect]>,
     Arguments<(ins Buffer)>,

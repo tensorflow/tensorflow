@@ -168,7 +168,7 @@ public:
     auto indexType = IndexType::get(op->getContext());
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
-    auto int64Ty = lowering.convertType(operands[0]->getType());
+    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     // Insert the `malloc` declaration if it is not already present.
     auto *module = op->getFunction()->getModule();
     Function *mallocFunc = module->getNamedFunction("malloc");
@@ -187,14 +187,19 @@ public:
                     llvm::divideCeil(vectorType.getElementTypeBitWidth(), 8);
     else
       elementSize = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);
-    auto elementPtrType = getPtrToElementType(
-        allocOp.getResult()->getType().cast<BufferType>(), lowering);
+    auto bufferType = allocOp.getResult()->getType().cast<BufferType>();
+    auto elementPtrType = getPtrToElementType(bufferType, lowering);
     auto bufferDescriptorType =
         convertLinalgType(allocOp.getResult()->getType(), lowering);
 
     // Emit IR for creating a new buffer descriptor with an underlying malloc.
     edsc::ScopedContext context(rewriter, op->getLoc());
-    Value *size = operands[0];
+    auto constantSize = bufferType.getBufferSize();
+    Value *size =
+        constantSize
+            ? constant(int64Ty, IntegerAttr::get(indexType, *constantSize))
+                  .getValue()
+            : operands[0];
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *allocated =
