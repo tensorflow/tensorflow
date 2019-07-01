@@ -41861,6 +41861,14 @@ op {
     name: "else_branch"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "StatelessMultinomial"
