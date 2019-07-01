@@ -18,7 +18,7 @@
 #ifndef MLIR_ANALYSIS_DOMINANCE_H
 #define MLIR_ANALYSIS_DOMINANCE_H
 
-#include "mlir/IR/FunctionGraphTraits.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "llvm/Support/GenericDomTree.h"
 
 extern template class llvm::DominatorTreeBase<mlir::Block, false>;
@@ -34,7 +34,7 @@ template <bool IsPostDom> class DominanceInfoBase {
   using base = llvm::DominatorTreeBase<Block, IsPostDom>;
 
 public:
-  DominanceInfoBase(Function function) { recalculate(function); }
+  DominanceInfoBase(Function function);
   DominanceInfoBase(Operation *op) { recalculate(op); }
   DominanceInfoBase(DominanceInfoBase &&) = default;
   DominanceInfoBase &operator=(DominanceInfoBase &&) = default;

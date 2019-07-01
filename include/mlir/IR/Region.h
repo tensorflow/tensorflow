@@ -119,6 +119,13 @@ public:
   /// each operation.
   void walk(const std::function<void(Operation *)> &callback);
 
+  /// Displays the CFG in a window. This is for use from the debugger and
+  /// depends on Graphviz to generate the graph.
+  /// This function is defined in ViewRegionGraph and only works with that
+  /// target linked.
+  void viewGraph(const llvm::Twine &regionName);
+  void viewGraph();
+
 private:
   RegionType blocks;
 

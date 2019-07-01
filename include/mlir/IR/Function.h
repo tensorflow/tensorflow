@@ -323,12 +323,6 @@ public:
   InFlightDiagnostic emitRemark();
   InFlightDiagnostic emitRemark(const Twine &message);
 
-  /// Displays the CFG in a window. This is for use from the debugger and
-  /// depends on Graphviz to generate the graph.
-  /// This function is defined in CFGFunctionViewGraph and only works with that
-  /// target linked.
-  void viewGraph();
-
   /// Create a deep copy of this function and all of its blocks, remapping
   /// any operands that use values outside of the function using the map that is
   /// provided (leaving them alone if no entry is present). If the mapper

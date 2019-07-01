@@ -1,4 +1,4 @@
-//===- ViewFunctionGraph.cpp - View/write graphviz graphs -----------------===//
+//===- ViewRegionGraph.cpp - View/write graphviz graphs -------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Transforms/ViewFunctionGraph.h"
-#include "mlir/IR/FunctionGraphTraits.h"
+#include "mlir/Transforms/ViewRegionGraph.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
@@ -24,13 +24,13 @@ using namespace mlir;
 namespace llvm {
 
 // Specialize DOTGraphTraits to produce more readable output.
-template <> struct DOTGraphTraits<Function *> : public DefaultDOTGraphTraits {
+template <> struct DOTGraphTraits<Region *> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
-  static std::string getNodeLabel(Block *Block, Function *);
+  static std::string getNodeLabel(Block *Block, Region *);
 };
 
-std::string DOTGraphTraits<Function *>::getNodeLabel(Block *Block, Function *) {
+std::string DOTGraphTraits<Region *>::getNodeLabel(Block *Block, Region *) {
   // Reuse the print output for the node labels.
   std::string outStreamStr;
   raw_string_ostream os(outStreamStr);
@@ -53,34 +53,35 @@ std::string DOTGraphTraits<Function *>::getNodeLabel(Block *Block, Function *) {
 
 } // end namespace llvm
 
-void mlir::viewGraph(Function function, const llvm::Twine &name,
-                     bool shortNames, const llvm::Twine &title,
+void mlir::viewGraph(Region &region, const llvm::Twine &name, bool shortNames,
+                     const llvm::Twine &title,
                      llvm::GraphProgram::Name program) {
-  llvm::ViewGraph(&function, name, shortNames, title, program);
+  llvm::ViewGraph(&region, name, shortNames, title, program);
 }
 
-llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function function,
+llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Region &region,
                                     bool shortNames, const llvm::Twine &title) {
-  return llvm::WriteGraph(os, &function, shortNames, title);
+  return llvm::WriteGraph(os, &region, shortNames, title);
 }
 
-void mlir::Function::viewGraph() {
-  ::mlir::viewGraph(*this, llvm::Twine("cfgfunc ") + getName().str());
+void mlir::Region::viewGraph(const llvm::Twine &regionName) {
+  ::mlir::viewGraph(*this, regionName);
 }
+void mlir::Region::viewGraph() { viewGraph("region"); }
 
 namespace {
 struct PrintCFGPass : public FunctionPass<PrintCFGPass> {
   PrintCFGPass(llvm::raw_ostream &os = llvm::errs(), bool shortNames = false,
                const llvm::Twine &title = "")
-      : os(os), shortNames(shortNames), title(title) {}
+      : os(os), shortNames(shortNames), title(title.str()) {}
   void runOnFunction() {
-    mlir::writeGraph(os, getFunction(), shortNames, title);
+    mlir::writeGraph(os, getFunction().getBody(), shortNames, title);
   }
 
 private:
   llvm::raw_ostream &os;
   bool shortNames;
-  const llvm::Twine &title;
+  std::string title;
 };
 } // namespace
 
@@ -91,4 +92,4 @@ FunctionPassBase *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
 }
 
 static PassRegistration<PrintCFGPass> pass("print-cfg-graph",
-                                           "Print CFG graph per function");
+                                           "Print CFG graph per Function");

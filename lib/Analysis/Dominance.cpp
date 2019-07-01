@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/Dominance.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/GenericDomTreeConstruction.h"
 
@@ -34,6 +35,11 @@ template class llvm::DomTreeNodeBase<Block>;
 //===----------------------------------------------------------------------===//
 // DominanceInfoBase
 //===----------------------------------------------------------------------===//
+
+template <bool IsPostDom>
+DominanceInfoBase<IsPostDom>::DominanceInfoBase(Function function) {
+  recalculate(function);
+}
 
 /// Recalculate the dominance info.
 template <bool IsPostDom>

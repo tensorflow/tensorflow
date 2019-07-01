@@ -1,4 +1,4 @@
-//===- ViewFunctionGraph.h - View/write graphviz graphs ---------*- C++ -*-===//
+//===- ViewRegionGraph.h - View/write graphviz graphs -----------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// Defines interface to produce Graphviz outputs of MLIR Functions.
+// Defines interface to produce Graphviz outputs of MLIR Regions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,17 +27,16 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
-
-class Function;
 class FunctionPassBase;
+class Region;
 
 /// Displays the CFG in a window. This is for use from the debugger and
 /// depends on Graphviz to generate the graph.
-void viewGraph(Function function, const Twine &name, bool shortNames = false,
+void viewGraph(Region &region, const Twine &name, bool shortNames = false,
                const Twine &title = "",
                llvm::GraphProgram::Name program = llvm::GraphProgram::DOT);
 
-llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Function function,
+llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Region &region,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.
