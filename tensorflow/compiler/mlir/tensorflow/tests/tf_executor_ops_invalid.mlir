@@ -455,3 +455,67 @@ func @invalid_enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   }
   return %result : tensor<*xf32>
 }
+
+// -----
+
+func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.NextIteration.Source' op expects a single user for produced token}}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @invalid_nextiteration(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.NextIteration.Source' op token should be consumed by a sink op}}
+    tf_executor.island {
+      "tf.consume_token"(%1#1) : (!tf_executor.token) -> ()
+    }
+    tf_executor.fetch %arg0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.island {
+      %2 = "tf.produce_token"() : () -> (!tf_executor.token)
+      tf_executor.yield %2 : !tf_executor.token
+    }
+    "tf_executor.NextIteration.Sink"(%1#0, %arg0) : (!tf_executor.token, tensor<*xf32>) -> ()
+// expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects a token produced by a tf_executor.NextIteration.Source op}}
+    tf_executor.fetch %arg0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    "tf_executor.NextIteration.Sink"(%arg1, %arg0) : (!tf_executor.token, tensor<*xf32>) -> ()
+// expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects a token directly produced by a tf_executor.NextIteration.Source op}}
+    tf_executor.fetch %arg0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+    "tf_executor.NextIteration.Sink"(%1#1, %arg1) : (!tf_executor.token, i1) -> ()
+// expected-error@-1 {{'tf_executor.NextIteration.Sink' op input type 'i1' mismatch the tf_executor.NextIteration.Source output type: 'tensor<*xf32>'}}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+

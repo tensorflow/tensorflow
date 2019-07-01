@@ -47,6 +47,7 @@ class TensorFlowExecutorDialect : public Dialect {
 namespace TFTypes {
 enum Kind {
   Control = Type::FIRST_TENSORFLOW_EXECUTOR_TYPE,
+  Token,
 };
 }  // namespace TFTypes
 
@@ -62,6 +63,18 @@ class ControlType : public Type::TypeBase<ControlType, Type> {
 
   // Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == TFTypes::Control; }
+};
+
+class TokenType : public Type::TypeBase<TokenType, Type> {
+ public:
+  using Base::Base;
+
+  static TokenType get(MLIRContext *context) {
+    return Base::get(context, TFTypes::Token);
+  }
+
+  // Support method to enable LLVM-style type casting.
+  static bool kindof(unsigned kind) { return kind == TFTypes::Token; }
 };
 
 // Declare the operations for this dialect using the generated header.

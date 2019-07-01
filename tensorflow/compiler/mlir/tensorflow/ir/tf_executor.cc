@@ -48,19 +48,27 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
-  addTypes<ControlType>();
+  addTypes<ControlType, TokenType>();
 }
 
 Type TensorFlowExecutorDialect::parseType(StringRef data_type,
                                           Location loc) const {
   if (data_type == "control") return ControlType::get(getContext());
+  if (data_type == "token") return TokenType::get(getContext());
   emitError(loc) << "unknown tf_executor type: " << data_type;
   return nullptr;
 }
 
 void TensorFlowExecutorDialect::printType(Type type, raw_ostream &os) const {
-  assert(type.isa<ControlType>());
-  os << "control";
+  if (type.isa<ControlType>()) {
+    os << "control";
+    return;
+  }
+  if (type.isa<TokenType>()) {
+    os << "token";
+    return;
+  }
+  os << "<unknown tf_executor type>";
 }
 
 //===----------------------------------------------------------------------===//
@@ -624,6 +632,88 @@ ParseResult ParseEnterOp(OpAsmParser *parser, OperationState *result) {
 
   // Extra operands are expected to be control inputs.
 
+  if (parser->resolveOperands(op_infos, types, loc, result->operands))
+    return failure();
+
+  return parser->parseOptionalAttributeDict(result->attributes);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.NextIteration.Source
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(NextIterationSourceOp source) {
+  Value *token = source.token();
+  if (!token->hasOneUse())
+    return source.emitOpError() << "expects a single user for produced token";
+  if (!isa<NextIterationSinkOp>(*token->user_begin()))
+    return source.emitOpError() << "token should be consumed by a sink op";
+  return success();
+}
+
+void Print(NextIterationSourceOp next_iteration, OpAsmPrinter *p) {
+  *p << next_iteration.getOperationName() << " : " << next_iteration.getType(0);
+  p->printOptionalAttrDict(next_iteration.getAttrs());
+}
+
+ParseResult ParseNextIterationSourceOp(OpAsmParser *parser,
+                                       OperationState *result) {
+  SmallVector<Type, 1> types;
+  if (parser->parseColonTypeList(types)) return failure();
+
+  MLIRContext *context = parser->getBuilder().getContext();
+  Type token_type = TokenType::get(context);
+  Type control_type = ControlType::get(context);
+  result->addTypes({types.front(), token_type, control_type});
+  return parser->parseOptionalAttributeDict(result->attributes);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.NextIteration.Sink
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(NextIterationSinkOp sink) {
+  Value *token = sink.token();
+  Operation *definingOp = token->getDefiningOp();
+  if (!definingOp)
+    return sink.emitOpError() << "expects a token directly produced by a "
+                                 "tf_executor.NextIteration.Source op: ";
+  auto source = dyn_cast<NextIterationSourceOp>(definingOp);
+  if (!source)
+    return sink.emitOpError() << "expects a token produced by a "
+                                 "tf_executor.NextIteration.Source op: ";
+  if (source.output()->getType() != sink.input()->getType())
+    return sink.emitOpError()
+           << "input type " << sink.input()->getType()
+           << " mismatch the tf_executor.NextIteration.Source output type: "
+           << source.output()->getType();
+  return success();
+}
+
+void Print(NextIterationSinkOp next_iteration, OpAsmPrinter *p) {
+  *p << next_iteration.getOperationName() << " [";
+  p->printOperand(next_iteration.getOperand(0));
+  *p << "] ";
+  p->printOperand(next_iteration.getOperand(1));
+  *p << " : " << next_iteration.getOperand(1)->getType();
+  p->printOptionalAttrDict(next_iteration.getAttrs());
+}
+
+ParseResult ParseNextIterationSinkOp(OpAsmParser *parser,
+                                     OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+
+  // First type is always the token consumed from the NextIteration.source
+  Type token_type = TokenType::get(parser->getBuilder().getContext());
+  SmallVector<Type, 1> types = {token_type};
+
+  if (parser->parseOperandList(op_infos, 1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(op_infos) || parser->parseColonTypeList(types))
+    return failure();
+
+  Type control_type = ControlType::get(parser->getBuilder().getContext());
+  types.append(op_infos.size() - 2, control_type);
   if (parser->resolveOperands(op_infos, types, loc, result->operands))
     return failure();
 

@@ -3,6 +3,9 @@
 // CHECK-LABEL: func @control_type() -> !tf_executor.control
 func @control_type() -> !tf_executor.control
 
+// CHECK-LABEL: func @token_type() -> !tf_executor.token
+func @token_type() -> !tf_executor.token
+
 // CHECK-LABEL: func @empty_graph
 func @empty_graph() {
   tf_executor.graph {
@@ -274,6 +277,44 @@ func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // CHECK: tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
     tf_executor.fetch %res#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+    tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32>
+// CHECK: %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// CHECK: tf_executor.NextIteration.Sink [%1#1] %1#0 : tensor<*xf32>
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32> {attr4 = 42 : i64, tf_executor.attr_push = "other_value"}
+// CHECK: %1:3 = tf_executor.NextIteration.Source : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+// CHECK: tf_executor.NextIteration.Sink [%1#1] %1#0 : tensor<*xf32> {attr4 = 42 : i64, tf_executor.attr_push = "other_value"}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
+    %2:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
+    %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+    tf_executor.NextIteration.Sink [%3#1] %3#0, %1#2 : tensor<*xf32>
+// CHECK: %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// CHECK: tf_executor.NextIteration.Sink [%3#1] %3#0 : tensor<*xf32>
+    tf_executor.fetch %3#0 : tensor<*xf32>
   }
   return %0 : tensor<*xf32>
 }

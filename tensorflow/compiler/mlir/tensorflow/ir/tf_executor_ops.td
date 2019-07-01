@@ -52,6 +52,9 @@ def TfExecutor_Dialect : Dialect {
 // Control type.
 def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">;
 
+// Token type.
+def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow Executor Type Constraint
 //===----------------------------------------------------------------------===//
@@ -418,6 +421,112 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
       result->types.push_back(control_type);
     }]>
    ];
+}
+
+def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [NoSideEffect]> {
+  let summary = [{
+    The "tf_executor.NextIteration.Source" is paired with a
+    "tf_executor.NextIteration.sink" to represent NextIteration op in
+    Tensorflow.
+  }];
+
+  let description = [{
+    Tensorflow NextIteration operation forwards its input to the next iteration
+    of a while loop. Each loop variable needs its own NextIteration op.
+
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    In the TF executor dialect, the NextIteration op is broken into
+    tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
+    NextIteration is a back-edge in Tensorflow graph, which would form a data
+    flow cycle if expressed naively in a basic block.
+    tf_executor.NextIteration.source takes no input but returns results while
+    tf_executor.NextIteration.sink takes input but doesn't return anything. When
+    optimizing these ops, they are paired by token and considered as a single
+    op.
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("NextIteration")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+      %value, %token, %ctl = tf_executor.NextIteration.Source : tensor<*xi32>
+      tf_executor.NextIteration.sink [%token] (%value) : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    Variadic<TfeControlType>:$controlInputs
+  );
+
+  let results = (outs
+    AnyType:$output,
+    // The NextIteration.Source operation returns an extra token consumed by the sink.
+    TfeTokenType:$token,
+    TfeControlType:$control
+  );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Type resultTy, ArrayRef<Value *> controlInputs = {}",
+    [{
+      Type tokenTy = TokenType::get(builder->getContext());
+      Type controlTy = ControlType::get(builder->getContext());
+      result->types = { resultTy, tokenTy, controlTy };
+      result->operands.append(controlInputs.begin(), controlInputs.end());
+    }]>
+   ];
+}
+
+
+def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink"> {
+  let summary = [{
+    The "tf_executor.NextIteration.Sink" is paired with a
+    "tf_executor.NextIteration.source" to represent NextIteration op in
+    Tensorflow.
+  }];
+
+  let description = [{
+    Tensorflow NextIteration operation forwards its input to the next iteration
+    of a while loop. Each loop variable needs its own NextIteration op.
+
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    In the TF executor dialect, the NextIteration op is broken into
+    tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
+    NextIteration is a back-edge in Tensorflow graph, which would form a data
+    flow cycle if expressed naively in a basic block.
+    tf_executor.NextIteration.source takes no input but returns results while
+    tf_executor.NextIteration.sink takes input but doesn't return anything. When
+    optimizing these ops, they are paired by token and considered as a single
+    op.
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("NextIteration")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+      %value, %token, %ctl = tf_executor.NextIteration.Source : tensor<*xi32>
+      tf_executor.NextIteration.sink [%token] (%value) : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    // The NextIteration.Sink operation consumes the token produced by the source.
+    TfeTokenType:$token,
+    AnyType:$input,
+    // Optional extra control inputs.
+    Variadic<TfeControlType>:$controlInputs
+  );
 }
 
 #endif // TF_EXECUTOR_DIALECT
