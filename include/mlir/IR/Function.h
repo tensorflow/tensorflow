@@ -232,8 +232,8 @@ public:
   }
 
   /// Return all argument attributes of this function.
-  MutableArrayRef<NamedAttributeList> getAllArgAttrs() {
-    return impl->argAttrs;
+  void getAllArgAttrs(SmallVectorImpl<NamedAttributeList> &result) {
+    result.assign(impl->argAttrs.begin(), impl->argAttrs.end());
   }
 
   /// Return the specified attribute if present, null otherwise.
@@ -465,7 +465,7 @@ public:
   }
 
   /// Return all argument attributes of this function.
-  void getAllArgAttrs(SmallVectorImpl<DictionaryAttr> &result) {
+  void getAllArgAttrs(SmallVectorImpl<NamedAttributeList> &result) {
     for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
       result.emplace_back(getArgAttrDict(i));
   }

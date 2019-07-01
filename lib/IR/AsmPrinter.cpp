@@ -310,9 +310,6 @@ void ModuleState::initialize(Module *module) {
     visitType(fn.getType());
     for (auto attr : fn.getAttrs())
       ModuleState::visitAttribute(attr.second);
-    for (auto attrList : fn.getAllArgAttrs())
-      for (auto attr : attrList.getAttrs())
-        ModuleState::visitAttribute(attr.second);
 
     fn.walk([&](Operation *op) { ModuleState::visitOperation(op); });
   }

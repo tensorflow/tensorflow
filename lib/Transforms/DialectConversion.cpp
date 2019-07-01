@@ -1148,10 +1148,13 @@ LogicalResult mlir::applyConversionPatterns(
   FunctionConverter funcConverter(ctx, target, patterns, &converter);
 
   // Try to convert each of the functions within the module.
+  SmallVector<NamedAttributeList, 4> argAttrs;
   for (auto func : fns) {
+    argAttrs.clear();
+    func.getAllArgAttrs(argAttrs);
+
     // Convert the function type using the type converter.
-    auto conversion =
-        converter.convertSignature(func.getType(), func.getAllArgAttrs());
+    auto conversion = converter.convertSignature(func.getType(), argAttrs);
     if (!conversion)
       return failure();
 
