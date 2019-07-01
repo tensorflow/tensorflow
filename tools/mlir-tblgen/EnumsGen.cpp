@@ -167,6 +167,13 @@ static void emitUnderlyingToSymFn(const Record &enumDef, raw_ostream &os) {
   StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
   auto enumerants = enumAttr.getAllCases();
 
+  // Avoid generating the underlying value to symbol conversion function if
+  // there is an enumerant without explicit value.
+  if (llvm::any_of(enumerants, [](EnumAttrCase enumerant) {
+        return enumerant.getValue() < 0;
+      }))
+    return;
+
   os << formatv("llvm::Optional<{0}> {1}({2} value) {{\n", enumName,
                 underlyingToSymFnName,
                 underlyingType.empty() ? std::string("unsigned")
