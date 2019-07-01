@@ -869,8 +869,7 @@ foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
     auto exprMap = AffineMap::get(dims, 0, e);
     SmallVector<Value *, 4> operands(vals.begin(), vals.end());
     canonicalizeMapAndOperands(&exprMap, &operands);
-    res.push_back(
-        ValueHandle(folder.create<AffineApplyOp>(b, loc, exprMap, operands)));
+    res.push_back(affine_apply(folder, exprMap, operands));
   }
   return res;
 }

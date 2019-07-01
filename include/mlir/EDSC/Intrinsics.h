@@ -118,6 +118,7 @@ inline detail::ValueHandleArray unpack(ArrayRef<ValueHandle> values) {
 /// Without subclassing, implicit conversion to Value* would fail when composing
 /// in patterns such as: `select(a, b, select(c, d, e))`.
 template <typename Op> struct ValueBuilder : public ValueHandle {
+  // Builder-based
   template <typename... Args>
   ValueBuilder(Args... args)
       : ValueHandle(ValueHandle::create<Op>(detail::unpack(args)...)) {}
@@ -136,6 +137,30 @@ template <typename Op> struct ValueBuilder : public ValueHandle {
       : ValueHandle(ValueHandle::create<Op>(
             detail::unpack(t1), detail::unpack(t2), detail::unpack(vs),
             detail::unpack(args)...)) {}
+
+  /// Folder-based
+  template <typename... Args>
+  ValueBuilder(OperationFolder &folder, Args... args)
+      : ValueHandle(ValueHandle::create<Op>(folder, detail::unpack(args)...)) {}
+  ValueBuilder(OperationFolder &folder, ArrayRef<ValueHandle> vs)
+      : ValueBuilder(ValueBuilder::create<Op>(folder, detail::unpack(vs))) {}
+  template <typename... Args>
+  ValueBuilder(OperationFolder &folder, ArrayRef<ValueHandle> vs, Args... args)
+      : ValueHandle(ValueHandle::create<Op>(folder, detail::unpack(vs),
+                                            detail::unpack(args)...)) {}
+  template <typename T, typename... Args>
+  ValueBuilder(OperationFolder &folder, T t, ArrayRef<ValueHandle> vs,
+               Args... args)
+      : ValueHandle(ValueHandle::create<Op>(folder, detail::unpack(t),
+                                            detail::unpack(vs),
+                                            detail::unpack(args)...)) {}
+  template <typename T1, typename T2, typename... Args>
+  ValueBuilder(OperationFolder &folder, T1 t1, T2 t2, ArrayRef<ValueHandle> vs,
+               Args... args)
+      : ValueHandle(ValueHandle::create<Op>(
+            folder, detail::unpack(t1), detail::unpack(t2), detail::unpack(vs),
+            detail::unpack(args)...)) {}
+
   ValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
 };
 
@@ -162,15 +187,18 @@ template <typename Op> struct OperationBuilder : public OperationHandle {
 };
 
 using alloc = ValueBuilder<AllocOp>;
+using affine_apply = ValueBuilder<AffineApplyOp>;
 using constant_float = ValueBuilder<ConstantFloatOp>;
 using constant_index = ValueBuilder<ConstantIndexOp>;
 using constant_int = ValueBuilder<ConstantIntOp>;
 using dealloc = OperationBuilder<DeallocOp>;
 using dim = ValueBuilder<DimOp>;
 using load = ValueBuilder<LoadOp>;
+using muli = ValueBuilder<MulIOp>;
 using ret = OperationBuilder<ReturnOp>;
 using select = ValueBuilder<SelectOp>;
 using store = OperationBuilder<StoreOp>;
+using subi = ValueBuilder<SubIOp>;
 using vector_type_cast = ValueBuilder<VectorTypeCastOp>;
 
 /// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.

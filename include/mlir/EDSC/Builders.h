@@ -26,6 +26,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/StandardOps/Ops.h"
+#include "mlir/Transforms/FoldUtils.h"
 #include "mlir/VectorOps/VectorOps.h"
 
 namespace mlir {
@@ -315,6 +316,11 @@ public:
   template <typename Op, typename... Args>
   static ValueHandle create(Args... args);
 
+  /// Generic mlir::Op create. This is the key to being extensible to the whole
+  /// of MLIR without duplicating the type system or the op definitions.
+  template <typename Op, typename... Args>
+  static ValueHandle create(OperationFolder &folder, Args... args);
+
   /// Special case to build composed AffineApply operations.
   // TODO: createOrFold when available and move inside of the `create` method.
   static ValueHandle createComposedAffineApply(AffineMap map,
@@ -458,6 +464,12 @@ ValueHandle ValueHandle::create(Args... args) {
     }
   }
   llvm_unreachable("unsupported operation, use an OperationHandle instead");
+}
+
+template <typename Op, typename... Args>
+ValueHandle ValueHandle::create(OperationFolder &folder, Args... args) {
+  return ValueHandle(folder.create<Op>(ScopedContext::getBuilder(),
+                                       ScopedContext::getLocation(), args...));
 }
 
 namespace op {

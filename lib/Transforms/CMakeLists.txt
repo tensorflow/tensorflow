@@ -1,6 +1,7 @@
+add_subdirectory(Utils)
+
 add_llvm_library(MLIRTransforms
   Canonicalizer.cpp
-  CMakeLists.txt
   CSE.cpp
   DialectConversion.cpp
   DmaGeneration.cpp
@@ -16,22 +17,18 @@ add_llvm_library(MLIRTransforms
   PipelineDataTransfer.cpp
   SimplifyAffineStructures.cpp
   StripDebugInfo.cpp
-  Utils/FoldUtils.cpp
-  Utils/GreedyPatternRewriteDriver.cpp
-  Utils/LoopFusionUtils.cpp
-  Utils/LoopUtils.cpp
-  Utils/RegionUtils.cpp
-  Utils/Utils.cpp
   Vectorize.cpp
   ViewFunctionGraph.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms
   )
+
 add_dependencies(MLIRTransforms MLIRStandardOpsIncGen)
 target_link_libraries(MLIRTransforms
   MLIRAffineOps
   MLIRAnalysis
   MLIRPass
+  MLIRTransformUtils
   MLIRVectorOps
   )

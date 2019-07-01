@@ -12,5 +12,6 @@ target_link_libraries(MLIREDSC
   PUBLIC
     MLIRAffineOps
     MLIRStandardOps
+    MLIRTransformUtils
     MLIRVectorOps
     )
