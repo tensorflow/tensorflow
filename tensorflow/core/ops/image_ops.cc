@@ -988,17 +988,17 @@ REGISTER_OP("GenerateBoundingBoxProposals")
     .Input("bbox_deltas: float")
     .Input("image_info: float")
     .Input("anchors: float")
+    .Input("nms_threshold: float")
+    .Input("pre_nms_topn: int32")
+    .Input("min_size: float")
     .Output("rois: float")
     .Output("roi_probabilities: float")
-    .Attr("pre_nms_topn: int = 6000")
     .Attr("post_nms_topn: int = 300")
-    .Attr("nms_threshold: float = 0.7")
-    .Attr("min_size: float = 16")
-    .Attr("debug: bool = false")
     .Attr("correct_transform_coords: bool = true")
     .SetShapeFn([](InferenceContext* c) -> Status {
       // make sure input tensors have are correct rank
-      ShapeHandle scores, images, bounding_boxes, anchors;
+      ShapeHandle scores, images, bounding_boxes, anchors, nms_threshold,
+          n_pre_nms, min_box_size;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &scores));  //(N, H, W, A)
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(1), 4, &bounding_boxes));         //(N,H,W,A4)
@@ -1006,6 +1006,11 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       auto im_info = c->Dim(images, 1);
       TF_RETURN_IF_ERROR(c->WithValue(im_info, 5, &im_info));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &anchors));  // (A4)
+      // check scalar tensors
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &nms_threshold));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &n_pre_nms));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &min_box_size));
+
       // TODO(skama): verify that the inputs are compatible
       int post_nms_top_n;
       TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));

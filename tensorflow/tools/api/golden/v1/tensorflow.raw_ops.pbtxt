@@ -1478,7 +1478,7 @@ tf_module {
   }
   member_method {
     name: "GenerateBoundingBoxProposals"
-    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'pre_nms_topn\', \'post_nms_topn\', \'nms_threshold\', \'min_size\', \'debug\', \'correct_transform_coords\', \'name\'], varargs=None, keywords=None, defaults=[\'6000\', \'300\', \'0.7\', \'16\', \'False\', \'True\', \'None\'], "
+    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'nms_threshold\', \'pre_nms_topn\', \'min_size\', \'post_nms_topn\', \'correct_transform_coords\', \'name\'], varargs=None, keywords=None, defaults=[\'300\', \'True\', \'None\'], "
   }
   member_method {
     name: "GenerateVocabRemapping"

@@ -2839,7 +2839,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     prefix = "generate_box_proposals_op",
-    deps = [":non_max_suppression_op"] + if_cuda(["@cub_archive//:cub"]),
+    deps = [":non_max_suppression_op_gpu"] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
