@@ -515,6 +515,7 @@ tf_cc_test(
     srcs = ["hlo_reachability_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_parser",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",

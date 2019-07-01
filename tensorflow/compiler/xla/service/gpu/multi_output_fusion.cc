@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <iterator>
 #include <list>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -108,35 +110,22 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
+  std::vector<HloInstruction*> defs_before_uses =
+      computation()->MakeInstructionPostOrder();
 
-  absl::flat_hash_set<HloInstruction*> to_fuse;
-  // Keep a list of the instructions to fuse after making all the fusion
-  // decisions. We first aggressively add instructions to potential_fusion_list,
-  // then filter out instructions that will be no longer fusible because of
-  // reachability change. This avoids recalculating reachability on a large set
-  // of instructions.
-  std::vector<std::pair<HloInstruction*, HloInstruction*>>
-      potential_fusion_list;
-  std::vector<std::pair<HloInstruction*, HloInstruction*>> fusion_list;
-  std::vector<HloInstruction*> instrs_to_update_reachability;
-
-  // For each reduce or reduce multi-output fusion, try to fuse it with loop
-  // fusions operands.
-  for (HloInstruction* consumer : computation()->MakeInstructionPostOrder()) {
-    if (consumer->user_count() == 0) {
-      VLOG(3) << consumer->name() << " has no users.";
-      continue;
-    }
-    if (!IsInputFusibleReduction(*consumer)) {
-      VLOG(3) << consumer->name() << " is not an input-fusible reduction.";
-      continue;
-    }
-    VLOG(3) << consumer->name()
-            << " is a fusion candidate. Looking for fuseable operands.";
-
-    auto consumer_operands = consumer->operands();
-    for (size_t i = 0; i < consumer_operands.size(); ++i) {
-      HloInstruction* producer = consumer_operands[i];
+  while (!defs_before_uses.empty()) {
+    // Traverse the HLO in uses-before-defs order by removing instruction from
+    // the back of the vector.
+    HloInstruction* producer = defs_before_uses.back();
+    defs_before_uses.pop_back();
+    for (HloInstruction* consumer : producer->users()) {
+      VLOG(3) << "Looking at producer " << producer->name()
+              << " and its consumer " << consumer->name();
+      if (!IsInputFusibleReduction(*consumer)) {
+        VLOG(3) << "Consumer " << consumer->name()
+                << " is not an input-fusible reduction.";
+        continue;
+      }
       if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
         VLOG(3) << producer->name() << " and " << consumer->name()
                 << " are not fusible.";
@@ -148,69 +137,60 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
-      // If we have already decided to fuse this producer, skip it.
-      if (ContainsKey(to_fuse, producer)) {
-        VLOG(3) << producer->name() << " will be fused with another consumer.";
-        continue;
-      }
       // Do not fuse a producer if the other operands of the fusion are
       // reachable from the producer, this would create a cycle.
-      if (absl::c_any_of(consumer_operands, [&](HloInstruction* operand) {
-            return producer != operand &&
-                   reachability()->IsReachable(producer, operand);
-          })) {
+      if (absl::c_any_of(
+              consumer->operands(), [&](const HloInstruction* operand) {
+                // If a get-tuple-elment instruction is not in the reachability
+                // map, it has been created by fusion in this pass. Simply move
+                // on to its operand, which is in the reachability map.
+                if (!reachability()->IsPresent(operand) &&
+                    operand->opcode() == HloOpcode::kGetTupleElement) {
+                  operand = operand->operand(0);
+                }
+                CHECK(reachability()->IsPresent(operand) &&
+                      reachability()->IsPresent(producer))
+                    << "Reachability map is incomplete. This should never "
+                       "happen.";
+                return producer != operand &&
+                       reachability()->IsReachable(producer, operand);
+              })) {
         VLOG(3) << producer->name() << " would introduce a cycle when fused.";
-        break;
+        continue;
       }
-      to_fuse.insert(producer);
-      potential_fusion_list.emplace_back(producer, consumer);
-      instrs_to_update_reachability.push_back(producer);
-      instrs_to_update_reachability.push_back(consumer);
+      if (FusionWouldBeTooLarge(*producer, *consumer)) {
+        VLOG(3) << producer->name() << " and " << consumer->name()
+                << " would be too large of a fusion.";
+        continue;
+      }
+      if (consumer->opcode() != HloOpcode::kFusion) {
+        // Fusing with a reduce (fusion) always results in an input fusion.
+        HloInstruction* input_fusion =
+            computation()->AddInstruction(HloInstruction::CreateFusion(
+                consumer->shape(), HloInstruction::FusionKind::kInput,
+                consumer));
+        VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
+                << consumer->name() << " into " << input_fusion->name();
+        reachability()->Replace(consumer, input_fusion);
+        TF_CHECK_OK(computation()->ReplaceInstruction(consumer, input_fusion));
+        if (producer->opcode() == HloOpcode::kFusion) {
+          input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
+        } else {
+          input_fusion->FuseInstructionIntoMultiOutput(producer);
+          TF_CHECK_OK(computation()->RemoveInstruction(producer));
+        }
+      } else {
+        if (producer->opcode() == HloOpcode::kFusion) {
+          consumer->MergeFusionInstructionIntoMultiOutput(producer);
+        } else {
+          consumer->FuseInstructionIntoMultiOutput(producer);
+          CHECK_EQ(0, producer->user_count());
+          TF_CHECK_OK(computation()->RemoveInstruction(producer));
+        }
+      }
+      changed = true;
       break;
     }
-  }
-
-  // Filter out pairs that will be no longer fusible because of reachability
-  // change.
-  for (auto& fusion_pair : potential_fusion_list) {
-    HloInstruction* producer = fusion_pair.first;
-    HloInstruction* consumer = fusion_pair.second;
-    if (!absl::c_any_of(consumer->operands(), [&](HloInstruction* operand) {
-          return producer != operand &&
-                 reachability()->IsReachable(producer, operand);
-        })) {
-      UpdateReachability(producer, consumer, instrs_to_update_reachability);
-      fusion_list.push_back(fusion_pair);
-    }
-  }
-
-  for (auto fusions_to_create : fusion_list) {
-    HloInstruction* producer = fusions_to_create.first;
-    HloInstruction* consumer = fusions_to_create.second;
-    if (consumer->opcode() != HloOpcode::kFusion) {
-      // Fusing with a reduce (fusion) always results in an input fusion.
-      HloInstruction* input_fusion =
-          computation()->AddInstruction(HloInstruction::CreateFusion(
-              consumer->shape(), HloInstruction::FusionKind::kInput, consumer));
-      VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
-              << consumer->name() << " into " << input_fusion->name();
-      TF_CHECK_OK(computation()->ReplaceInstruction(consumer, input_fusion));
-      if (producer->opcode() == HloOpcode::kFusion) {
-        input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
-      } else {
-        input_fusion->FuseInstructionIntoMultiOutput(producer);
-      }
-    } else {
-      VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
-              << consumer->name();
-
-      if (producer->opcode() == HloOpcode::kFusion) {
-        consumer->MergeFusionInstructionIntoMultiOutput(producer);
-      } else {
-        consumer->FuseInstructionIntoMultiOutput(producer);
-      }
-    }
-    changed = true;
   }
   return changed;
 }
