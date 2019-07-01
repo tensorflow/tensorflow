@@ -2811,6 +2811,7 @@ cuda_py_test(
     tags = [
         "no_gpu",
         "no_oss",
+        "notap",  # flaky timeout/segfault, b/136498892
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
