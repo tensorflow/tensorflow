@@ -99,10 +99,11 @@ def result_wrapper(result_fn):
     `merge_call()`.
   """
 
-  def decorated(_, *args):
+  def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
+    has_strategy = distribution_strategy_context.has_strategy()
     replica_context = distribution_strategy_context.get_replica_context()
-    if replica_context is None:  # if in cross replica context already
+    if not has_strategy or replica_context is None:
       result_t = array_ops.identity(result_fn(*args))
     else:
       # TODO(psv): Test distribution of metrics using different distribution
@@ -114,18 +115,22 @@ def result_wrapper(result_fn):
       def merge_fn_wrapper(distribution, merge_fn, *args):
         # We will get `PerReplica` merge function. Taking the first one as all
         # are identical copies of the function that we had passed below.
-        merged_result_fn = (
-            distribution.experimental_local_results(merge_fn)[0](*args))
+        result = distribution.experimental_local_results(merge_fn)[0](*args)
 
         # Wrapping result in identity so that control dependency between
         # update_op from `update_state` and result works in case result returns
         # a tensor.
-        return array_ops.identity(merged_result_fn)
+        return array_ops.identity(result)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
       # replica mode and compute a value in cross replica mode.
       result_t = replica_context.merge_call(
           merge_fn_wrapper, args=(result_fn,) + args)
+
+    # We are saving the result op here to be used in train/test execution
+    # functions. This basically gives the result op that was generated with a
+    # control dep to the updates for these workflows.
+    metric_obj._call_result = result_t
     return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)

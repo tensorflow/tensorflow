@@ -391,11 +391,10 @@ class LMDBDataset(dataset_ops.DatasetSource):
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     variant_tensor = gen_experimental_dataset_ops.experimental_lmdb_dataset(
-        self._filenames, **dataset_ops.flat_structure(self))
+        self._filenames, **self._flat_structure)
     super(LMDBDataset, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(
-        (structure.TensorStructure(dtypes.string, []),
-         structure.TensorStructure(dtypes.string, [])))
+    return (structure.TensorStructure(dtypes.string, []),
+            structure.TensorStructure(dtypes.string, []))

@@ -145,6 +145,33 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
   return false;
 }
 
+bool IsMatrixMultiplication(const HloInstruction& dot) {
+  if (dot.opcode() != HloOpcode::kDot) {
+    return false;
+  }
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
+                         dim_numbers.lhs_batch_dimensions_size())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
+  }
+  return false;
+}
+
+bool IsCublasGemm(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kGemmCallTarget;
+}
+
 const char* const kCudnnBatchNormForwardInferenceCallTarget =
     "__cudnn$batchNormalizationForwardInference";
 const char* const kCudnnBatchNormForwardTrainingCallTarget =
@@ -162,6 +189,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
          target == kCudnnBatchNormBackwardCallTarget;
 }
 
+const char* const kGemmCallTarget = "__cublas$gemm";
 const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
@@ -192,7 +220,7 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
+  return IsCublasGemm(hlo) || ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
 }
 

@@ -900,18 +900,6 @@ template Status HloComputation::AcceptOrdered(
 template Status HloComputation::AcceptOrdered(
     ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
-Status HloComputation::Accept(
-    const std::function<Status(HloInstruction*)>& visitor_func) {
-  FunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
-Status HloComputation::Accept(
-    const std::function<Status(const HloInstruction*)>& visitor_func) const {
-  ConstFunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(

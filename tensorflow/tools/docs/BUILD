@@ -149,6 +149,7 @@ py_test(
 
 py_test(
     name = "generate2_test",
+    size = "medium",
     srcs = ["generate2_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
@@ -157,6 +158,7 @@ py_test(
         # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
+        "notap",  # TODO(b/135955435): Re-enable test after fixing flakiness.
         "notsan",
         "optonly",
     ],

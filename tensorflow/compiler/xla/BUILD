@@ -190,6 +190,10 @@ cc_library(
     hdrs = [
         "statusor.h",
     ],
+    linkopts = select({
+        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":status",

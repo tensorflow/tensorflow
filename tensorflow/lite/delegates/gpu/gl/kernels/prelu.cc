@@ -88,8 +88,7 @@ class PReLUFull : public NodeShader {
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr =
         absl::any_cast<const PReLUAttributes&>(ctx.node->operation.attributes);
-    auto alpha = absl::get_if<Tensor<::tflite::gpu::HWC, DataType::FLOAT32>>(
-        &attr.alpha);
+    auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
     if (!alpha) {
       return InvalidArgumentError("Alpha is missing");
     }

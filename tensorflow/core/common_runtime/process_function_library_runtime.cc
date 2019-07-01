@@ -310,7 +310,7 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
 
 Status SetArgShape(
     const std::unordered_map<int, TensorShape>& input_tensor_shapes,
-    const std::unordered_map<int, std::pair<DataType, TensorShape>>&
+    const std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_dtypes_and_shapes,
     const std::vector<Node*>& arg_nodes) {
   for (Node* n : arg_nodes) {
@@ -332,10 +332,10 @@ Status SetArgShape(
       if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
         AttrValue dtype_attr_value;
         dtype_attr_value.mutable_list()->add_type(
-            dtype_and_shape_iter->second.first);
+            dtype_and_shape_iter->second.dtype);
         n->AddAttr("_handle_dtypes", dtype_attr_value);
         TensorShapeProto shape_proto;
-        dtype_and_shape_iter->second.second.AsProto(&shape_proto);
+        dtype_and_shape_iter->second.shape.AsProto(&shape_proto);
         AttrValue shape_attr_value;
         *shape_attr_value.mutable_list()->add_shape() = shape_proto;
         n->AddAttr("_handle_shapes", shape_attr_value);

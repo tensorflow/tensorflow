@@ -565,6 +565,28 @@ TEST(PatternMatcherTest, LayoutDescribeToAndExplain) {
                               "Layout has format DENSE but expected SPARSE");
 }
 
+TEST(PatternMatcherTest, CustomCallTargetMatcherDescribeAndExplain) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+
+    ENTRY test {
+      ROOT out = f32[] custom-call(), custom_call_target="test_target"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget("test_target")));
+  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget("other_target")));
+
+  EXPECT_DESC_AND_EXPLANATION(
+      root, match::Op().WithCustomCallTarget("other_target"),
+      "an HloInstruction custom call with target 'other_target'",
+      "HloInstruction is not a custom call with a target 'other_target'\nin "
+      "out = f32[] custom-call(), custom_call_target=\"test_target\"");
+}
+
 TEST(PatternMatcherTest, ShapeDescribeToAndExplain) {
   auto shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 2}, {0, 1});
   auto layout = shape.layout();

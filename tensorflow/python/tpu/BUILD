@@ -140,6 +140,7 @@ py_library(
     name = "tpu_noestimator",
     srcs = [
         "__init__.py",
+        "api.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

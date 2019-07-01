@@ -547,7 +547,7 @@ class FunctionLibraryRuntime {
     // shape for input resources.
     // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
     // argument type must be DT_RESOURCE.
-    std::unordered_map<int, std::pair<DataType, TensorShape>>
+    std::unordered_map<int, DtypeAndPartialTensorShape>
         input_resource_dtypes_and_shapes;
 
     // This interface is EXPERIMENTAL and subject to change.

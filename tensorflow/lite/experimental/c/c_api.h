@@ -21,7 +21,7 @@ limitations under the License.
 // Eventually the various C APIs defined in context.h will be migrated into
 // the appropriate /c/c_api*.h header. For now, we pull in existing definitions
 // for convenience.
-#include "c_api_types.h"
+#include "tensorflow/lite/experimental/c/c_api_types.h"
 
 // --------------------------------------------------------------------------
 // Experimental C API for TensorFlowLite.

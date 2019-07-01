@@ -426,6 +426,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:cpu_check",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
         "//tensorflow/lite/kernels/internal:optimized_base",
@@ -753,6 +754,7 @@ cc_test(
     name = "bidirectional_sequence_lstm_test",
     size = "small",
     srcs = ["bidirectional_sequence_lstm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -974,6 +976,7 @@ cc_test(
     name = "gather_test",
     size = "small",
     srcs = ["gather_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

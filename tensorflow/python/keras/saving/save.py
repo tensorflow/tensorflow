@@ -24,7 +24,8 @@ import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
@@ -103,7 +104,7 @@ def save_model(model,
     hdf5_format.save_model_to_hdf5(
         model, filepath, overwrite, include_optimizer)
   else:
-    saved_model.save(model, filepath, overwrite, include_optimizer)
+    saved_model_save.save(model, filepath, overwrite, include_optimizer)
 
 
 @keras_export('keras.models.load_model')
@@ -138,7 +139,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
-    return saved_model.load_from_saved_model_v2(filepath, compile)
+    return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

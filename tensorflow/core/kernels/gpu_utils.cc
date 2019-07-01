@@ -58,6 +58,9 @@ tensorflow::ComputeCapability GetComputeCapability(
 
 void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             se::dnn::DataType element_type,
+                            se::DeviceMemoryBase input_buffer,
+                            se::DeviceMemoryBase filter_buffer,
+                            se::DeviceMemoryBase output_buffer,
                             const se::dnn::BatchDescriptor& input_desc,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
@@ -72,9 +75,12 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *instr.mutable_filter() = filter_desc.ToProto(element_type);
     *instr.mutable_output() = output_desc.ToProto(element_type);
     *instr.mutable_conv_desc() = conv_desc.ToProto();
-    log.mutable_instr()->PackFrom(std::move(instr));
     instr.set_conv_scale(1);
     instr.set_side_value_scale(0);
+    instr.set_input_address(reinterpret_cast<uint64>(input_buffer.opaque()));
+    instr.set_filter_address(reinterpret_cast<uint64>(filter_buffer.opaque()));
+    instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
+    log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
@@ -86,7 +92,10 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
 }
 
 void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -103,6 +112,12 @@ void LogFusedConvForwardAutotuneResults(
     instr.set_conv_scale(conv_scale);
     instr.set_side_value_scale(side_value_scale);
     instr.set_activation(activation_mode);
+    instr.set_input_address(reinterpret_cast<uint64>(input_buffer.opaque()));
+    instr.set_filter_address(reinterpret_cast<uint64>(filter_buffer.opaque()));
+    instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    instr.set_side_input_address(
+        reinterpret_cast<uint64>(side_input_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);

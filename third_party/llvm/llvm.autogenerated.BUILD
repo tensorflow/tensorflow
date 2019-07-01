@@ -2989,6 +2989,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
     deps = [
+        ":analysis",
         ":asm_printer",
         ":code_gen",
         ":config",

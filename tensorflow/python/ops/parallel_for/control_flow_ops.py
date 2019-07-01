@@ -24,7 +24,9 @@ import functools
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -32,6 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -121,7 +124,7 @@ def pfor(loop_fn, iters, parallel_iterations=None):
 
 
   This is an experimental feature and currently has a lot of limitations:
-    - There should be no data depenendency between the different iterations. For
+    - There should be no data dependency between the different iterations. For
       example, a future iteration should not depend on a value or side-effect of
       a previous iteration.
     - Stateful kernels may mostly not be supported since these often imply a
@@ -192,6 +195,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
+  # Run the loop body
   with ops.name_scope("loop_body"):
     loop_var = array_ops.placeholder(dtypes.int32, shape=[])
     if loop_fn_has_config:
@@ -202,6 +206,22 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
     else:
       assert pfor_config is None
       loop_fn_outputs = loop_fn(loop_var)
+
+  # Convert outputs to Tensor if needed.
+  tmp_loop_fn_outputs = []
+  for loop_fn_output in nest.flatten(loop_fn_outputs):
+    if (loop_fn_output is not None and not isinstance(
+        loop_fn_output,
+        (ops.Operation, ops.Tensor, sparse_tensor.SparseTensor))):
+      if isinstance(loop_fn_output, indexed_slices.IndexedSlices):
+        logging.warn("Converting %s to a dense representation may make it slow."
+                     " Alternatively, output the indices and values of the"
+                     " IndexedSlices separately, and handle the vectorized"
+                     " outputs directly." % loop_fn_output)
+      loop_fn_output = ops.convert_to_tensor(loop_fn_output)
+    tmp_loop_fn_outputs.append(loop_fn_output)
+  loop_fn_outputs = nest.pack_sequence_as(loop_fn_outputs, tmp_loop_fn_outputs)
+
   new_ops = set(ops.get_default_graph().get_operations()) - existing_ops
   iters = ops.convert_to_tensor(iters)
   if parallel_iterations is not None:

@@ -22,4 +22,10 @@ message ConvolutionProto {
   double side_value_scale = 7;
 
   stream_executor.dnn.ActivationMode activation = 8;
+
+  int64 input_address = 9;
+  int64 filter_address = 10;
+  int64 output_address = 11;
+  int64 bias_address = 12;
+  int64 side_input_address = 13;
 }

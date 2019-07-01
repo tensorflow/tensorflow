@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -2312,6 +2312,69 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
   }
 }
 
+// TODO: BroadcastDiv is intentionally duplicated from reference_ops.h.
+// For more details see the comment above the generic version of
+// BroadcastDiv4DSlow.
+inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
+                               const RuntimeShape& unextended_input1_shape,
+                               const uint8* input1_data,
+                               const RuntimeShape& unextended_input2_shape,
+                               const uint8* input2_data,
+                               const RuntimeShape& unextended_output_shape,
+                               uint8* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          const int32 input1_val =
+              params.input1_offset +
+              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
+          const int32 input2_val =
+              params.input2_offset +
+              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
+          TFLITE_DCHECK_NE(input2_val, 0);
+          int recip_shift;
+          const int32 input2_inv =
+              (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
+                               : -GetReciprocal(-input2_val, 31, &recip_shift);
+          const int headroom = CountLeadingSignBits(input1_val);
+          const int32 unscaled_quotient =
+              MultiplyByQuantizedMultiplierGreaterThanOne(input1_val,
+                                                          input2_inv, headroom);
+          const int total_shift = params.output_shift - recip_shift - headroom;
+          const int32 unclamped_result =
+              params.output_offset +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  unscaled_quotient, params.output_multiplier, total_shift);
+          const int32 clamped_output = std::min(
+              params.quantized_activation_max,
+              std::max(params.quantized_activation_min, unclamped_result));
+          output_data[Offset(output_shape, b, y, x, c)] =
+              static_cast<uint8>(clamped_output);
+        }
+      }
+    }
+  }
+}
+
 // TODO(aselle): This is not actually optimized yet.
 inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& input1_shape,
@@ -3770,146 +3833,6 @@ inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
 }
 
 inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const uint8* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int size = MatchingFlatSize(input_shape, output_shape);
-
-  int c = 0;
-#ifdef USE_NEON
-  // Handle 16 values at a time
-  for (; c <= size - 16; c += 16) {
-    // Read input uint8 values, cast to int16 and subtract input_zero_point
-    uint8x16_t input_val_u8 = vld1q_u8(input_data + c);
-    int16x8_t input_val_centered_0 =
-        vsubq_s16(vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_val_u8))),
-                  vdupq_n_s16(input_zero_point));
-    int16x8_t input_val_centered_1 =
-        vsubq_s16(vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_val_u8))),
-                  vdupq_n_s16(input_zero_point));
-
-    // Prepare the bit masks that we will use at the end to implement the logic
-    // that was expressed in the scalar code with branching:
-    //   if (input_val_centered < -input_range_radius) {
-    //     output_val = 0;
-    //   } else if (input_val_centered > input_range_radius) {
-    //     output_val = 255;
-    //   } else {
-    //     ...
-    uint16x8_t mask_rightclamp_0 =
-        vcgtq_s16(input_val_centered_0, vdupq_n_s16(input_range_radius));
-    uint16x8_t mask_rightclamp_1 =
-        vcgtq_s16(input_val_centered_1, vdupq_n_s16(input_range_radius));
-    uint16x8_t mask_leftclamp_0 =
-        vcgeq_s16(input_val_centered_0, vdupq_n_s16(-input_range_radius));
-    uint16x8_t mask_leftclamp_1 =
-        vcgeq_s16(input_val_centered_1, vdupq_n_s16(-input_range_radius));
-    uint8x16_t mask_rightclamp = vcombine_u8(vshrn_n_u16(mask_rightclamp_0, 8),
-                                             vshrn_n_u16(mask_rightclamp_1, 8));
-    uint8x16_t mask_leftclamp = vcombine_u8(vshrn_n_u16(mask_leftclamp_0, 8),
-                                            vshrn_n_u16(mask_leftclamp_1, 8));
-
-    // This performs what is expressed in the scalar code as
-    // const int32 input_val_rescaled =
-    //     MultiplyByQuantizedMultiplierGreaterThanOne(
-    //         input_val_centered, input_multiplier, input_left_shift);
-    int32x4_t input_val_rescaled_0 =
-        vshlq_s32(vmovl_s16(vget_low_s16(input_val_centered_0)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_1 =
-        vshlq_s32(vmovl_s16(vget_high_s16(input_val_centered_0)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_2 =
-        vshlq_s32(vmovl_s16(vget_low_s16(input_val_centered_1)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_3 =
-        vshlq_s32(vmovl_s16(vget_high_s16(input_val_centered_1)),
-                  vdupq_n_s32(input_left_shift));
-    input_val_rescaled_0 =
-        vqrdmulhq_n_s32(input_val_rescaled_0, input_multiplier);
-    input_val_rescaled_1 =
-        vqrdmulhq_n_s32(input_val_rescaled_1, input_multiplier);
-    input_val_rescaled_2 =
-        vqrdmulhq_n_s32(input_val_rescaled_2, input_multiplier);
-    input_val_rescaled_3 =
-        vqrdmulhq_n_s32(input_val_rescaled_3, input_multiplier);
-
-    // Invoke gemmlowp::logistic on FixedPoint wrapping int32x4_t
-    using FixedPoint4 = gemmlowp::FixedPoint<int32x4_t, 4>;
-    using FixedPoint0 = gemmlowp::FixedPoint<int32x4_t, 0>;
-    const FixedPoint4 input_val_f4_0 =
-        FixedPoint4::FromRaw(input_val_rescaled_0);
-    const FixedPoint4 input_val_f4_1 =
-        FixedPoint4::FromRaw(input_val_rescaled_1);
-    const FixedPoint4 input_val_f4_2 =
-        FixedPoint4::FromRaw(input_val_rescaled_2);
-    const FixedPoint4 input_val_f4_3 =
-        FixedPoint4::FromRaw(input_val_rescaled_3);
-    const FixedPoint0 output_val_f0_0 = gemmlowp::logistic(input_val_f4_0);
-    const FixedPoint0 output_val_f0_1 = gemmlowp::logistic(input_val_f4_1);
-    const FixedPoint0 output_val_f0_2 = gemmlowp::logistic(input_val_f4_2);
-    const FixedPoint0 output_val_f0_3 = gemmlowp::logistic(input_val_f4_3);
-
-    // Divide by 2^23 as in the scalar code
-    using gemmlowp::RoundingDivideByPOT;
-    int32x4_t output_val_s32_0 = RoundingDivideByPOT(output_val_f0_0.raw(), 23);
-    int32x4_t output_val_s32_1 = RoundingDivideByPOT(output_val_f0_1.raw(), 23);
-    int32x4_t output_val_s32_2 = RoundingDivideByPOT(output_val_f0_2.raw(), 23);
-    int32x4_t output_val_s32_3 = RoundingDivideByPOT(output_val_f0_3.raw(), 23);
-
-    // Cast output values to uint8, saturating
-    int16x8_t output_val_s16_0 = vcombine_s16(vqmovn_s32(output_val_s32_0),
-                                              vqmovn_s32(output_val_s32_1));
-    int16x8_t output_val_s16_1 = vcombine_s16(vqmovn_s32(output_val_s32_2),
-                                              vqmovn_s32(output_val_s32_3));
-    uint8x16_t output_val_u8 = vcombine_u8(vqmovun_s16(output_val_s16_0),
-                                           vqmovun_s16(output_val_s16_1));
-
-    // Perform the bit-masking with the bit masks computed at the beginning,
-    // see the comment there.
-    output_val_u8 = vorrq_u8(output_val_u8, mask_rightclamp);
-    output_val_u8 = vandq_u8(output_val_u8, mask_leftclamp);
-
-    // Store back to memory
-    vst1q_u8(output_data + c, output_val_u8);
-  }
-#endif
-  // Leftover loop: handle one value at a time with scalar code.
-  for (; c < size; ++c) {
-    const uint8 input_val_u8 = input_data[c];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered < -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered > input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[c] = output_val;
-  }
-}
-
-inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
@@ -3985,156 +3908,6 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
                  float* output_data) {
   // Drop params: not needed.
   Tanh(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& output_shape,
-                 uint8* output_data) {
-  // Note that this is almost the exact same code as in Logistic().
-  gemmlowp::ScopedProfilingLabel label("Tanh");
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int size = MatchingFlatSize(input_shape, output_shape);
-
-  int c = 0;
-  int32_t output_zero_point = 128;
-#ifdef USE_NEON
-  // Handle 16 values at a time
-  for (; c <= size - 16; c += 16) {
-    // Read input uint8 values, cast to int16 and subtract input_zero_point
-    uint8x16_t input_val_u8 = vld1q_u8(input_data + c);
-    int16x8_t input_val_centered_0 =
-        vsubq_s16(vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_val_u8))),
-                  vdupq_n_s16(input_zero_point));
-    int16x8_t input_val_centered_1 =
-        vsubq_s16(vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_val_u8))),
-                  vdupq_n_s16(input_zero_point));
-
-    // Prepare the bit masks that we will use at the end to implement the logic
-    // that was expressed in the scalar code with branching:
-    //   if (input_val_centered < -input_range_radius) {
-    //     output_val = 0;
-    //   } else if (input_val_centered > input_range_radius) {
-    //     output_val = 255;
-    //   } else {
-    //     ...
-    uint16x8_t mask_rightclamp_0 =
-        vcgtq_s16(input_val_centered_0, vdupq_n_s16(input_range_radius));
-    uint16x8_t mask_rightclamp_1 =
-        vcgtq_s16(input_val_centered_1, vdupq_n_s16(input_range_radius));
-    uint16x8_t mask_leftclamp_0 =
-        vcgeq_s16(input_val_centered_0, vdupq_n_s16(-input_range_radius));
-    uint16x8_t mask_leftclamp_1 =
-        vcgeq_s16(input_val_centered_1, vdupq_n_s16(-input_range_radius));
-    uint8x16_t mask_rightclamp = vcombine_u8(vshrn_n_u16(mask_rightclamp_0, 8),
-                                             vshrn_n_u16(mask_rightclamp_1, 8));
-    uint8x16_t mask_leftclamp = vcombine_u8(vshrn_n_u16(mask_leftclamp_0, 8),
-                                            vshrn_n_u16(mask_leftclamp_1, 8));
-
-    // This performs what is expressed in the scalar code as
-    // const int32 input_val_rescaled =
-    //     MultiplyByQuantizedMultiplierGreaterThanOne(
-    //         input_val_centered, input_multiplier, input_left_shift);
-    int32x4_t input_val_rescaled_0 =
-        vshlq_s32(vmovl_s16(vget_low_s16(input_val_centered_0)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_1 =
-        vshlq_s32(vmovl_s16(vget_high_s16(input_val_centered_0)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_2 =
-        vshlq_s32(vmovl_s16(vget_low_s16(input_val_centered_1)),
-                  vdupq_n_s32(input_left_shift));
-    int32x4_t input_val_rescaled_3 =
-        vshlq_s32(vmovl_s16(vget_high_s16(input_val_centered_1)),
-                  vdupq_n_s32(input_left_shift));
-    input_val_rescaled_0 =
-        vqrdmulhq_n_s32(input_val_rescaled_0, input_multiplier);
-    input_val_rescaled_1 =
-        vqrdmulhq_n_s32(input_val_rescaled_1, input_multiplier);
-    input_val_rescaled_2 =
-        vqrdmulhq_n_s32(input_val_rescaled_2, input_multiplier);
-    input_val_rescaled_3 =
-        vqrdmulhq_n_s32(input_val_rescaled_3, input_multiplier);
-
-    // Invoke gemmlowp::tanh on FixedPoint wrapping int32x4_t
-    using FixedPoint4 = gemmlowp::FixedPoint<int32x4_t, 4>;
-    using FixedPoint0 = gemmlowp::FixedPoint<int32x4_t, 0>;
-    const FixedPoint4 input_val_f4_0 =
-        FixedPoint4::FromRaw(input_val_rescaled_0);
-    const FixedPoint4 input_val_f4_1 =
-        FixedPoint4::FromRaw(input_val_rescaled_1);
-    const FixedPoint4 input_val_f4_2 =
-        FixedPoint4::FromRaw(input_val_rescaled_2);
-    const FixedPoint4 input_val_f4_3 =
-        FixedPoint4::FromRaw(input_val_rescaled_3);
-    const FixedPoint0 output_val_f0_0 = gemmlowp::tanh(input_val_f4_0);
-    const FixedPoint0 output_val_f0_1 = gemmlowp::tanh(input_val_f4_1);
-    const FixedPoint0 output_val_f0_2 = gemmlowp::tanh(input_val_f4_2);
-    const FixedPoint0 output_val_f0_3 = gemmlowp::tanh(input_val_f4_3);
-
-    // Divide by 2^24 as in the scalar code
-    using gemmlowp::RoundingDivideByPOT;
-    int32x4_t output_val_s32_0 = RoundingDivideByPOT(output_val_f0_0.raw(), 24);
-    int32x4_t output_val_s32_1 = RoundingDivideByPOT(output_val_f0_1.raw(), 24);
-    int32x4_t output_val_s32_2 = RoundingDivideByPOT(output_val_f0_2.raw(), 24);
-    int32x4_t output_val_s32_3 = RoundingDivideByPOT(output_val_f0_3.raw(), 24);
-
-    // Add the output zero point
-    int32x4_t output_zero_point_s32 = vdupq_n_s32(output_zero_point);
-    output_val_s32_0 = vaddq_s32(output_val_s32_0, output_zero_point_s32);
-    output_val_s32_1 = vaddq_s32(output_val_s32_1, output_zero_point_s32);
-    output_val_s32_2 = vaddq_s32(output_val_s32_2, output_zero_point_s32);
-    output_val_s32_3 = vaddq_s32(output_val_s32_3, output_zero_point_s32);
-
-    // Cast output values to uint8, saturating
-    int16x8_t output_val_s16_0 = vcombine_s16(vqmovn_s32(output_val_s32_0),
-                                              vqmovn_s32(output_val_s32_1));
-    int16x8_t output_val_s16_1 = vcombine_s16(vqmovn_s32(output_val_s32_2),
-                                              vqmovn_s32(output_val_s32_3));
-    uint8x16_t output_val_u8 = vcombine_u8(vqmovun_s16(output_val_s16_0),
-                                           vqmovun_s16(output_val_s16_1));
-
-    // Perform the bit-masking with the bit masks computed at the beginning,
-    // see the comment there.
-    output_val_u8 = vorrq_u8(output_val_u8, mask_rightclamp);
-    output_val_u8 = vandq_u8(output_val_u8, mask_leftclamp);
-
-    // Store back to memory
-    vst1q_u8(output_data + c, output_val_u8);
-  }
-#endif
-  // Leftover loop: handle one value at a time with scalar code.
-  for (; c < size; ++c) {
-    const uint8 input_val_u8 = input_data[c];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered < -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered > input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-      output_val_s32 += output_zero_point;
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[c] = output_val;
-  }
 }
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,

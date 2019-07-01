@@ -100,6 +100,29 @@ def _make_int64_tensor(value, name):
   return math_ops.cast(value, dtypes.int64)
 
 
+@tf_export("sparse.from_dense")
+def from_dense(tensor, name=None):
+  """Converts a dense tensor into a sparse tensor.
+
+  Only elements not equal to zero will be present in the result. The resulting
+  `SparseTensor` has the same dtype and shape as the input.
+
+  Args:
+    tensor: A dense `Tensor` to be converted to a `SparseTensor`.
+    name: Optional name for the op.
+
+  Returns:
+    The `SparseTensor`.
+  """
+  with ops.name_scope(name, "dense_to_sparse"):
+    tensor = ops.convert_to_tensor(tensor)
+    indices = array_ops.where_v2(
+        math_ops.not_equal(tensor, array_ops.constant(0, tensor.dtype)))
+    values = array_ops.gather_nd(tensor, indices)
+    shape = array_ops.shape(tensor, out_type=dtypes.int64)
+    return sparse_tensor.SparseTensor(indices, values, shape)
+
+
 @tf_export("sparse.expand_dims")
 def sparse_expand_dims(sp_input, axis=None, name=None):
   """Inserts a dimension of 1 into a tensor's shape.
@@ -131,7 +154,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
                       " - 1, rank(sp_input)]")
 
     # Convert axis to a positive value if it is negative.
-    axis = array_ops.where(axis >= 0, axis, axis + rank + 1)
+    axis = array_ops.where_v2(axis >= 0, axis, axis + rank + 1)
 
     # Create the new column of indices for the sparse tensor by slicing
     # the indices and inserting a new column of indices for the new dimension.
@@ -1476,9 +1499,9 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
       [0, 0, 0]: 0
       [0, 1, 0]: 10
       [1, 0, 3]: 103
-      [1, 1, 2]: 150
-      [1, 1, 3]: 149
-      [1, 1, 4]: 150
+      [1, 1, 1]: 150
+      [1, 1, 2]: 149
+      [1, 1, 3]: 150
       [1, 2, 1]: 121
 
   and `vocab_size = 200`, then the output will be a `[2, 3, 200]` dense bool
@@ -1716,7 +1739,7 @@ def sparse_retain(sp_input, to_retain):
     sp_input.values.get_shape().dims[0].merge_with(
         tensor_shape.dimension_at_index(retain_shape, 0))
 
-  where_true = array_ops.reshape(array_ops.where(to_retain), [-1])
+  where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
   new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
   return sparse_tensor.SparseTensor(new_indices, new_values,

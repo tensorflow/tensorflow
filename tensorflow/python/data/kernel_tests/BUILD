@@ -277,9 +277,12 @@ tf_py_test(
     additional_deps = [
         ":test_base",
         "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -359,6 +362,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["iterator_test.py"],
     additional_deps = [
+        ":test_base",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:readers",
@@ -709,12 +713,12 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 

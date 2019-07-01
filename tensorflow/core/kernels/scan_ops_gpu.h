@@ -168,8 +168,9 @@ struct IdentityValue {
 // used in the large 1D case, even though it would be more efficient, because
 // it is not deterministic.
 template <typename T, typename Op, int BlockDim = 128, int ItemsPerThread = 4>
-__global__ void scan_kernel(const T* in, T* out, int dimx, int dimy, int dimz,
-                            bool exclusive, bool reverse, Op op) {
+__launch_bounds__(BlockDim) __global__
+    void scan_kernel(const T* in, T* out, int dimx, int dimy, int dimz,
+                     bool exclusive, bool reverse, Op op) {
   typedef gpuprim::BlockLoad<T, BlockDim, ItemsPerThread,
                              gpuprim::BLOCK_LOAD_TRANSPOSE>
       BlockLoad;

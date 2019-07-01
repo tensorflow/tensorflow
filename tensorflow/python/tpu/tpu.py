@@ -29,6 +29,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -844,7 +845,15 @@ def split_compile_and_replicate(computation,
     flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
-  cluster_name = graph.unique_name("cluster")
+  if isinstance(graph, func_graph.FuncGraph):
+    # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
+    # object. If both outside graph and this function have a TPU cluster,
+    # they will have the same cluster name and it will cause problems (because
+    # we lower functional ops in Tensorflow 2.0). Append function name to
+    # 'cluster_name' to avoid cluster name collision.
+    cluster_name = graph.unique_name("cluster_" + graph.name)
+  else:
+    cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)

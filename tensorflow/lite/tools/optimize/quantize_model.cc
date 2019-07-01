@@ -510,7 +510,7 @@ TfLiteStatus QuantizeOpOutput(
         printf(
             "Note the output min/max is different from the input min/max "
             "for op %s at index %d in subgraph %d. This is legal but "
-            "should happens rarely.",
+            "should happens rarely.\n",
             EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
       }
     }

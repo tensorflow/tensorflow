@@ -50,6 +50,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
   params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
+  params.AddParam("max_profiling_buffer_entries",
+                  BenchmarkParam::Create<int32_t>(1024));
   return params;
 }
 

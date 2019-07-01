@@ -211,7 +211,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
-      if (num_parallel_calls_->value == model::kAutoTune) {
+      if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
       TF_RETURN_IF_ERROR(
@@ -938,7 +938,7 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                                               DatasetBase** output) {
   int64 cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
-  if (cycle_length == model::kAutoTune) {
+  if (cycle_length == model::kAutotune) {
     cycle_length = port::NumSchedulableCPUs();
   }
   OP_REQUIRES(ctx, cycle_length > 0,
@@ -953,7 +953,7 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   OP_REQUIRES(
-      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
       errors::InvalidArgument("num_parallel_calls must be greater than zero."));
   OP_REQUIRES(
       ctx, num_parallel_calls <= cycle_length,
@@ -965,7 +965,7 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
                  CapturedFunction::Create(ctx, func_metadata_, kOtherArguments,
                                           &captured_func));
 
-  if (num_parallel_calls == model::kAutoTune) {
+  if (num_parallel_calls == model::kAutotune) {
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 

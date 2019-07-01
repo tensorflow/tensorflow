@@ -37,6 +37,7 @@ filegroup(
 xla_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
+    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 cc_library(
@@ -199,6 +200,7 @@ cc_library(
         "ir_emitter_unnested.h",
     ],
     deps = [
+        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_conv_runner",
         ":elemental_ir_emitter",
@@ -457,6 +459,7 @@ cc_library(
          "cholesky_thunk.h",
     ]),
     deps = [
+        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_conv_runner",
         ":gpu_debug_info_manager",
@@ -542,6 +545,53 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
+    ],
+)
+
+cc_library(
+    name = "gemm_rewriter",
+    srcs = ["gemm_rewriter.cc"],
+    hdrs = ["gemm_rewriter.h"],
+    deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "gemm_algorithm_picker",
+    srcs = ["gemm_algorithm_picker.cc"],
+    hdrs = ["gemm_algorithm_picker.h"],
+    deps = [
+        ":backend_configs",
+        ":buffer_comparator",
+        ":cudnn_conv_runner",
+        ":gpu_executable",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logger",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/util/proto:proto_utils",
+        "//tensorflow/stream_executor:blas",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -700,26 +750,27 @@ cc_library(
 cc_library(
     name = "cusolver_rewriter",
     srcs = if_cuda_is_configured([
-            "cusolver_rewriter.cc"
-     ]),
+        "cusolver_rewriter.cc"
+    ]),
     hdrs = if_cuda_is_configured([
-            "cusolver_rewriter.h",
-       ]),
+        "cusolver_rewriter.h",
+    ]),
     deps = if_cuda_is_configured([
-            ":cusolver_context",
-            ":ir_emission_utils",
-            ":scratch_allocator",
-            "//tensorflow/compiler/xla:literal",
-            "//tensorflow/compiler/xla:util",
-            "//tensorflow/compiler/xla:xla_data_proto",
-            "//tensorflow/compiler/xla/service:hlo",
-            "//tensorflow/compiler/xla/service:hlo_pass",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:stream_executor_no_cuda",
-            "//tensorflow/stream_executor:blas",
-            "//tensorflow/stream_executor:device_memory_allocator",
-            "@com_google_absl//absl/types:optional",
-      ]),
+        ":cusolver_context",
+        ":ir_emission_utils",
+        ":scratch_allocator",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:blas",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/types:optional",
+    ]),
 )
 
 cc_library(
@@ -972,6 +1023,7 @@ cc_library(
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
         ":fusion_merger",
+        ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",
@@ -1008,6 +1060,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
@@ -1047,6 +1100,7 @@ cc_library(
     if_cuda_is_configured([
         ":cusolver_rewriter",
         ":cudnn_conv_algorithm_picker",
+        ":gemm_algorithm_picker",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
@@ -1108,6 +1162,7 @@ cc_library(
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
     deps = [
+        ":backend_configs",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1127,6 +1182,7 @@ tf_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
+        ":gemm_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_layout",
@@ -1138,6 +1194,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
     ],
 )

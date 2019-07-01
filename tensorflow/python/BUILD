@@ -13,6 +13,7 @@ visibility = [
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
+    "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
@@ -521,7 +522,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -3081,6 +3082,13 @@ py_library(
 )
 
 py_library(
+    name = "op_selector",
+    srcs = ["ops/op_selector.py"],
+    srcs_version = "PY2AND3",
+    deps = [":framework_ops"],
+)
+
+py_library(
     name = "math_ops",
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
@@ -3221,7 +3229,6 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
-        "//tensorflow/python/eager:monitoring",
         "//third_party/py/numpy",
     ],
 )
@@ -3566,6 +3573,16 @@ py_library(
 )
 
 py_library(
+    name = "rnn_grad",
+    srcs = ["ops/rnn_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:rnn_ops_gen",
+    ],
+)
+
+py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
     srcs_version = "PY2AND3",
@@ -3599,6 +3616,7 @@ py_library(
         ":partitioned_variables",
         ":proto_ops",
         ":random_ops",
+        ":rnn_grad",
         ":script_ops",
         ":session_ops",
         ":sort_ops",
@@ -3866,6 +3884,20 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     xla_enable_strict_auto_jit = True,
+)
+
+py_test(
+    name = "op_selector_test",
+    srcs = ["ops/op_selector_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":framework_ops",
+        ":math_ops",
+        ":op_selector",
+    ],
 )
 
 cuda_py_test(
@@ -4402,8 +4434,8 @@ py_library(
     deps = [
         "//tensorflow/tools/compatibility:all_renames_v2",
         "//third_party/py/numpy",
+        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
-        "@protobuf_archive//:protobuf_python",
         "@six_archive//:six",
     ],
 )
@@ -6306,6 +6338,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
     xla_enable_strict_auto_jit = False,
@@ -6659,6 +6692,18 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "tf2_test",
+    srcs = ["framework/tf2_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":tf2",
+        "//tensorflow/python/distribute:combinations",
+    ],
 )
 
 cuda_py_test(

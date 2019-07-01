@@ -642,6 +642,21 @@ TEST(DynamicUint8SumOpTest, KeepDims) {
       ElementsAreArray(ArrayFloatNear({6.47059, 10.698}, kQuantizedTolerance)));
 }
 
+TEST(ConstInt8SumOpTest, Rescale) {
+  const std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.3};
+  SumOpConstModel m({TensorType_INT8, {1, 3, 2}, -1.0, 1.0},
+                    {TensorType_INT8, {2}, -5.0, 5.0}, {1}, {1}, false);
+  // Expect the sum to be 0.4 + 0.3 + 0.5 = 1.2 and 0.2 + 0.4 + 0.3 = 0.9.
+  const std::vector<float> expected_sum = {1.2, 0.9};
+  const float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(expected_sum, kQuantizedTolerance)));
+}
+
 // Tests for reduce_prod
 
 TEST(ConstFloatProdOpTest, NotKeepDims) {

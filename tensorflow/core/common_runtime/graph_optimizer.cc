@@ -39,7 +39,8 @@ void GraphOptimizer::Optimize(
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
-    bool inline_multi_device_functions) {
+    bool inline_multi_device_functions,
+    bool inline_impl_selection_group_functions) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -98,6 +99,12 @@ void GraphOptimizer::Optimize(
         // might lead to multiple device assignments.
         expand_inline_opts.multi_device_options.disable_inlining = true;
       }
+      if (inline_impl_selection_group_functions) {
+        expand_inline_opts.native_options
+            .inline_impl_selection_group_functions = true;
+        expand_inline_opts.multi_device_options
+            .inline_impl_selection_group_functions = true;
+      }
 
       bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
       if (was_mutated) {
@@ -123,7 +130,8 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               const Options& options) {
   Optimize(runtime, env, device, graph, options.shape_map,
            options.cse_consider_fn, options.cf_consider_fn,
-           options.inline_multi_device_functions);
+           options.inline_multi_device_functions,
+           options.inline_impl_selection_group_functions);
 }
 
 }  // end namespace tensorflow
