@@ -774,6 +774,62 @@ ParseResult ParseControlTriggerOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+//===----------------------------------------------------------------------===//
+// tf_executor.LoopCond
+//===----------------------------------------------------------------------===//
+
+void Print(LoopCondOp loop_cond, OpAsmPrinter *p) {
+  *p << loop_cond.getOperationName() << ' ';
+  p->printOperands(loop_cond.getOperands());
+
+  // If the types aren't matching (broadcast), print the functional type syntax.
+  if (loop_cond.input()->getType() != loop_cond.output()->getType()) {
+    *p << " : ";
+    p->printFunctionalType(loop_cond.getOperation());
+  } else {
+    *p << " : " << loop_cond.input()->getType();
+  }
+
+  p->printOptionalAttrDict(loop_cond.getAttrs());
+}
+
+ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+
+  if (parser->parseOperandList(op_infos)) return failure();
+  if (op_infos.empty())
+    return parser->emitError(parser->getNameLoc())
+           << "expects at least one operand";
+
+  SmallVector<Type, 1> types;
+  if (parser->parseColonTypeList(types)) return failure();
+
+  // Support parsing either a functional type (in which case all the types are
+  // fully qualified) or a short form with a single type (in which case the data
+  // input and the outputs are all using this type).
+  Type control_type = ControlType::get(parser->getBuilder().getContext());
+  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+    if (llvm::count_if(type.getInputs(),
+                       [=](Type type) { return type != control_type; }) != 1)
+      return parser->emitError(parser->getNameLoc())
+             << " expects a single data type";
+    result->types.assign(type.getResults().begin(), type.getResults().end());
+    types.assign(type.getInputs().begin(), type.getInputs().end());
+  } else {
+    if (types.size() != 1)
+      return parser->emitError(parser->getNameLoc())
+             << " expects a single data type";
+    types.append(op_infos.size() - 1, control_type);
+    result->addTypes({types.front(), control_type});
+  }
+
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  if (parser->resolveOperands(op_infos, types, loc, result->operands))
+    return failure();
+
+  return parser->parseOptionalAttributeDict(result->attributes);
+}
+
 }  // anonymous namespace
 
 //===----------------------------------------------------------------------===//

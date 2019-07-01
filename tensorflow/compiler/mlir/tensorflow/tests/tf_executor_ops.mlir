@@ -367,3 +367,42 @@ func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_ex
   return
 }
 
+// CHECK-LABEL: func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0 : tensor<i1>
+    %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0 : tensor<i1> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>  {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
+    %1:2 = tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
+func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0, %arg1 : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)
+    %1:2 = tf_executor.LoopCond %arg0, %arg1 : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)
+    tf_executor.fetch %1#0 : tensor<*xi1>
+  }
+  return %0 : tensor<*xi1>
+}

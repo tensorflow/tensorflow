@@ -592,4 +592,38 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger", [NoSideEffect]
   let verifier = ?;
 }
 
+def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond", [NoSideEffect]> {
+  let summary = [{
+    The "tf_executor.LoopCond" operation forwards a boolean value as loop
+    condition of Tensorflow while loops.
+  }];
+
+  let description = [{
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("LoopCond")
+       .Input("input: bool")
+       .Output("output: bool")
+
+    For example:
+      %5:2 = tf_executor.LoopCond %4#0 {name: "while/LoopCond"}
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    TensorOf<[I1]>:$input,
+    Variadic<TfeControlType>:$controlInputs
+  );
+  let results = (outs
+    TensorOf<[I1]>:$output,
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
+}
+
 #endif // TF_EXECUTOR_DIALECT
