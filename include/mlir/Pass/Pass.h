@@ -70,12 +70,12 @@ class ModulePassExecutor;
 /// interface for accessing and initializing necessary state for pass execution.
 template <typename IRUnitT, typename AnalysisManagerT>
 struct PassExecutionState {
-  PassExecutionState(IRUnitT *ir, AnalysisManagerT &analysisManager)
+  PassExecutionState(IRUnitT ir, AnalysisManagerT &analysisManager)
       : irAndPassFailed(ir, false), analysisManager(analysisManager) {}
 
   /// The current IR unit being transformed and a bool for if the pass signaled
   /// a failure.
-  llvm::PointerIntPair<IRUnitT *, 1, bool> irAndPassFailed;
+  llvm::PointerIntPair<IRUnitT, 1, bool> irAndPassFailed;
 
   /// The analysis manager for the IR unit.
   AnalysisManagerT &analysisManager;
@@ -107,9 +107,7 @@ protected:
   virtual FunctionPassBase *clone() const = 0;
 
   /// Return the current function being transformed.
-  Function &getFunction() {
-    return *getPassState().irAndPassFailed.getPointer();
-  }
+  Function getFunction() { return getPassState().irAndPassFailed.getPointer(); }
 
   /// Return the MLIR context for the current function being transformed.
   MLIRContext &getContext() { return *getFunction().getContext(); }
@@ -128,7 +126,7 @@ protected:
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(Function *fn, FunctionAnalysisManager &fam);
+  LogicalResult run(Function fn, FunctionAnalysisManager &fam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -140,7 +138,8 @@ private:
 /// Pass to transform a module. Derived passes should not inherit from this
 /// class directly, and instead should use the CRTP ModulePass class.
 class ModulePassBase : public Pass {
-  using PassStateT = detail::PassExecutionState<Module, ModuleAnalysisManager>;
+  using PassStateT =
+      detail::PassExecutionState<Module *, ModuleAnalysisManager>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -272,7 +271,7 @@ struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
 template <typename T>
 struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
   /// Returns the analysis for a child function.
-  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(Function *f) {
+  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(Function f) {
     return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(
         f);
   }
@@ -280,7 +279,7 @@ struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
   /// Returns an existing analysis for a child function if it exists.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysis(Function *f) {
+  getCachedFunctionAnalysis(Function f) {
     return this->getAnalysisManager()
         .template getCachedFunctionAnalysis<AnalysisT>(f);
   }

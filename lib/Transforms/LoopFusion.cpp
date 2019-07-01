@@ -257,7 +257,7 @@ public:
 
   // Initializes the dependence graph based on operations in 'f'.
   // Returns true on success, false otherwise.
-  bool init(Function &f);
+  bool init(Function f);
 
   // Returns the graph node for 'id'.
   Node *getNode(unsigned id) {
@@ -637,7 +637,7 @@ public:
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
-bool MemRefDependenceGraph::init(Function &f) {
+bool MemRefDependenceGraph::init(Function f) {
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
 
   // TODO: support multi-block functions.
@@ -859,7 +859,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   // Create builder to insert alloc op just before 'forOp'.
   OpBuilder b(forInst);
   // Builder to create constants at the top level.
-  OpBuilder top(forInst->getFunction()->getBody());
+  OpBuilder top(forInst->getFunction().getBody());
   // Create new memref type based on slice bounds.
   auto *oldMemRef = cast<StoreOp>(srcStoreOpInst).getMemRef();
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
@@ -1750,9 +1750,9 @@ public:
     };
 
     // Search for siblings which load the same memref function argument.
-    auto *fn = dstNode->op->getFunction();
-    for (unsigned i = 0, e = fn->getNumArguments(); i != e; ++i) {
-      for (auto *user : fn->getArgument(i)->getUsers()) {
+    auto fn = dstNode->op->getFunction();
+    for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
+      for (auto *user : fn.getArgument(i)->getUsers()) {
         if (auto loadOp = dyn_cast<LoadOp>(user)) {
           // Gather loops surrounding 'use'.
           SmallVector<AffineForOp, 4> loops;

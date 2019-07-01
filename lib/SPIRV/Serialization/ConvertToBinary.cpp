@@ -45,7 +45,7 @@ LogicalResult serializeModule(Module *module, StringRef outputFilename) {
   // wrapping the SPIR-V ModuleOp inside a MLIR module. This should be changed
   // to take in the SPIR-V ModuleOp directly after module and function are
   // migrated to be general ops.
-  for (auto &fn : *module) {
+  for (auto fn : *module) {
     fn.walk<spirv::ModuleOp>([&](spirv::ModuleOp spirvModule) {
       if (done) {
         spirvModule.emitError("found more than one 'spv.module' op");

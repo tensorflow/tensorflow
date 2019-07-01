@@ -128,7 +128,7 @@ public:
   /// Returns the function that this operation is part of.
   /// The function is determined by traversing the chain of parent operations.
   /// Returns nullptr if the operation is unlinked.
-  Function *getFunction();
+  Function getFunction();
 
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);

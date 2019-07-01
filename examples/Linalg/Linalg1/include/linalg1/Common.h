@@ -57,15 +57,15 @@ inline mlir::MemRefType floatMemRefType(mlir::MLIRContext *context,
 }
 
 /// A basic function builder
-inline mlir::Function *makeFunction(mlir::Module &module, llvm::StringRef name,
-                                    llvm::ArrayRef<mlir::Type> types,
-                                    llvm::ArrayRef<mlir::Type> resultTypes) {
+inline mlir::Function makeFunction(mlir::Module &module, llvm::StringRef name,
+                                   llvm::ArrayRef<mlir::Type> types,
+                                   llvm::ArrayRef<mlir::Type> resultTypes) {
   auto *context = module.getContext();
-  auto *function = new mlir::Function(
+  auto function = mlir::Function::create(
       mlir::UnknownLoc::get(context), name,
       mlir::FunctionType::get({types}, resultTypes, context));
-  function->addEntryBlock();
-  module.getFunctions().push_back(function);
+  function.addEntryBlock();
+  module.push_back(function);
   return function;
 }
 
@@ -83,19 +83,19 @@ inline std::unique_ptr<mlir::PassManager> cleanupPassManager() {
 /// llvm::outs() for FileCheck'ing.
 /// If an error occurs, dump to llvm::errs() and do not print to llvm::outs()
 /// which will make the associated FileCheck test fail.
-inline void cleanupAndPrintFunction(mlir::Function *f) {
+inline void cleanupAndPrintFunction(mlir::Function f) {
   bool printToOuts = true;
-  auto check = [f, &printToOuts](mlir::LogicalResult result) {
+  auto check = [&f, &printToOuts](mlir::LogicalResult result) {
     if (failed(result)) {
-      f->emitError("Verification and cleanup passes failed");
+      f.emitError("Verification and cleanup passes failed");
       printToOuts = false;
     }
   };
   auto pm = cleanupPassManager();
-  check(f->getModule()->verify());
-  check(pm->run(f->getModule()));
+  check(f.getModule()->verify());
+  check(pm->run(f.getModule()));
   if (printToOuts)
-    f->print(llvm::outs());
+    f.print(llvm::outs());
 }
 
 /// Helper class to sugar building loop nests from indexings that appear in

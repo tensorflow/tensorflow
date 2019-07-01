@@ -37,17 +37,16 @@ template class llvm::DomTreeNodeBase<Block>;
 
 /// Recalculate the dominance info.
 template <bool IsPostDom>
-void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
+void DominanceInfoBase<IsPostDom>::recalculate(Function function) {
   dominanceInfos.clear();
 
   // Build the top level function dominance.
   auto functionDominance = llvm::make_unique<base>();
-  functionDominance->recalculate(function->getBody());
-  dominanceInfos.try_emplace(&function->getBody(),
-                             std::move(functionDominance));
+  functionDominance->recalculate(function.getBody());
+  dominanceInfos.try_emplace(&function.getBody(), std::move(functionDominance));
 
   /// Build the dominance for each of the operation regions.
-  function->walk([&](Operation *op) {
+  function.walk([&](Operation *op) {
     for (auto &region : op->getRegions()) {
       // Don't compute dominance if the region is empty.
       if (region.empty())

@@ -75,7 +75,7 @@ public:
       auto func = mlirGen(F);
       if (!func)
         return nullptr;
-      theModule->getFunctions().push_back(func.release());
+      theModule->push_back(func);
     }
 
     // FIXME: (in the next chapter...) without registering a dialect in MLIR,
@@ -129,40 +129,40 @@ private:
 
   /// Create the prototype for an MLIR function with as many arguments as the
   /// provided Toy AST prototype.
-  mlir::Function *mlirGen(PrototypeAST &proto) {
+  mlir::Function mlirGen(PrototypeAST &proto) {
     // This is a generic function, the return type will be inferred later.
     llvm::SmallVector<mlir::Type, 4> ret_types;
     // Arguments type is uniformly a generic array.
     llvm::SmallVector<mlir::Type, 4> arg_types(proto.getArgs().size(),
                                                getType(VarType{}));
     auto func_type = mlir::FunctionType::get(arg_types, ret_types, &context);
-    auto *function = new mlir::Function(loc(proto.loc()), proto.getName(),
-                                        func_type, /* attrs = */ {});
+    auto function = mlir::Function::create(loc(proto.loc()), proto.getName(),
+                                           func_type, /* attrs = */ {});
 
     // Mark the function as generic: it'll require type specialization for every
     // call site.
-    if (function->getNumArguments())
-      function->setAttr("toy.generic", mlir::BoolAttr::get(true, &context));
+    if (function.getNumArguments())
+      function.setAttr("toy.generic", mlir::BoolAttr::get(true, &context));
 
     return function;
   }
 
   /// Emit a new function and add it to the MLIR module.
-  std::unique_ptr<mlir::Function> mlirGen(FunctionAST &funcAST) {
+  mlir::Function mlirGen(FunctionAST &funcAST) {
     // Create a scope in the symbol table to hold variable declarations.
     ScopedHashTableScope<llvm::StringRef, mlir::Value *> var_scope(symbolTable);
 
     // Create an MLIR function for the given prototype.
-    std::unique_ptr<mlir::Function> function(mlirGen(*funcAST.getProto()));
+    mlir::Function function(mlirGen(*funcAST.getProto()));
     if (!function)
       return nullptr;
 
     // Let's start the body of the function now!
     // In MLIR the entry block of the function is special: it must have the same
     // argument list as the function itself.
-    function->addEntryBlock();
+    function.addEntryBlock();
 
-    auto &entryBlock = function->front();
+    auto &entryBlock = function.front();
     auto &protoArgs = funcAST.getProto()->getArgs();
     // Declare all the function arguments in the symbol table.
     for (const auto &name_value :
@@ -172,16 +172,18 @@ private:
 
     // Create a builder for the function, it will be used throughout the codegen
     // to create operations in this function.
-    builder = llvm::make_unique<mlir::OpBuilder>(function->getBody());
+    builder = llvm::make_unique<mlir::OpBuilder>(function.getBody());
 
     // Emit the body of the function.
-    if (!mlirGen(*funcAST.getBody()))
+    if (!mlirGen(*funcAST.getBody())) {
+      function.erase();
       return nullptr;
+    }
 
     // Implicitly return void if no return statement was emitted.
     // FIXME: we may fix the parser instead to always return the last expression
     // (this would possibly help the REPL case later)
-    if (function->getBlocks().back().back().getName().getStringRef() !=
+    if (function.getBlocks().back().back().getName().getStringRef() !=
         "toy.return") {
       ReturnExprAST fakeRet(funcAST.getProto()->loc(), llvm::None);
       mlirGen(fakeRet);

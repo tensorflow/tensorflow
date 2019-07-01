@@ -43,9 +43,8 @@ linalg::writeAsTiledLoops(Operation *op, ArrayRef<uint64_t> tileSizes) {
   return llvm::None;
 }
 
-void linalg::lowerToTiledLoops(mlir::Function *f,
-                               ArrayRef<uint64_t> tileSizes) {
-  f->walk([tileSizes](Operation *op) {
+void linalg::lowerToTiledLoops(mlir::Function f, ArrayRef<uint64_t> tileSizes) {
+  f.walk([tileSizes](Operation *op) {
     if (writeAsTiledLoops(op, tileSizes).hasValue())
       op->erase();
   });
@@ -185,8 +184,8 @@ linalg::writeAsTiledViews(Operation *op, ArrayRef<Value *> tileSizes) {
   return llvm::None;
 }
 
-void linalg::lowerToTiledViews(mlir::Function *f, ArrayRef<Value *> tileSizes) {
-  f->walk([tileSizes](Operation *op) {
+void linalg::lowerToTiledViews(mlir::Function f, ArrayRef<Value *> tileSizes) {
+  f.walk([tileSizes](Operation *op) {
     if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
       writeAsTiledViews(matmulOp, tileSizes);
     } else if (auto matvecOp = dyn_cast<linalg::MatvecOp>(op)) {

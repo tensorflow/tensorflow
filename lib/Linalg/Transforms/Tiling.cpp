@@ -259,7 +259,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
   return tileLinalgOp(op, tileSizeValues, state);
 }
 
-static void tileLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
+static void tileLinalgOps(Function f, ArrayRef<int64_t> tileSizes) {
   OperationFolder state;
   f.walk<LinalgOp>([tileSizes, &state](LinalgOp op) {
     auto opLoopsPair = tileLinalgOp(op, tileSizes, state);

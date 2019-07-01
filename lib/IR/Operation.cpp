@@ -281,7 +281,7 @@ Operation *Operation::getParentOp() {
   return block ? block->getContainingOp() : nullptr;
 }
 
-Function *Operation::getFunction() {
+Function Operation::getFunction() {
   return block ? block->getFunction() : nullptr;
 }
 
@@ -861,12 +861,13 @@ static LogicalResult verifyBBArguments(Operation::operand_range operands,
 }
 
 static LogicalResult verifyTerminatorSuccessors(Operation *op) {
+  auto *parent = op->getContainingRegion();
+
   // Verify that the operands lines up with the BB arguments in the successor.
-  Function *fn = op->getFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
     auto *succ = op->getSuccessor(i);
-    if (succ->getFunction() != fn)
-      return op->emitError("reference to block defined in another function");
+    if (succ->getParent() != parent)
+      return op->emitError("reference to block defined in another region");
     if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
       return failure();
   }

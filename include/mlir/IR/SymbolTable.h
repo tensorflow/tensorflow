@@ -18,7 +18,7 @@
 #ifndef MLIR_IR_SYMBOLTABLE_H
 #define MLIR_IR_SYMBOLTABLE_H
 
-#include "mlir/IR/Identifier.h"
+#include "mlir/IR/Function.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
@@ -35,18 +35,18 @@ public:
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names never include the @ on them.
-  Function *lookup(StringRef name) const;
+  Function lookup(StringRef name) const;
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names never include the @ on them.
-  Function *lookup(Identifier name) const;
+  Function lookup(Identifier name) const;
 
   /// Erase the given symbol from the table.
-  void erase(Function *symbol);
+  void erase(Function symbol);
 
   /// Insert a new symbol into the table, and rename it as necessary to avoid
   /// collisions.
-  void insert(Function *symbol);
+  void insert(Function symbol);
 
   /// Returns the context held by this symbol table.
   MLIRContext *getContext() const { return context; }
@@ -55,7 +55,7 @@ private:
   MLIRContext *context;
 
   /// This is a mapping from a name to the function with that name.
-  llvm::DenseMap<Identifier, Function *> symbolTable;
+  llvm::DenseMap<Identifier, Function> symbolTable;
 
   /// This is used when name conflicts are detected.
   unsigned uniquingCounter = 0;

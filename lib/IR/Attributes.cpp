@@ -249,11 +249,6 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 // FunctionAttr
 //===----------------------------------------------------------------------===//
 
-FunctionAttr FunctionAttr::get(Function *value) {
-  assert(value && "Cannot get FunctionAttr for a null function");
-  return get(value->getName(), value->getContext());
-}
-
 FunctionAttr FunctionAttr::get(StringRef value, MLIRContext *ctx) {
   return Base::get(ctx, StandardAttributes::Function, value,
                    NoneType::get(ctx));

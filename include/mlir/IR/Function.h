@@ -29,29 +29,79 @@
 namespace mlir {
 class BlockAndValueMapping;
 class FunctionType;
+class Function;
 class MLIRContext;
 class Module;
 
-/// This is the base class for all of the MLIR function types.
-class Function : public llvm::ilist_node_with_parent<Function, Module> {
-public:
-  Function(Location location, StringRef name, FunctionType type,
-           ArrayRef<NamedAttribute> attrs = {});
-  Function(Location location, StringRef name, FunctionType type,
-           ArrayRef<NamedAttribute> attrs,
-           ArrayRef<NamedAttributeList> argAttrs);
+namespace detail {
+/// This class represents all of the internal state of a Function. This allows
+/// for the Function class to be value typed.
+class FunctionStorage
+    : public llvm::ilist_node_with_parent<FunctionStorage, Module> {
+  FunctionStorage(Location location, StringRef name, FunctionType type,
+                  ArrayRef<NamedAttribute> attrs = {});
+  FunctionStorage(Location location, StringRef name, FunctionType type,
+                  ArrayRef<NamedAttribute> attrs,
+                  ArrayRef<NamedAttributeList> argAttrs);
+  /// The name of the function.
+  Identifier name;
+
+  /// The module this function is embedded into.
+  Module *module = nullptr;
 
   /// The source location the function was defined or derived from.
-  Location getLoc() { return location; }
+  Location location;
+
+  /// The type of the function.
+  FunctionType type;
+
+  /// This holds general named attributes for the function.
+  NamedAttributeList attrs;
+
+  /// The attributes lists for each of the function arguments.
+  std::vector<NamedAttributeList> argAttrs;
+
+  /// The body of the function.
+  Region body;
+
+  friend struct llvm::ilist_traits<FunctionStorage>;
+  friend Function;
+};
+} // namespace detail
+
+/// This class represents an MLIR function, or the common unit of computation.
+/// The region of a function is not allowed to implicitly capture global values,
+/// and all external references must use Function arguments or attributes.
+class Function {
+public:
+  Function(detail::FunctionStorage *impl = nullptr) : impl(impl) {}
+
+  static Function create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs = {}) {
+    return new detail::FunctionStorage(location, name, type, attrs);
+  }
+  static Function create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs,
+                         ArrayRef<NamedAttributeList> argAttrs) {
+    return new detail::FunctionStorage(location, name, type, attrs, argAttrs);
+  }
+
+  /// Allow converting a Function to bool for null checks.
+  operator bool() const { return impl; }
+  bool operator==(Function other) const { return impl == other.impl; }
+  bool operator!=(Function other) const { return !(*this == other); }
+
+  /// The source location the function was defined or derived from.
+  Location getLoc() { return impl->location; }
 
   /// Set the source location this function was defined or derived from.
-  void setLoc(Location loc) { location = loc; }
+  void setLoc(Location loc) { impl->location = loc; }
 
   /// Return the name of this function, without the @.
-  Identifier getName() { return name; }
+  Identifier getName() { return impl->name; }
 
   /// Return the type of this function.
-  FunctionType getType() { return type; }
+  FunctionType getType() { return impl->type; }
 
   /// Change the type of this function in place. This is an extremely dangerous
   /// operation and it is up to the caller to ensure that this is legal for this
@@ -61,12 +111,12 @@ public:
   ///    parameters we drop the extra attributes, if there are more parameters
   ///    they won't have any attributes.
   void setType(FunctionType newType) {
-    type = newType;
-    argAttrs.resize(type.getNumInputs());
+    impl->type = newType;
+    impl->argAttrs.resize(newType.getNumInputs());
   }
 
   MLIRContext *getContext();
-  Module *getModule() { return module; }
+  Module *getModule() { return impl->module; }
 
   /// Add an entry block to an empty function, and set up the block arguments
   /// to match the signature of the function.
@@ -82,28 +132,28 @@ public:
   // Body Handling
   //===--------------------------------------------------------------------===//
 
-  Region &getBody() { return body; }
-  void eraseBody() { body.getBlocks().clear(); }
+  Region &getBody() { return impl->body; }
+  void eraseBody() { getBody().getBlocks().clear(); }
 
   /// This is the list of blocks in the function.
   using RegionType = Region::RegionType;
-  RegionType &getBlocks() { return body.getBlocks(); }
+  RegionType &getBlocks() { return getBody().getBlocks(); }
 
   // Iteration over the block in the function.
   using iterator = RegionType::iterator;
   using reverse_iterator = RegionType::reverse_iterator;
 
-  iterator begin() { return body.begin(); }
-  iterator end() { return body.end(); }
-  reverse_iterator rbegin() { return body.rbegin(); }
-  reverse_iterator rend() { return body.rend(); }
+  iterator begin() { return getBody().begin(); }
+  iterator end() { return getBody().end(); }
+  reverse_iterator rbegin() { return getBody().rbegin(); }
+  reverse_iterator rend() { return getBody().rend(); }
 
-  bool empty() { return body.empty(); }
-  void push_back(Block *block) { body.push_back(block); }
-  void push_front(Block *block) { body.push_front(block); }
+  bool empty() { return getBody().empty(); }
+  void push_back(Block *block) { getBody().push_back(block); }
+  void push_front(Block *block) { getBody().push_front(block); }
 
-  Block &back() { return body.back(); }
-  Block &front() { return body.front(); }
+  Block &back() { return getBody().back(); }
+  Block &front() { return getBody().front(); }
 
   //===--------------------------------------------------------------------===//
   // Operation Walkers
@@ -150,53 +200,55 @@ public:
   /// the lifetime of an function.
 
   /// Return all of the attributes on this function.
-  ArrayRef<NamedAttribute> getAttrs() { return attrs.getAttrs(); }
+  ArrayRef<NamedAttribute> getAttrs() { return impl->attrs.getAttrs(); }
 
   /// Return the internal attribute list on this function.
-  NamedAttributeList &getAttrList() { return attrs; }
+  NamedAttributeList &getAttrList() { return impl->attrs; }
 
   /// Return all of the attributes for the argument at 'index'.
   ArrayRef<NamedAttribute> getArgAttrs(unsigned index) {
     assert(index < getNumArguments() && "invalid argument number");
-    return argAttrs[index].getAttrs();
+    return impl->argAttrs[index].getAttrs();
   }
 
   /// Set the attributes held by this function.
   void setAttrs(ArrayRef<NamedAttribute> attributes) {
-    attrs.setAttrs(attributes);
+    impl->attrs.setAttrs(attributes);
   }
 
   /// Set the attributes held by the argument at 'index'.
   void setArgAttrs(unsigned index, ArrayRef<NamedAttribute> attributes) {
     assert(index < getNumArguments() && "invalid argument number");
-    argAttrs[index].setAttrs(attributes);
+    impl->argAttrs[index].setAttrs(attributes);
   }
   void setArgAttrs(unsigned index, NamedAttributeList attributes) {
     assert(index < getNumArguments() && "invalid argument number");
-    argAttrs[index] = attributes;
+    impl->argAttrs[index] = attributes;
   }
   void setAllArgAttrs(ArrayRef<NamedAttributeList> attributes) {
     assert(attributes.size() == getNumArguments());
     for (unsigned i = 0, e = attributes.size(); i != e; ++i)
-      argAttrs[i] = attributes[i];
+      impl->argAttrs[i] = attributes[i];
   }
 
   /// Return all argument attributes of this function.
-  MutableArrayRef<NamedAttributeList> getAllArgAttrs() { return argAttrs; }
+  MutableArrayRef<NamedAttributeList> getAllArgAttrs() {
+    return impl->argAttrs;
+  }
 
   /// Return the specified attribute if present, null otherwise.
-  Attribute getAttr(Identifier name) { return attrs.get(name); }
-  Attribute getAttr(StringRef name) { return attrs.get(name); }
+  Attribute getAttr(Identifier name) { return impl->attrs.get(name); }
+  Attribute getAttr(StringRef name) { return impl->attrs.get(name); }
 
   /// Return the specified attribute, if present, for the argument at 'index',
   /// null otherwise.
   Attribute getArgAttr(unsigned index, Identifier name) {
     assert(index < getNumArguments() && "invalid argument number");
-    return argAttrs[index].get(name);
+    return impl->argAttrs[index].get(name);
   }
   Attribute getArgAttr(unsigned index, StringRef name) {
     assert(index < getNumArguments() && "invalid argument number");
-    return argAttrs[index].get(name);
+    return impl->argAttrs[index].get(name);
   }
 
   template <typename AttrClass> AttrClass getAttrOfType(Identifier name) {
@@ -219,13 +271,15 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute value) { attrs.set(name, value); }
+  void setAttr(Identifier name, Attribute value) {
+    impl->attrs.set(name, value);
+  }
   void setAttr(StringRef name, Attribute value) {
     setAttr(Identifier::get(name, getContext()), value);
   }
   void setArgAttr(unsigned index, Identifier name, Attribute value) {
     assert(index < getNumArguments() && "invalid argument number");
-    argAttrs[index].set(name, value);
+    impl->argAttrs[index].set(name, value);
   }
   void setArgAttr(unsigned index, StringRef name, Attribute value) {
     setArgAttr(index, Identifier::get(name, getContext()), value);
@@ -234,12 +288,12 @@ public:
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   NamedAttributeList::RemoveResult removeAttr(Identifier name) {
-    return attrs.remove(name);
+    return impl->attrs.remove(name);
   }
   NamedAttributeList::RemoveResult removeArgAttr(unsigned index,
                                                  Identifier name) {
     assert(index < getNumArguments() && "invalid argument number");
-    return attrs.remove(name);
+    return impl->attrs.remove(name);
   }
 
   //===--------------------------------------------------------------------===//
@@ -281,44 +335,37 @@ public:
   /// contains entries for function arguments, these arguments are not included
   /// in the new function. Replaces references to cloned sub-values with the
   /// corresponding value that is copied, and adds those mappings to the mapper.
-  Function *clone(BlockAndValueMapping &mapper);
-  Function *clone();
+  Function clone(BlockAndValueMapping &mapper);
+  Function clone();
 
   /// Clone the internal blocks and attributes from this function into dest. Any
   /// cloned blocks are appended to the back of dest. This function asserts that
   /// the attributes of the current function and dest are compatible.
-  void cloneInto(Function *dest, BlockAndValueMapping &mapper);
+  void cloneInto(Function dest, BlockAndValueMapping &mapper);
+
+  /// Methods for supporting PointerLikeTypeTraits.
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>(impl);
+  }
+  static Function getFromOpaquePointer(const void *pointer) {
+    return reinterpret_cast<detail::FunctionStorage *>(
+        const_cast<void *>(pointer));
+  }
 
 private:
   /// Set the name of this function.
-  void setName(Identifier newName) { name = newName; }
+  void setName(Identifier newName) { impl->name = newName; }
 
-  /// The name of the function.
-  Identifier name;
-
-  /// The module this function is embedded into.
-  Module *module = nullptr;
-
-  /// The source location the function was defined or derived from.
-  Location location;
-
-  /// The type of the function.
-  FunctionType type;
-
-  /// This holds general named attributes for the function.
-  NamedAttributeList attrs;
-
-  /// The attributes lists for each of the function arguments.
-  std::vector<NamedAttributeList> argAttrs;
-
-  /// The body of the function.
-  Region body;
-
-  void operator=(Function &) = delete;
-  friend struct llvm::ilist_traits<Function>;
+  /// A pointer to the impl storage instance for this function. This allows for
+  /// 'Function' to be treated as a value type.
+  detail::FunctionStorage *impl = nullptr;
 
   // Allow access to 'setName'.
   friend class SymbolTable;
+
+  // Allow access to 'impl'.
+  friend class Module;
+  friend class Region;
 };
 
 //===--------------------------------------------------------------------===//
@@ -487,21 +534,52 @@ private:
 namespace llvm {
 
 template <>
-struct ilist_traits<::mlir::Function>
-    : public ilist_alloc_traits<::mlir::Function> {
-  using Function = ::mlir::Function;
-  using function_iterator = simple_ilist<Function>::iterator;
+struct ilist_traits<::mlir::detail::FunctionStorage>
+    : public ilist_alloc_traits<::mlir::detail::FunctionStorage> {
+  using FunctionStorage = ::mlir::detail::FunctionStorage;
+  using function_iterator = simple_ilist<FunctionStorage>::iterator;
 
-  static void deleteNode(Function *function) { delete function; }
+  static void deleteNode(FunctionStorage *function) { delete function; }
 
-  void addNodeToList(Function *function);
-  void removeNodeFromList(Function *function);
-  void transferNodesFromList(ilist_traits<Function> &otherList,
+  void addNodeToList(FunctionStorage *function);
+  void removeNodeFromList(FunctionStorage *function);
+  void transferNodesFromList(ilist_traits<FunctionStorage> &otherList,
                              function_iterator first, function_iterator last);
 
 private:
   mlir::Module *getContainingModule();
 };
-} // end namespace llvm
+
+// Functions hash just like pointers.
+template <> struct DenseMapInfo<mlir::Function> {
+  static mlir::Function getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::Function::getFromOpaquePointer(pointer);
+  }
+  static mlir::Function getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::Function::getFromOpaquePointer(pointer);
+  }
+  static unsigned getHashValue(mlir::Function val) {
+    return hash_value(val.getAsOpaquePointer());
+  }
+  static bool isEqual(mlir::Function LHS, mlir::Function RHS) {
+    return LHS == RHS;
+  }
+};
+
+/// Allow stealing the low bits of FunctionStorage.
+template <> struct PointerLikeTypeTraits<mlir::Function> {
+public:
+  static inline void *getAsVoidPointer(mlir::Function I) {
+    return const_cast<void *>(I.getAsOpaquePointer());
+  }
+  static inline mlir::Function getFromVoidPointer(void *P) {
+    return mlir::Function::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = 3 };
+};
+
+} // namespace llvm
 
 #endif // MLIR_IR_FUNCTION_H

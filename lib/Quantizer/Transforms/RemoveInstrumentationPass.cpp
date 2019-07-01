@@ -58,7 +58,7 @@ public:
 
 void RemoveInstrumentationPass::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   auto *context = &getContext();
   patterns.push_back(
       llvm::make_unique<RemoveIdentityOpRewrite<StatisticsOp>>(context));

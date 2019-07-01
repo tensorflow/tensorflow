@@ -365,7 +365,7 @@ struct UniformRealMulEwPattern : public OpRewritePattern<RealMulEwOp> {
 //===----------------------------------------------------------------------===//
 
 void LowerUniformRealMathPass::runOnFunction() {
-  auto &fn = getFunction();
+  auto fn = getFunction();
   OwningRewritePatternList patterns;
   auto *context = &getContext();
   patterns.push_back(llvm::make_unique<UniformRealAddEwPattern>(context));
@@ -386,7 +386,7 @@ static PassRegistration<LowerUniformRealMathPass> lowerUniformRealMathPass(
 //===----------------------------------------------------------------------===//
 
 void LowerUniformCastsPass::runOnFunction() {
-  auto &fn = getFunction();
+  auto fn = getFunction();
   OwningRewritePatternList patterns;
   auto *context = &getContext();
   patterns.push_back(llvm::make_unique<UniformDequantizePattern>(context));

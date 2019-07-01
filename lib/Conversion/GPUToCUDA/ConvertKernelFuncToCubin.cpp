@@ -64,8 +64,8 @@ public:
     LLVMInitializeNVPTXTargetMC();
     LLVMInitializeNVPTXAsmPrinter();
 
-    for (auto &function : getModule()) {
-      if (!gpu::GPUDialect::isKernel(&function) || function.isExternal()) {
+    for (auto function : getModule()) {
+      if (!gpu::GPUDialect::isKernel(function) || function.isExternal()) {
         continue;
       }
       if (failed(translateGpuKernelToCubinAnnotation(function)))
@@ -142,7 +142,7 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(Function &function) {
   std::unique_ptr<Module> module(builder.createModule());
 
   // TODO(herhut): Also handle called functions.
-  module->getFunctions().push_back(function.clone());
+  module->push_back(function.clone());
 
   auto llvmModule = translateModuleToNVVMIR(*module);
   auto cubin = convertModuleToCubin(*llvmModule, function);

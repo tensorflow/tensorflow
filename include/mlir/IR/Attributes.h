@@ -313,9 +313,8 @@ class FunctionAttr
                                  detail::StringAttributeStorage> {
 public:
   using Base::Base;
-  using ValueType = Function *;
+  using ValueType = StringRef;
 
-  static FunctionAttr get(Function *value);
   static FunctionAttr get(StringRef value, MLIRContext *ctx);
 
   /// Returns the name of the held function reference.

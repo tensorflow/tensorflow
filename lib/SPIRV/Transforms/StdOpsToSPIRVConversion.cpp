@@ -42,7 +42,7 @@ class StdOpsToSPIRVConversionPass
 
 void StdOpsToSPIRVConversionPass::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
 
   populateWithGenerated(func.getContext(), &patterns);
   applyPatternsGreedily(func, std::move(patterns));

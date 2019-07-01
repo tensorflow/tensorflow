@@ -92,8 +92,8 @@ void LoopUnroll::runOnFunction() {
     // Store innermost loops as we walk.
     std::vector<AffineForOp> loops;
 
-    void walkPostOrder(Function *f) {
-      for (auto &b : *f)
+    void walkPostOrder(Function f) {
+      for (auto &b : f)
         walkPostOrder(b.begin(), b.end());
     }
 
@@ -142,10 +142,10 @@ void LoopUnroll::runOnFunction() {
                                 ? clUnrollNumRepetitions
                                 : 1;
   // If the call back is provided, we will recurse until no loops are found.
-  Function &func = getFunction();
+  Function func = getFunction();
   for (unsigned i = 0; i < numRepetitions || getUnrollFactor; i++) {
     InnermostLoopGatherer ilg;
-    ilg.walkPostOrder(&func);
+    ilg.walkPostOrder(func);
     auto &loops = ilg.loops;
     if (loops.empty())
       break;

@@ -36,14 +36,14 @@ TEST_FUNC(linalg_ops) {
   MLIRContext context;
   Module module(&context);
   auto indexType = mlir::IndexType::get(&context);
-  mlir::Function *f =
+  mlir::Function f =
       makeFunction(module, "linalg_ops", {indexType, indexType, indexType}, {});
 
-  OpBuilder builder(f->getBody());
-  ScopedContext scope(builder, f->getLoc());
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
 
   // clang-format off
-  ValueHandle M(f->getArgument(0)), N(f->getArgument(1)), K(f->getArgument(2)),
+  ValueHandle M(f.getArgument(0)), N(f.getArgument(1)), K(f.getArgument(2)),
     rM = range(constant_index(0), M, constant_index(1)),
     rN = range(constant_index(0), N, constant_index(1)),
     rK = range(constant_index(0), K, constant_index(1)),
@@ -75,14 +75,14 @@ TEST_FUNC(linalg_ops_folded_slices) {
   MLIRContext context;
   Module module(&context);
   auto indexType = mlir::IndexType::get(&context);
-  mlir::Function *f = makeFunction(module, "linalg_ops_folded_slices",
-                                   {indexType, indexType, indexType}, {});
+  mlir::Function f = makeFunction(module, "linalg_ops_folded_slices",
+                                  {indexType, indexType, indexType}, {});
 
-  OpBuilder builder(f->getBody());
-  ScopedContext scope(builder, f->getLoc());
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
 
   // clang-format off
-  ValueHandle M(f->getArgument(0)), N(f->getArgument(1)), K(f->getArgument(2)),
+  ValueHandle M(f.getArgument(0)), N(f.getArgument(1)), K(f.getArgument(2)),
     rM = range(constant_index(0), M, constant_index(1)),
     rN = range(constant_index(0), N, constant_index(1)),
     rK = range(constant_index(0), K, constant_index(1)),
@@ -104,7 +104,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
   //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg.view<f32>
   // clang-format on
 
-  f->walk<SliceOp>([](SliceOp slice) {
+  f.walk<SliceOp>([](SliceOp slice) {
     auto *sliceResult = slice.getResult();
     auto viewOp = emitAndReturnFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());

@@ -440,14 +440,14 @@ static LogicalResult verify(CallOp op) {
   auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' function attribute");
-  auto *fn = op.getOperation()->getFunction()->getModule()->getNamedFunction(
+  auto fn = op.getOperation()->getFunction().getModule()->getNamedFunction(
       fnAttr.getValue());
   if (!fn)
     return op.emitOpError() << "'" << fnAttr.getValue()
                             << "' does not reference a valid function";
 
   // Verify that the operand and result types match the callee.
-  auto fnType = fn->getType();
+  auto fnType = fn.getType();
   if (fnType.getNumInputs() != op.getNumOperands())
     return op.emitOpError("incorrect number of operands for callee");
 
@@ -1107,13 +1107,13 @@ static LogicalResult verify(ConstantOp &op) {
       return op.emitOpError("requires 'value' to be a function reference");
 
     // Try to find the referenced function.
-    auto *fn = op.getOperation()->getFunction()->getModule()->getNamedFunction(
+    auto fn = op.getOperation()->getFunction().getModule()->getNamedFunction(
         fnAttr.getValue());
     if (!fn)
       return op.emitOpError("reference to undefined function 'bar'");
 
     // Check that the referenced function has the correct type.
-    if (fn->getType() != type)
+    if (fn.getType() != type)
       return op.emitOpError("reference to function with mismatched type");
 
     return success();
@@ -1876,10 +1876,10 @@ static void print(OpAsmPrinter *p, ReturnOp op) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  auto *function = op.getOperation()->getFunction();
+  auto function = op.getOperation()->getFunction();
 
   // The operand number and types must match the function signature.
-  const auto &results = function->getType().getResults();
+  const auto &results = function.getType().getResults();
   if (op.getNumOperands() != results.size())
     return op.emitOpError("has ")
            << op.getNumOperands()

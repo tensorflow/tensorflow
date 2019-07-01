@@ -177,8 +177,8 @@ IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
 
 TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
 
-FunctionAttr Builder::getFunctionAttr(Function *value) {
-  return FunctionAttr::get(value);
+FunctionAttr Builder::getFunctionAttr(Function value) {
+  return getFunctionAttr(value.getName());
 }
 FunctionAttr Builder::getFunctionAttr(StringRef value) {
   return FunctionAttr::get(value, getContext());

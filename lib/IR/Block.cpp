@@ -50,7 +50,7 @@ Operation *Block::getContainingOp() {
   return getParent() ? getParent()->getContainingOp() : nullptr;
 }
 
-Function *Block::getFunction() {
+Function Block::getFunction() {
   Block *block = this;
   while (auto *op = block->getContainingOp()) {
     block = op->getBlock();

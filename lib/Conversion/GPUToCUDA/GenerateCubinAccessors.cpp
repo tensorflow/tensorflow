@@ -53,15 +53,15 @@ constexpr const char *kMallocHelperName = "mcuMalloc";
 class GpuGenerateCubinAccessorsPass
     : public ModulePass<GpuGenerateCubinAccessorsPass> {
 private:
-  Function *getMallocHelper(Location loc, Builder &builder) {
-    Function *result = getModule().getNamedFunction(kMallocHelperName);
+  Function getMallocHelper(Location loc, Builder &builder) {
+    Function result = getModule().getNamedFunction(kMallocHelperName);
     if (!result) {
-      result = new Function(
+      result = Function::create(
           loc, kMallocHelperName,
           builder.getFunctionType(
               ArrayRef<Type>{LLVM::LLVMType::getInt32Ty(llvmDialect)},
               LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
-      getModule().getFunctions().push_back(result);
+      getModule().push_back(result);
     }
     return result;
   }
@@ -70,18 +70,18 @@ private:
   // data from blob. As there are currently no global constants, this uses a
   // sequence of store operations.
   // TODO(herhut): Use global constants instead.
-  Function *generateCubinAccessor(Builder &builder, Function &orig,
-                                  StringAttr blob) {
+  Function generateCubinAccessor(Builder &builder, Function &orig,
+                                 StringAttr blob) {
     Location loc = orig.getLoc();
     SmallString<128> nameBuffer(orig.getName());
     nameBuffer.append(kCubinGetterSuffix);
     // Generate a function that returns void*.
-    Function *result = new Function(
+    Function result = Function::create(
         loc, mlir::Identifier::get(nameBuffer, &getContext()),
         builder.getFunctionType(ArrayRef<Type>{},
                                 LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
     // Insert a body block that just returns the constant.
-    OpBuilder ob(result->getBody());
+    OpBuilder ob(result.getBody());
     ob.createBlock();
     auto sizeConstant = ob.create<LLVM::ConstantOp>(
         loc, LLVM::LLVMType::getInt32Ty(llvmDialect),
@@ -115,18 +115,18 @@ public:
   void runOnModule() override {
     llvmDialect =
         getModule().getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-    Builder builder(getModule().getContext());
+    auto &module = getModule();
+    Builder builder(&getContext());
 
-    auto &functions = getModule().getFunctions();
+    auto functions = module.getFunctions();
     for (auto it = functions.begin(); it != functions.end();) {
       // Move iterator to after the current function so that potential insertion
       // of the accessor is after the kernel with cubin iself.
-      Function &orig = *it++;
+      Function orig = *it++;
       StringAttr cubinBlob = orig.getAttrOfType<StringAttr>(kCubinAnnotation);
       if (!cubinBlob)
         continue;
-      it =
-          functions.insert(it, generateCubinAccessor(builder, orig, cubinBlob));
+      module.insert(it, generateCubinAccessor(builder, orig, cubinBlob));
     }
   }
 

@@ -46,8 +46,7 @@ static llvm::cl::opt<bool>
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-LogicalResult FunctionPassBase::run(Function *fn,
-                                    FunctionAnalysisManager &fam) {
+LogicalResult FunctionPassBase::run(Function fn, FunctionAnalysisManager &fam) {
   // Initialize the pass state.
   passState.emplace(fn, fam);
 
@@ -115,7 +114,7 @@ FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
 }
 
 /// Run all of the passes in this manager over the current function.
-LogicalResult detail::FunctionPassExecutor::run(Function *function,
+LogicalResult detail::FunctionPassExecutor::run(Function function,
                                                 FunctionAnalysisManager &fam) {
   // Run each of the held passes.
   for (auto &pass : passes)
@@ -141,7 +140,7 @@ LogicalResult detail::ModulePassExecutor::run(Module *module,
 /// Utility to run the given function and analysis manager on a provided
 /// function pass executor.
 static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe,
-                                         Function *func,
+                                         Function func,
                                          FunctionAnalysisManager &fam) {
   // Run the function pipeline over the provided function.
   auto result = fpe.run(func, fam);
@@ -158,14 +157,14 @@ static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe,
 /// module.
 void ModuleToFunctionPassAdaptor::runOnModule() {
   ModuleAnalysisManager &mam = getAnalysisManager();
-  for (auto &func : getModule()) {
+  for (auto func : getModule()) {
     // Skip external functions.
     if (func.isExternal())
       continue;
 
     // Run the held function pipeline over the current function.
-    auto fam = mam.slice(&func);
-    if (failed(runFunctionPipeline(fpe, &func, fam)))
+    auto fam = mam.slice(func);
+    if (failed(runFunctionPipeline(fpe, func, fam)))
       return signalPassFailure();
 
     // Clear out any computed function analyses. These analyses won't be used
@@ -189,10 +188,10 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
   // Run a prepass over the module to collect the functions to execute a over.
   // This ensures that an analysis manager exists for each function, as well as
   // providing a queue of functions to execute over.
-  std::vector<std::pair<Function *, FunctionAnalysisManager>> funcAMPairs;
-  for (auto &func : getModule())
+  std::vector<std::pair<Function, FunctionAnalysisManager>> funcAMPairs;
+  for (auto func : getModule())
     if (!func.isExternal())
-      funcAMPairs.emplace_back(&func, mam.slice(&func));
+      funcAMPairs.emplace_back(func, mam.slice(func));
 
   // A parallel diagnostic handler that provides deterministic diagnostic
   // ordering.
@@ -340,8 +339,8 @@ PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
 }
 
 /// Create an analysis slice for the given child function.
-FunctionAnalysisManager ModuleAnalysisManager::slice(Function *func) {
-  assert(func->getModule() == moduleAnalyses.getIRUnit() &&
+FunctionAnalysisManager ModuleAnalysisManager::slice(Function func) {
+  assert(func.getModule() == moduleAnalyses.getIRUnit() &&
          "function has a different parent module");
   auto it = functionAnalyses.find(func);
   if (it == functionAnalyses.end()) {

@@ -209,7 +209,7 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
   return true;
 }
 
-static void fuseLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
+static void fuseLinalgOps(Function f, ArrayRef<int64_t> tileSizes) {
   OperationFolder state;
   DenseSet<Operation *> eraseSet;
 

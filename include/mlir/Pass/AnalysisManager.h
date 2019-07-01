@@ -106,7 +106,7 @@ template <typename IRUnitT> class AnalysisMap {
   }
 
 public:
-  explicit AnalysisMap(IRUnitT *ir) : ir(ir) {}
+  explicit AnalysisMap(IRUnitT ir) : ir(ir) {}
 
   /// Get an analysis for the current IR unit, computing it if necessary.
   template <typename AnalysisT> AnalysisT &getAnalysis(PassInstrumentor *pi) {
@@ -140,8 +140,8 @@ public:
   }
 
   /// Returns the IR unit that this analysis map represents.
-  IRUnitT *getIRUnit() { return ir; }
-  const IRUnitT *getIRUnit() const { return ir; }
+  IRUnitT getIRUnit() { return ir; }
+  const IRUnitT getIRUnit() const { return ir; }
 
   /// Clear any held analyses.
   void clear() { analyses.clear(); }
@@ -158,7 +158,7 @@ public:
   }
 
 private:
-  IRUnitT *ir;
+  IRUnitT ir;
   ConceptMap analyses;
 };
 
@@ -231,14 +231,14 @@ public:
   /// Query for the analysis of a function. The analysis is computed if it does
   /// not exist.
   template <typename AnalysisT>
-  AnalysisT &getFunctionAnalysis(Function *function) {
+  AnalysisT &getFunctionAnalysis(Function function) {
     return slice(function).getAnalysis<AnalysisT>();
   }
 
   /// Query for a cached analysis of a child function, or return null.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysis(Function *function) const {
+  getCachedFunctionAnalysis(Function function) const {
     auto it = functionAnalyses.find(function);
     if (it == functionAnalyses.end())
       return llvm::None;
@@ -258,7 +258,7 @@ public:
   }
 
   /// Create an analysis slice for the given child function.
-  FunctionAnalysisManager slice(Function *function);
+  FunctionAnalysisManager slice(Function function);
 
   /// Invalidate any non preserved analyses.
   void invalidate(const detail::PreservedAnalyses &pa);
@@ -269,11 +269,11 @@ public:
 
 private:
   /// The cached analyses for functions within the current module.
-  llvm::DenseMap<Function *, std::unique_ptr<detail::AnalysisMap<Function>>>
+  llvm::DenseMap<Function, std::unique_ptr<detail::AnalysisMap<Function>>>
       functionAnalyses;
 
   /// The analyses for the owning module.
-  detail::AnalysisMap<Module> moduleAnalyses;
+  detail::AnalysisMap<Module *> moduleAnalyses;
 
   /// An optional instrumentation object.
   PassInstrumentor *passInstrumentor;

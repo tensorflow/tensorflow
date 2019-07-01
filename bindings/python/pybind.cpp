@@ -17,6 +17,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -110,13 +111,14 @@ struct PythonValueHandle {
 struct PythonFunction {
   PythonFunction() : function{nullptr} {}
   PythonFunction(mlir_func_t f) : function{f} {}
-  PythonFunction(mlir::Function *f) : function{f} {}
+  PythonFunction(mlir::Function f)
+      : function(const_cast<void *>(f.getAsOpaquePointer())) {}
   operator mlir_func_t() { return function; }
   std::string str() {
-    mlir::Function *f = reinterpret_cast<mlir::Function *>(function);
+    mlir::Function f = mlir::Function::getFromOpaquePointer(function);
     std::string res;
     llvm::raw_string_ostream os(res);
-    f->print(os);
+    f.print(os);
     return res;
   }
 
@@ -124,18 +126,18 @@ struct PythonFunction {
   // declaration, add the entry block, transforming the declaration into a
   // definition.  Return true if the block was added, false otherwise.
   bool define() {
-    auto *f = reinterpret_cast<mlir::Function *>(function);
-    if (!f->getBlocks().empty())
+    auto f = mlir::Function::getFromOpaquePointer(function);
+    if (!f.getBlocks().empty())
       return false;
 
-    f->addEntryBlock();
+    f.addEntryBlock();
     return true;
   }
 
   PythonValueHandle arg(unsigned index) {
-    Function *f = static_cast<Function *>(function);
-    assert(index < f->getNumArguments() && "argument index out of bounds");
-    return PythonValueHandle(ValueHandle(f->getArgument(index)));
+    auto f = mlir::Function::getFromOpaquePointer(function);
+    assert(index < f.getNumArguments() && "argument index out of bounds");
+    return PythonValueHandle(ValueHandle(f.getArgument(index)));
   }
 
   mlir_func_t function;
@@ -250,10 +252,9 @@ struct PythonFunctionContext {
 
   PythonFunction enter() {
     assert(function.function && "function is not set up");
-    auto *mlirFunc = static_cast<mlir::Function *>(function.function);
-    contextBuilder.emplace(mlirFunc->getBody());
-    context =
-        new mlir::edsc::ScopedContext(*contextBuilder, mlirFunc->getLoc());
+    auto mlirFunc = mlir::Function::getFromOpaquePointer(function.function);
+    contextBuilder.emplace(mlirFunc.getBody());
+    context = new mlir::edsc::ScopedContext(*contextBuilder, mlirFunc.getLoc());
     return function;
   }
 
@@ -594,7 +595,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
   }
 
   // Create the function itself.
-  auto *func = new mlir::Function(
+  auto func = mlir::Function::create(
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
@@ -652,9 +653,9 @@ PYBIND11_MODULE(pybind, m) {
     return ValueHandle::create<ConstantFloatOp>(value, floatType);
   });
   m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
-    auto *function = reinterpret_cast<Function *>(func.function);
-    auto attr = FunctionAttr::get(function);
-    return ValueHandle::create<ConstantOp>(function->getType(), attr);
+    auto function = Function::getFromOpaquePointer(func.function);
+    auto attr = FunctionAttr::get(function.getName(), function.getContext());
+    return ValueHandle::create<ConstantOp>(function.getType(), attr);
   });
   m.def("appendTo", [](const PythonBlockHandle &handle) {
     return PythonBlockAppender(handle);

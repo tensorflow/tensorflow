@@ -136,14 +136,14 @@ public:
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
-    Function *printfFunc = getPrintf(*op->getFunction()->getModule());
+    Function printfFunc = getPrintf(*op->getFunction().getModule());
 
     auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();
     // We will operate on a MemRef abstraction, we use a type.cast to get one
     // if our operand is still a Toy array.
     Value *operand = memRefTypeCast(rewriter, operands[0]);
-    Type retTy = printfFunc->getType().getResult(0);
+    Type retTy = printfFunc.getType().getResult(0);
 
     // Create our loop nest now
     using namespace edsc;
@@ -205,8 +205,8 @@ private:
 
   /// Return the prototype declaration for printf in the module, create it if
   /// necessary.
-  Function *getPrintf(Module &module) const {
-    auto *printfFunc = module.getNamedFunction("printf");
+  Function getPrintf(Module &module) const {
+    auto printfFunc = module.getNamedFunction("printf");
     if (printfFunc)
       return printfFunc;
 
@@ -218,10 +218,10 @@ private:
     auto llvmI32Ty = LLVM::LLVMType::getInt32Ty(dialect);
     auto llvmI8PtrTy = LLVM::LLVMType::getInt8Ty(dialect).getPointerTo();
     auto printfTy = builder.getFunctionType({llvmI8PtrTy}, {llvmI32Ty});
-    printfFunc = new Function(builder.getUnknownLoc(), "printf", printfTy);
+    printfFunc = Function::create(builder.getUnknownLoc(), "printf", printfTy);
     // It should be variadic, but we don't support it fully just yet.
-    printfFunc->setAttr("std.varargs", builder.getBoolAttr(true));
-    module.getFunctions().push_back(printfFunc);
+    printfFunc.setAttr("std.varargs", builder.getBoolAttr(true));
+    module.push_back(printfFunc);
     return printfFunc;
   }
 };
@@ -369,7 +369,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     // affine dialect: they already include conversion to the LLVM dialect.
 
     // First patch calls type to return memref instead of ToyArray
-    for (auto &function : getModule()) {
+    for (auto function : getModule()) {
       function.walk([&](Operation *op) {
         auto callOp = dyn_cast<CallOp>(op);
         if (!callOp)
@@ -384,7 +384,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
       });
     }
 
-    for (auto &function : getModule()) {
+    for (auto function : getModule()) {
       function.walk([&](Operation *op) {
         // Turns toy.alloc into sequence of alloc/dealloc (later malloc/free).
         if (auto allocOp = dyn_cast<toy::AllocOp>(op)) {
@@ -403,8 +403,8 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     }
 
     // Lower Linalg to affine
-    for (auto &function : getModule())
-      linalg::lowerToLoops(&function);
+    for (auto function : getModule())
+      linalg::lowerToLoops(function);
 
     getModule().dump();
 

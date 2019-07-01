@@ -112,7 +112,7 @@ public:
   AffineMapAttr getAffineMapAttr(AffineMap map);
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);
   TypeAttr getTypeAttr(Type type);
-  FunctionAttr getFunctionAttr(Function *value);
+  FunctionAttr getFunctionAttr(Function value);
   FunctionAttr getFunctionAttr(StringRef value);
   ElementsAttr getDenseElementsAttr(ShapedType type,
                                     ArrayRef<Attribute> values);

@@ -34,34 +34,54 @@ public:
 
   MLIRContext *getContext() { return context; }
 
+  /// An iterator class used to iterate over the held functions.
+  class iterator : public llvm::mapped_iterator<
+                       llvm::iplist<detail::FunctionStorage>::iterator,
+                       Function (*)(detail::FunctionStorage &)> {
+    static Function unwrap(detail::FunctionStorage &impl) { return &impl; }
+
+  public:
+    using reference = Function;
+
+    /// Initializes the operand type iterator to the specified operand iterator.
+    iterator(llvm::iplist<detail::FunctionStorage>::iterator it)
+        : llvm::mapped_iterator<llvm::iplist<detail::FunctionStorage>::iterator,
+                                Function (*)(detail::FunctionStorage &)>(
+              it, &unwrap) {}
+    iterator(Function it)
+        : iterator(llvm::iplist<detail::FunctionStorage>::iterator(it.impl)) {}
+  };
+
   /// This is the list of functions in the module.
-  using FunctionListType = llvm::iplist<Function>;
-  FunctionListType &getFunctions() { return functions; }
+  llvm::iterator_range<iterator> getFunctions() { return {begin(), end()}; }
 
   // Iteration over the functions in the module.
-  using iterator = FunctionListType::iterator;
-  using reverse_iterator = FunctionListType::reverse_iterator;
-
   iterator begin() { return functions.begin(); }
   iterator end() { return functions.end(); }
-  reverse_iterator rbegin() { return functions.rbegin(); }
-  reverse_iterator rend() { return functions.rend(); }
+  Function front() { return &functions.front(); }
+  Function back() { return &functions.back(); }
+
+  void push_back(Function fn) { functions.push_back(fn.impl); }
+  void insert(iterator insertPt, Function fn) {
+    functions.insert(insertPt.getCurrent(), fn.impl);
+  }
 
   // Interfaces for working with the symbol table.
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
-  Function *getNamedFunction(StringRef name) {
+  Function getNamedFunction(StringRef name) {
     return getNamedFunction(Identifier::get(name, getContext()));
   }
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
-  Function *getNamedFunction(Identifier name) {
-    auto it = llvm::find_if(
-        functions, [name](Function &fn) { return fn.getName() == name; });
+  Function getNamedFunction(Identifier name) {
+    auto it = llvm::find_if(functions, [name](detail::FunctionStorage &fn) {
+      return Function(&fn).getName() == name;
+    });
     return it == functions.end() ? nullptr : &*it;
   }
 
@@ -74,11 +94,13 @@ public:
   void dump();
 
 private:
-  friend struct llvm::ilist_traits<Function>;
-  friend class Function;
+  friend struct llvm::ilist_traits<detail::FunctionStorage>;
+  friend detail::FunctionStorage;
+  friend Function;
 
   /// getSublistAccess() - Returns pointer to member of function list
-  static FunctionListType Module::*getSublistAccess(Function *) {
+  static llvm::iplist<detail::FunctionStorage> Module::*
+  getSublistAccess(detail::FunctionStorage *) {
     return &Module::functions;
   }
 
@@ -86,7 +108,7 @@ private:
   MLIRContext *context;
 
   /// This is the actual list of functions the module contains.
-  FunctionListType functions;
+  llvm::iplist<detail::FunctionStorage> functions;
 };
 
 /// A class used to manage the symbols held by a module. This class handles
@@ -98,24 +120,24 @@ public:
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names must never include the @ on them.
-  template <typename NameTy> Function *getNamedFunction(NameTy &&name) const {
+  template <typename NameTy> Function getNamedFunction(NameTy &&name) const {
     return symbolTable.lookup(name);
   }
 
   /// Insert a new symbol into the module, auto-renaming it as necessary.
-  void insert(Function *function) {
+  void insert(Function function) {
     symbolTable.insert(function);
-    module->getFunctions().push_back(function);
+    module->push_back(function);
   }
-  void insert(Module::iterator insertPt, Function *function) {
+  void insert(Module::iterator insertPt, Function function) {
     symbolTable.insert(function);
-    module->getFunctions().insert(insertPt, function);
+    module->insert(insertPt, function);
   }
 
   /// Remove the given symbol from the module symbol table and then erase it.
-  void erase(Function *function) {
+  void erase(Function function) {
     symbolTable.erase(function);
-    function->erase();
+    function.erase();
   }
 
   /// Return the internally held module.

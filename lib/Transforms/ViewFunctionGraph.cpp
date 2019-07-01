@@ -53,13 +53,13 @@ std::string DOTGraphTraits<Function *>::getNodeLabel(Block *Block, Function *) {
 
 } // end namespace llvm
 
-void mlir::viewGraph(Function &function, const llvm::Twine &name,
+void mlir::viewGraph(Function function, const llvm::Twine &name,
                      bool shortNames, const llvm::Twine &title,
                      llvm::GraphProgram::Name program) {
   llvm::ViewGraph(&function, name, shortNames, title, program);
 }
 
-llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function &function,
+llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function function,
                                     bool shortNames, const llvm::Twine &title) {
   return llvm::WriteGraph(os, &function, shortNames, title);
 }

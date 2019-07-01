@@ -30,9 +30,9 @@ using namespace mlir::gpu;
 
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
-bool GPUDialect::isKernel(Function *function) {
+bool GPUDialect::isKernel(Function function) {
   UnitAttr isKernelAttr =
-      function->getAttrOfType<UnitAttr>(getKernelFuncAttrName());
+      function.getAttrOfType<UnitAttr>(getKernelFuncAttrName());
   return static_cast<bool>(isKernelAttr);
 }
 
@@ -318,7 +318,7 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
-                         Function *kernelFunc, Value *gridSizeX,
+                         Function kernelFunc, Value *gridSizeX,
                          Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                          Value *blockSizeY, Value *blockSizeZ,
                          ArrayRef<Value *> kernelOperands) {
@@ -331,7 +331,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
-                         Function *kernelFunc, KernelDim3 gridSize,
+                         Function kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize,
                          ArrayRef<Value *> kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
@@ -366,23 +366,23 @@ LogicalResult LaunchFuncOp::verify() {
     return emitOpError("attribute 'kernel' must be a function");
   }
 
-  auto *module = getOperation()->getFunction()->getModule();
-  Function *kernelFunc = module->getNamedFunction(kernel());
+  auto *module = getOperation()->getFunction().getModule();
+  Function kernelFunc = module->getNamedFunction(kernel());
   if (!kernelFunc)
     return emitError() << "kernel function '" << kernelAttr << "' is undefined";
 
-  if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
+  if (!kernelFunc.getAttrOfType<mlir::UnitAttr>(
           GPUDialect::getKernelFuncAttrName())) {
     return emitError("kernel function is missing the '")
            << GPUDialect::getKernelFuncAttrName() << "' attribute";
   }
-  unsigned numKernelFuncArgs = kernelFunc->getNumArguments();
+  unsigned numKernelFuncArgs = kernelFunc.getNumArguments();
   if (getNumKernelOperands() != numKernelFuncArgs) {
     return emitOpError("got ")
            << getNumKernelOperands() << " kernel operands but expected "
            << numKernelFuncArgs;
   }
-  auto functionType = kernelFunc->getType();
+  auto functionType = kernelFunc.getType();
   for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
     if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
       return emitOpError("type of function argument ")

@@ -72,7 +72,7 @@ public:
   }
 
   /// Return the function that this Value is defined in.
-  Function *getFunction();
+  Function getFunction();
 
   /// If this value is the result of an operation, return the operation that
   /// defines it.
@@ -128,7 +128,7 @@ public:
   }
 
   /// Return the function that this argument is defined in.
-  Function *getFunction();
+  Function getFunction();
 
   Block *getOwner() { return owner; }
 

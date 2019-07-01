@@ -106,7 +106,7 @@ QuantizedConstRewrite::matchAndRewrite(QuantizeCastOp qbarrier,
 
 void ConvertConstPass::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   auto *context = &getContext();
   patterns.push_back(llvm::make_unique<QuantizedConstRewrite>(context));
   applyPatternsGreedily(func, std::move(patterns));

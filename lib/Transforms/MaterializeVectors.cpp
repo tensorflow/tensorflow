@@ -636,7 +636,7 @@ static bool emitSlice(MaterializationState *state,
   }
 
   LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
-  LLVM_DEBUG((*slice)[0]->getFunction()->print(dbgs()));
+  LLVM_DEBUG((*slice)[0]->getFunction().print(dbgs()));
 
   // slice are topologically sorted, we can just erase them in reverse
   // order. Reverse iterator does not just work simply with an operator*
@@ -667,7 +667,7 @@ static bool emitSlice(MaterializationState *state,
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
 /// TODO(ntv): please document return value.
-static bool materialize(Function *f, const SetVector<Operation *> &terminators,
+static bool materialize(Function f, const SetVector<Operation *> &terminators,
                         MaterializationState *state) {
   DenseSet<Operation *> seen;
   DominanceInfo domInfo(f);
@@ -721,7 +721,7 @@ static bool materialize(Function *f, const SetVector<Operation *> &terminators,
       return true;
     }
     LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
-    LLVM_DEBUG(f->print(dbgs()));
+    LLVM_DEBUG(f.print(dbgs()));
   }
   return false;
 }
@@ -731,13 +731,13 @@ void MaterializeVectorsPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
-  Function *f = &getFunction();
-  if (f->getBlocks().size() != 1)
+  Function f = getFunction();
+  if (f.getBlocks().size() != 1)
     return;
 
   using matcher::Op;
   LLVM_DEBUG(dbgs() << "\nMaterializeVectors on Function\n");
-  LLVM_DEBUG(f->print(dbgs()));
+  LLVM_DEBUG(f.print(dbgs()));
 
   MaterializationState state(hwVectorSize);
   // Get the hardware vector type.

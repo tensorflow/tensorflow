@@ -34,7 +34,7 @@ template <bool IsPostDom> class DominanceInfoBase {
   using base = llvm::DominatorTreeBase<Block, IsPostDom>;
 
 public:
-  DominanceInfoBase(Function *function) { recalculate(function); }
+  DominanceInfoBase(Function function) { recalculate(function); }
   DominanceInfoBase(Operation *op) { recalculate(op); }
   DominanceInfoBase(DominanceInfoBase &&) = default;
   DominanceInfoBase &operator=(DominanceInfoBase &&) = default;
@@ -43,7 +43,7 @@ public:
   DominanceInfoBase &operator=(const DominanceInfoBase &) = delete;
 
   /// Recalculate the dominance info.
-  void recalculate(Function *function);
+  void recalculate(Function function);
   void recalculate(Operation *op);
 
   /// Get the root dominance node of the given region.

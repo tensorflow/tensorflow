@@ -375,7 +375,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
 bool ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (Function &function : mlirModule) {
+  for (Function function : mlirModule) {
     mlir::BoolAttr isVarArgsAttr =
         function.getAttrOfType<BoolAttr>("std.varargs");
     bool isVarArgs = isVarArgsAttr && isVarArgsAttr.getValue();
@@ -392,7 +392,7 @@ bool ModuleTranslation::convertFunctions() {
   }
 
   // Convert functions.
-  for (Function &function : mlirModule) {
+  for (Function function : mlirModule) {
     // Ignore external functions.
     if (function.isExternal())
       continue;

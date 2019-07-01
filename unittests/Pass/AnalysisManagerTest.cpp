@@ -25,11 +25,11 @@ using namespace mlir::detail;
 namespace {
 /// Minimal class definitions for two analyses.
 struct MyAnalysis {
-  MyAnalysis(Function *) {}
+  MyAnalysis(Function) {}
   MyAnalysis(Module *) {}
 };
 struct OtherAnalysis {
-  OtherAnalysis(Function *) {}
+  OtherAnalysis(Function) {}
   OtherAnalysis(Module *) {}
 };
 
@@ -59,10 +59,10 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
 
   // Create a function and a module.
   std::unique_ptr<Module> module(new Module(&context));
-  Function *func1 =
-      new Function(builder.getUnknownLoc(), "foo",
-                   builder.getFunctionType(llvm::None, llvm::None));
-  module->getFunctions().push_back(func1);
+  Function func1 =
+      Function::create(builder.getUnknownLoc(), "foo",
+                       builder.getFunctionType(llvm::None, llvm::None));
+  module->push_back(func1);
 
   // Test fine grain invalidation of the function analysis manager.
   ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
@@ -87,10 +87,10 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
 
   // Create a function and a module.
   std::unique_ptr<Module> module(new Module(&context));
-  Function *func1 =
-      new Function(builder.getUnknownLoc(), "foo",
-                   builder.getFunctionType(llvm::None, llvm::None));
-  module->getFunctions().push_back(func1);
+  Function func1 =
+      Function::create(builder.getUnknownLoc(), "foo",
+                       builder.getFunctionType(llvm::None, llvm::None));
+  module->push_back(func1);
 
   // Test fine grain invalidation of a function analysis from within a module
   // analysis manager.

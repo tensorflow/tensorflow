@@ -18,6 +18,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectHooks.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -67,6 +68,20 @@ Dialect::Dialect(StringRef name, MLIRContext *context)
 }
 
 Dialect::~Dialect() {}
+
+/// Verify an attribute from this dialect on the given function. Returns
+/// failure if the verification failed, success otherwise.
+LogicalResult Dialect::verifyFunctionAttribute(Function, NamedAttribute) {
+  return success();
+}
+
+/// Verify an attribute from this dialect on the argument at 'argIndex' for
+/// the given function. Returns failure if the verification failed, success
+/// otherwise.
+LogicalResult Dialect::verifyFunctionArgAttribute(Function, unsigned argIndex,
+                                                  NamedAttribute) {
+  return success();
+}
 
 /// Parse an attribute registered to this dialect.
 Attribute Dialect::parseAttribute(StringRef attrData, Location loc) const {

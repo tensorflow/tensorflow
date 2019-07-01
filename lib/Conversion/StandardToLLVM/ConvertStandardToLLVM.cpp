@@ -441,13 +441,14 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
             createIndexConstant(rewriter, op->getLoc(), elementSize)});
 
     // Insert the `malloc` declaration if it is not already present.
-    Function *mallocFunc =
-        op->getFunction()->getModule()->getNamedFunction("malloc");
+    Function mallocFunc =
+        op->getFunction().getModule()->getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType =
           rewriter.getFunctionType(getIndexType(), getVoidPtrType());
-      mallocFunc = new Function(rewriter.getUnknownLoc(), "malloc", mallocType);
-      op->getFunction()->getModule()->getFunctions().push_back(mallocFunc);
+      mallocFunc =
+          Function::create(rewriter.getUnknownLoc(), "malloc", mallocType);
+      op->getFunction().getModule()->push_back(mallocFunc);
     }
 
     // Allocate the underlying buffer and store a pointer to it in the MemRef
@@ -502,12 +503,11 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
     OperandAdaptor<DeallocOp> transformed(operands);
 
     // Insert the `free` declaration if it is not already present.
-    Function *freeFunc =
-        op->getFunction()->getModule()->getNamedFunction("free");
+    Function freeFunc = op->getFunction().getModule()->getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(getVoidPtrType(), {});
-      freeFunc = new Function(rewriter.getUnknownLoc(), "free", freeType);
-      op->getFunction()->getModule()->getFunctions().push_back(freeFunc);
+      freeFunc = Function::create(rewriter.getUnknownLoc(), "free", freeType);
+      op->getFunction().getModule()->push_back(freeFunc);
     }
 
     auto type = transformed.memref()->getType().cast<LLVM::LLVMType>();
@@ -937,7 +937,7 @@ static void ensureDistinctSuccessors(Block &bb) {
 }
 
 void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
-  for (auto &f : *m) {
+  for (auto f : *m) {
     for (auto &bb : f.getBlocks()) {
       ::ensureDistinctSuccessors(bb);
     }

@@ -153,7 +153,7 @@ public:
 
   /// Verify a function argument attribute registered to this dialect.
   /// Returns failure if the verification failed, success otherwise.
-  LogicalResult verifyFunctionArgAttribute(Function *func, unsigned argIdx,
+  LogicalResult verifyFunctionArgAttribute(Function func, unsigned argIdx,
                                            NamedAttribute argAttr) override;
 
 private:

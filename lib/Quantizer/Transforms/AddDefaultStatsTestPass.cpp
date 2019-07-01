@@ -71,7 +71,7 @@ void AddDefaultStatsPass::runOnFunction() {
 
 void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
                                         const TargetConfiguration &config) {
-  auto &func = getFunction();
+  auto func = getFunction();
 
   // Insert stats for each argument.
   for (auto *arg : func.getArguments()) {

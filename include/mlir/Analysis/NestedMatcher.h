@@ -104,8 +104,8 @@ struct NestedPattern {
   NestedPattern &operator=(const NestedPattern &) = default;
 
   /// Returns all the top-level matches in `func`.
-  void match(Function *func, SmallVectorImpl<NestedMatch> *matches) {
-    func->walk([&](Operation *op) { matchOne(op, matches); });
+  void match(Function func, SmallVectorImpl<NestedMatch> *matches) {
+    func.walk([&](Operation *op) { matchOne(op, matches); });
   }
 
   /// Returns all the top-level matches in `op`.

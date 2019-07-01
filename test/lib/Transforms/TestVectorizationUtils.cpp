@@ -97,12 +97,12 @@ struct VectorizerTestPass : public FunctionPass<VectorizerTestPass> {
 } // end anonymous namespace
 
 void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
-  auto *f = &getFunction();
+  auto f = getFunction();
   using matcher::Op;
   SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
                                 clTestVectorShapeRatio.end());
   auto subVectorType =
-      VectorType::get(shape, FloatType::getF32(f->getContext()));
+      VectorType::get(shape, FloatType::getF32(f.getContext()));
   // Only filter operations that operate on a strict super-vector and have one
   // return. This makes testing easier.
   auto filter = [&](Operation &op) {
@@ -148,7 +148,7 @@ static NestedPattern patternTestSlicingOps() {
 }
 
 void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
-  auto *f = &getFunction();
+  auto f = getFunction();
 
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
@@ -163,7 +163,7 @@ void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
 }
 
 void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
-  auto *f = &getFunction();
+  auto f = getFunction();
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
@@ -177,7 +177,7 @@ void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
 }
 
 void VectorizerTestPass::testSlicing(llvm::raw_ostream &outs) {
-  auto *f = &getFunction();
+  auto f = getFunction();
 
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
@@ -195,7 +195,7 @@ static bool customOpWithAffineMapAttribute(Operation &op) {
 }
 
 void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
-  auto *f = &getFunction();
+  auto f = getFunction();
 
   using matcher::Op;
   auto pattern = Op(customOpWithAffineMapAttribute);
@@ -227,7 +227,7 @@ static bool singleResultAffineApplyOpWithoutUses(Operation &op) {
 void VectorizerTestPass::testNormalizeMaps() {
   using matcher::Op;
 
-  auto *f = &getFunction();
+  auto f = getFunction();
 
   // Save matched AffineApplyOp that all need to be erased in the end.
   auto pattern = Op(affineApplyOp);
@@ -256,7 +256,7 @@ void VectorizerTestPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // Only support single block functions at this point.
-  Function &f = getFunction();
+  Function f = getFunction();
   if (f.getBlocks().size() != 1)
     return;
 

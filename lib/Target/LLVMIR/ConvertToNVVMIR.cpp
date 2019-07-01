@@ -69,7 +69,7 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module &m) {
 
   // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
   // function as a kernel.
-  for (Function &func : m) {
+  for (Function func : m) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 
@@ -89,20 +89,21 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module &m) {
   return llvmModule;
 }
 
-static TranslateFromMLIRRegistration registration(
-    "mlir-to-nvvmir", [](Module *module, llvm::StringRef outputFilename) {
-      if (!module)
-        return true;
+static TranslateFromMLIRRegistration
+    registration("mlir-to-nvvmir",
+                 [](Module *module, llvm::StringRef outputFilename) {
+                   if (!module)
+                     return true;
 
-      auto llvmModule = mlir::translateModuleToNVVMIR(*module);
-      if (!llvmModule)
-        return true;
+                   auto llvmModule = mlir::translateModuleToNVVMIR(*module);
+                   if (!llvmModule)
+                     return true;
 
-      auto file = openOutputFile(outputFilename);
-      if (!file)
-        return true;
+                   auto file = openOutputFile(outputFilename);
+                   if (!file)
+                     return true;
 
-      llvmModule->print(file->os(), nullptr);
-      file->keep();
-      return false;
-    });
+                   llvmModule->print(file->os(), nullptr);
+                   file->keep();
+                   return false;
+                 });

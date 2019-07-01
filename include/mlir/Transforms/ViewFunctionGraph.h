@@ -33,11 +33,11 @@ class FunctionPassBase;
 
 /// Displays the CFG in a window. This is for use from the debugger and
 /// depends on Graphviz to generate the graph.
-void viewGraph(Function &function, const Twine &name, bool shortNames = false,
+void viewGraph(Function function, const Twine &name, bool shortNames = false,
                const Twine &title = "",
                llvm::GraphProgram::Name program = llvm::GraphProgram::DOT);
 
-llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Function &function,
+llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Function function,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.

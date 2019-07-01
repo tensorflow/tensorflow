@@ -306,7 +306,7 @@ void ModuleState::initialize(Module *module) {
   initializeSymbolAliases();
 
   // Walk the module and visit each operation.
-  for (auto &fn : *module) {
+  for (auto fn : *module) {
     visitType(fn.getType());
     for (auto attr : fn.getAttrs())
       ModuleState::visitAttribute(attr.second);
@@ -342,7 +342,7 @@ public:
   void printAttribute(Attribute attr, bool mayElideType = false);
 
   void printType(Type type);
-  void print(Function *fn);
+  void print(Function fn);
   void printLocation(LocationAttr loc);
 
   void printAffineMap(AffineMap map);
@@ -460,8 +460,8 @@ void ModulePrinter::print(Module *module) {
   state.printTypeAliases(os);
 
   // Print the module.
-  for (auto &fn : *module)
-    print(&fn);
+  for (auto fn : *module)
+    print(fn);
 }
 
 /// Print a floating point value in a way that the parser will be able to
@@ -1186,7 +1186,7 @@ namespace {
 // CFG and ML functions.
 class FunctionPrinter : public ModulePrinter, private OpAsmPrinter {
 public:
-  FunctionPrinter(Function *function, ModulePrinter &other);
+  FunctionPrinter(Function function, ModulePrinter &other);
 
   // Prints the function as a whole.
   void print();
@@ -1275,7 +1275,7 @@ protected:
   void printValueID(Value *value, bool printResultNo = true) const;
 
 private:
-  Function *function;
+  Function function;
 
   /// This is the value ID for each SSA value in the current function.  If this
   /// returns ~0, then the valueID has an entry in valueNames.
@@ -1305,10 +1305,10 @@ private:
 };
 } // end anonymous namespace
 
-FunctionPrinter::FunctionPrinter(Function *function, ModulePrinter &other)
+FunctionPrinter::FunctionPrinter(Function function, ModulePrinter &other)
     : ModulePrinter(other), function(function) {
 
-  for (auto &block : *function)
+  for (auto &block : function)
     numberValuesInBlock(block);
 }
 
@@ -1419,17 +1419,17 @@ void FunctionPrinter::print() {
   printFunctionSignature();
 
   // Print out function attributes, if present.
-  auto attrs = function->getAttrs();
+  auto attrs = function.getAttrs();
   if (!attrs.empty()) {
     os << "\n  attributes ";
     printOptionalAttrDict(attrs);
   }
 
   // Print the trailing location.
-  printTrailingLocation(function->getLoc());
+  printTrailingLocation(function.getLoc());
 
-  if (!function->empty()) {
-    printRegion(function->getBody(), /*printEntryBlockArgs=*/false,
+  if (!function.empty()) {
+    printRegion(function.getBody(), /*printEntryBlockArgs=*/false,
                 /*printBlockTerminators=*/true);
     os << "\n";
   }
@@ -1437,24 +1437,24 @@ void FunctionPrinter::print() {
 }
 
 void FunctionPrinter::printFunctionSignature() {
-  os << "func @" << function->getName() << '(';
+  os << "func @" << function.getName() << '(';
 
-  auto fnType = function->getType();
-  bool isExternal = function->isExternal();
-  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
+  auto fnType = function.getType();
+  bool isExternal = function.isExternal();
+  for (unsigned i = 0, e = function.getNumArguments(); i != e; ++i) {
     if (i > 0)
       os << ", ";
 
     // If this is an external function, don't print argument labels.
     if (!isExternal) {
-      printOperand(function->getArgument(i));
+      printOperand(function.getArgument(i));
       os << ": ";
     }
 
     printType(fnType.getInput(i));
 
     // Print the attributes for this argument.
-    printOptionalAttrDict(function->getArgAttrs(i));
+    printOptionalAttrDict(function.getArgAttrs(i));
   }
   os << ')';
 
@@ -1662,7 +1662,7 @@ void FunctionPrinter::printSuccessorAndUseList(Operation *term,
 }
 
 // Prints function with initialized module state.
-void ModulePrinter::print(Function *fn) { FunctionPrinter(fn, *this).print(); }
+void ModulePrinter::print(Function fn) { FunctionPrinter(fn, *this).print(); }
 
 //===----------------------------------------------------------------------===//
 // print and dump methods
@@ -1737,13 +1737,13 @@ void Value::print(raw_ostream &os) {
 void Value::dump() { print(llvm::errs()); }
 
 void Operation::print(raw_ostream &os) {
-  auto *function = getFunction();
+  auto function = getFunction();
   if (!function) {
     os << "<<UNLINKED INSTRUCTION>>\n";
     return;
   }
 
-  ModuleState state(function->getContext());
+  ModuleState state(function.getContext());
   ModulePrinter modulePrinter(os, state);
   FunctionPrinter(function, modulePrinter).print(this);
 }
@@ -1754,13 +1754,13 @@ void Operation::dump() {
 }
 
 void Block::print(raw_ostream &os) {
-  auto *function = getFunction();
+  auto function = getFunction();
   if (!function) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
 
-  ModuleState state(function->getContext());
+  ModuleState state(function.getContext());
   ModulePrinter modulePrinter(os, state);
   FunctionPrinter(function, modulePrinter).print(this);
 }
@@ -1773,14 +1773,14 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
-  ModuleState state(getFunction()->getContext());
+  ModuleState state(getFunction().getContext());
   ModulePrinter modulePrinter(os, state);
   FunctionPrinter(getFunction(), modulePrinter).printBlockName(this);
 }
 
 void Function::print(raw_ostream &os) {
   ModuleState state(getContext());
-  ModulePrinter(os, state).print(this);
+  ModulePrinter(os, state).print(*this);
 }
 
 void Function::dump() { print(llvm::errs()); }

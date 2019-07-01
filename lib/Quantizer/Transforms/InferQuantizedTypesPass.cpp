@@ -129,7 +129,7 @@ void InferQuantizedTypesPass::runOnModule() {
 void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
                                             const TargetConfiguration &config) {
   CAGSlice cag(solverContext);
-  for (auto &f : getModule()) {
+  for (auto f : getModule()) {
     f.walk([&cag, &config](Operation *op) { config.handleOp(op, cag); });
   }
   config.finalizeAnchors(cag);

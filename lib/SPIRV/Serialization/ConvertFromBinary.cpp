@@ -36,11 +36,11 @@ using namespace mlir;
 // block. The created block will be terminated by `std.return`.
 Block *createOneBlockFunction(Builder builder, Module *module) {
   auto fnType = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
-  auto *fn = new Function(builder.getUnknownLoc(), "spirv_module", fnType);
-  module->getFunctions().push_back(fn);
+  auto fn = Function::create(builder.getUnknownLoc(), "spirv_module", fnType);
+  module->push_back(fn);
 
   auto *block = new Block();
-  fn->push_back(block);
+  fn.push_back(block);
 
   OperationState state(builder.getUnknownLoc(), ReturnOp::getOperationName());
   ReturnOp::build(&builder, &state);

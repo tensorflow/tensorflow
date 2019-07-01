@@ -163,8 +163,8 @@ static LogicalResult convertAffineStandardToLLVMIR(Module *module) {
 static Error compileAndExecuteFunctionWithMemRefs(
     Module *module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  Function *mainFunction = module->getNamedFunction(entryPoint);
-  if (!mainFunction || mainFunction->getBlocks().empty()) {
+  Function mainFunction = module->getNamedFunction(entryPoint);
+  if (!mainFunction || mainFunction.getBlocks().empty()) {
     return make_string_error("entry point not found");
   }
 
@@ -172,9 +172,9 @@ static Error compileAndExecuteFunctionWithMemRefs(
   // pretty print the results, because the function itself will be rewritten
   // to use the LLVM dialect.
   SmallVector<Type, 8> argTypes =
-      llvm::to_vector<8>(mainFunction->getType().getInputs());
+      llvm::to_vector<8>(mainFunction.getType().getInputs());
   SmallVector<Type, 8> resTypes =
-      llvm::to_vector<8>(mainFunction->getType().getResults());
+      llvm::to_vector<8>(mainFunction.getType().getResults());
 
   float init = std::stof(initValue.getValue());
 
@@ -206,18 +206,18 @@ static Error compileAndExecuteFunctionWithMemRefs(
 static Error compileAndExecuteSingleFloatReturnFunction(
     Module *module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  Function *mainFunction = module->getNamedFunction(entryPoint);
-  if (!mainFunction || mainFunction->isExternal()) {
+  Function mainFunction = module->getNamedFunction(entryPoint);
+  if (!mainFunction || mainFunction.isExternal()) {
     return make_string_error("entry point not found");
   }
 
-  if (!mainFunction->getType().getInputs().empty())
+  if (!mainFunction.getType().getInputs().empty())
     return make_string_error("function inputs not supported");
 
-  if (mainFunction->getType().getResults().size() != 1)
+  if (mainFunction.getType().getResults().size() != 1)
     return make_string_error("only single f32 function result supported");
 
-  auto t = mainFunction->getType().getResults()[0].dyn_cast<LLVM::LLVMType>();
+  auto t = mainFunction.getType().getResults()[0].dyn_cast<LLVM::LLVMType>();
   if (!t)
     return make_string_error("only single llvm.f32 function result supported");
   auto *llvmTy = t.getUnderlyingType();

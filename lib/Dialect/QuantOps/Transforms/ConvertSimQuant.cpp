@@ -95,7 +95,7 @@ public:
 void ConvertSimulatedQuantPass::runOnFunction() {
   bool hadFailure = false;
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   auto *context = &getContext();
   patterns.push_back(
       llvm::make_unique<ConstFakeQuantRewrite>(context, &hadFailure));

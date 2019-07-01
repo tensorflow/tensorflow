@@ -254,7 +254,7 @@ public:
   ///   trailing-location     ::= location?
   ///
   template <typename Owner>
-  ParseResult parseOptionalTrailingLocation(Owner *owner) {
+  ParseResult parseOptionalTrailingLocation(Owner &owner) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
       return success();
@@ -263,7 +263,7 @@ public:
     LocationAttr directLoc;
     if (parseLocation(directLoc))
       return failure();
-    owner->setLoc(directLoc);
+    owner.setLoc(directLoc);
     return success();
   }
 
@@ -2472,8 +2472,8 @@ namespace {
 /// operations.
 class OperationParser : public Parser {
 public:
-  OperationParser(ParserState &state, Function *function)
-      : Parser(state), function(function), opBuilder(function->getBody()) {}
+  OperationParser(ParserState &state, Function function)
+      : Parser(state), function(function), opBuilder(function.getBody()) {}
 
   ~OperationParser();
 
@@ -2588,7 +2588,7 @@ public:
   Block *defineBlockNamed(StringRef name, SMLoc loc, Block *existing);
 
 private:
-  Function *function;
+  Function function;
 
   /// Returns the info for a block at the current scope for the given name.
   std::pair<Block *, SMLoc> &getBlockInfoByName(StringRef name) {
@@ -2690,7 +2690,7 @@ ParseResult OperationParser::popSSANameScope() {
     for (auto entry : forwardRefInCurrentScope) {
       errors.push_back({entry.second.getPointer(), entry.first});
       // Add this block to the top-level region to allow for automatic cleanup.
-      function->push_back(entry.first);
+      function.push_back(entry.first);
     }
     llvm::array_pod_sort(errors.begin(), errors.end());
 
@@ -2984,7 +2984,7 @@ ParseResult OperationParser::parseOperation() {
   }
 
   // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(op))
+  if (parseOptionalTrailingLocation(*op))
     return failure();
 
   return success();
@@ -4049,17 +4049,17 @@ ParseResult ModuleParser::parseFunc(Module *module) {
   }
 
   // Okay, the function signature was parsed correctly, create the function now.
-  auto *function =
-      new Function(getEncodedSourceLocation(loc), name, type, attrs);
-  module->getFunctions().push_back(function);
+  auto function =
+      Function::create(getEncodedSourceLocation(loc), name, type, attrs);
+  module->push_back(function);
 
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
     return failure();
 
   // Add the attributes to the function arguments.
-  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i)
-    function->setArgAttrs(i, argAttrs[i]);
+  for (unsigned i = 0, e = function.getNumArguments(); i != e; ++i)
+    function.setArgAttrs(i, argAttrs[i]);
 
   // External functions have no body.
   if (getToken().isNot(Token::l_brace))
@@ -4076,11 +4076,11 @@ ParseResult ModuleParser::parseFunc(Module *module) {
 
   // Parse the function body.
   auto parser = OperationParser(getState(), function);
-  if (parser.parseRegion(function->getBody(), entryArgs))
+  if (parser.parseRegion(function.getBody(), entryArgs))
     return failure();
 
   // Verify that a valid function body was parsed.
-  if (function->empty())
+  if (function.empty())
     return emitError(braceLoc, "function must have a body");
 
   return parser.finalize(braceLoc);

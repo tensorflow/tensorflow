@@ -1194,7 +1194,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
 /// Applies vectorization to the current Function by searching over a bunch of
 /// predetermined patterns.
 void Vectorize::runOnFunction() {
-  Function &f = getFunction();
+  Function f = getFunction();
   if (!fastestVaryingPattern.empty() &&
       fastestVaryingPattern.size() != vectorSizes.size()) {
     f.emitRemark("Fastest varying pattern specified with different size than "
@@ -1220,7 +1220,7 @@ void Vectorize::runOnFunction() {
     unsigned patternDepth = pat.getDepth();
 
     SmallVector<NestedMatch, 8> matches;
-    pat.match(&f, &matches);
+    pat.match(f, &matches);
     // Iterate over all the top-level matches and vectorize eagerly.
     // This automatically prunes intersecting matches.
     for (auto m : matches) {

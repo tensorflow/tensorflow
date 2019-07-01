@@ -27,11 +27,16 @@
 namespace mlir {
 class BlockAndValueMapping;
 
+namespace detail {
+class FunctionStorage;
+}
+
 /// This class contains a list of basic blocks and has a notion of the object it
 /// is part of - a Function or an Operation.
 class Region {
 public:
-  explicit Region(Function *container = nullptr);
+  Region() = default;
+  explicit Region(Function container);
   explicit Region(Operation *container);
   ~Region();
 
@@ -77,7 +82,7 @@ public:
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
-  Function *getContainingFunction();
+  Function getContainingFunction();
 
   /// Return true if this region is a proper ancestor of the `other` region.
   bool isProperAncestor(Region *other);
@@ -118,7 +123,7 @@ private:
   RegionType blocks;
 
   /// This is the object we are part of.
-  llvm::PointerUnion<Function *, Operation *> container;
+  llvm::PointerUnion<detail::FunctionStorage *, Operation *> container;
 };
 
 } // end namespace mlir

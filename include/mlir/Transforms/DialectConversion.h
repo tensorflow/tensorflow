@@ -345,7 +345,7 @@ LLVM_NODISCARD LogicalResult applyConversionPatterns(
 /// Convert the given functions with the provided conversion patterns. This
 /// function returns failure if a type conversion failed.
 LLVM_NODISCARD
-LogicalResult applyConversionPatterns(ArrayRef<Function *> fns,
+LogicalResult applyConversionPatterns(MutableArrayRef<Function> fns,
                                       ConversionTarget &target,
                                       TypeConverter &converter,
                                       OwningRewritePatternList &&patterns);
@@ -354,7 +354,7 @@ LogicalResult applyConversionPatterns(ArrayRef<Function *> fns,
 /// convert as many of the operations within 'fn' as possible given the set of
 /// patterns.
 LLVM_NODISCARD
-LogicalResult applyConversionPatterns(Function &fn, ConversionTarget &target,
+LogicalResult applyConversionPatterns(Function fn, ConversionTarget &target,
                                       OwningRewritePatternList &&patterns);
 
 } // end namespace mlir

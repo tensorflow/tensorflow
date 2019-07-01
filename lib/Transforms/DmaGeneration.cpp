@@ -214,7 +214,7 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
 static InFlightDiagnostic LLVM_ATTRIBUTE_UNUSED
 emitRemarkForBlock(Block &block) {
   auto *op = block.getContainingOp();
-  return op ? op->emitRemark() : block.getFunction()->emitRemark();
+  return op ? op->emitRemark() : block.getFunction().emitRemark();
 }
 
 /// Creates a buffer in the faster memory space for the specified region;
@@ -246,8 +246,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   OpBuilder &b = region.isWrite() ? epilogue : prologue;
 
   // Builder to create constants at the top level.
-  auto *func = block->getFunction();
-  OpBuilder top(func->getBody());
+  auto func = block->getFunction();
+  OpBuilder top(func.getBody());
 
   auto loc = region.loc;
   auto *memref = region.memref;
@@ -751,14 +751,14 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
     if (auto *op = block->getContainingOp())
       op->emitError(str);
     else
-      block->getFunction()->emitError(str);
+      block->getFunction().emitError(str);
   }
 
   return totalDmaBuffersSizeInBytes;
 }
 
 void DmaGeneration::runOnFunction() {
-  Function &f = getFunction();
+  Function f = getFunction();
   OpBuilder topBuilder(f.getBody());
   zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
 

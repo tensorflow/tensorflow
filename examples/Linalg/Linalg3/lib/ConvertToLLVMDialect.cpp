@@ -148,7 +148,7 @@ static void populateLinalg3ToLLVMConversionPatterns(
 
 void linalg::convertLinalg3ToLLVM(Module &module) {
   // Remove affine constructs.
-  for (auto &func : module) {
+  for (auto func : module) {
     auto rr = lowerAffineConstructs(func);
     (void)rr;
     assert(succeeded(rr) && "affine loop lowering failed");

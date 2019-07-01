@@ -22,8 +22,8 @@ using namespace mlir;
 
 /// Build a symbol table with the symbols within the given module.
 SymbolTable::SymbolTable(Module *module) : context(module->getContext()) {
-  for (auto &func : *module) {
-    auto inserted = symbolTable.insert({func.getName(), &func});
+  for (auto func : *module) {
+    auto inserted = symbolTable.insert({func.getName(), func});
     (void)inserted;
     assert(inserted.second &&
            "expected module to contain uniquely named functions");
@@ -32,34 +32,34 @@ SymbolTable::SymbolTable(Module *module) : context(module->getContext()) {
 
 /// Look up a symbol with the specified name, returning null if no such name
 /// exists. Names never include the @ on them.
-Function *SymbolTable::lookup(StringRef name) const {
+Function SymbolTable::lookup(StringRef name) const {
   return lookup(Identifier::get(name, context));
 }
 
 /// Look up a symbol with the specified name, returning null if no such name
 /// exists. Names never include the @ on them.
-Function *SymbolTable::lookup(Identifier name) const {
+Function SymbolTable::lookup(Identifier name) const {
   return symbolTable.lookup(name);
 }
 
 /// Erase the given symbol from the table.
-void SymbolTable::erase(Function *symbol) {
-  auto it = symbolTable.find(symbol->getName());
+void SymbolTable::erase(Function symbol) {
+  auto it = symbolTable.find(symbol.getName());
   if (it != symbolTable.end() && it->second == symbol)
     symbolTable.erase(it);
 }
 
 /// Insert a new symbol into the table, and rename it as necessary to avoid
 /// collisions.
-void SymbolTable::insert(Function *symbol) {
+void SymbolTable::insert(Function symbol) {
   // Add this symbol to the symbol table, uniquing the name if a conflict is
   // detected.
-  if (symbolTable.insert({symbol->getName(), symbol}).second)
+  if (symbolTable.insert({symbol.getName(), symbol}).second)
     return;
 
   // If a conflict was detected, then the function will not have been added to
   // the symbol table.  Try suffixes until we get to a unique name that works.
-  SmallString<128> nameBuffer(symbol->getName());
+  SmallString<128> nameBuffer(symbol.getName());
   unsigned originalLength = nameBuffer.size();
 
   // Iteratively try suffixes until we find one that isn't used.  We use a
@@ -68,6 +68,6 @@ void SymbolTable::insert(Function *symbol) {
     nameBuffer.resize(originalLength);
     nameBuffer += '_';
     nameBuffer += std::to_string(uniquingCounter++);
-    symbol->setName(Identifier::get(nameBuffer, context));
-  } while (!symbolTable.insert({symbol->getName(), symbol}).second);
+    symbol.setName(Identifier::get(nameBuffer, context));
+  } while (!symbolTable.insert({symbol.getName(), symbol}).second);
 }

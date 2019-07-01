@@ -27,45 +27,50 @@
 #include "llvm/ADT/Twine.h"
 
 using namespace mlir;
+using namespace mlir::detail;
 
-Function::Function(Location location, StringRef name, FunctionType type,
-                   ArrayRef<NamedAttribute> attrs)
+FunctionStorage::FunctionStorage(Location location, StringRef name,
+                                 FunctionType type,
+                                 ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), attrs(attrs), argAttrs(type.getNumInputs()), body(this) {}
 
-Function::Function(Location location, StringRef name, FunctionType type,
-                   ArrayRef<NamedAttribute> attrs,
-                   ArrayRef<NamedAttributeList> argAttrs)
+FunctionStorage::FunctionStorage(Location location, StringRef name,
+                                 FunctionType type,
+                                 ArrayRef<NamedAttribute> attrs,
+                                 ArrayRef<NamedAttributeList> argAttrs)
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), attrs(attrs), argAttrs(argAttrs), body(this) {}
 
 MLIRContext *Function::getContext() { return getType().getContext(); }
 
-Module *llvm::ilist_traits<Function>::getContainingModule() {
+Module *llvm::ilist_traits<FunctionStorage>::getContainingModule() {
   size_t Offset(
       size_t(&((Module *)nullptr->*Module::getSublistAccess(nullptr))));
-  iplist<Function> *Anchor(static_cast<iplist<Function> *>(this));
+  iplist<FunctionStorage> *Anchor(static_cast<iplist<FunctionStorage> *>(this));
   return reinterpret_cast<Module *>(reinterpret_cast<char *>(Anchor) - Offset);
 }
 
 /// This is a trait method invoked when a Function is added to a Module.  We
 /// keep the module pointer and module symbol table up to date.
-void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
-  assert(!function->getModule() && "already in a module!");
+void llvm::ilist_traits<FunctionStorage>::addNodeToList(
+    FunctionStorage *function) {
+  assert(!function->module && "already in a module!");
   function->module = getContainingModule();
 }
 
 /// This is a trait method invoked when a Function is removed from a Module.
 /// We keep the module pointer up to date.
-void llvm::ilist_traits<Function>::removeNodeFromList(Function *function) {
+void llvm::ilist_traits<FunctionStorage>::removeNodeFromList(
+    FunctionStorage *function) {
   assert(function->module && "not already in a module!");
   function->module = nullptr;
 }
 
 /// This is a trait method invoked when an operation is moved from one block
 /// to another.  We keep the block pointer up to date.
-void llvm::ilist_traits<Function>::transferNodesFromList(
-    ilist_traits<Function> &otherList, function_iterator first,
+void llvm::ilist_traits<FunctionStorage>::transferNodesFromList(
+    ilist_traits<FunctionStorage> &otherList, function_iterator first,
     function_iterator last) {
   // If we are transferring functions within the same module, the Module
   // pointer doesn't need to be updated.
@@ -82,8 +87,10 @@ void llvm::ilist_traits<Function>::transferNodesFromList(
 
 /// Unlink this function from its Module and delete it.
 void Function::erase() {
-  assert(getModule() && "Function has no parent");
-  getModule()->getFunctions().erase(this);
+  if (auto *module = getModule())
+    getModule()->functions.erase(impl);
+  else
+    delete impl;
 }
 
 /// Emit an error about fatal conditions with this function, reporting up to
@@ -111,10 +118,10 @@ InFlightDiagnostic Function::emitRemark(const Twine &message) {
 
 /// Clone the internal blocks from this function into dest and all attributes
 /// from this function to dest.
-void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) {
+void Function::cloneInto(Function dest, BlockAndValueMapping &mapper) {
   // Add the attributes of this function to dest.
   llvm::MapVector<Identifier, Attribute> newAttrs;
-  for (auto &attr : dest->getAttrs())
+  for (auto &attr : dest.getAttrs())
     newAttrs.insert(attr);
   for (auto &attr : getAttrs()) {
     auto insertPair = newAttrs.insert(attr);
@@ -125,10 +132,10 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) {
     assert((insertPair.second || insertPair.first->second == attr.second) &&
            "the two functions have incompatible attributes");
   }
-  dest->setAttrs(newAttrs.takeVector());
+  dest.setAttrs(newAttrs.takeVector());
 
   // Clone the body.
-  body.cloneInto(&dest->body, mapper);
+  impl->body.cloneInto(&dest.impl->body, mapper);
 }
 
 /// Create a deep copy of this function and all of its blocks, remapping
@@ -136,8 +143,8 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) {
 /// provided (leaving them alone if no entry is present). Replaces references
 /// to cloned sub-values with the corresponding value that is copied, and adds
 /// those mappings to the mapper.
-Function *Function::clone(BlockAndValueMapping &mapper) {
-  FunctionType newType = type;
+Function Function::clone(BlockAndValueMapping &mapper) {
+  FunctionType newType = impl->type;
 
   // If the function has a body, then the user might be deleting arguments to
   // the function by specifying them in the mapper. If so, we don't add the
@@ -147,23 +154,23 @@ Function *Function::clone(BlockAndValueMapping &mapper) {
     SmallVector<Type, 4> inputTypes;
     for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
       if (!mapper.contains(getArgument(i)))
-        inputTypes.push_back(type.getInput(i));
-    newType = FunctionType::get(inputTypes, type.getResults(), getContext());
+        inputTypes.push_back(newType.getInput(i));
+    newType = FunctionType::get(inputTypes, newType.getResults(), getContext());
   }
 
   // Create the new function.
-  Function *newFunc = new Function(getLoc(), getName(), newType);
+  Function newFunc = Function::create(getLoc(), getName(), newType);
 
   /// Set the argument attributes for arguments that aren't being replaced.
   for (unsigned i = 0, e = getNumArguments(), destI = 0; i != e; ++i)
     if (isExternalFn || !mapper.contains(getArgument(i)))
-      newFunc->setArgAttrs(destI++, getArgAttrs(i));
+      newFunc.setArgAttrs(destI++, getArgAttrs(i));
 
   /// Clone the current function into the new one and return it.
   cloneInto(newFunc, mapper);
   return newFunc;
 }
-Function *Function::clone() {
+Function Function::clone() {
   BlockAndValueMapping mapper;
   return clone(mapper);
 }
@@ -178,7 +185,7 @@ void Function::addEntryBlock() {
   assert(empty() && "function already has an entry block");
   auto *entry = new Block();
   push_back(entry);
-  entry->addArguments(type.getInputs());
+  entry->addArguments(impl->type.getInputs());
 }
 
 void Function::walk(const std::function<void(Operation *)> &callback) {

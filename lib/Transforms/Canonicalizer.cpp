@@ -40,7 +40,7 @@ struct Canonicalizer : public FunctionPass<Canonicalizer> {
 
 void Canonicalizer::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
 
   // TODO: Instead of adding all known patterns from the whole system lazily add
   // and cache the canonicalization patterns for ops we see in practice when

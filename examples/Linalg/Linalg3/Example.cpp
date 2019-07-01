@@ -34,26 +34,26 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-Function *makeFunctionWithAMatmulOp(Module &module, StringRef name) {
+Function makeFunctionWithAMatmulOp(Module &module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
-  mlir::Function *f = linalg::common::makeFunction(
+  mlir::Function f = linalg::common::makeFunction(
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
-  mlir::OpBuilder builder(f->getBody());
-  ScopedContext scope(builder, f->getLoc());
+  mlir::OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
   // clang-format off
   ValueHandle
-    M = dim(f->getArgument(0), 0),
-    N = dim(f->getArgument(2), 1),
-    K = dim(f->getArgument(0), 1),
+    M = dim(f.getArgument(0), 0),
+    N = dim(f.getArgument(2), 1),
+    K = dim(f.getArgument(0), 1),
     rM = range(constant_index(0), M, constant_index(1)),
     rN = range(constant_index(0), N, constant_index(1)),
     rK = range(constant_index(0), K, constant_index(1)),
-    vA = view(f->getArgument(0), {rM, rK}),
-    vB = view(f->getArgument(1), {rK, rN}),
-    vC = view(f->getArgument(2), {rM, rN});
+    vA = view(f.getArgument(0), {rM, rK}),
+    vB = view(f.getArgument(1), {rK, rN}),
+    vC = view(f.getArgument(2), {rM, rN});
   matmul(vA, vB, vC);
   ret();
   // clang-format on
@@ -64,7 +64,7 @@ Function *makeFunctionWithAMatmulOp(Module &module, StringRef name) {
 TEST_FUNC(matmul_as_matvec) {
   MLIRContext context;
   Module module(&context);
-  mlir::Function *f = makeFunctionWithAMatmulOp(module, "matmul_as_matvec");
+  mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_matvec");
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
   // clang-format off
@@ -82,7 +82,7 @@ TEST_FUNC(matmul_as_matvec) {
 TEST_FUNC(matmul_as_dot) {
   MLIRContext context;
   Module module(&context);
-  mlir::Function *f = makeFunctionWithAMatmulOp(module, "matmul_as_dot");
+  mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_dot");
   lowerToFinerGrainedTensorContraction(f);
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
@@ -103,7 +103,7 @@ TEST_FUNC(matmul_as_dot) {
 TEST_FUNC(matmul_as_loops) {
   MLIRContext context;
   Module module(&context);
-  mlir::Function *f = makeFunctionWithAMatmulOp(module, "matmul_as_loops");
+  mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_loops");
   lowerToLoops(f);
   composeSliceOps(f);
   // clang-format off
@@ -135,7 +135,7 @@ TEST_FUNC(matmul_as_loops) {
 TEST_FUNC(matmul_as_matvec_as_loops) {
   MLIRContext context;
   Module module(&context);
-  mlir::Function *f =
+  mlir::Function f =
       makeFunctionWithAMatmulOp(module, "matmul_as_matvec_as_loops");
   lowerToFinerGrainedTensorContraction(f);
   lowerToLoops(f);
@@ -166,14 +166,14 @@ TEST_FUNC(matmul_as_matvec_as_loops) {
 TEST_FUNC(matmul_as_matvec_as_affine) {
   MLIRContext context;
   Module module(&context);
-  mlir::Function *f =
+  mlir::Function f =
       makeFunctionWithAMatmulOp(module, "matmul_as_matvec_as_affine");
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
   lowerToLoops(f);
   PassManager pm;
   pm.addPass(createLowerLinalgLoadStorePass());
-  if (succeeded(pm.run(f->getModule())))
+  if (succeeded(pm.run(f.getModule())))
     cleanupAndPrintFunction(f);
 
   // clang-format off

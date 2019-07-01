@@ -77,29 +77,29 @@ public:
   ~PassInstrumentor();
 
   /// See PassInstrumentation::runBeforePass for details.
-  template <typename IRUnitT> void runBeforePass(Pass *pass, IRUnitT *ir) {
+  template <typename IRUnitT> void runBeforePass(Pass *pass, IRUnitT ir) {
     runBeforePass(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterPass for details.
-  template <typename IRUnitT> void runAfterPass(Pass *pass, IRUnitT *ir) {
+  template <typename IRUnitT> void runAfterPass(Pass *pass, IRUnitT ir) {
     runAfterPass(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterPassFailed for details.
-  template <typename IRUnitT> void runAfterPassFailed(Pass *pass, IRUnitT *ir) {
+  template <typename IRUnitT> void runAfterPassFailed(Pass *pass, IRUnitT ir) {
     runAfterPassFailed(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runBeforeAnalysis for details.
   template <typename IRUnitT>
-  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT *ir) {
+  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT ir) {
     runBeforeAnalysis(name, id, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterAnalysis for details.
   template <typename IRUnitT>
-  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT *ir) {
+  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT ir) {
     runAfterAnalysis(name, id, llvm::Any(ir));
   }
 

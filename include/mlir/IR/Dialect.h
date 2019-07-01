@@ -145,17 +145,13 @@ public:
 
   /// Verify an attribute from this dialect on the given function. Returns
   /// failure if the verification failed, success otherwise.
-  virtual LogicalResult verifyFunctionAttribute(Function *, NamedAttribute) {
-    return success();
-  }
+  virtual LogicalResult verifyFunctionAttribute(Function, NamedAttribute);
 
   /// Verify an attribute from this dialect on the argument at 'argIndex' for
   /// the given function. Returns failure if the verification failed, success
   /// otherwise.
-  virtual LogicalResult
-  verifyFunctionArgAttribute(Function *, unsigned argIndex, NamedAttribute) {
-    return success();
-  }
+  virtual LogicalResult verifyFunctionArgAttribute(Function, unsigned argIndex,
+                                                   NamedAttribute);
 
   /// Verify an attribute from this dialect on the given operation. Returns
   /// failure if the verification failed, success otherwise.

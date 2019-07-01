@@ -214,11 +214,11 @@ def CallOp : Std_Op<"call"> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Function *callee,"
+    "Builder *builder, OperationState *result, Function callee,"
     "ArrayRef<Value *> operands = {}", [{
       result->addOperands(operands);
       result->addAttribute("callee", builder->getFunctionAttr(callee));
-      result->addTypes(callee->getType().getResults());
+      result->addTypes(callee.getType().getResults());
   }]>, OpBuilder<
     "Builder *builder, OperationState *result, StringRef callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{

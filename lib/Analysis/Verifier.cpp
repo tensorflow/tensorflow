@@ -53,7 +53,7 @@ public:
       : ctx(ctx), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
 
   /// Verify the body of the given function.
-  LogicalResult verify(Function &fn);
+  LogicalResult verify(Function fn);
 
   /// Verify the given operation.
   LogicalResult verify(Operation &op);
@@ -104,7 +104,7 @@ private:
 } // end anonymous namespace
 
 /// Verify the body of the given function.
-LogicalResult OperationVerifier::verify(Function &fn) {
+LogicalResult OperationVerifier::verify(Function fn) {
   // Verify the body first.
   if (failed(verifyRegion(fn.getBody())))
     return failure();
@@ -113,7 +113,7 @@ LogicalResult OperationVerifier::verify(Function &fn) {
   // check.  We do this as a second pass since malformed CFG's can cause
   // dominator analysis constructure to crash and we want the verifier to be
   // resilient to malformed code.
-  DominanceInfo theDomInfo(&fn);
+  DominanceInfo theDomInfo(fn);
   domInfo = &theDomInfo;
   if (failed(verifyDominance(fn.getBody())))
     return failure();
@@ -313,7 +313,7 @@ LogicalResult Function::verify() {
 
     // Verify this attribute with the defining dialect.
     if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-      if (failed(dialect->verifyFunctionAttribute(this, attr)))
+      if (failed(dialect->verifyFunctionAttribute(*this, attr)))
         return failure();
   }
 
@@ -331,7 +331,7 @@ LogicalResult Function::verify() {
 
       // Verify this attribute with the defining dialect.
       if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-        if (failed(dialect->verifyFunctionArgAttribute(this, i, attr)))
+        if (failed(dialect->verifyFunctionArgAttribute(*this, i, attr)))
           return failure();
     }
   }
@@ -369,7 +369,7 @@ LogicalResult Operation::verify() {
 LogicalResult Module::verify() {
   // Check that all functions are uniquely named.
   llvm::StringMap<Location> nameToOrigLoc;
-  for (auto &fn : *this) {
+  for (auto fn : *this) {
     auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
     if (!it.second)
       return fn.emitError()
@@ -379,7 +379,7 @@ LogicalResult Module::verify() {
   }
 
   // Check that each function is correct.
-  for (auto &fn : *this)
+  for (auto fn : *this)
     if (failed(fn.verify()))
       return failure();
 

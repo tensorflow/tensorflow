@@ -44,7 +44,7 @@ public:
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
-  static bool isKernel(Function *function);
+  static bool isKernel(Function function);
 };
 
 /// Utility class for the GPU dialect to represent triples of `Value`s
@@ -122,12 +122,12 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState *result,
-                    Function *kernelFunc, Value *gridSizeX, Value *gridSizeY,
+                    Function kernelFunc, Value *gridSizeX, Value *gridSizeY,
                     Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
                     Value *blockSizeZ, ArrayRef<Value *> kernelOperands);
 
   static void build(Builder *builder, OperationState *result,
-                    Function *kernelFunc, KernelDim3 gridSize,
+                    Function kernelFunc, KernelDim3 gridSize,
                     KernelDim3 blockSize, ArrayRef<Value *> kernelOperands);
 
   /// The kernel function specified by the operation's `kernel` attribute.

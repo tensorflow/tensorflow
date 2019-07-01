@@ -21,7 +21,7 @@
 #include "mlir/IR/Operation.h"
 using namespace mlir;
 
-Region::Region(Function *container) : container(container) {}
+Region::Region(Function container) : container(container.impl) {}
 
 Region::Region(Operation *container) : container(container) {}
 
@@ -38,7 +38,7 @@ MLIRContext *Region::getContext() {
   assert(!container.isNull() && "region is not attached to a container");
   if (auto *inst = getContainingOp())
     return inst->getContext();
-  return getContainingFunction()->getContext();
+  return getContainingFunction().getContext();
 }
 
 /// Return a location for this region. This is the location attached to the
@@ -47,7 +47,7 @@ Location Region::getLoc() {
   assert(!container.isNull() && "region is not attached to a container");
   if (auto *inst = getContainingOp())
     return inst->getLoc();
-  return getContainingFunction()->getLoc();
+  return getContainingFunction().getLoc();
 }
 
 Region *Region::getContainingRegion() {
@@ -60,8 +60,8 @@ Operation *Region::getContainingOp() {
   return container.dyn_cast<Operation *>();
 }
 
-Function *Region::getContainingFunction() {
-  return container.dyn_cast<Function *>();
+Function Region::getContainingFunction() {
+  return container.dyn_cast<detail::FunctionStorage *>();
 }
 
 bool Region::isProperAncestor(Region *other) {
