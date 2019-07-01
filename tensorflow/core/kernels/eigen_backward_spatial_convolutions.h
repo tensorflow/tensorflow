@@ -63,20 +63,21 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
         const TensorContractionOp<
             const array<
                 IndexPair<typename internal::traits<OutputBackward>::Index>, 1>,
-            const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
+            const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
-                const TensorShufflingOp<
+                const Eigen::TensorForcedEvalOp<const TensorShufflingOp<
                     const array<
                         typename internal::traits<OutputBackward>::Index, 4>,
-                    const TensorReverseOp<const ReverseColMajor,
-                                          const Kernel> > > >,
+                    const Eigen::TensorForcedEvalOp<const TensorReverseOp<
+                        const ReverseColMajor, const Kernel> > > > >,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
                 const TensorImagePatchOp<Dynamic, Dynamic,
                                          const OutputBackward> > > >,
     TensorReshapingOp<
+
         const DSizes<typename internal::traits<OutputBackward>::Index,
                      internal::traits<OutputBackward>::NumDimensions>,
         const TensorContractionOp<
@@ -87,14 +88,14 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                              2>,
                 const TensorImagePatchOp<Dynamic, Dynamic,
                                          const OutputBackward> >,
-            const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
+            const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
-                const TensorShufflingOp<
+                const Eigen::TensorForcedEvalOp<const TensorShufflingOp<
                     const array<
                         typename internal::traits<OutputBackward>::Index, 4>,
-                    const TensorReverseOp<const ReverseRowMajor,
-                                          const Kernel> > > > > > >::type
+                    const Eigen::TensorForcedEvalOp<const TensorReverseOp<
+                        const ReverseRowMajor, const Kernel> > > > > > > >::type
 SpatialConvolutionBackwardInput(
     const Kernel& kernel, const OutputBackward& output_backward,
     typename internal::traits<OutputBackward>::Index inputRows,
@@ -268,12 +269,17 @@ SpatialConvolutionBackwardInput(
     }
   }
 
+  // NOTE(ezhulenev): We do eval after reverse and shuffle, because tiled
+  // evaluation of these ops does not compose. Doing explicit eval is ~8x
+  // faster in micro benchmarks.
+
   return choose(
       Cond<internal::traits<OutputBackward>::Layout == ColMajor>(),
       kernel.reverse(kernel_reverse)
-          .shuffle(kernel_shuffle)
-          .reshape(kernel_dims)
           .eval()
+          .shuffle(kernel_shuffle)
+          .eval()
+          .reshape(kernel_dims)
           .contract(
               output_backward
                   .extract_image_patches(
@@ -290,9 +296,10 @@ SpatialConvolutionBackwardInput(
                                  padding_right, OutScalar(0))
           .reshape(pre_contract_dims)
           .contract(kernel.reverse(kernel_reverse)
+                        .eval()
                         .shuffle(kernel_shuffle)
-                        .reshape(kernel_dims)
-                        .eval(),
+                        .eval()
+                        .reshape(kernel_dims),
                     contract_dims)
           .reshape(post_contract_dims));
 }
