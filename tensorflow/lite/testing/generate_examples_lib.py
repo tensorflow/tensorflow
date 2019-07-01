@@ -441,10 +441,7 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       graphdef_file.flush()
 
       # TODO(aselle): Switch this to subprocess at some point.
-      if "pb2lite" in bin_path and options.run_with_flex:
-        opts = ("--input_arrays={0} --output_arrays={1}".format(
-            ",".join(input_arrays), ",".join(output_tensors)))
-      elif options.run_with_flex:
+      if options.run_with_flex:
         opts += " --enable_select_tf_ops --force_select_tf_ops"
       cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
              (bin_path, graphdef_file.name, output_file.name, opts,
