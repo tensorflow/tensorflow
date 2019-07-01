@@ -428,7 +428,7 @@ Status EagerLocalExecute(EagerOperation* op,
   if (is_multi_device_function) {
     input_dev_ptrs.reserve(op->Inputs().size());
     // All inputs need to be on local devices.
-    // TODO(nareshmodi): This is a limitation of the current code base (but
+    // TODO(b/122851476): This is a limitation of the current code base (but
     // should be possible to get around).
     // Code changes will need to be made to pass input objects to the
     // function library runtime instead of just "Tensor"s.
@@ -658,7 +658,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(nareshmodi): this is currently slow, but can be fixed by making
+  // TODO(b/110044833): this is currently slow, but can be fixed by making
   // tensor handles aware of more than one device.
   TensorHandle* actual_handle;
   if (tensor_handle_device != nullptr &&
