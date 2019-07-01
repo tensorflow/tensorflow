@@ -22,10 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-class TensorShapeProto;
-class Status;
 
 struct ArrayInfo {
   // The node type when the input node is imported. Typically needs to be

@@ -63,9 +63,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
+namespace tensorflow {
 using stream_executor::port::StatusOr;
 
-namespace tensorflow {
 namespace {
 
 // Stateful helper class to import a GraphDef into an MLIR Module. The nodes

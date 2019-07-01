@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace tensorflow {
+
 using llvm::ArrayRef;
 using llvm::SmallVector;
 using mlir::Attribute;
@@ -53,8 +55,6 @@ using mlir::ShapedType;
 using mlir::SplatElementsAttr;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
-
-namespace tensorflow {
 
 Status ConvertToMlirShape(const TensorShapeProto& input_shape,
                           llvm::SmallVectorImpl<int64_t>* shape) {

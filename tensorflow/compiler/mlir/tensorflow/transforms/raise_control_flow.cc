@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
-using namespace mlir;
-using namespace mlir::TFControlFlow;
+namespace mlir {
+namespace TFControlFlow {
 
 namespace {
 struct RaiseTFControlFlow : public FunctionPass<RaiseTFControlFlow> {
@@ -50,11 +50,6 @@ struct RaiseTFControlFlow : public FunctionPass<RaiseTFControlFlow> {
   void buildConditionals();
   void rewriteOps();
 };
-}  // end anonymous namespace
-
-FunctionPassBase *mlir::createRaiseTFControlFlowPass() {
-  return new RaiseTFControlFlow();
-}
 
 //===----------------------------------------------------------------------===//
 // Loop nest reconstruction
@@ -148,7 +143,16 @@ void RaiseTFControlFlow::rewriteOps() {
   }
 }
 
+}  // namespace
+
+FunctionPassBase *CreateRaiseTFControlFlowPass() {
+  return new RaiseTFControlFlow();
+}
+
 static PassRegistration<RaiseTFControlFlow> pass(
     "tf-raise-control-flow",
     "Raise from the TensorFlow Control Flow "
     "dialect to the standard TensorFlow dialect");
+
+}  // namespace TFControlFlow
+}  // namespace mlir

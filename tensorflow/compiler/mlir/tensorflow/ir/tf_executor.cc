@@ -830,7 +830,7 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
-}  // anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
@@ -840,4 +840,4 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
 
 }  // namespace tf_executor
-}  // end namespace mlir
+}  // namespace mlir

@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
+namespace tensorflow {
+
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
@@ -44,27 +46,25 @@ static StatusOr<std::unique_ptr<mlir::Module>> GraphdefToMlirImport(
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
     mlir::MLIRContext* context) {
-  tensorflow::GraphDef graphdef;
+  GraphDef graphdef;
   TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromFile(input_filename, &graphdef));
 
-  tensorflow::GraphDebugInfo debug_info;
+  GraphDebugInfo debug_info;
   if (!debug_info_file.empty()) {
-    TF_RETURN_IF_ERROR(
-        tensorflow::LoadProtoFromFile(debug_info_file, &debug_info));
+    TF_RETURN_IF_ERROR(LoadProtoFromFile(debug_info_file, &debug_info));
   }
 
-  tensorflow::NodeSpecs specs;
+  NodeSpecs specs;
   specs.prune_unused_nodes = prune_unused_nodes;
-  TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
+  TF_RETURN_IF_ERROR(ParseInputArrayInfo(
       input_arrays, input_dtypes, input_shapes, inference_type, min_values,
       max_values, &specs.inputs));
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(
-      output_arrays, &specs.output_arrays, &specs.output_arrays_order));
-  return tensorflow::ConvertGraphdefToMlir(graphdef, debug_info, specs,
-                                           context);
+  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.output_arrays,
+                                          &specs.output_arrays_order));
+  return ConvertGraphdefToMlir(graphdef, debug_info, specs, context);
 }
 
-std::unique_ptr<mlir::Module> tensorflow::GraphdefToMlirTranslateFunction(
+std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -82,8 +82,7 @@ std::unique_ptr<mlir::Module> tensorflow::GraphdefToMlirTranslateFunction(
   return module_or.ConsumeValueOrDie();
 }
 
-std::unique_ptr<mlir::Module>
-tensorflow::GraphdefToSplattedMlirTranslateFunction(
+std::unique_ptr<mlir::Module> GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -133,3 +132,5 @@ tensorflow::GraphdefToSplattedMlirTranslateFunction(
   }
   return module_or.ConsumeValueOrDie();
 }
+
+}  // namespace tensorflow
