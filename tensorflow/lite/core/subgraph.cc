@@ -206,6 +206,7 @@ void Subgraph::CleanupNode(int node_index) {
   TfLiteIntArrayFree(node.inputs);
   TfLiteIntArrayFree(node.outputs);
   TfLiteIntArrayFree(node.temporaries);
+  TfLiteIntArrayFree(node.intermediates);
   if (node.builtin_data) free(node.builtin_data);
   OpFree(registration, node.user_data);
   node.builtin_data = nullptr;
@@ -337,8 +338,8 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
         TfLiteDelegateParams* params =
             CreateDelegateParams(delegate, node_subset);
         TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
-            node_subset.input_tensors, node_subset.output_tensors, nullptr, 0,
-            params, &registration, &node_index));
+            node_subset.input_tensors, node_subset.output_tensors, {}, nullptr,
+            0, params, &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : node_subset.output_tensors) {
@@ -531,7 +532,8 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
 
 TfLiteStatus Subgraph::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
-    const char* init_data, size_t init_data_size, void* builtin_data,
+    const std::vector<int>& intermediates, const char* init_data,
+    size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
   std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
                                                               free);
@@ -554,6 +556,7 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   TfLiteNode& node = node_and_reg.first;
   if (node.inputs) TfLiteIntArrayFree(node.inputs);
   if (node.outputs) TfLiteIntArrayFree(node.outputs);
+  if (node.intermediates) TfLiteIntArrayFree(node.intermediates);
   if (node.temporaries) TfLiteIntArrayFree(node.temporaries);
 
   // NOTE, here we are not using move semantics yet, since our internal
@@ -561,6 +564,7 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   // copies, so we want the interface to take r-value references now.
   node.inputs = ConvertVectorToTfLiteIntArray(inputs);
   node.outputs = ConvertVectorToTfLiteIntArray(outputs);
+  node.intermediates = ConvertVectorToTfLiteIntArray(intermediates);
   node.temporaries = TfLiteIntArrayCreate(0);
   if (init_data) {
     node.user_data = OpInit(*registration, init_data, init_data_size);

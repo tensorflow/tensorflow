@@ -71,6 +71,7 @@ class Subgraph {
   // remains with the caller.
   TfLiteStatus AddNodeWithParameters(const std::vector<int>& inputs,
                                      const std::vector<int>& outputs,
+                                     const std::vector<int>& intermediates,
                                      const char* init_data,
                                      size_t init_data_size, void* builtin_data,
                                      const TfLiteRegistration* registration,
