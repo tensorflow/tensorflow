@@ -475,7 +475,10 @@ xla_test(
     srcs = ["svd_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "no_rocm",
+    ],
     deps = [
         ":arithmetic",
         ":constants",
