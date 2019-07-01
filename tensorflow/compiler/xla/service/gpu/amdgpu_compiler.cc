@@ -384,7 +384,13 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 
 AMDGPUCompiler::AMDGPUCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(se::rocm::kROCmPlatformId) {}
+
+AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(platform_id) {}
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -562,7 +568,7 @@ AMDGPUCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 }
 
 se::Platform::Id AMDGPUCompiler::PlatformId() const {
-  return se::rocm::kROCmPlatformId;
+  return platform_id_;
 }
 
 }  // namespace gpu
@@ -571,7 +577,7 @@ se::Platform::Id AMDGPUCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::rocm::kROCmPlatformId,
-      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(stream_executor::rocm::kROCmPlatformId); });
   return true;
 }
 static bool module_initialized = InitModule();
