@@ -1651,7 +1651,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
       }
 // We link against a generic BLAS target that only maps to OpenBLAS on specific
 // architectures.
-#if defined RUY_ARM_64 || defined RUY_ARM_32
+#if defined __aarch64__ || defined __arm__
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
       if (max_num_threads == 1) {

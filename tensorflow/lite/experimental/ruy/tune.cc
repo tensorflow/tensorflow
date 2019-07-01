@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace ruy {
 
-#ifdef RUY_NEON_64
+#ifdef __aarch64__
 
 namespace {
 
@@ -130,7 +130,7 @@ Tuning TuningResolver::ResolveNow() {
   return is_probably_inorder ? Tuning::kInOrder : Tuning::kOutOfOrder;
 }
 
-#else  // not defined RUY_NEON_64
+#else  // not defined __aarch64__
 
 float TuningResolver::EvalRatio() { return 0; }
 float TuningResolver::ThresholdRatio() { return 0; }

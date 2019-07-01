@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 
-#if ((defined RUY_NEON_64) || (defined RUY_NEON_32))
+#ifdef __aarch64__
 #include <arm_neon.h>
 #endif
 

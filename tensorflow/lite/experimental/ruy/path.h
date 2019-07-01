@@ -20,27 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
-// Detect ARM, 32-bit or 64-bit
-#ifdef __aarch64__
-#define RUY_ARM_64
-#elif defined(__arm__)
-#define RUY_ARM_32
-#endif
-
-// Detect NEON.
-#if (defined __ARM_NEON) || (defined __ARM_NEON__)
-#define RUY_NEON
-#endif
-
-// Define 32bit ARM NEON and 64 bit ARM NEON
-#if defined(RUY_NEON) && defined(RUY_ARM_32)
-#define RUY_NEON_32
-#endif
-
-#if defined(RUY_NEON) && defined(RUY_ARM_64)
-#define RUY_NEON_64
-#endif
-
 namespace ruy {
 
 // A Path is a choice of implementation path, e.g. between reference code
@@ -118,24 +97,17 @@ inline Path GetMostSignificantPath(Path path_mask) {
 
 // ruy::kAllPaths represents all Path's that make sense to on a given
 // base architecture.
+#ifdef __aarch64__
 #ifdef __linux__
-#ifdef RUY_NEON_64
 constexpr Path kAllPaths =
     Path::kReference | Path::kStandardCpp | Path::kNeon | Path::kNeonDotprod;
-#elif defined RUY_NEON_32
-constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #else
-constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
-#endif  // RUY_NEON_64
-#else   // __linux__
 // We don't know how to do runtime dotprod detection outside of linux for now.
-#if defined(RUY_NEON_64) || defined(RUY_NEON_32)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
+#endif
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
-#endif  // defined(RUY_NEON_64) || defined(RUY_NEON_32)
-constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
-#endif  // __linux__
+#endif
 
 }  // namespace ruy
 
