@@ -59,7 +59,16 @@ string DatasetDebugString(const string& dataset_type,
 }
 
 string IteratorPrefix(const string& dataset_type, const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, dataset_type);
+  return IteratorPrefix(dataset_type, prefix, IteratorPrefixParams());
+}
+
+string IteratorPrefix(const string& dataset_type, const string& prefix,
+                      const IteratorPrefixParams& params) {
+  if (params.op_version == 1) {
+    return strings::StrCat(prefix, kDelimiter, dataset_type);
+  }
+  return strings::StrCat(prefix, kDelimiter, dataset_type, kVersion,
+                         params.op_version);
 }
 
 }  // namespace name_utils

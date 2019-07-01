@@ -199,6 +199,7 @@ cc_library(
     srcs = ["window_dataset.cc"],
     hdrs = ["window_dataset.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -208,7 +209,9 @@ cc_library(
 tf_kernel_library(
     name = "batch_dataset_op",
     srcs = ["batch_dataset_op.cc"],
+    hdrs = ["batch_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -272,7 +275,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "window_dataset_op",
     srcs = ["window_dataset_op.cc"],
+    hdrs = ["window_dataset_op.h"],
     deps = [
+        ":name_utils",
         ":window_dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -872,8 +877,10 @@ tf_cc_test(
 tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
+    hdrs = ["tensor_slice_dataset_op.h"],
     deps = [
         ":dataset_utils",
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -902,7 +909,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "zip_dataset_op",
     srcs = ["zip_dataset_op.cc"],
+    hdrs = ["zip_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
