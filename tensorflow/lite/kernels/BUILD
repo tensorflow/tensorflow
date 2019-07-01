@@ -1434,6 +1434,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_googletest//:gtest",
     ],
 )
