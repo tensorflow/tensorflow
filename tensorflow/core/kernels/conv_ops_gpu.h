@@ -214,10 +214,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW
-=======
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

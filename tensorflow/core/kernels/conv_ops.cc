@@ -63,10 +63,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
@@ -582,14 +578,11 @@ template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-=======
 static bool RedzoneCheckDisabled() {
   const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
   return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
 }
 
->>>>>>> upstream/master
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -997,8 +990,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       device_id,                // device_id
   };
   AlgorithmConfig algorithm_config;
-  ProfileResult best_result;
-  ProfileResult best_result_no_scratch;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -1084,14 +1075,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                            conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-    // MIOpen has its own Find and autotuner so use it here, passing
-    // default AlgorithmConfig to force a search
-    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-=======
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     ProfileResult best_result;
->>>>>>> upstream/master
     bool miopen_find_status =
         stream
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
@@ -1122,6 +1107,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                       &output_ptr, &scratch_allocator,
                                       algorithm_config, nullptr)
           .ok();
+
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
         "cuDNN launch failure : input shape(", input.shape().DebugString(),

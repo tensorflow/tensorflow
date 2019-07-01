@@ -910,14 +910,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
     ProfileResult best_result;
-<<<<<<< HEAD
-    LOG(INFO) << "running auto-tune for Backward-Filter";
-    DnnScratchAllocator scratch_allocator(
-        ConvolveBackwardFilterScratchSize, ctx);
-=======
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           ctx);
->>>>>>> upstream/master
     bool miopen_find_status =
         stream
             ->ThenConvolveBackwardFilterWithAlgorithm(

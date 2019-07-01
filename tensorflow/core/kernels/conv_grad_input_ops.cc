@@ -765,13 +765,9 @@ template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 // GPU definitions.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // The slow version (but compiles for GPU)
->>>>>>> upstream/master
 
 // A dummy type to group forward backward data autotune results together.
 struct ConvBackwardDataAutoTuneGroup {
@@ -1136,19 +1132,10 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         output_desc, conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-    ProfileResult best_result;
-    LOG(INFO) << "running auto-tune for Backward-Data";
-    // MIOpen has its own Find and autotuner so use it here, passing
-    // default AlgorithmConfig to force a search
-    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                              ctx);
-=======
     // MIOpen has its own Find and autotuner so use it here, passing
     // default AlgorithmConfig to force a search
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
     ProfileResult best_result;
->>>>>>> upstream/master
     bool miopen_find_status =
         stream
             ->ThenConvolveBackwardDataWithAlgorithm(

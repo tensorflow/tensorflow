@@ -62,7 +62,7 @@ class GpuExecutor;
 // Thread-safe post-initialization.
 class ROCMBlas : public blas::BlasSupport {
  public:
-  explicit ROCMBlas(GpuExecutor* parent);
+  explicit ROCMBlas(GpuExecutor *parent);
 
   // Allocates a rocBLAS handle.
   bool Init();
@@ -98,7 +98,7 @@ class ROCMBlas : public blas::BlasSupport {
   // Convenience functions that call DoBlasInternalImpl with different values
   // for err_on_failure.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternal(FuncT rocblas_func, Stream* stream,
+  bool DoBlasInternal(FuncT rocblas_func, Stream *stream,
                       bool pointer_mode_host, Args... args) {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/true, args...);
@@ -114,16 +114,6 @@ class ROCMBlas : public blas::BlasSupport {
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
-<<<<<<< HEAD
-      const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type*>&
-          raw_ptrs,
-      int batch_count, uint64_t batch_stride,
-      ScratchAllocator* scratch_allocator, Stream* stream,
-      std::unique_ptr<TemporaryDeviceMemory<
-          typename RocBlasTypeConversionHelper<T>::mapped_type>>* temp_memory,
-      DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>*
-          device_memory);
-=======
       const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
           &raw_ptrs,
       int batch_count, uint64_t batch_stride,
@@ -132,7 +122,6 @@ class ROCMBlas : public blas::BlasSupport {
           typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
       DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
           *device_memory);
->>>>>>> upstream/master
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
@@ -196,7 +185,7 @@ class ROCMBlas : public blas::BlasSupport {
 
   // GpuExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.
-  GpuExecutor* parent_;
+  GpuExecutor *parent_;
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ GUARDED_BY(mu_);

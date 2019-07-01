@@ -836,11 +836,7 @@ class AlgorithmConfig {
  public:
   AlgorithmConfig() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
-<<<<<<< HEAD
-  explicit AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
-=======
   AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
->>>>>>> upstream/master
       : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
@@ -2597,6 +2593,7 @@ class DnnSupport {
       dnn::ProfileResult* output_profile_result) {
     return false;
   }
+
  protected:
   // Returns whether status is 'ok', and potentially logs the error.
   static bool IsStatusOk(const port::Status& status, bool report_error);

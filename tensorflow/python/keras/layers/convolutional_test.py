@@ -191,18 +191,13 @@ class Conv3DTest(keras_parameterized.TestCase):
       # TODO(b/62340061): Support channels_first on CPU.
       ('data_format', {'data_format': 'channels_first'}),
   )
-<<<<<<< HEAD
-  def test_conv3d(self, kwargs):
+  def test_conv3d(self, kwargs, expected_output_shape=None):
 
     if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
 
-=======
-  def test_conv3d(self, kwargs, expected_output_shape=None):
->>>>>>> upstream/master
     kwargs['filters'] = 2
     kwargs['kernel_size'] = (3, 3, 3)
-    
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
