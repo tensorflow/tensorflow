@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/framework/graph.proto";
+
+message DatasetDef {
+  // GraphDef that contains all the ops required to create the dataset. There
+  // is one _Retval op in the graph whose input is the dataset to be created.
+  .tensorflow.GraphDef dataset_graph = 1;
+}

@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
@@ -59,7 +60,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     return self._structure
 
 
-def _AutoShardDatasetV1(input_dataset, num_workers, index):
+def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=invalid-name
   return dataset_ops.DatasetV1Adapter(
       _AutoShardDataset(input_dataset, num_workers, index))
 
@@ -96,6 +97,41 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
   @property
   def _element_structure(self):
     return self._structure
+
+
+class _RemoteDataset(dataset_ops.DatasetSource):
+  """Creates a dataset on a given `device` given a graph def."""
+
+  def __init__(self, dataset_def, device, elem_structure):
+    self._structure = elem_structure
+    with ops.device(device):
+      variant_tensor = ged_ops.dataset_from_def(dataset_def)
+    super(_RemoteDataset, self).__init__(variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+
+def replicate(dataset, devices):
+  """A transformation that replicates `dataset` onto a list of devices.
+
+  Args:
+    dataset: A `tf.data.Dataset` object.
+    devices: A list of devices to replicate the dataset on.
+
+  Returns:
+    A dictionary mapping device name to a dataset on that device.
+  """
+  if not isinstance(dataset, dataset_ops.DatasetV2):
+    raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+
+  dataset_def = ged_ops.dataset_to_def(dataset._variant_tensor)  # pylint: disable=protected-access
+  datasets = {}
+  for device in devices:
+    ds = _RemoteDataset(dataset_def, device, dataset._element_structure)  # pylint: disable=protected-access
+    datasets[device] = ds
+  return datasets
 
 
 _AutoShardDatasetV1.__doc__ = _AutoShardDataset.__doc__
