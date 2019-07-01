@@ -60,7 +60,7 @@ void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
   }
 }
 
-// Returns a data value that is dead iff `control` is dead.
+// Returns a data value that is dead if `control` is dead.
 Output ControlToData(const Scope& scope, Node* control) {
   Output data = ops::Const(scope.WithOpName("ctrl_as_data"),
                            Tensor(DT_BOOL, TensorShape({0})));
@@ -68,7 +68,7 @@ Output ControlToData(const Scope& scope, Node* control) {
   return Output(data.node());
 }
 
-// Returns an operation that can be control-depended on that is dead iff `data`
+// Returns an operation that can be control-depended on that is dead if `data`
 // is dead.
 Operation DataToControl(const Scope& scope, Output data) {
   return Operation(
