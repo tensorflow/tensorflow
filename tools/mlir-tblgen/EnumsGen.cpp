@@ -211,9 +211,13 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   emitEnumClass(enumDef, enumName, underlyingType, description, enumerants, os);
 
   // Emit coversion function declarations
-  os << formatv(
-      "llvm::Optional<{0}> {1}({2});\n", enumName, underlyingToSymFnName,
-      underlyingType.empty() ? std::string("unsigned") : underlyingType);
+  if (llvm::all_of(enumerants, [](EnumAttrCase enumerant) {
+        return enumerant.getValue() >= 0;
+      })) {
+    os << formatv(
+        "llvm::Optional<{0}> {1}({2});\n", enumName, underlyingToSymFnName,
+        underlyingType.empty() ? std::string("unsigned") : underlyingType);
+  }
   os << formatv("llvm::StringRef {1}({0});\n", enumName, symToStrFnName);
   os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef);\n", enumName,
                 strToSymFnName);
