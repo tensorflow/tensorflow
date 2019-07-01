@@ -244,7 +244,7 @@ EagerContext::~EagerContext() {
   registered_functions_.clear();
 
   if (server_) {
-    // TODO(nareshmodi): Fix this.
+    // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
     server_.release();
