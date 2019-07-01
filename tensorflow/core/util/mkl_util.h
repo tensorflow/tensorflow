@@ -59,8 +59,6 @@ namespace tensorflow {
 // MKL operation, and did not go through a conversion to a standard
 // Tensorflow tensor.
 
-typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
-
 // The dimensions order that MKL-DNN internally uses for 2D activations
 // [Batch, Channel, Height, Width] and
 // for 2D filters [Out_Channel, In_Channel, Height, Width].
@@ -681,22 +679,6 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
-inline int32 GetMklTensorDimIndex(char dimension) {
-  switch (dimension) {
-    case 'N':
-      return MklDims::N;
-    case 'C':
-      return MklDims::C;
-    case 'H':
-      return MklDims::H;
-    case 'W':
-      return MklDims::W;
-    default:
-      LOG(FATAL) << "Invalid dimension: " << dimension;
-      return -1;  // Avoid compiler warning about missing return value
-  }
-}
-
 inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
                                  int idx_out) {
   int num_inputs = context->num_inputs();
@@ -1311,9 +1293,9 @@ class MklDnnData {
     return false;
   }
 
-  /// TODO: this is a faster path with reorder primitive cache compared with
-  /// CheckReorderToOpMem(..., std::vector<primitive>* net), will remove
-  /// slow path in the future
+  /// This is a faster path with reorder primitive cache compared with
+  /// CheckReorderToOpMem(..., std::vector<primitive>* net).
+  /// TODO(gzmkl): Remove the slower path.
   inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd) {
     CHECK_NOTNULL(user_memory_);
     if (IsReorderNeeded(op_pd)) {
