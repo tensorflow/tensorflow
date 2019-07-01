@@ -380,6 +380,7 @@ cuda_py_test(
         "manual",
         "no_oss",
         "no_tap",
+        "nogpu",  # b/136499799
         "noguitar",
     ],
     xla_enable_strict_auto_jit = True,
