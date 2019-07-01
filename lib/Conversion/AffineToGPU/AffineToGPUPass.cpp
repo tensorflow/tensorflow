@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/Conversion/AffineToGPU/AffineToGPUPass.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Conversion/AffineToGPU/AffineToGPU.h"
 #include "mlir/Pass/Pass.h"
@@ -40,17 +41,33 @@ namespace {
 // GPU launch operations.  Nested launches are not allowed, so this does not
 // walk the function recursively to avoid considering nested loops.
 struct AffineForGPUMapper : public FunctionPass<AffineForGPUMapper> {
+  AffineForGPUMapper(unsigned numBlockDims, unsigned numThreadDims)
+      : numBlockDims(numBlockDims), numThreadDims(numThreadDims) {}
+
   void runOnFunction() override {
     for (Block &block : getFunction())
       for (Operation &op : llvm::make_early_inc_range(block))
         if (auto forOp = dyn_cast<AffineForOp>(&op))
-          if (failed(convertAffineLoopNestToGPULaunch(
-                  forOp, clNumBlockDims.getValue(),
-                  clNumThreadDims.getValue())))
+          if (failed(convertAffineLoopNestToGPULaunch(forOp, numBlockDims,
+                                                      numThreadDims)))
             signalPassFailure();
   }
+
+  unsigned numBlockDims;
+  unsigned numThreadDims;
+};
+
+struct AffineForGPUMapperCLI : public AffineForGPUMapper {
+  AffineForGPUMapperCLI()
+      : AffineForGPUMapper(clNumBlockDims.getValue(),
+                           clNumThreadDims.getValue()) {}
 };
 } // namespace
 
-static PassRegistration<AffineForGPUMapper>
+FunctionPassBase *mlir::createSimpleAffineToGPUPass(unsigned numBlockDims,
+                                                    unsigned numThreadDims) {
+  return new AffineForGPUMapper(numBlockDims, numThreadDims);
+}
+
+static PassRegistration<AffineForGPUMapperCLI>
     registration(PASS_NAME, "Convert top-level affine loops to GPU kernels");
