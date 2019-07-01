@@ -519,3 +519,13 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// -----
+
+func @exit(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:2 = "tf_executor.Exit"(%arg0) : (tensor<*xi32>) -> (tensor<*xf32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Exit' op failed to verify that data operand must be broadcastable to result}}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}

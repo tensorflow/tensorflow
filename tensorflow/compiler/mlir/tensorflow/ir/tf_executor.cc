@@ -720,6 +720,34 @@ ParseResult ParseNextIterationSinkOp(OpAsmParser *parser,
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+//===----------------------------------------------------------------------===//
+// tf_executor.Exit
+//===----------------------------------------------------------------------===//
+
+void Print(ExitOp exit, OpAsmPrinter *p) {
+  *p << exit.getOperationName() << ' ';
+  p->printOperands(exit.getOperands());
+  *p << " : " << exit.getType(0);
+  p->printOptionalAttrDict(exit.getAttrs());
+}
+
+ParseResult ParseExitOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<Type, 1> types;
+
+  if (parser->parseOperandList(op_infos) || parser->parseColonTypeList(types))
+    return failure();
+
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  Type control_type = ControlType::get(parser->getBuilder().getContext());
+  types.append(op_infos.size() - 1, control_type);
+  if (parser->resolveOperands(op_infos, types, loc, result->operands))
+    return failure();
+
+  result->addTypes({types.front(), control_type});
+  return parser->parseOptionalAttributeDict(result->attributes);
+}
+
 }  // anonymous namespace
 
 //===----------------------------------------------------------------------===//

@@ -318,3 +318,34 @@ func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*
   }
   return %0 : tensor<*xf32>
 }
+
+// CHECK-LABEL: func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+// CHECK: %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
+    %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+// CHECK: %1:2 = tf_executor.Exit %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %1:2 = tf_executor.Exit %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
+func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.Exit %arg0, %arg1 : tensor<*xf32>
+    %2:2 = tf_executor.Exit %arg0, %1#1 : tensor<*xf32>
+    tf_executor.fetch %2#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+

@@ -529,4 +529,45 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink"> {
   );
 }
 
+def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
+    [NoSideEffect,
+     PredOpTrait<"data operand must be broadcastable to result",
+                 TCOpIsBroadcastableToRes<0, 0>>]>{
+
+  let summary = [{
+    The "tf_executor.Exit" operation forwards a value from an while loop to its
+    consumer outside of loop. Each returned tensor needs its own
+    tf_executor.Exit.
+  }];
+
+  let description = [{
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("Exit")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+     %1:2 = tf_executor.Exit %0#0 {T: "tfdtype$DT_INT32"} : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    AnyType:$data,
+    Variadic<TfeControlType>:$controlInputs
+  );
+
+  let results = (outs
+    AnyType:$output,
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
+}
+
 #endif // TF_EXECUTOR_DIALECT
