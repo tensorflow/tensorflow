@@ -42,8 +42,13 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
     const int diag_index = upper_diag_index - diag_index_in_input;
     const int y_index = index_in_the_diagonal + max(0, -diag_index);
     const int x_index = index_in_the_diagonal + max(0, diag_index);
-    const int out_index = batch * m * n + y_index * n + x_index;
-    output_ptr[out_index] = diag_ptr[index];
+
+    // Upper-bound checks for diagonals shorter than max_diag_len.
+    // y_index and x_index are nonnegative by construction.
+    if (y_index < m && x_index < n) {
+      const int out_index = batch * m * n + y_index * n + x_index;
+      output_ptr[out_index] = diag_ptr[index];
+    }
   }
 }
 

@@ -27,17 +27,6 @@ namespace {
 class AsyncInterleaveManyTest
     : public ::testing::TestWithParam<std::tuple<int64, double>> {};
 
-// Returns a weighted sum of a prior and the actual processing time.
-double weighted_processing_time(int64 num_elements, double processing_time,
-                                double prior) {
-  if (num_elements < 30) {
-    double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
-    return prior_weight * prior + (1.0L - prior_weight) * processing_time;
-  } else {
-    return processing_time;
-  }
-}
-
 TEST_P(AsyncInterleaveManyTest, Model) {
   const int64 parallelism = std::get<0>(GetParam());
   const double input_time = std::get<1>(GetParam());
@@ -83,22 +72,12 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
   source1->record_element();
   source2->record_element();
-  EXPECT_LE(async_interleave_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 200, 0) +
-             weighted_processing_time(1, 300, 50)) /
-                    2.0 +
-                100);
-  EXPECT_GE(async_interleave_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_interleave_many->TotalProcessingTime(), 100 + 250);
   EXPECT_LE(async_interleave_many->OutputTime(&input_times),
             100 + 250 / parallelism);
   EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
   async_interleave_many->record_element();
-  EXPECT_LE(async_interleave_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 200, 0) +
-             weighted_processing_time(1, 300, 50)) /
-                    2.0 +
-                50);
-  EXPECT_GE(async_interleave_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_interleave_many->TotalProcessingTime(), 50 + 250);
   EXPECT_LE(async_interleave_many->OutputTime(&input_times),
             50 + 250 / parallelism);
   EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
@@ -136,67 +115,44 @@ TEST_P(AsyncKnownRatioTest, Model) {
   EXPECT_EQ(async_known_many->TotalProcessingTime(), 0);
   EXPECT_EQ(async_known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 0) +
-             weighted_processing_time(0, 0, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * 100);
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * 100);
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source2->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 0) +
-             weighted_processing_time(1, 200, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (100 + 200));
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (100 + 200));
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 0) +
-             weighted_processing_time(1, 200, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 200));
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 200));
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source2->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100));
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100));
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->add_processing_time(128);
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                num_inputs_per_output);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100));
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100));
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                    num_inputs_per_output +
-                128);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 128);
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100) + 128 / parallelism);
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->record_element();
-  EXPECT_LE(async_known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                    num_inputs_per_output +
-                64);
-  EXPECT_GE(async_known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 64);
   EXPECT_LE(async_known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100) + 64 / parallelism);
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
@@ -234,20 +190,10 @@ TEST(InterleaveManyTest, Model) {
   EXPECT_EQ(interleave_many->OutputTime(&input_times), 100);
   source1->record_element();
   source2->record_element();
-  EXPECT_LE(interleave_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 200, 0) +
-             weighted_processing_time(1, 300, 50)) /
-                    2.0 +
-                100);
-  EXPECT_GE(interleave_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(interleave_many->TotalProcessingTime(), 350);
   EXPECT_EQ(interleave_many->OutputTime(&input_times), 350);
   interleave_many->record_element();
-  EXPECT_LE(interleave_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 200, 0) +
-             weighted_processing_time(1, 300, 50)) /
-                    2.0 +
-                50);
-  EXPECT_GE(interleave_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(interleave_many->TotalProcessingTime(), 300);
   EXPECT_EQ(interleave_many->OutputTime(&input_times), 300);
 }
 
@@ -271,60 +217,36 @@ TEST_P(KnownRatioTest, Model) {
   EXPECT_EQ(known_many->TotalProcessingTime(), 0);
   EXPECT_EQ(known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 0) +
-             weighted_processing_time(0, 0, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(), num_inputs_per_output * 100);
   EXPECT_EQ(known_many->OutputTime(&input_times), num_inputs_per_output * 100);
   source2->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 0) +
-             weighted_processing_time(1, 200, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (100 + 200));
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (100 + 200));
   source1->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 0) +
-             weighted_processing_time(1, 200, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 200));
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 200));
   source2->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 50)) *
-                num_inputs_per_output);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100));
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100));
   known_many->add_processing_time(128);
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                num_inputs_per_output);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100));
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100));
   known_many->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                    num_inputs_per_output +
-                128);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 128);
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100) + 128);
   known_many->record_element();
-  EXPECT_LE(known_many->TotalProcessingTime(),
-            (weighted_processing_time(2, 50, 50) +
-             weighted_processing_time(2, 100, 100)) *
-                    num_inputs_per_output +
-                64);
-  EXPECT_GE(known_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(known_many->TotalProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 64);
   EXPECT_EQ(known_many->OutputTime(&input_times),
             num_inputs_per_output * (50 + 100) + 64);
 }
@@ -372,19 +294,10 @@ TEST(UnknownRatioTest, Model) {
   EXPECT_EQ(unknown_many->OutputTime(&input_times), 100);
   source1->record_element();
   source2->record_element();
-  EXPECT_LE(unknown_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 0) +
-             weighted_processing_time(1, 200, 50)) +
-                100);
-  EXPECT_GE(unknown_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown_many->TotalProcessingTime(), 400);
   EXPECT_EQ(unknown_many->OutputTime(&input_times), 400);
   unknown_many->record_element();
-  EXPECT_LE(unknown_many->TotalProcessingTime(),
-            (weighted_processing_time(1, 100, 50) +
-             weighted_processing_time(1, 200, 50)) /
-                    2.0 +
-                50);
-  EXPECT_GE(unknown_many->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown_many->TotalProcessingTime(), 200);
   EXPECT_EQ(unknown_many->OutputTime(&input_times), 200);
 }
 
@@ -405,46 +318,28 @@ TEST(UnknownTest, Model) {
   EXPECT_EQ(unknown->TotalProcessingTime(), 0);
   EXPECT_EQ(unknown->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_LE(
-      unknown->TotalProcessingTime(),
-      weighted_processing_time(1, 100, 0) + weighted_processing_time(0, 0, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 100);
   EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   source2->record_element();
-  EXPECT_LE(unknown->TotalProcessingTime(),
-            weighted_processing_time(1, 100, 0) +
-                weighted_processing_time(1, 100, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 200);
   EXPECT_EQ(unknown->OutputTime(&input_times), 200);
   source1->record_element();
-  EXPECT_LE(unknown->TotalProcessingTime(),
-            weighted_processing_time(2, 50, 50) +
-                weighted_processing_time(1, 100, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 150);
   EXPECT_EQ(unknown->OutputTime(&input_times), 150);
   source2->record_element();
-  EXPECT_LE(unknown->TotalProcessingTime(),
-            weighted_processing_time(2, 50, 50) +
-                weighted_processing_time(2, 50, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 100);
   EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   // Unknown node processing time should not affect its TotalProcessingTime() or
   // OutputTime().
   unknown->add_processing_time(100);
   EXPECT_EQ(unknown->processing_time(), 100);
-  EXPECT_LE(unknown->TotalProcessingTime(),
-            weighted_processing_time(2, 50, 50) +
-                weighted_processing_time(2, 50, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 100);
   EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   // Unknown node number of elements should not affect its TotalProcessingTime()
   // or OutputTime().
   unknown->record_element();
   EXPECT_EQ(unknown->num_elements(), 1);
-  EXPECT_LE(unknown->TotalProcessingTime(),
-            weighted_processing_time(2, 50, 50) +
-                weighted_processing_time(2, 50, 50));
-  EXPECT_GE(unknown->TotalProcessingTime(), 0);
+  EXPECT_EQ(unknown->TotalProcessingTime(), 100);
   EXPECT_EQ(unknown->OutputTime(&input_times), 100);
 }
 
@@ -502,6 +397,17 @@ TEST(SetterGetterTest, Node) {
   EXPECT_EQ(node->num_elements(), 0);
   node->record_element();
   EXPECT_EQ(node->num_elements(), 1);
+}
+
+// Returns a weighted sum of a prior and the actual processing time.
+double weighted_processing_time(int64 num_elements, double processing_time,
+                                double prior) {
+  if (num_elements < 30) {
+    double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
+    return prior_weight * prior + (1.0L - prior_weight) * processing_time;
+  } else {
+    return processing_time;
+  }
 }
 
 TEST(TestManyElements, Model) {

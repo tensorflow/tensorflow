@@ -114,6 +114,7 @@ class ROCMBlas : public blas::BlasSupport {
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
+<<<<<<< HEAD
       const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type*>&
           raw_ptrs,
       int batch_count, uint64_t batch_stride,
@@ -122,6 +123,16 @@ class ROCMBlas : public blas::BlasSupport {
           typename RocBlasTypeConversionHelper<T>::mapped_type>>* temp_memory,
       DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>*
           device_memory);
+=======
+      const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
+          &raw_ptrs,
+      int batch_count, uint64_t batch_stride,
+      ScratchAllocator *scratch_allocator, Stream *stream,
+      std::unique_ptr<TemporaryDeviceMemory<
+          typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
+      DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
+          *device_memory);
+>>>>>>> upstream/master
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.

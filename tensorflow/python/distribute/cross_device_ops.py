@@ -949,11 +949,12 @@ class CollectiveCommunication(enum.Enum):
   * `RING`: TensorFlow's ring algorithms for all-reduce and
     all-gather.
   * `NCCL`: Use ncclAllReduce for all-reduce, and ring algorithms for
-    all-gather.  TODO(ayushd): add ncclAllGather implementation.
+    all-gather.
   """
   AUTO = "AUTO"
   RING = "RING"
   NCCL = "NCCL"
+  # TODO(ayushd): add ncclAllGather implementation.
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.

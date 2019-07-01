@@ -52,7 +52,6 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
-from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -1319,31 +1318,10 @@ class Model(network.Network):
         verbose=verbose,
         callbacks=callbacks)
 
-  def _split_training_and_validation_data(self, x, y, sample_weights,
-                                          validation_split):
-    """Split input data into train/eval section based on validation_split."""
-    if training_utils.has_symbolic_tensors(x):
-      raise ValueError('If your data is in the form of symbolic tensors, '
-                       'you cannot use `validation_split`.')
-    if hasattr(x[0], 'shape'):
-      split_at = int(x[0].shape[0] * (1. - validation_split))
-    else:
-      split_at = int(len(x[0]) * (1. - validation_split))
-    x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
-    y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
-    if sample_weights:
-      sample_weights, val_sample_weights = (
-          slice_arrays(sample_weights, 0, split_at),
-          slice_arrays(sample_weights, split_at),
-      )
-    else:
-      val_sample_weights = None
-    return x, y, sample_weights, val_x, val_y, val_sample_weights
-
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
     """Unpack and check the validation data."""
-    val_x, val_y, val_sample_weights = self._unpack_validation_data(
+    val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
         validation_data)
     return self._standardize_user_data(
         val_x,
@@ -2528,28 +2506,6 @@ class Model(network.Network):
                                           dataset_ops.DatasetV2)):
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
-
-  def _unpack_validation_data(self, validation_data):
-    if (isinstance(validation_data, (iterator_ops.Iterator,
-                                     iterator_ops.IteratorV2,
-                                     dataset_ops.DatasetV2))):
-      val_x = validation_data
-      val_y = None
-      val_sample_weight = None
-    elif len(validation_data) == 2:
-      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-      val_sample_weight = None
-    elif len(validation_data) == 3:
-      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
-    else:
-      raise ValueError(
-          'When passing a `validation_data` argument, '
-          'it must contain either 2 items (x_val, y_val), '
-          'or 3 items (x_val, y_val, val_sample_weights), '
-          'or alternatively it could be a dataset or a '
-          'dataset or a dataset iterator. '
-          'However we received `validation_data=%s`' % validation_data)
-    return val_x, val_y, val_sample_weight
 
   # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):

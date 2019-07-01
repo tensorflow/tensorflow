@@ -71,8 +71,8 @@ def get_test_data(train_samples,
 @test_util.use_deterministic_cudnn
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
-               expected_output_dtype=None, validate_training=True,
-               adapt_data=None):
+               expected_output_dtype=None, expected_output_shape=None,
+               validate_training=True, adapt_data=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -82,8 +82,9 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     input_shape: Input shape tuple.
     input_dtype: Data type of the input data.
     input_data: Numpy array of input data.
-    expected_output: Shape tuple for the expected shape of the output.
+    expected_output: Numpy array of the expected output.
     expected_output_dtype: Data type expected for the output.
+    expected_output_shape: Shape tuple for the expected shape of the output.
     validate_training: Whether to attempt to validate training on this layer.
       This might be set to False for non-differentiable layers that output
       string or integer values.
@@ -145,32 +146,50 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                           keras.backend.dtype(y),
                           expected_output_dtype,
                           kwargs))
-  # check shape inference
-  model = keras.models.Model(x, y)
-  expected_output_shape = tuple(
-      layer.compute_output_shape(
-          tensor_shape.TensorShape(input_shape)).as_list())
-  expected_output_signature = layer.compute_output_signature(
-      tensor_spec.TensorSpec(shape=input_shape, dtype=input_dtype))
-  actual_output = model.predict(input_data)
-  actual_output_shape = actual_output.shape
-  def compare_shapes(expected, actual):
+
+  def assert_shapes_equal(expected, actual):
+    """Asserts that the output shape from the layer matches the actual shape."""
+    if len(expected) != len(actual):
+      raise AssertionError(
+          'When testing layer %s, for input %s, found output_shape='
+          '%s but expected to find %s.\nFull kwargs: %s' %
+          (layer_cls.__name__, x, actual, expected, kwargs))
+
     for expected_dim, actual_dim in zip(expected, actual):
+      if isinstance(expected_dim, tensor_shape.Dimension):
+        expected_dim = expected_dim.value
+      if isinstance(actual_dim, tensor_shape.Dimension):
+        actual_dim = actual_dim.value
       if expected_dim is not None and expected_dim != actual_dim:
         raise AssertionError(
             'When testing layer %s, for input %s, found output_shape='
             '%s but expected to find %s.\nFull kwargs: %s' %
             (layer_cls.__name__, x, actual, expected, kwargs))
-  compare_shapes(expected_output_shape, actual_output_shape)
-  compare_shapes(expected_output_signature.shape, actual_output_shape)
-  if expected_output_signature.dtype != actual_output.dtype:
+
+  if expected_output_shape is not None:
+    assert_shapes_equal(tensor_shape.TensorShape(expected_output_shape),
+                        y.shape)
+
+  # check shape inference
+  model = keras.models.Model(x, y)
+  computed_output_shape = tuple(
+      layer.compute_output_shape(
+          tensor_shape.TensorShape(input_shape)).as_list())
+  computed_output_signature = layer.compute_output_signature(
+      tensor_spec.TensorSpec(shape=input_shape, dtype=input_dtype))
+  actual_output = model.predict(input_data)
+  actual_output_shape = actual_output.shape
+  assert_shapes_equal(computed_output_shape, actual_output_shape)
+  assert_shapes_equal(computed_output_signature.shape, actual_output_shape)
+  if computed_output_signature.dtype != actual_output.dtype:
     raise AssertionError(
         'When testing layer %s, for input %s, found output_dtype='
         '%s but expected to find %s.\nFull kwargs: %s' %
         (layer_cls.__name__, x, actual_output.dtype,
-         expected_output_signature.dtype, kwargs))
+         computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -179,11 +198,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
-  # train(). This was causing some error for layer with Defun as it body.
   # See b/120160788 for more details. This should be mitigated after 2.0.
   if validate_training:
     model = keras.models.Model(x, layer(x))
@@ -210,7 +228,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   model.add(layer)
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
-  for expected_dim, actual_dim in zip(expected_output_shape,
+  for expected_dim, actual_dim in zip(computed_output_shape,
                                       actual_output_shape):
     if expected_dim is not None:
       if expected_dim != actual_dim:
@@ -221,10 +239,11 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
             (layer_cls.__name__,
              x,
              actual_output_shape,
-             expected_output_shape,
+             computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -233,7 +252,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # for further checks in the caller function
   return actual_output

@@ -309,13 +309,22 @@ cuda_py_test(
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:test_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:indexed_slices",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:list_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
     ],
     shard_count = 15,
 )
@@ -562,27 +571,6 @@ py_library(
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
     ],
-)
-
-cuda_py_test(
-    name = "memory_test",
-    size = "medium",
-    srcs = ["memory_test.py"],
-    additional_deps = [
-        ":remote",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
-    ],
-    shard_count = 4,
-    tags = [
-        "optonly",  # The test is too slow in non-opt mode
-    ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

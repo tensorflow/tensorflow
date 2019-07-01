@@ -155,11 +155,11 @@ ENTRY entry {
   %p = f32[1000, 1000] parameter(0)
   %token.0 = token[] after-all()
   %send = (f32[1000, 1000], token[]) send(%p, %token.0),
-    channel_id=0, is_host_transfer=true
+    channel_id=1, is_host_transfer=true
   %n1 = f32[1000, 1000] negate(%p)
   %n2 = f32[1000, 1000] negate(%n1)
   %n3 = f32[1000, 1000] negate(%n2)
-  %send-done = token[] send-done(%send), channel_id=0, is_host_transfer=true
+  %send-done = token[] send-done(%send), channel_id=1, is_host_transfer=true
 }
 )";
 

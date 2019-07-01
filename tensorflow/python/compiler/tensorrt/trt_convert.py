@@ -511,15 +511,6 @@ TrtConversionParams = collections.namedtuple(
         # Max size for the input batch.
         # This option is deprecated in TF 2.0.
         "max_batch_size",
-
-        # A list of batch sizes used to create cached engines, only used when
-        # is_dynamic_op is True. The length of the list should be <=
-        # maximum_cached_engines, and the dynamic TRT op will use this list to
-        # determine the batch sizes of the cached engines, instead of making the
-        # decision on the fly. This is useful when we know the most common batch
-        # size(s) the application is going to generate.
-        # This option is deprecated in TF 2.0.
-        "cached_engine_batches",
     ])
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
@@ -531,8 +522,7 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     maximum_cached_engines=1,
     use_calibration=True,
     use_function_backup=True,
-    max_batch_size=1,
-    cached_engine_batches=None)
+    max_batch_size=1)
 
 _TRT_ENGINE_CACHE_CONTAINER_NAME = "TF-TRT-Engine-Cache"
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
@@ -554,13 +544,6 @@ def _check_conversion_params(conversion_params):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
-  if conversion_params.cached_engine_batches:
-    if not isinstance(conversion_params.cached_engine_batches, list):
-      raise TypeError("cached_engine_batches should be a list.")
-    if len(conversion_params.cached_engine_batches
-          ) > conversion_params.maximum_cached_engines:
-      raise ValueError("cached_engine_batches should not contain more than "
-                       "maximum_cached_engines items.")
 
 
 def _check_trt_version_compatibility():
@@ -656,9 +639,6 @@ def get_tensorrt_rewriter_config(
     optimizer.parameter_map[
         "max_batch_size"].i = conversion_params.max_batch_size
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
-    if conversion_params.cached_engine_batches:
-      optimizer.parameter_map["cached_engine_batches"].list.i.extend(
-          conversion_params.cached_engine_batches)
   return rewriter_config_with_trt
 
 
@@ -679,7 +659,6 @@ class TrtGraphConverter(GraphConverter):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               cached_engine_batches=None,
                use_calibration=True,
                use_function_backup=True):
     """Initialize the converter.
@@ -711,12 +690,6 @@ class TrtGraphConverter(GraphConverter):
         ops. If the number of cached engines is already at max but none of them
         can serve the input, the TRTEngineOp will fall back to run the TF
         function based on which the TRTEngineOp is created.
-      cached_engine_batches: a list of batch sizes used to create cached
-        engines, only used when is_dynamic_op is True. The length of the list
-        should be <= maximum_cached_engines, and the dynamic TRT op will use
-        this list to determine the batch sizes of the cached engines, instead of
-        making the decision on the fly. This is useful when we know the most
-        common batch size(s) the application is going to generate.
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
@@ -757,8 +730,7 @@ class TrtGraphConverter(GraphConverter):
           "Calibration requires enabling fallback to TF function execution.")
 
     # TODO(laigd):
-    # - Verify in int8 mode that maximum_cached_engines and
-    #   cached_engine_batches are set appropriately.
+    # - Verify in int8 mode that maximum_cached_engines is set properly.
     # - If it fails to build the int8 engine it should return error.
     rewriter_config_template = None
     if (session_config and session_config.HasField("graph_options") and
@@ -774,8 +746,7 @@ class TrtGraphConverter(GraphConverter):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         use_function_backup=use_function_backup,
-        max_batch_size=max_batch_size,
-        cached_engine_batches=cached_engine_batches)
+        max_batch_size=max_batch_size)
     _check_conversion_params(self._conversion_params)
 
   def get_rewriter_config(self):
@@ -1065,7 +1036,6 @@ def create_inference_graph(
     minimum_segment_size=3,
     is_dynamic_op=False,
     maximum_cached_engines=1,
-    cached_engine_batches=None,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
@@ -1092,12 +1062,6 @@ def create_inference_graph(
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batches: a list of batch sizes used to create cached engines,
-      only used when is_dynamic_op is True. The length of the list should be <=
-      maximum_cached_engines, and the dynamic TRT op will use this list to
-      determine the batch sizes of the cached engines, instead of making the
-      decision on the fly. This is useful when we know the most common batch
-      size(s) the application is going to generate.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -1146,7 +1110,6 @@ def create_inference_graph(
       minimum_segment_size=minimum_segment_size,
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
-      cached_engine_batches=cached_engine_batches,
       use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if output_saved_model_dir:

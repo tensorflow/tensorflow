@@ -148,7 +148,11 @@ class SoftmaxOpGPU : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in_.shape(), &softmax_out));
 
+<<<<<<< HEAD
     const gpuStream_t& cu_stream = GetGpuStream(context);
+=======
+    const auto& cu_stream = GetGpuStream(context);
+>>>>>>> upstream/master
     if (logits_in_.NumElements() > 0) {
       Tensor max_logits;
       Tensor sum_probs;
@@ -169,10 +173,17 @@ class SoftmaxOpGPU : public OpKernel {
       const int numBlocks = Eigen::divup(rows * cols, numThreads);
 
       gpuprim::CountingInputIterator<int> counting_iterator(0);
+<<<<<<< HEAD
       typedef gpuprim::TransformInputIterator<acc_type,
                                           SubtractAndExpFunctor<T, acc_type>,
                                           gpuprim::CountingInputIterator<int>>
           InputIterType;
+=======
+      using InputIterType =
+          gpuprim::TransformInputIterator<acc_type,
+                                          SubtractAndExpFunctor<T, acc_type>,
+                                          gpuprim::CountingInputIterator<int>>;
+>>>>>>> upstream/master
 
       InputIterType input_itr(
           counting_iterator,
@@ -185,7 +196,11 @@ class SoftmaxOpGPU : public OpKernel {
           input_itr, rows, cols);
 
       TF_CHECK_OK(GpuLaunchKernel(
+<<<<<<< HEAD
           (GenerateNormalizedProb<T, acc_type>), numBlocks, numThreads, 0,
+=======
+          GenerateNormalizedProb<T, acc_type>, numBlocks, numThreads, 0,
+>>>>>>> upstream/master
           cu_stream, reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
           reinterpret_cast<const acc_type*>(sum_probs.flat<acc_type>().data()),
           reinterpret_cast<const T*>(max_logits.flat<T>().data()),

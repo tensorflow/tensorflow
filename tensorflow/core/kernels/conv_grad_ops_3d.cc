@@ -1404,9 +1404,15 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
             best_result_no_scratch.algorithm());
       }
 #elif TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
       LOG(INFO) << "running auto-tune for Backward-Data";
       DnnScratchAllocator scratch_allocator(
           ConvolveBackwardDataScratchSize, context);
+=======
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                            context);
+      ProfileResult best_result;
+>>>>>>> upstream/master
       bool miopen_find_status =
           stream
               ->ThenConvolveBackwardDataWithAlgorithm(
@@ -1829,9 +1835,15 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
             best_result_no_scratch.algorithm());
       }
 #elif TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
       LOG(INFO) << "running auto-tune for Backward-Filter";
       DnnScratchAllocator scratch_allocator(
           ConvolveBackwardFilterScratchSize, context);
+=======
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                            context);
+      ProfileResult best_result;
+>>>>>>> upstream/master
       bool miopen_find_status =
           stream
               ->ThenConvolveBackwardFilterWithAlgorithm(
@@ -1839,8 +1851,14 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                   conv_desc, filter_desc, &filter_backprop_ptr,
                   &scratch_allocator, AlgorithmConfig(), &best_result)
               .ok();
+<<<<<<< HEAD
       OP_REQUIRES(context, miopen_find_status && best_result.is_valid(),
                   errors::NotFound("Failed to find backward filter algorithm!"));
+=======
+      OP_REQUIRES(
+          context, miopen_find_status && best_result.is_valid(),
+          errors::NotFound("Failed to find backward filter algorithm!"));
+>>>>>>> upstream/master
       algorithm_config.set_algorithm(best_result.algorithm());
       algorithm_config.set_scratch_size(best_result.scratch_size());
 #endif

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -457,6 +458,49 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
       with self.assertRaisesOpError("Incompatible matrix dimensions"):
         linear_operator_util.assert_compatible_matrix_dimensions(
             operator, x).run()  # pyformat: disable
+
+
+class DummyOperatorWithHint(object):
+
+  def __init__(self, **kwargs):
+    self.__dict__.update(kwargs)
+
+
+class UseOperatorOrProvidedHintUnlessContradictingTest(test.TestCase,
+                                                       parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("none_none", None, None, None),
+      ("none_true", None, True, True),
+      ("true_none", True, None, True),
+      ("true_true", True, True, True),
+      ("none_false", None, False, False),
+      ("false_none", False, None, False),
+      ("false_false", False, False, False),
+  )
+  def test_computes_an_or_if_non_contradicting(self, operator_hint_value,
+                                               provided_hint_value,
+                                               expected_result):
+    self.assertEqual(
+        expected_result,
+        linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
+            operator=DummyOperatorWithHint(my_hint=operator_hint_value),
+            hint_attr_name="my_hint",
+            provided_hint_value=provided_hint_value,
+            message="should not be needed here"))
+
+  @parameterized.named_parameters(
+      ("true_false", True, False),
+      ("false_true", False, True),
+  )
+  def test_raises_if_contradicting(self, operator_hint_value,
+                                   provided_hint_value):
+    with self.assertRaisesRegexp(ValueError, "my error message"):
+      linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
+          operator=DummyOperatorWithHint(my_hint=operator_hint_value),
+          hint_attr_name="my_hint",
+          provided_hint_value=provided_hint_value,
+          message="my error message")
 
 
 if __name__ == "__main__":

@@ -1606,6 +1606,25 @@ TEST_P(HloDataflowAnalysisTest, EmbeddedComputationInterference) {
   EXPECT_TRUE(InstructionsMayInterfere(ordering, negate, embedded_log));
 }
 
+TEST_P(HloDataflowAnalysisTest, GetFlattenedValueSet) {
+  const char* hlo_text = R"(
+HloModule test_aliasing_module
+
+ENTRY root {
+  param = s32[1000] parameter(0)
+  p0 = s32[1000] copy(param)
+  p1 = s32[1000] copy(param)
+  ROOT t = (s32[1000], s32[1000]) tuple(p0, p1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  auto entry = module_->entry_computation();
+  entry->GetInstructionWithName("t");
+  auto& dataflow_analysis = RunAnalysis(GetParam());
+  auto set = dataflow_analysis.GetFlattenedValueSet(
+      entry->GetInstructionWithName("t"));
+  EXPECT_EQ(set.values().size(), 3);
+}
+
 TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
   // Test conditional with identity computations in both true and false cases.
   //

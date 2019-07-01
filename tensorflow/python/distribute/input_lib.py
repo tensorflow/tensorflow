@@ -193,11 +193,33 @@ class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
   def __init__(self, input_workers, iterators, strategy):
+    static_shape = True
+    for iterator in iterators:
+      if not isinstance(iterator, _SingleWorkerDatasetIterator):
+        continue
+      flattened_shapes = nest.flatten(iterator.output_shapes)
+      for output_shape in flattened_shapes:
+        if not output_shape.is_fully_defined():
+          static_shape = False
+          break
+
     # TODO(b/133073708): we currently need a flag to control the usage because
     # there is a performance difference between get_next() and
-    # get_next_as_optional().
-    self._enable_get_next_as_optional = getattr(
-        strategy.extended, "experimental_enable_get_next_as_optional", False)
+    # get_next_as_optional(). And we only enable get_next_as_optional when the
+    # output shapes are not static.
+    #
+    # TODO(yuefengz): Currently `experimental_enable_get_next_as_optional` is
+    # always set to False in CollectiveAllReduceStrategy. We want to have a way
+    # to distinguish multi workers/single worker between graph, so we can enable
+    # the behavior in single worker case.
+    #
+    # TODO(rxsang): We want to always enable the get_next_as_optional behavior
+    # when user passed input_fn instead of dataset.
+    if getattr(
+        strategy.extended, "experimental_enable_get_next_as_optional", False):
+      self._enable_get_next_as_optional = not static_shape
+    else:
+      self._enable_get_next_as_optional = False
 
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
@@ -493,6 +515,12 @@ class DistributedDatasetV1(DistributedDataset):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for DistributedDatasetV1."""
+    # Graph mode with one shot iterator is disabled because we have to call
+    # `initialize` on the iterator which is only required if we are using a
+    # tf.distribute strategy.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
     return self._get_iterator()
 
   def make_initializable_iterator(self):

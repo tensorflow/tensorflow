@@ -2214,3 +2214,6 @@ def _nrows(tensor, out_type=dtypes.int32):
     return tensor.nrows(out_type=out_type)
   else:
     return array_ops.shape(tensor, out_type=out_type)[0]
+
+
+ops.no_gradient("RaggedTensorToVariant")

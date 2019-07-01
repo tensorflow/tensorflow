@@ -683,8 +683,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   Tensor compatible_input;
   if (padding_top != padding_bottom || padding_left != padding_right) {
     // Pad the input in the same way we did during the forward pass, so that
-    // cuDNN receives the same input during the backward pass function as it did
-    // during the forward pass function.
+    // cuDNN or MIOpen receives the same input during the backward pass function
+    // as it did during the forward pass function.
     const int64 padding_rows_diff = std::abs(padding_bottom - padding_top);
     const int64 padding_cols_diff = std::abs(padding_right - padding_left);
     const int64 new_in_rows =
@@ -910,9 +910,14 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
     ProfileResult best_result;
+<<<<<<< HEAD
     LOG(INFO) << "running auto-tune for Backward-Filter";
     DnnScratchAllocator scratch_allocator(
         ConvolveBackwardFilterScratchSize, ctx);
+=======
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                          ctx);
+>>>>>>> upstream/master
     bool miopen_find_status =
         stream
             ->ThenConvolveBackwardFilterWithAlgorithm(
@@ -939,7 +944,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
-        "cuDNN Backward Filter function launch failure : input shape(",
+        "DNN Backward Filter function launch failure : input shape(",
         input.shape().DebugString(), ") filter shape(",
         filter_shape.DebugString(), ")"));
     return;

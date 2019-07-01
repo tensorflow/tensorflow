@@ -427,6 +427,13 @@ class Conv2DBackpropInputOp : public OpKernel {
     const int dilation_rows = GetTensorDim(dilations_, data_format_, 'H');
     const int dilation_cols = GetTensorDim(dilations_, data_format_, 'W');
 
+    VLOG(2) << "Conv2DBackpropInput:"
+            << " input: " << input_shape.DebugString()
+            << " filter:" << filter.shape().DebugString()
+            << " out_backprop: " << out_backprop.shape().DebugString()
+            << " strides: [" << stride_rows << ", " << stride_cols << "]"
+            << " dilations: [" << dilation_rows << ", " << dilation_cols << "]";
+
     LaunchConv2DBackpropInputOp<Device, T> launch;
     launch(context, use_cudnn_, cudnn_use_autotune_, out_backprop, filter,
            dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
@@ -758,7 +765,13 @@ template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+// GPU definitions.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// The slow version (but compiles for GPU)
+>>>>>>> upstream/master
 
 // A dummy type to group forward backward data autotune results together.
 struct ConvBackwardDataAutoTuneGroup {
@@ -904,8 +917,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   TensorShape compatible_input_shape;
   if (padding_top != padding_bottom || padding_left != padding_right) {
     // Pad the input in the same way we did during the forward pass, so that
-    // cuDNN receives the same input during the backward pass function as it did
-    // during the forward pass function.
+    // cuDNN or MIOpen receives the same input during the backward pass function
+    // as it did during the forward pass function.
     const int64 padding_rows_diff = std::abs(padding_bottom - padding_top);
     const int64 padding_cols_diff = std::abs(padding_right - padding_left);
     const int64 new_in_rows =
@@ -1123,12 +1136,19 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         output_desc, conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
     ProfileResult best_result;
     LOG(INFO) << "running auto-tune for Backward-Data";
     // MIOpen has its own Find and autotuner so use it here, passing
     // default AlgorithmConfig to force a search
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               ctx);
+=======
+    // MIOpen has its own Find and autotuner so use it here, passing
+    // default AlgorithmConfig to force a search
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
+    ProfileResult best_result;
+>>>>>>> upstream/master
     bool miopen_find_status =
         stream
             ->ThenConvolveBackwardDataWithAlgorithm(
@@ -1155,7 +1175,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
-        "cuDNN Backward Data function launch failure : input shape(",
+        "DNN Backward Data function launch failure : input shape(",
         input_shape.DebugString(), ") filter shape(",
         filter_shape.DebugString(), ")"));
     return;
