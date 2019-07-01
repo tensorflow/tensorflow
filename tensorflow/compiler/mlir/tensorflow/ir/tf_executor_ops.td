@@ -570,4 +570,26 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
   let verifier = ?;
 }
 
+def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger", [NoSideEffect]> {
+  let summary = [{
+    The `tf_executor.ControlTrigger` operation is similar to a no-op except that
+    it always produces a valid output even when inputs are dead.
+  }];
+
+  let description = [{
+    Its primary use so far is in the scheduling of recvs, where we add
+    ControlTrigger nodes and use them to trigger recvs. We allow ControlTrigger
+    nodes to be enabled by dead nodes.
+  }];
+
+  let arguments = (ins
+    Variadic<TfeControlType>:$controlInputs
+  );
+  let results = (outs
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
+}
+
 #endif // TF_EXECUTOR_DIALECT

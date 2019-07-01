@@ -349,3 +349,21 @@ func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> te
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+  tf_executor.graph {
+// CHECK: tf_executor.ControlTrigger %arg0, %arg1
+    %0 = tf_executor.ControlTrigger %arg0, %arg1
+  }
+  return
+}
+
+// CHECK-LABEL: func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+  tf_executor.graph {
+// CHECK: tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %0 = tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+  }
+  return
+}
+

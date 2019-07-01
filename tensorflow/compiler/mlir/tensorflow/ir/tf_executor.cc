@@ -748,6 +748,32 @@ ParseResult ParseExitOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+//===----------------------------------------------------------------------===//
+// tf_executor.ControlTrigger
+//===----------------------------------------------------------------------===//
+
+void Print(ControlTriggerOp trigger, OpAsmPrinter *p) {
+  *p << trigger.getOperationName() << ' ';
+  p->printOperands(trigger.getOperands());
+  p->printOptionalAttrDict(trigger.getAttrs());
+}
+
+ParseResult ParseControlTriggerOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<Type, 1> types;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+
+  if (parser->parseOperandList(op_infos)) return failure();
+  Type control_type = ControlType::get(parser->getBuilder().getContext());
+  types.append(op_infos.size(), control_type);
+  if (parser->resolveOperands(op_infos, types, loc, result->operands))
+    return failure();
+
+  // Single control as the only output
+  result->types.push_back(control_type);
+  return parser->parseOptionalAttributeDict(result->attributes);
+}
+
 }  // anonymous namespace
 
 //===----------------------------------------------------------------------===//
