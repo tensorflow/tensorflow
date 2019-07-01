@@ -220,13 +220,12 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D1x1x1Filter2x1x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 3, 6, 1, 1],
-          filter_in_sizes=[1, 1, 1, 1, 1],
-          stride=1,
-          padding="VALID",
-          dilations=[2, 1, 1])
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 3, 6, 1, 1],
+        filter_in_sizes=[1, 1, 1, 1, 1],
+        stride=1,
+        padding="VALID",
+        dilations=[2, 1, 1])
 
   # Expected values computed using scipy's correlate function.
   def testConv3D2x2x2Filter(self):
@@ -245,13 +244,12 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2Filter1x2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 4, 6, 3, 1],
-          filter_in_sizes=[2, 2, 2, 1, 1],
-          stride=1,
-          padding="VALID",
-          dilations=[1, 2, 1])
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 4, 6, 3, 1],
+        filter_in_sizes=[2, 2, 2, 1, 1],
+        stride=1,
+        padding="VALID",
+        dilations=[1, 2, 1])
 
   def testConv3DStrides(self):
     expected_output = [
