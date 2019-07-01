@@ -28,3 +28,24 @@ func @verifyBenefit(%arg0 : i32) -> i32 {
   // CHECK: "test.op_b"(%arg0) {attr = 34 : i32}
   return %0 : i32
 }
+
+// CHECK-LABEL: verifyStrEnumAttr
+func @verifyStrEnumAttr() -> i32 {
+  // CHECK: "test.str_enum_attr"() {attr = "B"}
+  %0 = "test.str_enum_attr"() {attr = "A"} : () -> i32
+  return %0 : i32
+}
+
+// CHECK-LABEL: verifyI32EnumAttr
+func @verifyI32EnumAttr() -> i32 {
+  // CHECK: "test.i32_enum_attr"() {attr = 10 : i32}
+  %0 = "test.i32_enum_attr"() {attr = 5: i32} : () -> i32
+  return %0 : i32
+}
+
+// CHECK-LABEL: verifyI64EnumAttr
+func @verifyI64EnumAttr() -> i32 {
+  // CHECK: "test.i64_enum_attr"() {attr = 10 : i64}
+  %0 = "test.i64_enum_attr"() {attr = 5: i64} : () -> i32
+  return %0 : i32
+}

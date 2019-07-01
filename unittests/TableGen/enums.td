@@ -17,15 +17,16 @@
 
 include "mlir/IR/OpBase.td"
 
-def CaseA: EnumAttrCase<"CaseA", 0>;
+def CaseA: EnumAttrCase<"CaseA">;
 def CaseB: EnumAttrCase<"CaseB", 10>;
 
-def MyEnum: EnumAttr<"MyEnum", "A test enum", [CaseA, CaseB]> {
+def StrEnum: EnumAttr<"StrEnum", "A test enum", [CaseA, CaseB]> {
   let cppNamespace = "Outer::Inner";
   let stringToSymbolFnName = "ConvertToEnum";
   let symbolToStringFnName = "ConvertToString";
 }
 
-def Uint64Enum : EnumAttr<"Uint64Enum", "A test enum", [CaseA, CaseB]> {
-  let underlyingType = "uint64_t";
-}
+def Case5: I32EnumAttrCase<"Case5", 5>;
+def Case10: I32EnumAttrCase<"Case10", 10>;
+
+def I32Enum: I32EnumAttr<"I32Enum", "A test enum", [Case5, Case10]>;

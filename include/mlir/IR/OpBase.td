@@ -483,6 +483,9 @@ def FloatLike : TypeConstraint<Or<[AnyFloat.predicate,
 // Attribute definitions
 //===----------------------------------------------------------------------===//
 
+//===----------------------------------------------------------------------===//
+// Base attribute definition
+
 // Base class for all attributes.
 class Attr<Pred condition, string descr = ""> :
     AttrConstraint<condition, descr> {
@@ -517,6 +520,9 @@ class Attr<Pred condition, string descr = ""> :
   bit isOptional = 0;
 }
 
+//===----------------------------------------------------------------------===//
+// Attribute modifier definition
+
 // Decorates an attribute to have an (unvalidated) default value if not present.
 class DefaultValuedAttr<Attr attr, string val> :
     Attr<attr.predicate, attr.description> {
@@ -549,6 +555,9 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   // TOOD(b/132458159): consider embedding Attr as a field.
   string baseAttr = !cast<string>(attr);
 }
+
+//===----------------------------------------------------------------------===//
+// Primitive attribute kinds
 
 // A generic attribute that must be constructed around a specific type
 // `attrValType`. Backed by MLIR attribute kind `attrKind`.
@@ -631,30 +640,46 @@ class TypeAttrBase<string retType, string description> :
 
 def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
 
-// An enum attribute case.
-class EnumAttrCase<string sym, int val = -1> : StringBasedAttr<
-    CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
-    "case " # sym> {
+//===----------------------------------------------------------------------===//
+// Enum attribute kinds
+
+// Additional information for an enum attribute case.
+class EnumAttrCaseInfo<string sym, int val> {
   // The C++ enumerant symbol
   string symbol = sym;
+
   // The C++ enumerant value
-  // A non-negative value must be provided if to use EnumsGen backend.
+  // If less than zero, there will be no explicit discriminator values assigned
+  // to enumerators in the generated enum class.
   int value = val;
 }
 
-// An enum attribute. Its value can only be one from the given list of `cases`.
-// Enum attributes are emulated via mlir::StringAttr, plus extra verification
-// on the string: only the symbols of the allowed cases are permitted as the
-// string value.
-class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
-    StringBasedAttr<And<[StrAttr.predicate,
-                           Or<!foreach(case, cases, case.predicate)>]>,
-                    description> {
+// An enum attribute case stored with StringAttr.
+// TODO(antiagainst): rename this to StrEnumAttrCase to be consistent
+class EnumAttrCase<string sym, int val = -1> :
+    EnumAttrCaseInfo<sym, val>,
+    StringBasedAttr<
+      CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
+      "case " # sym>;
+
+// An enum attribute case stored with IntegerAttr.
+class IntEnumAttrCaseBase<I intType, string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<intType, "case " # sym> {
+  let predicate =
+    CPred<"$_self.cast<IntegerAttr>().getInt() == " # val>;
+}
+
+class I32EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I32, sym, val>;
+class I64EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I64, sym, val>;
+
+// Additional information for an enum attribute.
+class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // The C++ enum class name
   string className = name;
 
   // List of all accepted cases
-  list<EnumAttrCase> enumerants = cases;
+  list<EnumAttrCaseInfo> enumerants = cases;
 
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
@@ -705,6 +730,51 @@ class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
   // ```
   string maxEnumValFnName = "getMaxEnumValFor" # name;
 }
+
+// An enum attribute backed by StringAttr.
+//
+// Op attributes of this kind are stored as StringAttr. Extra verification will
+// be generated on the string though: only the symbols of the allowed cases are
+// permitted as the string value.
+// TODO(antiagainst): rename this to StrEnumAttr to be consistent
+class EnumAttr<string name, string description,
+                  list<EnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>,
+    StringBasedAttr<
+      And<[StrAttr.predicate, Or<!foreach(case, cases, case.predicate)>]>,
+      !if(!empty(description), "allowed string cases: " #
+          StrJoin<!foreach(case, cases, "'" # case.symbol # "'")>.result,
+          description)>;
+
+// An enum attribute backed by IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer though: only the values of the allowed cases are
+// permitted as the integer value.
+class IntEnumAttr<I intType, string name, string description,
+                  list<IntEnumAttrCaseBase> cases> :
+    EnumAttrInfo<name, cases>,
+    IntegerAttrBase<intType,
+      !if(!empty(description), "allowed " # intType.description # " cases: " #
+          StrJoinInt<!foreach(case, cases, case.value)>.result, description)> {
+  let predicate = And<[
+    IntegerAttrBase<intType, "">.predicate,
+    Or<!foreach(case, cases, case.predicate)>]>;
+}
+
+class I32EnumAttr<string name, string description,
+                  list<I32EnumAttrCase> cases> :
+    IntEnumAttr<I32, name, description, cases> {
+  let underlyingType = "uint32_t";
+}
+class I64EnumAttr<string name, string description,
+                  list<I64EnumAttrCase> cases> :
+    IntEnumAttr<I64, name, description, cases> {
+  let underlyingType = "uint64_t";
+}
+
+//===----------------------------------------------------------------------===//
+// Composite attribute kinds
 
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
@@ -771,6 +841,9 @@ def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
   let constBuilderCall = "$_builder.getFunctionAttr($0)";
 }
 
+//===----------------------------------------------------------------------===//
+// Derive attribute kinds
+
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
@@ -781,6 +854,9 @@ class DerivedAttr<code ret, code b> : Attr<CPred<"true">, "derived attribute"> {
 
 // Derived attribute that returns a mlir::Type.
 class DerivedTypeAttr<code body> : DerivedAttr<"Type", body>;
+
+//===----------------------------------------------------------------------===//
+// Constant attribute kinds
 
 // Represents a constant attribute of specific Attr type. A constant
 // attribute can be specified only of attributes that have a constant

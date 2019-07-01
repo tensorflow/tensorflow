@@ -104,6 +104,39 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   }];
 }
 
+def StrCaseA: EnumAttrCase<"A">;
+def StrCaseB: EnumAttrCase<"B">;
+
+def SomeStrEnum: EnumAttr<
+  "SomeStrEnum", "", [StrCaseA, StrCaseB]>;
+
+def StrEnumAttrOp : TEST_Op<"str_enum_attr"> {
+  let arguments = (ins SomeStrEnum:$attr);
+  let results = (outs I32:$val);
+}
+
+def I32Case5:  I32EnumAttrCase<"case5", 5>;
+def I32Case10: I32EnumAttrCase<"case10", 10>;
+
+def SomeI32Enum: I32EnumAttr<
+  "SomeI32Enum", "", [I32Case5, I32Case10]>;
+
+def I32EnumAttrOp : TEST_Op<"i32_enum_attr"> {
+  let arguments = (ins SomeI32Enum:$attr);
+  let results = (outs I32:$val);
+}
+
+def I64Case5:  I64EnumAttrCase<"case5", 5>;
+def I64Case10: I64EnumAttrCase<"case10", 10>;
+
+def SomeI64Enum: I64EnumAttr<
+  "SomeI64Enum", "", [I64Case5, I64Case10]>;
+
+def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
+  let arguments = (ins SomeI64Enum:$attr);
+  let results = (outs I32:$val);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Traits
 //===----------------------------------------------------------------------===//
@@ -191,6 +224,12 @@ def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
 // Verify that patterns with more source nodes are selected before those with fewer.
 def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
+
+// Test string enum attribute in rewrites.
+def : Pat<(StrEnumAttrOp StrCaseA), (StrEnumAttrOp StrCaseB)>;
+// Test integer enum attribute in rewrites.
+def : Pat<(I32EnumAttrOp I32Case5), (I32EnumAttrOp I32Case10)>;
+def : Pat<(I64EnumAttrOp I64Case5), (I64EnumAttrOp I64Case10)>;
 
 //===----------------------------------------------------------------------===//
 // Test op regions

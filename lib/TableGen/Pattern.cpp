@@ -54,7 +54,7 @@ bool tblgen::DagLeaf::isConstantAttr() const {
 }
 
 bool tblgen::DagLeaf::isEnumAttrCase() const {
-  return isSubClassOf("EnumAttrCase");
+  return isSubClassOf("EnumAttrCaseInfo");
 }
 
 tblgen::Constraint tblgen::DagLeaf::getAsConstraint() const {

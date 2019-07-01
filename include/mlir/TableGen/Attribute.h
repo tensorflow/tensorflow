@@ -121,11 +121,14 @@ private:
 };
 
 // Wrapper class providing helper methods for accessing enum attribute cases
-// defined in TableGen. This class should closely reflect what is defined as
-// class `EnumAttrCase` in TableGen.
+// defined in TableGen. This is used for enum attribute case backed by both
+// StringAttr and IntegerAttr.
 class EnumAttrCase : public Attribute {
 public:
   explicit EnumAttrCase(const llvm::DefInit *init);
+
+  // Returns true if this EnumAttrCase is backed by a StringAttr.
+  bool isStrCase() const;
 
   // Returns the symbol of this enum attribute case.
   StringRef getSymbol() const;
@@ -135,13 +138,16 @@ public:
 };
 
 // Wrapper class providing helper methods for accessing enum attributes defined
-// in TableGen. This class should closely reflect what is defined as class
-// `EnumAttr` in TableGen.
+// in TableGen.This is used for enum attribute case backed by both StringAttr
+// and IntegerAttr.
 class EnumAttr : public Attribute {
 public:
   explicit EnumAttr(const llvm::Record *record);
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
+
+  // Returns true if this EnumAttr is backed by a StringAttr.
+  bool isStrEnum() const;
 
   // Returns the enum class name.
   StringRef getEnumClassName() const;

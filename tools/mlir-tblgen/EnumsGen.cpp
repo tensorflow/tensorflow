@@ -60,11 +60,11 @@ static void emitEnumClass(const Record &enumDef, StringRef enumName,
   for (const auto &enumerant : enumerants) {
     auto symbol = makeIdentifier(enumerant.getSymbol());
     auto value = enumerant.getValue();
-    if (value < 0) {
-      llvm::PrintFatalError(enumDef.getLoc(),
-                            "all enumerants must have a non-negative value");
+    if (value >= 0) {
+      os << formatv("  {0} = {1},\n", symbol, value);
+    } else {
+      os << formatv("  {0},\n", symbol);
     }
-    os << formatv("  {0} = {1},\n", symbol, value);
   }
   os << "};\n\n";
 }
@@ -101,6 +101,88 @@ template<> struct DenseMapInfo<{0}> {{
   os << "\n\n";
 }
 
+static void emitMaxValueFn(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef maxEnumValFnName = enumAttr.getMaxEnumValFnName();
+  auto enumerants = enumAttr.getAllCases();
+
+  unsigned maxEnumVal = 0;
+  for (const auto &enumerant : enumerants) {
+    int64_t value = enumerant.getValue();
+    // Avoid generating the max value function if there is an enumerant without
+    // explicit value.
+    if (value < 0)
+      return;
+
+    maxEnumVal = std::max(maxEnumVal, static_cast<unsigned>(value));
+  }
+
+  // Emit the function to return the max enum value
+  os << formatv("inline constexpr unsigned {0}() {{\n", maxEnumValFnName);
+  os << formatv("  return {0};\n", maxEnumVal);
+  os << "}\n\n";
+}
+
+static void emitSymToStrFn(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("llvm::StringRef {1}({0} val) {{\n", enumName, symToStrFnName);
+  os << "  switch (val) {\n";
+  for (const auto &enumerant : enumerants) {
+    auto symbol = enumerant.getSymbol();
+    os << formatv("    case {0}::{1}: return \"{2}\";\n", enumName,
+                  makeIdentifier(symbol), symbol);
+  }
+  os << "  }\n";
+  os << "  return \"\";\n";
+  os << "}\n\n";
+}
+
+static void emitStrToSymFn(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef str) {{\n", enumName,
+                strToSymFnName);
+  os << formatv("  return llvm::StringSwitch<llvm::Optional<{0}>>(str)\n",
+                enumName);
+  for (const auto &enumerant : enumerants) {
+    auto symbol = enumerant.getSymbol();
+    os << formatv("      .Case(\"{1}\", {0}::{2})\n", enumName, symbol,
+                  makeIdentifier(symbol));
+  }
+  os << "      .Default(llvm::None);\n";
+  os << "}\n";
+}
+
+static void emitUnderlyingToSymFn(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  std::string underlyingType = enumAttr.getUnderlyingType();
+  StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("llvm::Optional<{0}> {1}({2} value) {{\n", enumName,
+                underlyingToSymFnName,
+                underlyingType.empty() ? std::string("unsigned")
+                                       : underlyingType)
+     << "  switch (value) {\n";
+  for (const auto &enumerant : enumerants) {
+    auto symbol = enumerant.getSymbol();
+    auto value = enumerant.getValue();
+    os << formatv("  case {0}: return {1}::{2};\n", value, enumName,
+                  makeIdentifier(symbol));
+  }
+  os << "  default: return llvm::None;\n"
+     << "  }\n"
+     << "}\n\n";
+}
+
 static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   EnumAttr enumAttr(enumDef);
   StringRef enumName = enumAttr.getEnumClassName();
@@ -110,7 +192,6 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
   StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
-  StringRef maxEnumValFnName = enumAttr.getMaxEnumValFnName();
   auto enumerants = enumAttr.getAllCases();
 
   llvm::SmallVector<StringRef, 2> namespaces;
@@ -130,19 +211,10 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef);\n", enumName,
                 strToSymFnName);
 
+  emitMaxValueFn(enumDef, os);
+
   for (auto ns : llvm::reverse(namespaces))
     os << "} // namespace " << ns << "\n";
-
-  // Emit the function to return the max enum value
-  unsigned maxEnumVal = 0;
-  for (const auto &enumerant : enumerants) {
-    auto value = enumerant.getValue();
-    // Already checked that the value is non-negetive.
-    maxEnumVal = std::max(maxEnumVal, static_cast<unsigned>(value));
-  }
-  os << formatv("inline constexpr unsigned {0}() {{\n", maxEnumValFnName);
-  os << formatv("  return {0};\n", maxEnumVal);
-  os << "}\n\n";
 
   // Emit DenseMapInfo for this enum class
   emitDenseMapInfo(enumName, underlyingType, cppNamespace, os);
@@ -151,7 +223,7 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
 static bool emitEnumDecls(const RecordKeeper &recordKeeper, raw_ostream &os) {
   llvm::emitSourceFileHeader("Enum Utility Declarations", os);
 
-  auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttr");
+  auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   for (const auto *def : defs)
     emitEnumDecl(*def, os);
 
@@ -160,13 +232,7 @@ static bool emitEnumDecls(const RecordKeeper &recordKeeper, raw_ostream &os) {
 
 static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
   EnumAttr enumAttr(enumDef);
-  StringRef enumName = enumAttr.getEnumClassName();
   StringRef cppNamespace = enumAttr.getCppNamespace();
-  std::string underlyingType = enumAttr.getUnderlyingType();
-  StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
-  StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
-  StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
-  auto enumerants = enumAttr.getAllCases();
 
   llvm::SmallVector<StringRef, 2> namespaces;
   llvm::SplitString(cppNamespace, namespaces, "::");
@@ -174,43 +240,9 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
   for (auto ns : namespaces)
     os << "namespace " << ns << " {\n";
 
-  os << formatv("llvm::StringRef {1}({0} val) {{\n", enumName, symToStrFnName);
-  os << "  switch (val) {\n";
-  for (const auto &enumerant : enumerants) {
-    auto symbol = enumerant.getSymbol();
-    os << formatv("    case {0}::{1}: return \"{2}\";\n", enumName,
-                  makeIdentifier(symbol), symbol);
-  }
-  os << "  }\n";
-  os << "  return \"\";\n";
-  os << "}\n\n";
-
-  os << formatv("llvm::Optional<{0}> {1}({2} value) {{\n", enumName,
-                underlyingToSymFnName,
-                underlyingType.empty() ? std::string("unsigned")
-                                       : underlyingType)
-     << "  switch (value) {\n";
-  for (const auto &enumerant : enumerants) {
-    auto symbol = enumerant.getSymbol();
-    auto value = enumerant.getValue();
-    os << formatv("  case {0}: return {1}::{2};\n", value, enumName,
-                  makeIdentifier(symbol));
-  }
-  os << "  default: return llvm::None;\n"
-     << "  }\n"
-     << "}\n\n";
-
-  os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef str) {{\n", enumName,
-                strToSymFnName);
-  os << formatv("  return llvm::StringSwitch<llvm::Optional<{0}>>(str)\n",
-                enumName);
-  for (const auto &enumerant : enumerants) {
-    auto symbol = enumerant.getSymbol();
-    os << formatv("      .Case(\"{1}\", {0}::{2})\n", enumName, symbol,
-                  makeIdentifier(symbol));
-  }
-  os << "      .Default(llvm::None);\n";
-  os << "}\n";
+  emitSymToStrFn(enumDef, os);
+  emitStrToSymFn(enumDef, os);
+  emitUnderlyingToSymFn(enumDef, os);
 
   for (auto ns : llvm::reverse(namespaces))
     os << "} // namespace " << ns << "\n";
@@ -220,7 +252,7 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
 static bool emitEnumDefs(const RecordKeeper &recordKeeper, raw_ostream &os) {
   llvm::emitSourceFileHeader("Enum Utility Definitions", os);
 
-  auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttr");
+  auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   for (const auto *def : defs)
     emitEnumDef(*def, os);
 

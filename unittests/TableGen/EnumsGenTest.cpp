@@ -31,36 +31,40 @@ using ::testing::StrEq;
 // Test namespaces and enum class/utility names
 using Outer::Inner::ConvertToEnum;
 using Outer::Inner::ConvertToString;
-using Outer::Inner::MyEnum;
+using Outer::Inner::StrEnum;
 
-TEST(EnumsGenTest, GeneratedEnumDefinition) {
-  EXPECT_EQ(0u, static_cast<uint64_t>(MyEnum::CaseA));
-  EXPECT_EQ(10u, static_cast<uint64_t>(MyEnum::CaseB));
+TEST(EnumsGenTest, GeneratedStrEnumDefinition) {
+  EXPECT_EQ(0u, static_cast<uint64_t>(StrEnum::CaseA));
+  EXPECT_EQ(10u, static_cast<uint64_t>(StrEnum::CaseB));
+}
+
+TEST(EnumsGenTest, GeneratedI32EnumDefinition) {
+  EXPECT_EQ(5u, static_cast<uint64_t>(I32Enum::Case5));
+  EXPECT_EQ(10u, static_cast<uint64_t>(I32Enum::Case10));
 }
 
 TEST(EnumsGenTest, GeneratedDenseMapInfo) {
-  llvm::DenseMap<MyEnum, std::string> myMap;
+  llvm::DenseMap<StrEnum, std::string> myMap;
 
-  myMap[MyEnum::CaseA] = "zero";
-  myMap[MyEnum::CaseB] = "ten";
+  myMap[StrEnum::CaseA] = "zero";
+  myMap[StrEnum::CaseB] = "one";
 
-  EXPECT_THAT(myMap[MyEnum::CaseA], StrEq("zero"));
-  EXPECT_THAT(myMap[MyEnum::CaseB], StrEq("ten"));
+  EXPECT_THAT(myMap[StrEnum::CaseA], StrEq("zero"));
+  EXPECT_THAT(myMap[StrEnum::CaseB], StrEq("one"));
 }
 
 TEST(EnumsGenTest, GeneratedSymbolToStringFn) {
-  EXPECT_THAT(ConvertToString(MyEnum::CaseA), StrEq("CaseA"));
-  EXPECT_THAT(ConvertToString(MyEnum::CaseB), StrEq("CaseB"));
+  EXPECT_THAT(ConvertToString(StrEnum::CaseA), StrEq("CaseA"));
+  EXPECT_THAT(ConvertToString(StrEnum::CaseB), StrEq("CaseB"));
 }
 
 TEST(EnumsGenTest, GeneratedStringToSymbolFn) {
-  EXPECT_EQ(llvm::Optional<MyEnum>(MyEnum::CaseA), ConvertToEnum("CaseA"));
-  EXPECT_EQ(llvm::Optional<MyEnum>(MyEnum::CaseB), ConvertToEnum("CaseB"));
+  EXPECT_EQ(llvm::Optional<StrEnum>(StrEnum::CaseA), ConvertToEnum("CaseA"));
+  EXPECT_EQ(llvm::Optional<StrEnum>(StrEnum::CaseB), ConvertToEnum("CaseB"));
   EXPECT_EQ(llvm::None, ConvertToEnum("X"));
 }
 
 TEST(EnumsGenTest, GeneratedUnderlyingType) {
-  bool v =
-      std::is_same<uint64_t, std::underlying_type<Uint64Enum>::type>::value;
+  bool v = std::is_same<uint32_t, std::underlying_type<I32Enum>::type>::value;
   EXPECT_TRUE(v);
 }

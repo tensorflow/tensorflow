@@ -30,3 +30,88 @@ func @string_attr_custom_type() {
   test.string_attr_with_type "string_data"
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Test StrEnumAttr
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @allowed_cases_pass
+func @allowed_cases_pass() {
+  // CHECK: test.str_enum_attr
+  %0 = "test.str_enum_attr"() {attr = "A"} : () -> i32
+  // CHECK: test.str_enum_attr
+  %1 = "test.str_enum_attr"() {attr = "B"} : () -> i32
+  return
+}
+
+// -----
+
+func @disallowed_case_fail() {
+  // expected-error @+1 {{allowed string cases: 'A', 'B'}}
+  %0 = "test.str_enum_attr"() {attr = 7: i32} : () -> i32
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Test I32EnumAttr
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @allowed_cases_pass
+func @allowed_cases_pass() {
+  // CHECK: test.i32_enum_attr
+  %0 = "test.i32_enum_attr"() {attr = 5: i32} : () -> i32
+  // CHECK: test.i32_enum_attr
+  %1 = "test.i32_enum_attr"() {attr = 10: i32} : () -> i32
+  return
+}
+
+// -----
+
+func @disallowed_case7_fail() {
+  // expected-error @+1 {{allowed 32-bit integer cases: 5, 10}}
+  %0 = "test.i32_enum_attr"() {attr = 7: i32} : () -> i32
+  return
+}
+
+// -----
+
+func @disallowed_case7_fail() {
+  // expected-error @+1 {{allowed 32-bit integer cases: 5, 10}}
+  %0 = "test.i32_enum_attr"() {attr = 5: i64} : () -> i32
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Test I64EnumAttr
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @allowed_cases_pass
+func @allowed_cases_pass() {
+  // CHECK: test.i64_enum_attr
+  %0 = "test.i64_enum_attr"() {attr = 5: i64} : () -> i32
+  // CHECK: test.i64_enum_attr
+  %1 = "test.i64_enum_attr"() {attr = 10: i64} : () -> i32
+  return
+}
+
+// -----
+
+func @disallowed_case7_fail() {
+  // expected-error @+1 {{allowed 64-bit integer cases: 5, 10}}
+  %0 = "test.i64_enum_attr"() {attr = 7: i64} : () -> i32
+  return
+}
+
+// -----
+
+func @disallowed_case7_fail() {
+  // expected-error @+1 {{allowed 64-bit integer cases: 5, 10}}
+  %0 = "test.i64_enum_attr"() {attr = 5: i32} : () -> i32
+  return
+}
