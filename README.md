@@ -119,8 +119,7 @@ building a compiler for a Toy language.
 
 # MLIR talks
 
-* "[MLIR Primer: A Compiler Infrastructure for the End of Moore’s
-    Law](https://drive.google.com/file/d/1hUeAJXcAXwz82RXA5VtO5ZoH8cVQhrOK/view?usp=sharing)"
+* "[MLIR Primer: A Compiler Infrastructure for the End of Moore’s Law](https://ai.google/research/pubs/pub48035.pdf)"
   * Chris Lattner & Jacques Pienaar, Google at
     [Compilers for Machine Learning](https://www.c4ml.org/) workshop at
     [CGO 2019](http://cgo.org/cgo2019/)
