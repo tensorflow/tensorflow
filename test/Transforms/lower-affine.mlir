@@ -637,3 +637,65 @@ func @affine_apply_ceildiv(%arg0 : index) -> (index) {
   %0 = affine.apply #mapceildiv (%arg0)
   return %0 : index
 }
+
+// CHECK-LABEL: func @affine_load
+func @affine_load(%arg0 : index) {
+  %0 = alloc() : memref<10xf32>
+  affine.for %i0 = 0 to 10 {
+    %1 = affine.load %0[%i0 + symbol(%arg0) + 7] : memref<10xf32>
+  }
+// CHECK:       %3 = addi %1, %arg0 : index
+// CHECK-NEXT:  %c7 = constant 7 : index
+// CHECK-NEXT:  %4 = addi %3, %c7 : index
+// CHECK-NEXT:  %5 = load %0[%4] : memref<10xf32>
+  return
+}
+
+// CHECK-LABEL: func @affine_store
+func @affine_store(%arg0 : index) {
+  %0 = alloc() : memref<10xf32>
+  %1 = constant 11.0 : f32 
+  affine.for %i0 = 0 to 10 {
+    affine.store %1, %0[%i0 - symbol(%arg0) + 7] : memref<10xf32>
+  }
+// CHECK:       %c-1 = constant -1 : index
+// CHECK-NEXT:  %3 = muli %arg0, %c-1 : index
+// CHECK-NEXT:  %4 = addi %1, %3 : index
+// CHECK-NEXT:  %c7 = constant 7 : index
+// CHECK-NEXT:  %5 = addi %4, %c7 : index
+// CHECK-NEXT:  store %cst, %0[%5] : memref<10xf32>
+  return
+}
+
+// CHECK-LABEL: func @affine_dma_start
+func @affine_dma_start(%arg0 : index) {
+  %0 = alloc() : memref<100xf32>
+  %1 = alloc() : memref<100xf32, 2>
+  %2 = alloc() : memref<1xi32>
+  %c0 = constant 0 : index
+  %c64 = constant 64 : index
+  affine.for %i0 = 0 to 10 {
+    affine.dma_start %0[%i0 + 7], %1[%arg0 + 11], %2[%c0], %c64
+        : memref<100xf32>, memref<100xf32, 2>, memref<1xi32>
+  }
+// CHECK:       %c7 = constant 7 : index
+// CHECK-NEXT:  %5 = addi %3, %c7 : index
+// CHECK-NEXT:  %c11 = constant 11 : index
+// CHECK-NEXT:  %6 = addi %arg0, %c11 : index
+// CHECK-NEXT:  dma_start %0[%5], %1[%6], %c64, %2[%c0] : memref<100xf32>, memref<100xf32, 2>, memref<1xi32>
+  return
+}
+
+// CHECK-LABEL: func @affine_dma_wait
+func @affine_dma_wait(%arg0 : index) {
+  %2 = alloc() : memref<1xi32>
+  %c64 = constant 64 : index
+  affine.for %i0 = 0 to 10 {
+    affine.dma_wait %2[%i0 + %arg0 + 17], %c64 : memref<1xi32>
+  }
+// CHECK:       %3 = addi %1, %arg0 : index
+// CHECK-NEXT:  %c17 = constant 17 : index
+// CHECK-NEXT:  %4 = addi %3, %c17 : index
+// CHECK-NEXT:  dma_wait %0[%4], %c64 : memref<1xi32>
+  return
+}
