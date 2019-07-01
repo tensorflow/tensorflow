@@ -40,6 +40,13 @@ func @remap_input_1_to_N_remaining_use(%arg0: f32) {
   "work"(%arg0) : (f32) -> ()
 }
 
+// CHECK-LABEL: func @remap_input_to_self
+func @remap_input_to_self(%arg0: index) {
+  // CHECK-NOT: test.cast
+  // CHECK: "work"
+  "work"(%arg0) : (index) -> ()
+}
+
 // CHECK-LABEL: func @remap_multi(%arg0: f64, %arg1: f64) -> (f64, f64)
 func @remap_multi(%arg0: i64, %unused: i16, %arg1: i64) -> (i64, i64) {
  // CHECK-NEXT: "test.valid"{{.*}} : (f64, f64)
