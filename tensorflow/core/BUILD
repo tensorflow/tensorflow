@@ -257,7 +257,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/trackable_object_graph.proto",
     "protobuf/control_flow.proto",
-    "protobuf/data/experimental/serialization.proto",
     "protobuf/data/experimental/snapshot.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",

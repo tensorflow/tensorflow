@@ -17,16 +17,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("DatasetToDef")
-    .Input("input_dataset: variant")
-    .Output("dataset_def: string")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("DatasetFromDef")
-    .Input("dataset_def: string")
-    .Output("handle: variant")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("StatsAggregatorSetSummaryWriter")
     .Input("stats_aggregator: resource")
     .Input("summary: resource")
