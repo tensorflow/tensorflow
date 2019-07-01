@@ -148,7 +148,7 @@ class SoftmaxOpGPU : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in_.shape(), &softmax_out));
 
-    const auto& cu_stream = GetCudaStream(context);
+    const auto& cu_stream = GetGpuStream(context);
     if (logits_in_.NumElements() > 0) {
       Tensor max_logits;
       Tensor sum_probs;
