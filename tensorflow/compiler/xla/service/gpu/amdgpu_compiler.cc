@@ -384,7 +384,13 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 
 AMDGPUCompiler::AMDGPUCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(se::rocm::kROCmPlatformId) {}
+
+AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(platform_id) {}
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

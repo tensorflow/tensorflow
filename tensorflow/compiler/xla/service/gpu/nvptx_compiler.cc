@@ -456,6 +456,11 @@ void WarnIfBadDriverJITVersion() {
 
 }  // namespace
 
+NVPTXCompiler::NVPTXCompiler()
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(se::cuda::kCudaPlatformId) {}
+
 NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
     : pointer_size_(llvm::DataLayout(kDataLayout)
                         .getPointerSize(0 /* default address space */)),
