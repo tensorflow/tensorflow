@@ -442,7 +442,7 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
         n->type_string() == "_XlaSendFromHost") {
       n->ClearAttr("device_ordinal");
       n->AddAttr("device_ordinal", device_ordinal_value);
-    } else if (n->type_string() == "If") {
+    } else if (n->IsIfNode()) {
       for (const string& attr_name :
            std::vector<string>{"then_branch", "else_branch"}) {
         NameAttrList branch_func;
@@ -1442,7 +1442,7 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     bool* has_outside_compilation) {
   std::vector<Node*> if_nodes, while_nodes, func_call_nodes;
   for (Node* n : g->nodes()) {
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       if_nodes.push_back(n);
     } else if (n->type_string() == "While") {
       while_nodes.push_back(n);

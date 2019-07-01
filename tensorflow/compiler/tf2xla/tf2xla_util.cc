@@ -764,7 +764,7 @@ Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
     } else if (n->type_string() == "While") {
       TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));

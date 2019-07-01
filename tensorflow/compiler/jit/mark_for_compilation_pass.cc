@@ -971,7 +971,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
         (node->IsIdentity() || node->IsConstant()) ? 0 : 1;
 
     bool has_functional_control_flow =
-        node->type_string() == "While" || node->type_string() == "If";
+        node->type_string() == "While" || node->IsIfNode();
 
     absl::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {

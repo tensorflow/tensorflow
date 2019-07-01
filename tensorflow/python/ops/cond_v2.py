@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
@@ -92,12 +93,13 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                        name=scope)
 
 
+@ops.RegisterGradient("StatelessIf")
 @ops.RegisterGradient("If")
 def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of an If op produced by cond_v2."""
   # Get the if operator (this logic handles the case where op is a MockOp)
   if_op = op.outputs[0].op
-  true_graph, false_graph = _get_func_graphs(if_op)
+  true_graph, false_graph = get_func_graphs(if_op)
   # Note: op.graph != ops.get_default_graph() when we are computing the gradient
   # of a nested cond.
   assert true_graph.outer_graph == if_op.graph
@@ -201,7 +203,22 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
   # Create the If op.
   with ops.control_dependencies(
       list(true_graph.control_captures) + list(false_graph.control_captures)):
-    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
+    true_stateful_ops = [
+        op for op in true_graph.get_operations() if op._is_stateful
+    ]
+    false_stateful_ops = [
+        op for op in false_graph.get_operations() if op._is_stateful
+    ]
+    # TODO(srbs): Remove this after July 22, 2019. This is required to abide by
+    # 3-week forward compat window of new TF python op generating code with
+    # stale runtime binaries.
+    if (true_stateful_ops or false_stateful_ops or
+        not compat.forward_compatible(2019, 7, 22)):
+      op_fn = gen_functional_ops._if
+    else:
+      op_fn = gen_functional_ops.stateless_if
+
+    tensors = op_fn(
         pred,
         cond_inputs, [t.dtype for t in true_graph.outputs],
         util.create_new_tf_function(true_graph),
@@ -231,7 +248,7 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
                                             tensors)
 
 
-def _get_func_graphs(op):
+def get_func_graphs(op):
   """Returns `FuncGraph`s for the input op branches.
 
   Args:
@@ -264,7 +281,7 @@ def _get_func_graphs(op):
     func_graph._forward_cond = op
     return func_graph
 
-  if op.type == "If":
+  if op.type in ["If", "StatelessIf"]:
     return (_get_func_graph_for_branch(op.get_attr("then_branch")),
             _get_func_graph_for_branch(op.get_attr("else_branch")))
   elif op.type == "Case":
@@ -828,7 +845,7 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a Case op produced by tf.switch_case."""
   # Get the Case operator (this logic handles the case where op is a MockOp)
   case_op = op.outputs[0].op
-  branch_graphs = _get_func_graphs(case_op)
+  branch_graphs = get_func_graphs(case_op)
   assert branch_graphs
   # Note: op.graph != ops.get_default_graph() when we are computing the gradient
   # of a nested cond.

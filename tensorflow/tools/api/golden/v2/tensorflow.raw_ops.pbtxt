@@ -3910,7 +3910,7 @@ tf_module {
   }
   member_method {
     name: "StatelessIf"
-    argspec: "args=[\'cond\', \'input\', \'Tout\', \'then_branch\', \'else_branch\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cond\', \'input\', \'Tout\', \'then_branch\', \'else_branch\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "StatelessMultinomial"
