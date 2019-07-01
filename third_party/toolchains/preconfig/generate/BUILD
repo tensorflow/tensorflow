@@ -95,3 +95,11 @@ tensorflow_rbe_config(
     python_version = "3.6",
     tensorrt_version = "5",
 )
+
+tensorflow_rbe_config(
+    name = "ubuntu16.04-py3_opt-gcc5-rocm",
+    compiler = "gcc",
+    os = "ubuntu16.04",
+    python_version = "3",
+    rocm_version = "2.5",  # Any version will do.
+)
