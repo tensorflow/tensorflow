@@ -4687,7 +4687,7 @@ def erosion2d_v2(value,
                  strides,
                  padding,
                  data_format,
-                 dilations,
+                 erosions,
                  name=None):
   """Computes the grayscale erosion of 4-D `value` and 3-D `filters` tensors.
 
@@ -4721,7 +4721,7 @@ def erosion2d_v2(value,
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
     data_format: A `string`, only `"NHWC"` is currently supported.
-    dilations: A list of `ints` that has length `>= 4`.
+    erosions: A list of `ints` that has length `>= 4`.
       1-D of length 4. The input stride for atrous morphological dilation.
       Must be: `[1, rate_height, rate_width, 1]`.
     name: A name for the operation (optional). If not specified "erosion2d"
@@ -4745,7 +4745,7 @@ def erosion2d_v2(value,
             input=math_ops.negative(value),
             filter=array_ops.reverse_v2(filters, [0, 1]),
             strides=strides,
-            rates=dilations,
+            rates=erosions,
             padding=padding,
             name=name))
 
