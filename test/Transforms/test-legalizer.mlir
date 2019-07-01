@@ -23,14 +23,10 @@ func @remap_input_1_to_1(%arg0: i64) {
   "test.invalid"(%arg0) : (i64) -> ()
 }
 
-// CHECK-LABEL: func @remap_input_1_to_N(%arg0: f16, %arg1: f16)
+// CHECK-LABEL: func @remap_input_1_to_N({{.*}}f16, {{.*}}f16)
 func @remap_input_1_to_N(%arg0: f32) -> f32 {
- // TODO: this is temporarily disabled because the rewriter does not
- // change "test.invalid" into "test.valid" that takes two operands,
- // making the use of the original operand persist and materializing
- // the type conversion.
- // X-CHECK-NEXT: "test.valid"(%arg0, %arg1) : (f16, f16) -> ()
- "test.invalid"(%arg0) : (f32) -> ()
+ // CHECK-NEXT: "test.return"{{.*}} : (f16, f16) -> ()
+ "test.return"(%arg0) : (f32) -> ()
 }
 
 // CHECK-LABEL: func @remap_input_1_to_N_remaining_use(%arg0: f16, %arg1: f16)
