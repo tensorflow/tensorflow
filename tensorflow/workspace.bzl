@@ -230,10 +230,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "farmhash_archive",
         build_file = clean_dep("//third_party:farmhash.BUILD"),
         sha256 = "6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0",
-        strip_prefix = "farmhash-816a4ae622e964763ca0862d9dbd19324a1eaf45",
+        strip_prefix = "farmhash-0d859a811870d10f53a594927d0d0b97573ad06d",
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
-            "https://github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
+            "http://mirror.tensorflow.org/github.com/google/farmhash/archive/0d859a811870d10f53a594927d0d0b97573ad06d.tar.gz",
+            "https://github.com/google/farmhash/archive/0d859a811870d10f53a594927d0d0b97573ad06d.tar.gz",
         ],
     )
 
