@@ -167,6 +167,21 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
+class CapturableResourceDeleter(object):
+  """Deleter to destroy CapturableResource without overriding its __del__()."""
+
+  def __init__(self, destroy_resource_fn=None):
+    if destroy_resource_fn:
+      self.destroy_resource = destroy_resource_fn
+
+  def destroy_resource(self):
+    """A function that destroys the resource."""
+    pass
+
+  def __del__(self):
+    self.destroy_resource()
+
+
 class CapturableResource(base.Trackable):
   """Holds a Tensor which a tf.function can capture.
 
@@ -177,7 +192,7 @@ class CapturableResource(base.Trackable):
   `CapturableResource` directly.
   """
 
-  def __init__(self, device=""):
+  def __init__(self, device="", deleter=None):
     """Initialize the `CapturableResource`.
 
     Args:
@@ -185,9 +200,12 @@ class CapturableResource(base.Trackable):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
+      deleter: A CapturableResourceDeleter that will destroy the created
+        resource during destruction.
     """
     self._resource_handle = None
     self._resource_device = device
+    self._resource_deleter = deleter or CapturableResourceDeleter()
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -217,16 +235,22 @@ class CapturableResource(base.Trackable):
       self._initialize()
       return 1  # Dummy return
 
+    @def_function.function(input_signature=[], autograph=False)
+    def _destroyer():
+      self._resource_deleter.destroy_resource()
+      return 1  # Dummy return
+
     return {
         "_create_resource": _creator,
         "_initialize": _initializer,
+        "_destroy_resource": _destroyer,
     }
 
 
 class TrackableResource(CapturableResource):
   """Adds scope tracking to CapturableResource."""
 
-  def __init__(self, device=""):
+  def __init__(self, device="", deleter=None):
     """Initialize the `TrackableResource`.
 
     Args:
@@ -234,11 +258,13 @@ class TrackableResource(CapturableResource):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
+      deleter: A CapturableResourceDeleter that will destroy the created
+        resource during destruction.
     """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
-    super(TrackableResource, self).__init__(device=device)
+    super(TrackableResource, self).__init__(device=device, deleter=deleter)
 
 
 class TrackableAsset(base.Trackable):
