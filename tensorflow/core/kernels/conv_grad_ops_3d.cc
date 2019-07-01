@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
 #endif
@@ -1049,7 +1049,7 @@ TF_CALL_half(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 // GPU definitions of both ops.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 // This ensures that the custom implementation is used instead of the default
 // Eigen one (which is used for CPU).
@@ -1357,6 +1357,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
@@ -1401,6 +1402,22 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         algorithm_config.set_algorithm_no_scratch(
             best_result_no_scratch.algorithm());
       }
+#elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                            context);
+      ProfileResult best_result;
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveBackwardDataWithAlgorithm(
+                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                  AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(context, miopen_find_status && best_result.is_valid(),
+                  errors::NotFound("Failed to find backward data algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
@@ -1763,6 +1780,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
@@ -1808,6 +1826,23 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         algorithm_config.set_algorithm_no_scratch(
             best_result_no_scratch.algorithm());
       }
+#elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                            context);
+      ProfileResult best_result;
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator, AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(
+          context, miopen_find_status && best_result.is_valid(),
+          errors::NotFound("Failed to find backward filter algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
@@ -1866,6 +1901,6 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -49,9 +49,9 @@ class ZipDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new ZipDataset op kernel.
   Status CreateZipDatasetKernel(
-      const DataTypeVector& dtypes,
-      const std::vector<PartialTensorShape>& output_shapes, int n,
-      std::unique_ptr<OpKernel>* op_kernel) {
+      const DataTypeVector &dtypes,
+      const std::vector<PartialTensorShape> &output_shapes, int n,
+      std::unique_ptr<OpKernel> *op_kernel) {
     std::vector<string> input_datasets;
     input_datasets.reserve(n);
     for (int i = 0; i < n; ++i) {

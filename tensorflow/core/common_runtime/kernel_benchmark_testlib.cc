@@ -59,8 +59,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
   CHECK(device_) << "Could not create a " << device << " device";
 
-  pool_ = new thread::ThreadPool(options->env, "blocking",
-                                 port::NumSchedulableCPUs());
+  pool_ =
+      new thread::ThreadPool(options->env, "blocking", port::MaxParallelism());
 
   auto runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);

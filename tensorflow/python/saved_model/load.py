@@ -381,11 +381,25 @@ class Loader(object):
 class _RestoredResource(tracking.TrackableResource):
   """Restored SavedResource."""
 
+  def __init__(self, device=""):
+    super(_RestoredResource, self).__init__(device=device)
+    self._destroy_resource_fn = None
+
   def _create_resource(self):
     raise RuntimeError()
 
   def _initialize(self):
     raise RuntimeError()
+
+  @property
+  def _destroy_resource(self):
+    return self._destroy_resource_fn
+
+  @_destroy_resource.setter
+  def _destroy_resource(self, destroy_resource_fn):
+    self._resource_deleter = tracking.CapturableResourceDeleter(
+        destroy_resource_fn)
+    self._destroy_resource_fn = destroy_resource_fn
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -394,6 +408,7 @@ class _RestoredResource(tracking.TrackableResource):
     return {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
 
 

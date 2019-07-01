@@ -1563,6 +1563,7 @@ _OTHER_OPS = [
     'Dot',
     'Gather',
     'GetTupleElement',
+    'ReducePrecision',
     'Rev',
     'Select',
     'SliceInDim',

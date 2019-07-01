@@ -278,7 +278,7 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
   if (num_intra_threads == 0) {
     num_intra_threads = options.config.intra_op_parallelism_threads();
     if (num_intra_threads == 0) {
-      num_intra_threads = port::NumSchedulableCPUs();
+      num_intra_threads = port::MaxParallelism();
     }
   }
 

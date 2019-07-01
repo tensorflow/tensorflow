@@ -51,14 +51,6 @@ namespace {
 using ::absl::make_unique;
 using ::absl::StrCat;
 
-int64_t DimensionsProduct(const TfLiteIntArray& dims) {
-  int64_t product = 1;
-  for (int i = 0; i < dims.size; i++) {
-    product *= dims.data[i];
-  }
-  return product;
-}
-
 // Creates a node that consumes output from the given node. Because output need
 // to stay the same, newly created node will inherit the output from the given
 // node, which will in turn get newly created copy of output. This is necessary
@@ -108,7 +100,7 @@ Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
       break;
     case kTfLiteFloat16:
       ConvertFloat16ToFloat32(
-          DimensionsProduct(*tensor.dims),
+          NumElements(&tensor),
           reinterpret_cast<uint16_t const*>(tensor.data.raw_const),
           tensor_data);
       break;
@@ -300,16 +292,15 @@ class ObjectReader {
   template <typename TensorT>
   Status ReadTensor(uint32_t idx, TensorT* t) const {
     RETURN_IF_ERROR(CheckTensorIsAvailable(context_, tflite_node_, idx));
-    int32_t tensor_idx = tflite_node_->inputs->data[idx];
-    const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
-    int64_t num_elements = DimensionsProduct(*tflite_tensor.dims);
-    t->data.resize(num_elements);
-    RETURN_IF_ERROR(CreateVectorCopyData(tflite_tensor, &t->data[0]));
+    const int32_t tensor_idx = tflite_node_->inputs->data[idx];
+    const TfLiteTensor* tflite_tensor = context_->tensors + tensor_idx;
+    t->data.resize(NumElements(tflite_tensor));
+    RETURN_IF_ERROR(CreateVectorCopyData(*tflite_tensor, &t->data[0]));
 
     // Axis and data layout depend on operation this tensor is used in. So,
     // postpone resolutions until operations are parsed.
     t->id = tensor_idx;
-    return SetAllDimensions(tflite_tensor.dims, &t->shape);
+    return SetAllDimensions(tflite_tensor->dims, &t->shape);
   }
 
   Status AddOutput(const Node* node, int id) {

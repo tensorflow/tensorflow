@@ -158,7 +158,6 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   std::vector<PartialTensorShape> shapes_;
 };
 
-
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kToutputTypes, &output_types_));

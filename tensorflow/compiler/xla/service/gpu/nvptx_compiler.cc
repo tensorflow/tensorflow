@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/mem_wasted_on_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
@@ -440,6 +441,10 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
+  // The following pass LOGs memory waste. Add it when VLOGing is enabled only.
+  if (VLOG_IS_ON(2)) {
+    pipeline.AddPass<MemWastedOnPassthroughParams>();
+  }
   pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();

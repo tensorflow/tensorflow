@@ -382,6 +382,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
+    self.experimental_enable_get_next_as_optional = True
+
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
     # coordinator as well.
@@ -442,9 +444,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
   def _get_variable_creator_initial_value(self,
-                                          replica_id=0,
-                                          device=None,
-                                          primary_var=None,
+                                          replica_id,
+                                          device,
+                                          primary_var,
                                           **kwargs):
     """Return the initial value for variables on a replica."""
     if replica_id == 0:

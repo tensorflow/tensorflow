@@ -247,8 +247,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kInputImplEmpty), ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       }
@@ -290,8 +289,7 @@ BatchDatasetOp::BatchDatasetOp(OpKernelConstruction* ctx)
 void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
   int64 batch_size = 0;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));
 

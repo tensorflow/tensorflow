@@ -40,6 +40,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
+        "no_oss",
         "optonly",  # The test is too slow in non-opt mode
     ],
     xla_enable_strict_auto_jit = True,

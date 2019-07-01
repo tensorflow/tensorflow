@@ -106,6 +106,8 @@ class Iterator(trackable.Trackable):
                        " must be specified.")
     self._structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
+    self._flat_tensor_shapes = structure.get_flat_tensor_shapes(self._structure)
+    self._flat_tensor_types = structure.get_flat_tensor_types(self._structure)
 
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
@@ -431,8 +433,8 @@ class Iterator(trackable.Trackable):
     # pylint: disable=protected-access
     flat_ret = gen_dataset_ops.iterator_get_next(
         self._iterator_resource,
-        output_types=structure.get_flat_tensor_types(self._structure),
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
+        output_types=self._flat_tensor_types,
+        output_shapes=self._flat_tensor_shapes,
         name=name)
     return structure.from_tensor_list(self._structure, flat_ret)
 

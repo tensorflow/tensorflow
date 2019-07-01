@@ -365,9 +365,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     unoptimized = _make_dataset([map_node_name, "BatchV2"])
     # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
     # to verify the optimization result.
-    optimized = _make_dataset(["ChooseFastestBranch"]
-                              if expect_optimized
-                              else [map_node_name, "BatchV2"])
+    optimized = _make_dataset(["ChooseFastestBranch"] if expect_optimized else
+                              [map_node_name, "BatchV2"])
     optimized = self._enable_map_vectorization(optimized)
     return unoptimized, optimized
 

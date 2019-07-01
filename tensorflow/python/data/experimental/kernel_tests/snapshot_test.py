@@ -109,6 +109,24 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     # one that lost the race would be in passthrough mode.
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
+  def testGetNextCreatesDir(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    # We create two iterators but call getNext on only one.
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(tmpdir))
+    next1 = self.getNext(dataset1)
+
+    dataset2 = dataset_ops.Dataset.range(1001)
+    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir))
+    _ = self.getNext(dataset2)
+
+    for _ in range(1000):
+      self.evaluate(next1())
+
+    # We check that only one directory is created.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
   @parameterized.parameters(snapshot.COMPRESSION_NONE,
                             snapshot.COMPRESSION_GZIP)
   def testWriteSnapshotSimpleSuccessful(self, compression):

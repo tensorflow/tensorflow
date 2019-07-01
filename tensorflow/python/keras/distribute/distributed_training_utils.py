@@ -421,6 +421,22 @@ def is_dataset_shape_fully_defined(dataset):
   return not unknown_shapes
 
 
+def process_batch_and_step_size(
+    strategy, inputs, batch_size, steps_per_epoch, mode):
+  """Process the batch size and step size based on input and dist strategy."""
+  first_x_value = nest.flatten(inputs)[0]
+  if isinstance(first_x_value, np.ndarray):
+    # Until support for partial batch is implemented across all
+    # functions and distribution strategy, we pass `mode` to selectively
+    # relax the constraint to consume all the training samples.
+    steps_per_epoch, batch_size = get_input_params(strategy,
+                                                   first_x_value,
+                                                   steps_per_epoch,
+                                                   batch_size,
+                                                   mode=mode)
+  return batch_size, steps_per_epoch
+
+
 def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
                      mode=None):
   """Calculate the number of batches and steps/steps_per_epoch.
