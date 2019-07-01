@@ -101,6 +101,14 @@ public:
 
   static StringRef getOperationName() { return "gpu.launch"; }
 
+  /// Erase the `index`-th kernel argument.  Both the entry block argument and
+  /// the operand will be dropped.  The block argument must not have any uses.
+  void eraseKernelArgument(unsigned index);
+
+  /// Append canonicalization patterns to `results`.
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
+
 private:
   static StringRef getBlocksKeyword() { return "blocks"; }
   static StringRef getThreadsKeyword() { return "threads"; }

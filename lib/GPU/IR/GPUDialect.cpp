@@ -23,7 +23,9 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::gpu;
@@ -311,6 +313,64 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   Region *body = result->addRegion();
   return failure(parser->parseRegion(*body, regionArgs, dataTypes) ||
                  parser->parseOptionalAttributeDict(result->attributes));
+}
+
+void LaunchOp::eraseKernelArgument(unsigned index) {
+  Block &entryBlock = getBody().front();
+  assert(index < entryBlock.getNumArguments() - kNumConfigRegionAttributes &&
+         "kernel argument index overflow");
+  entryBlock.eraseArgument(kNumConfigRegionAttributes + index);
+  getOperation()->eraseOperand(kNumConfigOperands + index);
+}
+
+namespace {
+// Clone any known constants passed as operands to the kernel into its body.
+class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
+  using OpRewritePattern<LaunchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(LaunchOp launchOp,
+                                     PatternRewriter &rewriter) const override {
+    auto oringInsertionPoint = rewriter.saveInsertionPoint();
+    rewriter.setInsertionPointToStart(&launchOp.getBody().front());
+
+    // Traverse operands passed to kernel and check if some of them are known
+    // constants.  If so, clone the constant operation inside the kernel region
+    // and use it instead of passing the value from the parent region.  Perform
+    // the traversal in the inverse order to simplify index arithmetics when
+    // dropping arguments.
+    SmallVector<Value *, 8> operands(launchOp.getKernelOperandValues().begin(),
+                                     launchOp.getKernelOperandValues().end());
+    SmallVector<Value *, 8> kernelArgs(launchOp.getKernelArguments().begin(),
+                                       launchOp.getKernelArguments().end());
+    bool found = false;
+    for (unsigned i = operands.size(); i > 0; --i) {
+      unsigned index = i - 1;
+      Value *operand = operands[index];
+      if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp())) {
+        continue;
+      }
+
+      found = true;
+      Value *internalConstant =
+          rewriter.clone(*operand->getDefiningOp())->getResult(0);
+      Value *kernelArg = kernelArgs[index];
+      kernelArg->replaceAllUsesWith(internalConstant);
+      launchOp.eraseKernelArgument(index);
+    }
+    rewriter.restoreInsertionPoint(oringInsertionPoint);
+
+    if (!found)
+      return matchFailure();
+
+    rewriter.updatedRootInPlace(launchOp);
+    return matchSuccess();
+  }
+};
+} // end namespace
+
+void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  RewriteListBuilder<PropagateConstantBounds>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//

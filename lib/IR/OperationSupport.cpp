@@ -110,8 +110,9 @@ void detail::OperandStorage::eraseOperand(unsigned index) {
   --numOperands;
 
   // Shift all operands down by 1 if the operand to remove is not at the end.
+  auto indexIt = std::next(operands.begin(), index);
   if (index != numOperands)
-    std::rotate(&operands[index], &operands[index + 1], &operands[numOperands]);
+    std::rotate(indexIt, std::next(indexIt), operands.end());
   operands[numOperands].~OpOperand();
 }
 

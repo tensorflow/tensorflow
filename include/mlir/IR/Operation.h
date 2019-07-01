@@ -200,6 +200,9 @@ public:
   /// Returns an iterator on the underlying Value's (Value *).
   operand_range getOperands();
 
+  /// Erase the operand at position `idx`.
+  void eraseOperand(unsigned idx) { getOperandStorage().eraseOperand(idx); }
+
   MutableArrayRef<OpOperand> getOpOperands() {
     return getOperandStorage().getOperands();
   }
