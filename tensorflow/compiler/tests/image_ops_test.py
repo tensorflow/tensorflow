@@ -514,6 +514,24 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
                           dtype=np.float32))
 
+  def testAlignCorners3x3To12x12_uint8(self):
+    # Ensure that resize with convolution works on XLA/GPU for integer types
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.uint8), [12, 12],
+        expected=np.array([[1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
+                          dtype=np.uint8))
+
 
 class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
 
