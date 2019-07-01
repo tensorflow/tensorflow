@@ -68,6 +68,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
 
