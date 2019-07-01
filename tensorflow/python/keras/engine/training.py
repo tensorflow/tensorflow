@@ -129,8 +129,7 @@ class Model(network.Network):
 
     def call(self, inputs, training=False):
       x = self.dense1(inputs)
-      if training:
-        x = self.dropout(x, training=training)
+      x = self.dropout(x, training=training)
       return self.dense2(x)
 
   model = MyModel()

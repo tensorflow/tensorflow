@@ -151,7 +151,7 @@ class Dropout(Layer):
     return ops.convert_to_tensor(noise_shape)
 
   def call(self, inputs, training=None):
-    if training is None:
+    if not training:
       training = K.learning_phase()
 
     def dropped_inputs():
