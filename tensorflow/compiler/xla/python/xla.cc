@@ -478,6 +478,8 @@ PYBIND11_MODULE(xla_extension, m) {
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
                                 absl::Span<const int64>)>(&Reduce));
+  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
+          py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
