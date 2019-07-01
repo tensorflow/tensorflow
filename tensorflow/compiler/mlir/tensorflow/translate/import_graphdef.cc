@@ -750,7 +750,7 @@ Status Importer::ConvertFunctionArgAndRets(
               "max", builder_->getF32FloatAttr(input_spec.max_value)));
           state.attributes.push_back(builder_->getNamedAttr(
               "type", builder_->getTypeAttr(final_type)));
-          bb->getFunction()->setAttr("tf.quantize", builder_->getUnitAttr());
+          bb->getFunction().setAttr("tf.quantize", builder_->getUnitAttr());
         }
       }
 
@@ -1111,11 +1111,11 @@ Status Importer::Convert(llvm::StringRef func_name,
                          const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                          llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
-  auto* function = new mlir::Function(mlir::UnknownLoc::get(context_),
-                                      func_name, func_type, attrs);
+  auto function = mlir::Function::create(mlir::UnknownLoc::get(context_),
+                                         func_name, func_type, attrs);
 
-  module_->getFunctions().push_back(function);
-  builder_ = absl::make_unique<mlir::OpBuilder>(function->getBody());
+  module_->push_back(function);
+  builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
   auto* bb = builder_->createBlock();
 

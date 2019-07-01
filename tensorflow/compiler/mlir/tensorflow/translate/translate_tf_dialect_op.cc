@@ -22,15 +22,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 static mlir::Operation* ExtractOnlyOp(mlir::Module* module) {
-  mlir::Function* fn = module->getNamedFunction("main");
+  mlir::Function fn = module->getNamedFunction("main");
   if (!fn) return nullptr;
 
-  if (fn->getBlocks().size() != 1) return nullptr;
+  if (fn.getBlocks().size() != 1) return nullptr;
 
   // Here, modules with exactly two operations in the only basic block are
   // supported. The last operation should be a terminator operation and the
   // other operation is the operation of interest.
-  auto& block = fn->getBlocks().front();
+  auto& block = fn.getBlocks().front();
   if (block.getOperations().size() != 2) return nullptr;
   if (!block.back().isKnownTerminator()) return nullptr;
 

@@ -247,14 +247,14 @@ static bool IsValidTFLiteMlirModule(Module* module) {
   MLIRContext* context = module->getContext();
 
   // Verify that module has a function named main.
-  Function* main_fn = module->getNamedFunction("main");
+  Function main_fn = module->getNamedFunction("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
            false;
   }
 
-  for (auto& fn : module->getFunctions()) {
+  for (auto fn : module->getFunctions()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -284,13 +284,13 @@ static bool IsValidTFLiteMlirModule(Module* module) {
   //
   // TODO(hinsu): Remove pseudo input nodes by setting attributes directly on
   // the arguments.
-  for (auto* arg : main_fn->getArguments()) {
+  for (auto* arg : main_fn.getArguments()) {
     if (!arg->hasOneUse()) {
-      return main_fn->emitError("arguments should have exactly one use"), false;
+      return main_fn.emitError("arguments should have exactly one use"), false;
     }
     Operation* op = *arg->user_begin();
     if (!IsInput(op)) {
-      main_fn->emitError("arguments should only be used by input ops. Got ")
+      main_fn.emitError("arguments should only be used by input ops. Got ")
           << op->getName();
       return false;
     }
@@ -391,11 +391,11 @@ class Translator {
       Operation* inst, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(Function* fn);
+  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(Function fn);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
-  void InitializeNamesFromAttribute(Function* fn);
+  void InitializeNamesFromAttribute(Function fn);
 
   // Returns a unique name for `op`.
   std::string UniqueName(mlir::Operation* op);
@@ -781,8 +781,8 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
          llvm::None;
 }
 
-void Translator::InitializeNamesFromAttribute(Function* fn) {
-  auto dict_attr = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+void Translator::InitializeNamesFromAttribute(Function fn) {
+  auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
   llvm::SmallVector<llvm::StringRef, 2> input_names;
@@ -790,22 +790,22 @@ void Translator::InitializeNamesFromAttribute(Function* fn) {
   if (auto str = dict_attr.get("inputs").dyn_cast<mlir::StringAttr>()) {
     str.getValue().split(input_names, " ,", /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
-    if (input_names.size() != fn->getNumArguments()) {
-      fn->emitWarning() << "invalid entry function specification";
+    if (input_names.size() != fn.getNumArguments()) {
+      fn.emitWarning() << "invalid entry function specification";
       return;
     }
-    for (auto it : llvm::enumerate(fn->getArguments()))
+    for (auto it : llvm::enumerate(fn.getArguments()))
       op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
     str.getValue().split(output_names, " ,", /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
-    auto term = fn->getBlocks().back().getTerminator();
+    auto term = fn.getBlocks().back().getTerminator();
     if (output_names.size() != term->getNumOperands()) {
-      fn->emitWarning() << "output names (" << output_names.size()
-                        << ") != terminator operands ("
-                        << term->getNumOperands() << ")";
+      fn.emitWarning() << "output names (" << output_names.size()
+                       << ") != terminator operands (" << term->getNumOperands()
+                       << ")";
       return;
     }
     for (const auto& it : llvm::enumerate(term->getOperands())) {
@@ -816,19 +816,19 @@ void Translator::InitializeNamesFromAttribute(Function* fn) {
       if (auto op = it.value()->getDefiningOp())
         op_to_name_[op] = output_names[it.index()];
       else
-        fn->emitWarning() << "output is not due to an op and '"
-                          << output_names[it.index()]
-                          << "' may not be a named output";
+        fn.emitWarning() << "output is not due to an op and '"
+                         << output_names[it.index()]
+                         << "' may not be a named output";
     }
   }
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
-    Function* fn) {
+    Function fn) {
   InitializeNamesFromAttribute(fn);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
-  bool is_main_fn = fn->getName() == "main";
+  bool is_main_fn = fn.getName() == "main";
 
   // Builds tensor and buffer for argument or operation result. Returns false
   // on failure.
@@ -854,7 +854,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   };
 
   std::vector<BufferOffset<tflite::Operator>> operators;
-  auto& bb = fn->getBlocks().front();
+  auto& bb = fn.getBlocks().front();
 
   // Main function's arguments are first passed to `input` op so they don't
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
@@ -924,7 +924,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   return tflite::CreateSubGraph(
       builder_, builder_.CreateVector(tensors), builder_.CreateVector(inputs),
       builder_.CreateVector(outputs), builder_.CreateVector(operators),
-      /*name=*/builder_.CreateString(fn->getName().str()));
+      /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
 Optional<std::string> Translator::Translate(Module* module,
@@ -941,28 +941,27 @@ Optional<std::string> Translator::TranslateInternal() {
   // Create a list of functions in the module with main function being the
   // first function in the list. This is required as the first subgraph in the
   // model is entry point for the model.
-  std::vector<Function*> functions;
-  functions.reserve(module_->getFunctions().size());
+  std::vector<Function> functions;
+  functions.reserve(std::distance(module_->begin(), module_->end()));
 
   int subgraph_idx = 0;
-  Function* main_fn = module_->getNamedFunction("main");
-  subgraph_index_map_[main_fn->getName().str()] = subgraph_idx++;
+  Function main_fn = module_->getNamedFunction("main");
+  subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto& fn : module_->getFunctions()) {
-    if (&fn == main_fn) continue;
+  for (auto fn : module_->getFunctions()) {
+    if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-    functions.push_back(&fn);
+    functions.push_back(fn);
   }
 
   // Build subgraph for each of the functions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
   subgraphs.reserve(functions.size());
-  for (auto* fn : functions) {
+  for (auto fn : functions) {
     auto subgraph_or = BuildSubGraph(fn);
     if (!subgraph_or)
-      return fn->emitError("failed while converting: '")
-                 << fn->getName() << '\'',
+      return fn.emitError("failed while converting: '") << fn.getName() << '\'',
              llvm::None;
 
     subgraphs.push_back(*subgraph_or);

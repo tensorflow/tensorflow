@@ -269,17 +269,17 @@ LogicalResult IfOp::verify() {
   auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto *module = getOperation()->getFunction()->getModule();
-  auto *thenFn = module->getNamedFunction(thenAttr.getValue());
+  auto *module = getOperation()->getFunction().getModule();
+  auto thenFn = module->getNamedFunction(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
            << thenAttr;
-  auto *elseFn = module->getNamedFunction(elseAttr.getValue());
+  auto elseFn = module->getNamedFunction(elseAttr.getValue());
   if (!elseFn)
     return emitOpError("else_branch refers to an undefined function : ")
            << elseAttr;
-  auto thenFuncType = thenFn->getType();
-  auto elseFuncType = elseFn->getType();
+  auto thenFuncType = thenFn.getType();
+  auto elseFuncType = elseFn.getType();
 
   // Non-conditional operands starting with the second operand are passed to
   // branches and should be pair-wise compatible with branches' inputs.
@@ -723,9 +723,9 @@ LogicalResult WhileOp::verify() {
   auto condAttr = getAttrOfType<FunctionAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto *module = getOperation()->getFunction()->getModule();
-  auto *condFn = module->getNamedFunction(condAttr.getValue());
-  auto condFuncType = condFn->getType();
+  auto *module = getOperation()->getFunction().getModule();
+  auto condFn = module->getNamedFunction(condAttr.getValue());
+  auto condFuncType = condFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
@@ -733,8 +733,8 @@ LogicalResult WhileOp::verify() {
 
   auto bodyAttr = getAttrOfType<FunctionAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
-  auto *bodyFn = module->getNamedFunction(bodyAttr.getValue());
-  auto bodyFuncType = bodyFn->getType();
+  auto bodyFn = module->getNamedFunction(bodyAttr.getValue());
+  auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(getOperandTypes());
   SmallVector<Type, 4> results(getResultTypes());

@@ -84,7 +84,7 @@ static int PrintFunctionResultMapping(const std::string &result,
     mlir::Operation *terminator = nullptr;
     if (subgraph->name()) {
       if (auto fn = module->getNamedFunction(subgraph->name()->str()))
-        terminator = fn->back().getTerminator();
+        terminator = fn.back().getTerminator();
     }
     i = 0;
     for (auto output : *subgraph->outputs()) {

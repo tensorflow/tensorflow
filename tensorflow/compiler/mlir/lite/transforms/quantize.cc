@@ -50,7 +50,7 @@ struct QuantizePass : public FunctionPass<QuantizePass> {
 
 void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   auto *context = func.getContext();
   populateWithGenerated(context, &patterns);
   applyPatternsGreedily(func, std::move(patterns));

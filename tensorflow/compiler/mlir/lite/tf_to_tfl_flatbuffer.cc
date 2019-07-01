@@ -87,8 +87,8 @@ StatusOr<std::unique_ptr<Module>> LoadFromGraphdefOrMlirSource(
 }
 
 bool ShouldRunQuantizePasses(mlir::Module *m) {
-  if (mlir::Function *main_fn = m->getNamedFunction("main")) {
-    return main_fn->getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
+  if (mlir::Function main_fn = m->getNamedFunction("main")) {
+    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
            mlir::Attribute();
   }
   return false;

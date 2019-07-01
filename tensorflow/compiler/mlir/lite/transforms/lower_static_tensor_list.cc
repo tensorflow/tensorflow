@@ -316,7 +316,7 @@ void LowerStaticTensorListPass::runOnFunction() {
     return;
   }
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   TFL::populateWithGenerated(&getContext(), &patterns);
   patterns.push_back(
       llvm::make_unique<ConvertTFTensorListReserve>(&getContext()));

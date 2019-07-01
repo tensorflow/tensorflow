@@ -31,7 +31,7 @@ namespace {
 struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
-    auto& func = getFunction();
+    auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
     applyPatternsGreedily(func, std::move(patterns));
   }

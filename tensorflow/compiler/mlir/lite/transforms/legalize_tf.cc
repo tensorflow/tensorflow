@@ -199,7 +199,7 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* ctx = &getContext();
-  auto& func = getFunction();
+  auto func = getFunction();
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);

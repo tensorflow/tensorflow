@@ -138,7 +138,7 @@ bool LowerWhileOp(mlir::XLA::WhileOp while_op) {
 }
 
 void LegalizeControlFlow::runOnFunction() {
-  auto& func = getFunction();
+  auto func = getFunction();
   llvm::SmallVector<WhileOp, 4> control_flow_ops;
   func.walk<WhileOp>([&](WhileOp op) { control_flow_ops.push_back(op); });
 

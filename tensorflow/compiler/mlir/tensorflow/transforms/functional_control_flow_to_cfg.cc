@@ -90,9 +90,9 @@ static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
 /// that is compatible for tensor cast.
 ///
 static Operation* CallFn(Location loc,
-                         const std::function<Value*(int)>& get_arg,
-                         Function* fn, OpBuilder* builder) {
-  FunctionType fn_type = fn->getType();
+                         const std::function<Value*(int)>& get_arg, Function fn,
+                         OpBuilder* builder) {
+  FunctionType fn_type = fn.getType();
   llvm::SmallVector<Value*, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
@@ -172,9 +172,9 @@ static bool LowerIfOp(TF::IfOp op) {
   Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
   if (!cond_i1) return true;
 
-  auto* module = op_inst->getFunction()->getModule();
-  auto* then_fn = module->getNamedFunction(op.getThen());
-  auto* else_fn = module->getNamedFunction(op.getElse());
+  auto* module = op_inst->getFunction().getModule();
+  auto then_fn = module->getNamedFunction(op.getThen());
+  auto else_fn = module->getNamedFunction(op.getElse());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -229,9 +229,9 @@ static bool LowerWhileOp(TF::WhileOp op) {
 
   OpBuilder builder(op_inst);
 
-  auto* module = op_inst->getFunction()->getModule();
-  auto* cond_fn = module->getNamedFunction(op.getCond());
-  auto* body_fn = module->getNamedFunction(op.getBody());
+  auto* module = op_inst->getFunction().getModule();
+  auto cond_fn = module->getNamedFunction(op.getCond());
+  auto body_fn = module->getNamedFunction(op.getBody());
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two
@@ -262,10 +262,10 @@ static bool LowerWhileOp(TF::WhileOp op) {
   // as the input types of the body function.  Note that it is always possible
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
-  for (Type type : cond_fn->getType().getInputs()) {
+  for (Type type : cond_fn.getType().getInputs()) {
     cond_block->addArgument(type);
   }
-  for (Type type : body_fn->getType().getInputs()) {
+  for (Type type : body_fn.getType().getInputs()) {
     body_block->addArgument(type);
     orig_block_tail->addArgument(type);
   }

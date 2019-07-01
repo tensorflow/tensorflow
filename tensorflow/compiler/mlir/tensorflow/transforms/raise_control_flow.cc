@@ -82,7 +82,7 @@ static bool isUnderscoredTFOp(Operation &op) {
 
 // Drop control edges, and remove underscores from operation names.
 void RaiseTFControlFlow::rewriteOps() {
-  auto &function = getFunction();
+  auto function = getFunction();
   OpBuilder builder(function.getBody());
 
   // On the first pass, create replacement operations for every one we are going
