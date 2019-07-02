@@ -727,3 +727,38 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/algorithm:container",
     ],
 )
+
+cc_library(
+    name = "resource_util",
+    srcs = ["resource_util.cc"],
+    hdrs = ["resource_util.h"],
+    visibility = [":friends"],
+    deps = [
+        ":resource_operation_table",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resource_util_test",
+    size = "small",
+    srcs = ["resource_util_test.cc"],
+    deps = [
+        ":resource_util",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+    ],
+)
