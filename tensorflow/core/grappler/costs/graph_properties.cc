@@ -783,13 +783,13 @@ class SymbolicShapeRefiner {
       int src_output = fanin.port_id;
       const NodeDef* src = fanin.node;
       NodeContext* src_ctx = GetNodeContext(src);
-      InferenceContext* src_ic = src_ctx->inference_context.get();
       if (src_ctx == nullptr) {
         return errors::FailedPrecondition(
-            "Input ", dst_input, " ('", src->name(), "') for '", node->name(),
+            "Input ", dst_input, " for '", node->name(),
             "' was not previously added to SymbolicShapeRefiner.");
       }
 
+      InferenceContext* src_ic = src_ctx->inference_context.get();
       if (src_output >= src_ic->num_outputs()) {
         return errors::OutOfRange("src_output = ", src_output,
                                   ", but num_outputs is only ",

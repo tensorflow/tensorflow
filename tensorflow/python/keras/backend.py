@@ -32,6 +32,7 @@ import weakref
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
@@ -1593,8 +1594,9 @@ def moving_average_update(x, value, momentum):
   # moving_averages, being low-level ops, should not be part of the training
   # module.
   from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
+  zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=True)
+      x, value, momentum, zero_debias=zero_debias)
 
 
 # LINEAR ALGEBRA
@@ -2608,9 +2610,11 @@ def resize_images(x, height_factor, width_factor, data_format,
   if data_format == 'channels_first':
     x = permute_dimensions(x, [0, 2, 3, 1])
   if interpolation == 'nearest':
-    x = image_ops.resize_nearest_neighbor(x, new_shape)
+    x = image_ops.resize_images_v2(
+        x, new_shape, method=image_ops.ResizeMethod.NEAREST_NEIGHBOR)
   elif interpolation == 'bilinear':
-    x = image_ops.resize_bilinear(x, new_shape)
+    x = image_ops.resize_images_v2(x, new_shape,
+                                   method=image_ops.ResizeMethod.BILINEAR)
   else:
     raise ValueError('interpolation should be one '
                      'of "nearest" or "bilinear".')

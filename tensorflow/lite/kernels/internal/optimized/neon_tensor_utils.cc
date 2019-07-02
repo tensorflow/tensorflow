@@ -33,7 +33,9 @@ limitations under the License.
 #define kFloatWeightsPerNeonLane 4
 
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+#if !defined(__ANDROID__) || __ANDROID_API__ >= 28
 #define TFLITE_USE_STD_ALIGN
+#endif
 #endif
 
 #ifdef TFLITE_USE_STD_ALIGN

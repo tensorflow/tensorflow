@@ -51,7 +51,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_workers=num_workers,
         index=index,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -90,7 +90,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     variant_tensor = ged_ops.experimental_rebatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_workers=num_workers,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

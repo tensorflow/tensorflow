@@ -84,7 +84,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -601,6 +600,7 @@ cc_library(
     srcs = ["prefetch_autotuner.cc"],
     hdrs = ["prefetch_autotuner.h"],
     deps = [
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
 )
@@ -610,6 +610,7 @@ tf_cc_test(
     srcs = ["prefetch_autotuner_test.cc"],
     deps = [
         ":prefetch_autotuner",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

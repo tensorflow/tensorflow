@@ -18,6 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "parallel_interleave_dataset";
+constexpr int kOpVersion = 2;
 
 class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,9 +40,11 @@ class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes, bool sloppy,
       std::unique_ptr<OpKernel> *op_kernel) {
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
     NodeDef node_def = test::function::NDef(
         kNodeName,
-        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType),
+        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType, params),
         {ParallelInterleaveDatasetOp::kInputDataset,
          ParallelInterleaveDatasetOp::kCycleLength,
          ParallelInterleaveDatasetOp::kBlockLength,
@@ -341,7 +344,7 @@ TestCase TestCase9() {
 }
 
 // test case 10: cycle_length = 3, block_length = 3,
-// num_parallel_calls = kAutoTune, sloppy = true
+// num_parallel_calls = kAutotune, sloppy = true
 TestCase TestCase10() {
   return {
       /*input_tensors*/
@@ -358,7 +361,7 @@ TestCase TestCase10() {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
       /*num_parallel_calls*/
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+                                              {model::kAutotune}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
@@ -607,8 +610,11 @@ TEST_F(ParallelInterleaveDatasetOpTest, DatasetTypeString) {
                              &parallel_interleave_dataset));
   core::ScopedUnref scoped_unref(parallel_interleave_dataset);
 
-  EXPECT_EQ(parallel_interleave_dataset->type_string(),
-            name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType));
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
+  EXPECT_EQ(
+      parallel_interleave_dataset->type_string(),
+      name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetOutputDtypes) {

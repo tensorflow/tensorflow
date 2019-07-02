@@ -33,6 +33,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -565,6 +566,19 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_with_external_loss(self):
+    inp = keras.Input(shape=(4,), name='inp1')
+    out = keras.layers.Dense(2)(inp)
+    model = keras.Model(inp, out)
+    model.add_loss(math_ops.reduce_mean(out))
+    model.compile('rmsprop')
+    x = np.ones((10, 4))
+
+    # dataset contains only features, no labels.
+    dataset = dataset_ops.Dataset.from_tensor_slices(x).repeat(10).batch(10)
+    model.fit(dataset)
 
 
 class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):

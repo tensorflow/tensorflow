@@ -518,6 +518,36 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
 
+  def test_class_definition_basic(self):
+
+    def test_fn(a, b):
+      class C(a(b)):
+        d = 1
+      return C
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('a', 'b', 'C'), ('C',))
+
+  def test_class_definition_isolates_method_writes_but_not_reads(self):
+
+    def test_fn(a, b, c):
+      class C(a(b)):
+        d = 1
+
+        def e(self):
+          f = c + 1
+          return f
+      return C
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    # Note: 'f' is in there because we cannot detect thattically that it
+    # is local to the function itself.
+    self.assertScopeIs(body_scope, ('a', 'b', 'c', 'f', 'C'), ('C',))
+
 
 if __name__ == '__main__':
   test.main()

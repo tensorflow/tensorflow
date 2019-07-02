@@ -669,7 +669,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
         header=self._header,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
+        output_shapes=self._flat_shapes,
         field_delim=self._field_delim,
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
@@ -959,7 +959,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         lambda dtype: structure.TensorStructure(dtype, []), output_types)
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property

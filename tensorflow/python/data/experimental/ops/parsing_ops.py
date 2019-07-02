@@ -87,7 +87,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
             self._dense_keys,
             self._sparse_types,
             self._dense_shapes,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ParseExampleDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -55,6 +55,10 @@ class DummyWorkerCache : public WorkerCacheInterface {
   WorkerInterface* GetOrCreateWorker(const string& target) override {
     return nullptr;
   }
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {
     return false;

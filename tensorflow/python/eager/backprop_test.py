@@ -38,6 +38,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -1459,6 +1460,16 @@ class JacobianTest(test.TestCase):
     dy_xx = g.batch_jacobian(dy_x, x)
     dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
     self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_indexed_slices(self):
+    with backprop.GradientTape(persistent=True) as g:
+      inp = random_ops.random_uniform([3, 2])
+      g.watch(inp)
+      output = nn.embedding_lookup(inp, [0, 2])
+    self.assertAllClose(
+        g.jacobian(output, inp, experimental_use_pfor=True),
+        g.jacobian(output, inp, experimental_use_pfor=False))
 
 
 @test_util.run_all_in_graph_and_eager_modes

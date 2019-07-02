@@ -916,7 +916,7 @@ inline Tensor::Tensor(const Tensor& other)
 }
 
 inline Tensor::Tensor(Tensor&& other)
-    : shape_(std::move(other.shape())), buf_(other.buf_) {
+    : shape_(std::move(other.shape_)), buf_(other.buf_) {
   other.buf_ = nullptr;
 }
 

@@ -1875,49 +1875,51 @@ REGISTER_KERNEL_BUILDER(
       Name("_MklConv2D")                                                \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>); \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklConv2DWithBias")                                        \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, true, false, false>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")              \
-                              .Device(DEVICE_CPU)                       \
-                              .TypeConstraint<T>("T")                   \
-                              .Label(mkl_op_registry::kMklOpLabel),     \
-                          MklDummyOp<CPUDevice, T>);                    \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("__MklDummyConv2DWithBias")                                  \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
+      MklDummyOp<CPUDevice, T>);                                        \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklPadWithConv2D")                                         \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
           .TypeConstraint<int32>("Tpaddings")                           \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, true, false>);  \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklPadWithConv2D")                                         \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
           .TypeConstraint<int64>("Tpaddings")                           \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int64, false, true, false>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")               \
-                              .Device(DEVICE_CPU)                       \
-                              .TypeConstraint<T>("T")                   \
-                              .TypeConstraint<int32>("Tpaddings")       \
-                              .Label(mkl_op_registry::kMklOpLabel),     \
-                          MklDummyOp<CPUDevice, T>);
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("__MklDummyPadWithConv2D")                                   \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .TypeConstraint<int32>("Tpaddings")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
+      MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
-#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)        \
-  REGISTER_KERNEL_BUILDER(                      \
-      Name("_MklDepthwiseConv2dNative")         \
-          .Device(DEVICE_CPU)                   \
-          .TypeConstraint<T>("T")               \
-          .Label(mkl_op_registry::kMklOpLabel), \
+#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                       \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklDepthwiseConv2dNative")                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
@@ -1925,44 +1927,45 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 // Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
-#define REGISTER_MKL_CPU_2D_FUSED(T)                                \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklFusedConv2D")                                       \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<T>("T")                                   \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, false>);      \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklPadWithFusedConv2D")                                \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<int32>("Tpaddings")                       \
-          .TypeConstraint<T>("T")                                   \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true>);       \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklPadWithFusedConv2D")                                \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<T>("T")                                   \
-          .TypeConstraint<int64>("Tpaddings")                       \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true>);       \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithFusedConv2D")      \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int32>("Tpaddings")   \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklDummyOp<CPUDevice, T>);
+#define REGISTER_MKL_CPU_2D_FUSED(T)                           \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedConv2D")                                  \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, false>); \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklPadWithFusedConv2D")                           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<int32>("Tpaddings")                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true>);  \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklPadWithFusedConv2D")                           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int64>("Tpaddings")                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true>);  \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("__MklDummyPadWithFusedConv2D")                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int32>("Tpaddings")                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
-#define REGISTER_MKL_CPU_3D(T)                  \
-  REGISTER_KERNEL_BUILDER(                      \
-      Name("_MklConv3D")                        \
-          .Device(DEVICE_CPU)                   \
-          .TypeConstraint<T>("T")               \
-          .Label(mkl_op_registry::kMklOpLabel), \
+#define REGISTER_MKL_CPU_3D(T)                                 \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConv3D")                                       \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);

@@ -263,7 +263,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         init_func=self._init_func.function,
         reduce_func=self._reduce_func.function,
         finalize_func=self._finalize_func.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_GroupByReducerDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_key_func(self, key_func, input_dataset):
@@ -384,7 +384,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         key_func=self._key_func.function,
         reduce_func=self._reduce_func.function,
         window_size_func=self._window_size_func.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_window_size_func(self, window_size_func):

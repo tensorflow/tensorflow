@@ -111,7 +111,10 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
 
   def _restore_updates(self):
     """Recreates a dict of updates from the layer's weights."""
-    return self.state_variables
+    data_dict = {}
+    for name, var in self.state_variables.items():
+      data_dict[name] = var.numpy()
+    return data_dict
 
   def _dataset_is_infinite(self, dataset):
     """True if the passed dataset is infinite."""
@@ -275,6 +278,13 @@ class Combiner(object):
   can arbitrarily shard a dataset, perform computations on a subset, and then
   merge the computation into a final result. This enables distributed
   computation.
+
+  The combiner itself does not own any state - all computational state is owned
+  by the accumulator objects. This is so that we can have an arbitrary number of
+  Combiners (thus sharding the computation N ways) without risking any change
+  to the underlying computation. These accumulator objects are uniquely
+  associated with each Combiner; a Combiner defines what the accumulator object
+  should be and will only work with accumulators of that type.
   """
   __metaclass__ = abc.ABCMeta
 

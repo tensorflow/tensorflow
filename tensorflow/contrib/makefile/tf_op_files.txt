@@ -116,6 +116,7 @@ tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
+tensorflow/core/kernels/einsum_op.cc
 tensorflow/core/kernels/encode_proto_op.cc
 tensorflow/core/kernels/encode_wav_op.cc
 tensorflow/core/kernels/example_parsing_ops.cc

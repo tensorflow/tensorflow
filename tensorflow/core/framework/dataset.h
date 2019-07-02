@@ -472,6 +472,12 @@ class IteratorBase {
   // be stored in `*end_of_sequence`, and the content of
   // `*out_tensors` will be undefined.
   //
+  // Implementations should never return `OutOfRange` error. If at end of
+  // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
+  // Internally raised `OutOfRange` errors that do not imply end of sequence
+  // should be converted to a different error type before being propagated to
+  // the caller.
+  //
   // This method is thread-safe.
   //
   // TODO(mrry): Define `GetNextAsync()` or `GetNextManyAsync()`, and

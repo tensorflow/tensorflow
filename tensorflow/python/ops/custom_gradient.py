@@ -174,7 +174,7 @@ def get_variable_by_name(var_name):
   """Given a variable name, retrieves a handle on the tensorflow Variable."""
 
   candidate_vars = ops.get_collection(
-      ops.GraphKeys.GLOBAL_VARIABLES, scope=var_name)
+      ops.GraphKeys.GLOBAL_VARIABLES, scope="{}:0".format(var_name))
   if len(candidate_vars) >= 1:
     # Filter out non-trainable variables.
     candidate_vars = [v for v in candidate_vars if v.trainable]

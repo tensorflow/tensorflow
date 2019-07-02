@@ -30,11 +30,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
-class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
+class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
   @classmethod
@@ -108,7 +107,7 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
         if sparse_tensor.is_sparse(result_value):
           self.assertSparseValuesEqual(result_value, expected_value)
         elif ragged_tensor.is_ragged(result_value):
-          self.assertRaggedEqual(result_value, expected_value)
+          self.assertAllEqual(result_value, expected_value)
         else:
           self.assertAllEqual(
               result_value,
@@ -209,7 +208,7 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
         if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
         elif ragged_tensor.is_ragged(op1[i]):
-          self.assertRaggedEqual(op1[i], op2[i])
+          self.assertAllEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:

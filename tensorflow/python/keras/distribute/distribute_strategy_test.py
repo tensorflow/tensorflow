@@ -25,14 +25,19 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
@@ -457,15 +462,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         # TODO(anjalisridhar): We need tests for when the batch size and steps
         # are smaller and results in a 0 batch_size and steps value.
         model.evaluate(inputs, targets)
-        # with steps
-        model.evaluate(inputs, targets, steps=2)
-        # with batch_size
         model.evaluate(inputs, targets, batch_size=8)
 
         model.predict(inputs)
-        # with steps
-        model.predict(inputs, steps=2)
-        # with batch_size
         model.predict(inputs, batch_size=8)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
@@ -496,15 +495,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # TODO(anjalisridhar): We need tests for when the batch size and steps are
       # smaller and results in a 0 batch_size and steps value.
       model.evaluate(inputs, targets)
-      # with steps
-      model.evaluate(inputs, targets, steps=2)
-      # with batch_size
       model.evaluate(inputs, targets, batch_size=8)
 
       model.predict(inputs)
-      # with steps
-      model.predict(inputs, steps=2)
-      # with batch_size
       model.predict(inputs, batch_size=8)
 
   @combinations.generate(
@@ -580,7 +573,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       input_b_np = np.asarray(np.random.random((6, 5)), dtype=np.float32)
       inputs = [input_a_np, input_b_np]
 
-      outs = model.predict(inputs, steps=1)
+      outs = model.predict(inputs)
       # `predict` a list that is equal in length to the number of model outputs.
       # In this test our model has two outputs and each element of `outs`
       # corresponds to all the samples of one of the model outputs.
@@ -1476,9 +1469,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       inputs = np.zeros((20, 10), np.float32)
       targets = np.zeros((20, 2), np.float32)
 
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-    model.predict(inputs, steps=1)
-    model.evaluate(inputs, targets, steps=1)
+    model.fit(inputs, targets, epochs=1, batch_size=10)
+    model.predict(inputs, batch_size=10)
+    model.evaluate(inputs, targets, batch_size=10)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_distribution_strategy_on_functional_model(self, distribution,
@@ -1496,9 +1489,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)
 
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-    model.predict(inputs, steps=1)
-    model.evaluate(inputs, targets, steps=1)
+    model.fit(inputs, targets, epochs=1)
+    model.predict(inputs)
+    model.evaluate(inputs, targets)
 
   @combinations.generate(
       combinations.times(
@@ -1586,12 +1579,12 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     model = _make_model_with_add_loss()
     model.compile('sgd')
-    history = model.fit(x, steps_per_epoch=2, epochs=1)
+    history = model.fit(x, epochs=1)
 
     with distribution.scope():
       ds_model = _make_model_with_add_loss()
       ds_model.compile('sgd', cloning=cloning)
-      ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
+      ds_history = ds_model.fit(x, epochs=1)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1661,7 +1654,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1673,7 +1665,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
@@ -1722,7 +1713,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1734,7 +1724,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
@@ -1767,7 +1756,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1779,13 +1767,78 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
       self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategies_minus_default_minus_tpu, mode=['eager']))
+  def test_correctness_of_add_loss_with_merge_call(self, distribution):
+    batch_size = 32
+
+    def _get_model():
+      inputs = keras.layers.Input(shape=(1,))
+      labels = keras.layers.Input(shape=(1,))
+      x = keras.layers.Dense(10, activation='relu')(inputs)
+      y = keras.layers.Dense(1)(x)
+      model = keras.models.Model([inputs, labels], y)
+      model.add_loss(keras.losses.mean_squared_error(labels, y))
+      return model
+
+    def _get_data():
+      x_train = np.random.rand(64, 1)
+      y_train = 3 * x_train
+      x_train = x_train.astype('float32')
+      y_train = y_train.astype('float32')
+      dataset = dataset_ops.DatasetV2.from_tensor_slices((x_train, y_train))
+      dataset = dataset.batch(batch_size)
+      return dataset
+
+    with distribution.scope():
+      model = _get_model()
+      optimizer = gradient_descent_keras.SGD(0.2)
+
+      @def_function.function
+      def train_step(dist_inputs):
+
+        def step_fn(inputs):
+          with backprop.GradientTape() as tape:
+            logits = model(inputs)
+
+            # Invoke a merge_call()
+            distribution_strategy_context.get_replica_context().merge_call(
+                lambda d: None)
+
+            # Verify that there is only one loss on the model.
+            assert len(model.losses) == 1
+            loss_from_model = math_ops.reduce_sum(
+                model.losses) * 1.0 / batch_size
+
+            # Compute loss in this loop.
+            loss = keras.losses.mean_squared_error(inputs[1], logits)
+            loss = nn.compute_average_loss(loss, global_batch_size=batch_size)
+
+            # Verify that the loss computed in this loop is equivalent to the
+            # loss from the model that was added via add_loss.
+            check_ops.assert_equal(loss, loss_from_model)
+
+          grads = tape.gradient(loss, model.trainable_variables)
+          optimizer.apply_gradients(zip(grads, model.trainable_variables))
+          return loss
+
+        per_replica_losses = distribution.experimental_run_v2(
+            step_fn, args=(dist_inputs,))
+        return distribution.reduce(
+            reduce_util.ReduceOp.SUM, per_replica_losses, axis=None)
+
+      dataset = distribution.experimental_distribute_dataset(_get_data())
+      for _ in range(2):
+        for x in dataset:
+          train_step(x)
 
 
 if __name__ == '__main__':

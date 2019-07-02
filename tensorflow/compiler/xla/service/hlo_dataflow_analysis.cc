@@ -285,15 +285,19 @@ HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
 }
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
-    const HloInstruction* instruction) {
+    const HloInstruction* instruction) const {
   HloValueSet value_set;
 
   const InstructionValueSet& value_set_tree =
       GetInstructionValueSet(instruction);
 
-  for (auto pair : value_set_tree) {
-    value_set.AssignUnionOf({&pair.second});
+  std::vector<const HloValueSet*> all_sets;
+  for (auto& pair : value_set_tree) {
+    const HloValueSet& value_set = pair.second;
+    all_sets.push_back(&value_set);
   }
+  value_set.AssignUnionOf(all_sets);
+
   return value_set;
 }
 
@@ -1126,11 +1130,13 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kScatter ||
+      user->opcode() == HloOpcode::kTriangularSolve ||
       user->opcode() == HloOpcode::kWhile) {
-    // We eliminated other users in BufferLiveness::live_range_strictly_before,
-    // so here we just need to check that the use is at operand index 0.
+    // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
+    // so here we just need to check that the use is at the right operand index.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
-    return operand_indices.size() == 1 && operand_indices[0] == 0;
+    int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
+    return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
   if (user->opcode() == HloOpcode::kSort) {
     // Only valid if there are no other users.

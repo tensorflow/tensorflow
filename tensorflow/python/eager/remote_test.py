@@ -27,6 +27,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
+from tensorflow.python.training import server_lib
 
 
 class SingleWorkerTest(test.TestCase):
@@ -160,6 +161,49 @@ class MultiWorkersTest(test.TestCase):
 
     with ops.device('/job:worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
+
+
+_GRPC_PREFIX = 'grpc://'
+
+
+class MultiJobsTest(test.TestCase):
+
+  def setUp(self):
+    super(MultiJobsTest, self).setUp()
+
+    workers, ps = test_util.create_local_cluster(2, 1)
+
+    cluster = {
+        'my_worker': [
+            _strip_prefix(workers[0].target, _GRPC_PREFIX),
+            _strip_prefix(workers[1].target, _GRPC_PREFIX),
+        ],
+        'my_ps': [_strip_prefix(ps[0].target, _GRPC_PREFIX)],
+    }
+
+    remote.connect_to_cluster(server_lib.ClusterSpec(cluster))
+
+  def testSimpleParameterServer(self):
+
+    with ops.device('/job:my_ps/task:0/device:CPU:0'):
+      v1 = variables.Variable(initial_value=0)
+      v2 = variables.Variable(initial_value=10)
+
+    @def_function.function
+    def worker_fn():
+      v1.assign_add(1)
+      v2.assign_sub(2)
+      return v1.read_value() + v2.read_value()
+
+    with ops.device('/job:my_worker/task:0/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 9)
+
+    with ops.device('/job:my_worker/task:1/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 8)
+
+
+def _strip_prefix(s, prefix):
+  return s[len(prefix):] if s.startswith(prefix) else s
 
 
 if __name__ == '__main__':

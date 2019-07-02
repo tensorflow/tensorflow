@@ -46,7 +46,7 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

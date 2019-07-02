@@ -108,7 +108,7 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
         gen_experimental_dataset_ops.experimental_assert_next_dataset(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             self._transformations,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_AssertNextDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -121,7 +121,7 @@ class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
     variant_tensor = (
         gen_experimental_dataset_ops.experimental_non_serializable_dataset(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -161,7 +161,7 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
         gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
             [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
             num_experiments=num_experiments,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ChooseFastestDataset, self).__init__(variant_tensor)
 
   def _inputs(self):
@@ -274,7 +274,7 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
             num_elements_per_branch=num_elements_per_branch,
             branches=[f.function for f in self._funcs],
             other_arguments_lengths=self._capture_lengths,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ChooseFastestBranchDataset, self).__init__(input_dataset,
                                                       variant_tensor)
 

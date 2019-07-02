@@ -153,6 +153,8 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
   *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
+  fail->set_buffer_address(
+      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -398,6 +400,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                 << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -406,11 +410,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
       comparator.emplace(result_shape, hlo_module_config);
-      reference_result_buffer = result_buffer;
-      TF_ASSIGN_OR_RETURN(result_buffer,
-                          input_output_allocator.AllocateBytes(
-                              &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffer,
+          input_output_allocator.AllocateBytes(&stream, result_buffer.size()));
+      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
+                        result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -421,9 +425,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
-      for (const auto* op : instr->operands()) {
-        *instr_log.add_operand_shapes() = op->shape().ToProto();
+      for (int i = 0; i < instr->operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+        instr_log.add_operand_addresses(
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
+      instr_log.set_result_address(
+          reinterpret_cast<uint64>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {

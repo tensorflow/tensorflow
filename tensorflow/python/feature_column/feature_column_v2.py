@@ -393,6 +393,27 @@ class _BaseFeaturesLayer(Layer):
     _verify_static_batch_size_equality(output_tensors, self._feature_columns)
     return array_ops.concat(output_tensors, -1)
 
+  def get_config(self):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    column_configs = serialization.serialize_feature_columns(
+        self._feature_columns)
+    config = {'feature_columns': column_configs}
+
+    base_config = super(  # pylint: disable=bad-super-call
+        _BaseFeaturesLayer, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    config_cp = config.copy()
+    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
+        config['feature_columns'], custom_objects=custom_objects)
+
+    return cls(**config_cp)
+
 
 @keras_export('keras.layers.DenseFeatures')
 class DenseFeatures(_BaseFeaturesLayer):
@@ -490,27 +511,6 @@ class DenseFeatures(_BaseFeaturesLayer):
           cols_to_output_tensors[column] = processed_tensors
         output_tensors.append(processed_tensors)
     return self._verify_and_concat_tensors(output_tensors)
-
-  def get_config(self):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    column_configs = serialization.serialize_feature_columns(
-        self._feature_columns)
-    config = {'feature_columns': column_configs}
-
-    base_config = super(  # pylint: disable=bad-super-call
-        DenseFeatures, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config, custom_objects=None):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    config_cp = config.copy()
-    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
-        config['feature_columns'], custom_objects=custom_objects)
-
-    return cls(**config_cp)
 
 
 class _LinearModelLayer(Layer):

@@ -158,7 +158,7 @@ class DistributedIteratorTestBase(test.TestCase):
         iterator = iter(dataset)
       else:
         if isinstance(dataset, input_lib.DistributedDatasetV1):
-          iterator = dataset.make_one_shot_iterator()
+          iterator = dataset.make_initializable_iterator()
         else:
           self.skipTest("unsupported test combination")
 

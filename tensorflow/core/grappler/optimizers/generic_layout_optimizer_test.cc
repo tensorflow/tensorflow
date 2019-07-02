@@ -44,13 +44,6 @@ constexpr int kDepthIn = 8;
 constexpr int kKernel = 3;
 constexpr int kDepthOut = 16;
 
-RewriterConfig_CustomGraphOptimizer CreateOptimizerConfig() {
-  RewriterConfig_CustomGraphOptimizer optimizer_config =
-      RewriterConfig_CustomGraphOptimizer();
-  optimizer_config.set_name("GenericLayoutOptimizer");
-  return optimizer_config;
-}
-
 Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                     const string& padding, const string& device) {
   int batch_size = 8;
@@ -193,8 +186,6 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv2DGraph) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -237,8 +228,6 @@ TEST_F(GenericLayoutOptimizerTest, PreserveFetch) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -261,8 +250,6 @@ TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -286,8 +273,6 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -310,8 +295,6 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -346,8 +329,6 @@ TEST_F(GenericLayoutOptimizerTest, Connectivity) {
   item.graph.mutable_node()->SwapElements(i1_index, i2_index);
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -373,8 +354,6 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -410,8 +389,6 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 

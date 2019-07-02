@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
@@ -53,7 +52,6 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
-from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -596,6 +594,7 @@ class Model(network.Network):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset or a dataset iterator, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
+            This argument is not supported with array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -728,6 +727,7 @@ class Model(network.Network):
             Ignored with the default value of `None`.
             If x is a `tf.data` dataset or a dataset iterator, and `steps` is
             None, 'evaluate' will run until the dataset is exhausted.
+            This argument is not supported with array inputs.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during evaluation.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
@@ -1318,31 +1318,10 @@ class Model(network.Network):
         verbose=verbose,
         callbacks=callbacks)
 
-  def _split_training_and_validation_data(self, x, y, sample_weights,
-                                          validation_split):
-    """Split input data into train/eval section based on validation_split."""
-    if training_utils.has_symbolic_tensors(x):
-      raise ValueError('If your data is in the form of symbolic tensors, '
-                       'you cannot use `validation_split`.')
-    if hasattr(x[0], 'shape'):
-      split_at = int(x[0].shape[0] * (1. - validation_split))
-    else:
-      split_at = int(len(x[0]) * (1. - validation_split))
-    x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
-    y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
-    if sample_weights:
-      sample_weights, val_sample_weights = (
-          slice_arrays(sample_weights, 0, split_at),
-          slice_arrays(sample_weights, split_at),
-      )
-    else:
-      val_sample_weights = None
-    return x, y, sample_weights, val_x, val_y, val_sample_weights
-
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
     """Unpack and check the validation data."""
-    val_x, val_y, val_sample_weights = self._unpack_validation_data(
+    val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
         validation_data)
     return self._standardize_user_data(
         val_x,
@@ -2440,10 +2419,6 @@ class Model(network.Network):
     # code.
     if isinstance(x, dataset_ops.DatasetV2):
       x_shapes = dataset_ops.get_structure(x)
-      # TODO(momernick): Remove this once NestedStructure goes away. Right
-      # now, Dataset outputs one of these instead of an actual python structure.
-      if isinstance(x_shapes, structure.NestedStructure):
-        x_shapes = x_shapes._component_specs  # pylint: disable=protected-access
       if isinstance(x_shapes, tuple):
         # If the output of a Dataset is a tuple, we assume it's either of the
         # form (x_data, y_data) or (x_data, y_data, sample_weights). In either
@@ -2458,14 +2433,10 @@ class Model(network.Network):
       x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
       x_shapes = nest.map_structure(type_spec.type_spec_from_value, x)
 
-    # If the inputs are still a NestedStructure, then we have a dict-input to
-    # this model. We can't yet validate this. (It's only relevant for feature
-    # columns).
-    if not isinstance(x_shapes, structure.NestedStructure):
-      flat_inputs = nest.flatten(x_shapes, expand_composites=False)
-      flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
-      for (a, b) in zip(flat_inputs, flat_expected_inputs):
-        nest.assert_same_structure(a, b, expand_composites=True)
+    flat_inputs = nest.flatten(x_shapes, expand_composites=False)
+    flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+    for (a, b) in zip(flat_inputs, flat_expected_inputs):
+      nest.assert_same_structure(a, b, expand_composites=True)
 
     if y is not None:
       if not self._is_graph_network:
@@ -2535,28 +2506,6 @@ class Model(network.Network):
                                           dataset_ops.DatasetV2)):
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
-
-  def _unpack_validation_data(self, validation_data):
-    if (isinstance(validation_data, (iterator_ops.Iterator,
-                                     iterator_ops.IteratorV2,
-                                     dataset_ops.DatasetV2))):
-      val_x = validation_data
-      val_y = None
-      val_sample_weight = None
-    elif len(validation_data) == 2:
-      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-      val_sample_weight = None
-    elif len(validation_data) == 3:
-      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
-    else:
-      raise ValueError(
-          'When passing a `validation_data` argument, '
-          'it must contain either 2 items (x_val, y_val), '
-          'or 3 items (x_val, y_val, val_sample_weights), '
-          'or alternatively it could be a dataset or a '
-          'dataset or a dataset iterator. '
-          'However we received `validation_data=%s`' % validation_data)
-    return val_x, val_y, val_sample_weight
 
   # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):

@@ -211,7 +211,7 @@ TEST_P(ReduceWindowTest, Along2ndMinorDim) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2Dims) {
+TEST_P(ReduceWindowTest, AmongMajor2DimsAdd) {
   Array4D<float> input_array(4, 4, 6, 8);
   input_array.FillWithMinorDimNum();
   const auto input_data_handle =
@@ -231,6 +231,20 @@ TEST_P(ReduceWindowTest, AmongMajor2Dims) {
 
   ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateFromArray(*result), {},
                            DefaultErrorSpec());
+}
+
+TEST_P(ReduceWindowTest, AmongMajor2DimsMax) {
+  Array4D<float> input_array(3, 3, 2, 1);
+  input_array.FillWithMinorDimNum();
+  const auto input_data_handle =
+      CreateConstantFromArray(input_array, &builder_);
+  int win_len = 2;
+  int win_stride = 1;
+  Padding padding = Padding::kValid;
+  // Reduce only along the x and y dimensions, according to the win_len.
+  ReduceWindowMax(input_data_handle, {win_len, win_len, 1, 1},
+                  {win_stride, win_stride, 1, 1}, padding);
+  ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
 TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
@@ -1533,7 +1547,10 @@ ENTRY R3Window {
   operand = f32[1,1,1]{2,1,0} parameter(0)
   negate = f32[1,1,1]{2,1,0} negate(operand)
   constant = f32[] constant(1)
-  ROOT reduce-window = f32[1,1,1]{2,1,0} reduce-window(negate, constant), window={size=1x1x1 pad=0_0x0_0x0_0}, to_apply=mul
+  ROOT reduce-window = f32[1,1,1]{2,1,0}
+    reduce-window(negate, constant),
+    window={size=1x1x1 pad=0_0x0_0x0_0},
+    to_apply=mul
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
@@ -1549,7 +1566,30 @@ identity.pad_to_reduce_window {
 ENTRY reduce-window-identity {
   operand = f32[1,32,64]{2,1,0} parameter(0)
   constant.4466 = f32[] constant(0)
-  ROOT reduce-window = f32[1,33,64]{2,1,0} reduce-window(operand, constant.4466), window={size=1x1x1 pad=0_0x1_0x0_0}, to_apply=identity.pad_to_reduce_window
+  ROOT reduce-window = f32[1,33,64]{2,1,0}
+    reduce-window(operand, constant.4466),
+      window={size=1x1x1 pad=0_0x1_0x0_0},
+      to_apply=identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceWindowIdentityNoPadding) {
+  const string hlo_string = R"(
+HloModule ReduceWindowIdentity
+identity.pad_to_reduce_window {
+  param0 = f32[] parameter(0)
+  ROOT param1 = f32[] parameter(1)
+}
+ENTRY reduce-window-identity {
+  operand = f32[1,32,64]{2,1,0} parameter(0)
+  constant.4466 = f32[] constant(0)
+  ROOT reduce-window = f32[1,32,64]{2,1,0}
+    reduce-window(operand, constant.4466),
+      window={size=1x1x1 pad=0_0x0_0x0_0},
+      to_apply=identity.pad_to_reduce_window
 }
 
 )";

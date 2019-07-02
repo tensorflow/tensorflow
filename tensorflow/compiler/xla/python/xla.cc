@@ -594,9 +594,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
+  py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
+      .value("DEFAULT", PrecisionConfig::DEFAULT)
+      .value("HIGH", PrecisionConfig::HIGH)
+      .value("HIGHEST", PrecisionConfig::HIGHEST);
+
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
-  py::class_<PrecisionConfig>(m, "PrecisionConfig");
 
   tensorflow::AddXrtSubmodule(&m);
 }

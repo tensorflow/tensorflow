@@ -44,7 +44,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -143,8 +142,13 @@ class Dropout(Layer):
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
     if self.noise_shape is None:
-      return self.noise_shape
-    return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
+      return None
+
+    concrete_inputs_shape = array_ops.shape(inputs)
+    noise_shape = []
+    for i, value in enumerate(self.noise_shape):
+      noise_shape.append(concrete_inputs_shape[i] if value is None else value)
+    return ops.convert_to_tensor(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
