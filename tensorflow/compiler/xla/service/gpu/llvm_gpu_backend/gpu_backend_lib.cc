@@ -500,7 +500,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
+StatusOr<std::vector<uint8>> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
   char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
 
@@ -614,7 +614,7 @@ Status LinkROCDLIfNecessary(
                                GetROCDLPaths(amdgpu_version, rocdl_dir_path));
 }
 
-StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
+StatusOr<std::unique_ptr<llvm::TargetMachine>> ConstructLLVMTargetMachineForModule(llvm::Module* module,
                                       int amdgpu_version,
                                       const HloModuleConfig& hlo_module_config,
                                       const string& rocdl_dir_path) {
@@ -699,8 +699,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  // Finally, produce HSA Code Object.
-  return std::move(EmitModuleToHsaco(module, target_machine.get()));
+  return target_machine;
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
@@ -747,14 +746,15 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
   std::call_once(backend_init_flag, amdgpu::AMDGPUBackendInit, hlo_module_config);
 
   std::vector<uint8> hsaco;
+  std::unique_ptr<llvm::TargetMachine> target_machine;
   {
     tensorflow::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
-    TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileModuleToHsaco(module, absl::get<int>(gpu_version), hlo_module_config,
-                                  rocdl_dir_path));
+    TF_ASSIGN_OR_RETURN(target_machine, amdgpu::ConstructLLVMTargetMachineForModule(module, absl::get<int>(gpu_version),
+                                                     hlo_module_config, rocdl_dir_path));
+    TF_ASSIGN_OR_RETURN(hsaco, amdgpu::EmitModuleToHsaco(module, target_machine.get()));
   }
   return std::move(hsaco);
 }
