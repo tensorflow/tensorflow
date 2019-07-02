@@ -176,6 +176,9 @@ class WhereCPUOp : public OpKernel {
       HANDLE_DIM(3);
       HANDLE_DIM(4);
       HANDLE_DIM(5);
+      HANDLE_DIM(6);
+      HANDLE_DIM(7);
+      HANDLE_DIM(8);
 
       default:
         OP_REQUIRES(context, false,
@@ -243,7 +246,10 @@ TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
   DECLARE_GPU_WHERE(2, T);         \
   DECLARE_GPU_WHERE(3, T);         \
   DECLARE_GPU_WHERE(4, T);         \
-  DECLARE_GPU_WHERE(5, T);
+  DECLARE_GPU_WHERE(5, T);         \
+  DECLARE_GPU_WHERE(6, T);         \
+  DECLARE_GPU_WHERE(7, T);         \
+  DECLARE_GPU_WHERE(8, T);
 
 TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_WHERE_TYPES);
 
@@ -339,6 +345,9 @@ class WhereGPUOp : public AsyncOpKernel {
         HANDLE_DIM(3);
         HANDLE_DIM(4);
         HANDLE_DIM(5);
+        HANDLE_DIM(6);
+        HANDLE_DIM(7);
+        HANDLE_DIM(8);
 
         default:
           OP_REQUIRES_ASYNC(

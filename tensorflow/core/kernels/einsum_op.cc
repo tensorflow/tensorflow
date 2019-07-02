@@ -736,6 +736,11 @@ namespace functor {
 
 DECLARE_GPU_SPECS(double);
 DECLARE_GPU_SPECS(float);
+// ROCM TODO: Enable once complex types are supported.
+#if GOOGLE_CUDA
+DECLARE_GPU_SPECS(complex64);
+DECLARE_GPU_SPECS(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor
@@ -757,8 +762,11 @@ TF_CALL_complex128(REGISTER_CPU);
 #define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
-//TF_CALL_complex64(REGISTER_GPU);
-//TF_CALL_complex128(REGISTER_GPU);
+// ROCM TODO: Enable once complex types are supported.
+#if GOOGLE_CUDA
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
+#endif
 #undef REGISTER_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_H_
 
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -109,12 +108,6 @@ class ROCmPlatform : public Platform {
 };
 
 }  // namespace gpu
-
-namespace rocm {
-
-using ROCmPlatform = gpu::ROCmPlatform;
-
-}  // namespace rocm
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_H_

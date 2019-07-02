@@ -27,6 +27,7 @@ import time
 
 import numpy as np
 import six
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
@@ -381,6 +382,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
                      ' is set, the `batch_size` must be None.')
   if check_steps_argument(ins, steps, steps_name):
     return None
+
   if hasattr(ins[0], 'shape'):
     return int(ins[0].shape[0])
   return None  # Edge case where ins == [static_learning_phase]
@@ -500,7 +502,8 @@ def standardize_input_data(data,
             continue
           data_shape = tuple(tensorshape.as_list())
         elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
-          data_shape = composite_tensor_utils.get_shape(data[i])
+          tensorshape = composite_tensor_utils.get_shape(data[i])
+          data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
 
@@ -590,6 +593,10 @@ def check_array_lengths(inputs, targets, weights=None):
       ValueError: in case of incorrectly formatted data.
   """
 
+  def is_tensor_or_composite_tensor(x):
+    return tensor_util.is_tensor(
+        x) or composite_tensor_utils.is_composite_or_composite_value(x)
+
   def set_of_lengths(x):
     # Returns a set with the variation between
     # different shapes, with None => 0
@@ -599,7 +606,7 @@ def check_array_lengths(inputs, targets, weights=None):
       return set([
           y.shape[0]
           for y in x
-          if y is not None and not tensor_util.is_tensor(y)
+          if y is not None and not is_tensor_or_composite_tensor(y)
       ])
 
   set_x = set_of_lengths(inputs)
@@ -1115,7 +1122,6 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
   is_x_iterator = isinstance(
       input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
@@ -1126,6 +1132,18 @@ def check_steps_argument(input_data, steps, steps_name):
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
     return True
+
+  if isinstance(input_data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    return True
+
+  if steps is not None:
+    list_types = (np.ndarray, list, tuple)
+    if (isinstance(input_data, list_types) or
+        (isinstance(input_data, dict) and
+         any(isinstance(v, list_types) for v in input_data.values()))):
+      logging.warning('When passing input data as arrays, do not specify '
+                      '`steps_per_epoch`/`steps` argument. '
+                      'Please use `batch_size` instead.')
   return False
 
 
@@ -1589,9 +1607,7 @@ class ModelInputs(object):
     # TODO(karmel): There is a side-effect here where what you get
     # with as_list and as_dict depends on whether you have called this
     # method first, since it modifies in place.
-    for i in range(len(self._flattened_inputs)):
-      k = self._input_names[i]
-      v = self._flattened_inputs[i]
+    for i, (k, v) in enumerate(zip(self._input_names, self._flattened_inputs)):
       if isinstance(v, (list, float, int)):
         v = np.asarray(v)
         if v.ndim == 1:
@@ -1621,8 +1637,8 @@ class ModelInputs(object):
 
   def as_dict(self):
     """An iterable over a dictionary version of inputs."""
-    for i in range(len(self._flattened_inputs)):
-      yield self._input_names[i], self._flattened_inputs[i]
+    for k, v in zip(self._input_names, self._flattened_inputs):
+      yield k, v
 
   def as_list(self):
     """Returning the inputs as a list."""

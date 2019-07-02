@@ -2242,21 +2242,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     context.context().set_optimizer_experimental_options(
         {'min_graph_nodes': -1, 'implementation_selector': True})
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'CPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'CPU'})
     def on_cpu(x):
       return x + 2
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'GPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'GPU'})
     def on_gpu(x):
       return x + 4
 

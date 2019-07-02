@@ -95,7 +95,7 @@ class DistributedIteratorTestBase(test.TestCase):
                     split_batch_by,
                     strategy,
                     input_context=None):
-    if isinstance(dataset, dataset_ops.Dataset):
+    if isinstance(dataset, (dataset_ops.Dataset, dataset_ops.DatasetV1Adapter)):
       return input_lib.DistributedDatasetV1(
           dataset,
           input_workers,
@@ -157,14 +157,10 @@ class DistributedIteratorTestBase(test.TestCase):
       if context.executing_eagerly():
         iterator = iter(dataset)
       else:
-        # The dataset can be a tf.data.DatasetV1Adapter instance since we wrap
-        # tf.data.DatasetV1 as a tf.data.DatasetV1Adapter instance when we
-        # autoshard the dataset.
-        if not isinstance(dataset, (dataset_ops.DatasetV1,
-                                    dataset_ops.DatasetV1Adapter)):
-          iterator = iter(dataset)
-        else:
+        if isinstance(dataset, input_lib.DistributedDatasetV1):
           iterator = dataset.make_one_shot_iterator()
+        else:
+          self.skipTest("unsupported test combination")
 
     if iteration_type == "get_next":
       evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
@@ -223,6 +219,27 @@ class DistributedIteratorTestBase(test.TestCase):
 
 class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                           parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu
+          ]))
+  def testDatasetV2IterError(self, distribution):
+    worker_device_pairs = [("", ["/device:CPU:0"])]
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    device_map = values.ReplicaDeviceMap(devices)
+    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
+
+    dist_dataset = input_lib.get_distributed_dataset(
+        dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 "or when eager execution is enabled"):
+      iter(dist_dataset)
 
   @combinations.generate(
       combinations.combine(
@@ -346,13 +363,13 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
     def dataset_fn(ctx):
       del ctx
       if tf2.enabled():
-        dataset1 = dataset_ops.Dataset.range(10)
-        dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
-        return dataset_ops.Dataset.zip((dataset1, dataset2))
-      else:
         dataset1 = dataset_ops.DatasetV2.range(10)
         dataset2 = dataset_ops.DatasetV2.range(10).map(lambda x: x**2)
         return dataset_ops.DatasetV2.zip((dataset1, dataset2))
+      else:
+        dataset1 = dataset_ops.Dataset.range(10)
+        dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
+        return dataset_ops.Dataset.zip((dataset1, dataset2))
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -684,7 +701,10 @@ class DistributedIteratorMultiWorkerTest(
                                            iteration_type, strategy_cls):
     if api_type == "wrap_into_dataset" and input_type == "input_fn":
       self.skipTest("unsupported test combination.")
-
+    if tf2.enabled():
+      # The V2 tests are skipped since we don't support creating an
+      # iterator for DistributedDataset in graph mode.
+      self.skipTest("unsupported test combination")
     # Environment variable is global, we need locking when patching TF_CONFIG.
     lock = threading.Lock()
 

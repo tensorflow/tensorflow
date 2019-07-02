@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
@@ -88,6 +89,12 @@ class GrpcWorkerCache : public WorkerCachePartial {
     } else {
       WorkerCacheInterface::ReleaseWorker(target, worker);
     }
+  }
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    eager_client_cache->reset(eager::NewGrpcEagerClientCache(channel_cache_));
+    return Status::OK();
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }

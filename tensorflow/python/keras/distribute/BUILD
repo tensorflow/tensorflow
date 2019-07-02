@@ -55,6 +55,9 @@ py_library(
         "multi_worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
 )
 
 cuda_py_test(
@@ -236,6 +239,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
         "notsan",

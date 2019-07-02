@@ -716,6 +716,22 @@ class SingleOpTest(ComputationTest):
     c.DotGeneral(c.Constant(lhs), c.Constant(rhs), dimension_numbers)
     self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
 
+  def testDotGeneralWithPrecisionConfig(self):
+    c = self._NewComputation()
+    rng = np.random.RandomState(0)
+    lhs = NumpyArrayF32(rng.randn(10, 3, 4))
+    rhs = NumpyArrayF32(rng.randn(10, 4, 5))
+    dimension_numbers = (([2], [1]), ([0], [0]))
+    config = xla_client.PrecisionConfig()
+    config.operand_precision.append(config.Precision.HIGH)
+    config.operand_precision.append(config.Precision.HIGHEST)
+    c.DotGeneral(
+        c.Constant(lhs),
+        c.Constant(rhs),
+        dimension_numbers,
+        precision_config=config)
+    self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
+
   def testConvF32Same(self):
     c = self._NewComputation()
     a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
@@ -776,6 +792,36 @@ class SingleOpTest(ComputationTest):
     c.ConvGeneralDilated(
         c.Constant(lhs), c.Constant(rhs), strides, pads, lhs_dilation,
         rhs_dilation, dimension_numbers)
+    result = np.array([[[
+        [0., 0., 0.],
+        [10., 20., 0.],
+        [0., 0., 0.],
+        [40., 50., 0.],
+    ]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvGeneralDilatedF32WithPrecisionConfig(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+    dimension_numbers = ("NCHW", "OIHW", "NCHW")
+    config = xla_client.PrecisionConfig()
+    config.operand_precision.append(config.Precision.HIGHEST)
+    config.operand_precision.append(config.Precision.DEFAULT)
+    c.ConvGeneralDilated(
+        c.Constant(lhs),
+        c.Constant(rhs),
+        strides,
+        pads,
+        lhs_dilation,
+        rhs_dilation,
+        dimension_numbers,
+        precision_config=config)
     result = np.array([[[
         [0., 0., 0.],
         [10., 20., 0.],

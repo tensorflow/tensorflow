@@ -475,10 +475,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
                          check_types=False)
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, foo="a")
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
   ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name

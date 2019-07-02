@@ -56,7 +56,21 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
 
+// Matrix multiplication before the rewrite.
+//
+// This function should never return "true" on instructions after
+// GemmRewriter pass has finished.
+bool IsMatrixMultiplication(const HloInstruction& dot);
+
+// Matrix multiplication rewritten into a GEMM custom call.
+// All matrix multiplications should be rewritten as such custom calls
+// after a GemmRewriter lowering pass.
+bool IsCublasGemm(const HloInstruction& hlo);
+
 constexpr int64 kWarpSize = 32;
+
+// A call to cuBLAS general matrix multiplication API.
+extern const char* const kGemmCallTarget;
 
 // Returns true if `hlo` will be implemented as a call to BLAS gemm.
 //
@@ -188,7 +202,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* b);
+                                     llvm::IRBuilder<>* builder);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.

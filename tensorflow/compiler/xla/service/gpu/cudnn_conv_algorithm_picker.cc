@@ -152,7 +152,9 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = redzone_check.redzone_failure_msg;
+  *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
+  fail->set_buffer_address(
+      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -163,7 +165,7 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << redzone_check.redzone_failure_msg;
+  LOG(ERROR) << redzone_check.RedzoneFailureMsg();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;
@@ -243,63 +245,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
-// Unimplemented for integers yet.
-template <typename T, typename Generator>
-typename std::enable_if<std::is_integral<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
-
-template <typename T, typename Generator>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) {
-  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
-}
-
-template <typename T>
-void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
-                           int64* rng_state) {
-  static_assert(
-      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
-      "Unimplemented for integers yet.");
-
-  // Accesses to static variables are not locked, since the caller is already
-  // in a critical section.
-  static std::vector<T>* host_buffer = [] {
-    // Use a large prime number to fragment the accesses.
-    auto* ret = new std::vector<T>(10069);
-    // Default-seeded random numbers.
-    std::mt19937 gen;
-    for (auto& element : *ret) {
-      using RandomType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
-      // Scale down the values for fp16 to have less overflows.
-      auto upper_bound =
-          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
-      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
-    }
-    return ret;
-  }();
-
-  int64& host_index = *rng_state;
-
-  char* current_addr = static_cast<char*>(buffer.opaque());
-  CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64 elements_left = buffer.size() / sizeof(T);
-  while (elements_left > 0) {
-    CHECK_LE(host_index, host_buffer->size());
-    if (host_buffer->size() == host_index) {
-      host_index = 0;
-    }
-    int64 elements_copied =
-        std::min<int64>(host_buffer->size() - host_index, elements_left);
-    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
-    current_addr += elements_copied * sizeof(T);
-    elements_left -= elements_copied;
-    host_index += elements_copied;
-  }
-}
 
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
@@ -335,22 +280,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   const auto initialize_buffer = [&stream, &result_shape,
                                   &rng_state](DeviceMemoryBase buffer) {
-    switch (result_shape.element_type()) {
-      case xla::F16:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
-                              &rng_state);
-        break;
-      case xla::F32:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
-                              &rng_state);
-        break;
-      case xla::F64:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
-                              &rng_state);
-        break;
-      default:
-        stream.ThenMemZero(&buffer, buffer.size());
-    }
+    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+                          buffer);
   };
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
@@ -469,6 +400,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                 << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -477,11 +410,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
       comparator.emplace(result_shape, hlo_module_config);
-      reference_result_buffer = result_buffer;
-      TF_ASSIGN_OR_RETURN(result_buffer,
-                          input_output_allocator.AllocateBytes(
-                              &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffer,
+          input_output_allocator.AllocateBytes(&stream, result_buffer.size()));
+      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
+                        result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -492,9 +425,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
-      for (const auto* op : instr->operands()) {
-        *instr_log.add_operand_shapes() = op->shape().ToProto();
+      for (int i = 0; i < instr->operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+        instr_log.add_operand_addresses(
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
+      instr_log.set_result_address(
+          reinterpret_cast<uint64>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {

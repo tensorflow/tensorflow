@@ -14,6 +14,9 @@ swift_library(
     srcs = glob(["Sources/*.swift"]),
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS,
+    visibility = [
+        "//third_party/py/tensorflow_examples/lite:__subpackages__",
+    ],
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],

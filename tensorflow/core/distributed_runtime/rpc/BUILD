@@ -160,6 +160,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_cache_partial",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
     ],
 )
 

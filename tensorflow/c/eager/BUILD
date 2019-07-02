@@ -26,6 +26,7 @@ tf_cuda_library(
     srcs = [
         "c_api.cc",
         "c_api_debug.cc",
+        "c_api_experimental.h",
         "c_api_internal.h",
     ],
     hdrs = ["c_api.h"],
@@ -81,6 +82,7 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "c_api_internal",
+    srcs = ["c_api_experimental.h"],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
@@ -274,7 +276,6 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
-            "c_api_experimental.h",
             "*test*",
         ],
     ),

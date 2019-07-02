@@ -192,6 +192,7 @@ tensorflow/third_party/nccl/LICENSE
 tensorflow/third_party/nccl/system.BUILD.tpl
 tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/build_defs.bzl.tpl
+tensorflow/third_party/nccl/archive.patch
 tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/boringssl/BUILD
 tensorflow/third_party/mpi/.gitignore
@@ -201,6 +202,7 @@ tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
+tensorflow/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/kafka/BUILD
 tensorflow/third_party/android/BUILD

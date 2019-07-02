@@ -95,6 +95,10 @@ class InstantiatedCapturedFunction {
       std::function<void(std::function<void()>)> runner,
       CapturedFunction* captured_func);
 
+  // Determines whether a rendezvous object should be created when running the
+  // instantiated function.
+  bool ShouldCreateRendezvous() const;
+
   friend class CapturedFunction;
 
   FunctionLibraryRuntime* const lib_;

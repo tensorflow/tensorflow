@@ -26,7 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 

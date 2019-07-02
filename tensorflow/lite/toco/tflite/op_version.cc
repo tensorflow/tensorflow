@@ -100,6 +100,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kMean, 1}, "1.6.0"},
           {{OperatorType::kMean, 2}, "1.14.0"},
           {{OperatorType::kSum, 1}, "1.10.0"},
+          {{OperatorType::kSum, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kReduceMax, 1}, "1.11.0"},
           {{OperatorType::kReduceMax, 2}, "1.14.0"},
           {{OperatorType::kReduceMin, 1}, "1.11.0"},

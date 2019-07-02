@@ -26,12 +26,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
+class RaggedGatherOpTest(test_util.TensorFlowTestCase):
 
   def testDocStringExamples(self):
     params = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
@@ -39,20 +38,20 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     ragged_params = ragged_factory_ops.constant([['a', 'b', 'c'], ['d'], [],
                                                  ['e']])
     ragged_indices = ragged_factory_ops.constant([[3, 1, 2], [1], [], [0]])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, ragged_indices),
         [[b'd', b'b', b'c'], [b'b'], [], [b'a']])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(ragged_params, indices),
         [[b'e'], [b'd'], [], [b'd'], [b'a', b'b', b'c']])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(ragged_params, ragged_indices),
         [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]])
 
   def testTensorParamsAndTensorIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = [2, 0, 2, 1]
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices), [b'c', b'a', b'c', b'b'])
     self.assertIsInstance(ragged_gather_ops.gather(params, indices), ops.Tensor)
 
@@ -60,14 +59,14 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
                                           [], ['g']])
     indices = [2, 0, 2, 1]
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices),
         [[b'f'], [b'a', b'b'], [b'f'], [b'c', b'd', b'e']])
 
   def testTensorParamsAndRaggedIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices),
         [[b'c', b'b'], [b'b', b'c', b'a'], [b'd']])
 
@@ -75,7 +74,7 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
                                           [], ['g']])
     indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices),
         [[[b'f'], [b'c', b'd', b'e']],                # [[p[2], p[1]      ],
          [[b'c', b'd', b'e'], [b'f'], [b'a', b'b']],  #  [p[1], p[2], p[0]],
@@ -86,14 +85,14 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
                                           [], ['g']])
     indices = 1
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices), [b'c', b'd', b'e'])
 
   def test3DRaggedParamsAnd2DTensorIndices(self):
     params = ragged_factory_ops.constant([[['a', 'b'], []],
                                           [['c', 'd'], ['e'], ['f']], [['g']]])
     indices = [[1, 2], [0, 1], [2, 2]]
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices),
         [[[[b'c', b'd'], [b'e'], [b'f']], [[b'g']]],            # [[p1, p2],
          [[[b'a', b'b'], []], [[b'c', b'd'], [b'e'], [b'f']]],  #  [p0, p1],
@@ -107,7 +106,7 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
         ragged_rank=2,
         inner_shape=(2,))
     params = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         ragged_gather_ops.gather(params, indices),
         [[[[b'd', b'e'], [b'a', b'g']], []],
          [[[b'c', b'b'], [b'b', b'a']], [[b'c', b'f']], [[b'c', b'd']]],

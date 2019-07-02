@@ -363,7 +363,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       }
       *graph_def.mutable_library() = graph.flib_def().ToProto();
       session->graph->mu.unlock();
-      status->status = session->session->Extend(graph_def);
+      status->status = session->session->Extend(std::move(graph_def));
       if (TF_GetCode(status) != TF_OK) {
         // Contract is we always delete input_values[i].
         return false;

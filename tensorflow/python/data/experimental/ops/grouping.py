@@ -263,7 +263,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         init_func=self._init_func.function,
         reduce_func=self._reduce_func.function,
         finalize_func=self._finalize_func.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_GroupByReducerDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_key_func(self, key_func, input_dataset):
@@ -299,8 +299,8 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
-          input_structure=structure.NestedStructure(
-              (self._state_structure, input_dataset._element_structure)),  # pylint: disable=protected-access
+          input_structure=(self._state_structure,
+                           input_dataset._element_structure),  # pylint: disable=protected-access
           add_to_graph=False)
 
       # Extract and validate class information from the returned values.
@@ -384,7 +384,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         key_func=self._key_func.function,
         reduce_func=self._reduce_func.function,
         window_size_func=self._window_size_func.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_window_size_func(self, window_size_func):
@@ -417,8 +417,8 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     """Make wrapping defun for reduce_func."""
     nested_dataset = dataset_ops.DatasetStructure(
         input_dataset._element_structure)  # pylint: disable=protected-access
-    input_structure = structure.NestedStructure(
-        (structure.TensorStructure(dtypes.int64, []), nested_dataset))
+    input_structure = (structure.TensorStructure(dtypes.int64,
+                                                 []), nested_dataset)
     self._reduce_func = dataset_ops.StructuredFunctionWrapper(
         reduce_func, self._transformation_name(),
         input_structure=input_structure)

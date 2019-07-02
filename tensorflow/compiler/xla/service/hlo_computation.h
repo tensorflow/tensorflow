@@ -329,11 +329,6 @@ class HloComputation {
   Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                        absl::Span<HloInstruction* const> order) const;
 
-  // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
-
   // Returns a deep copy of this computation including all instructions.
   // If the clone context is specified, it will be populated with the cloned
   // object mappings, and its module() will be used to add new computations

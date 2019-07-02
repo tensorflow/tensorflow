@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -740,8 +741,11 @@ class ScopedMetaGraphTest(test.TestCase):
         biases1 = resource_variable_ops.ResourceVariable(
             [0.1] * 3, name="biases")
         nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
-    debug_info_def = meta_graph.create_graph_debug_info_def(
-        operations=graph1.get_operations())
+    operations = []
+    for op in graph1.get_operations():
+      operations.append(("", op))
+    debug_info_def = error_interpolation.create_graph_debug_info_def(
+        operations=operations)
 
     # The unique file names in all the stack traces should be larger or equal
     # than 1.

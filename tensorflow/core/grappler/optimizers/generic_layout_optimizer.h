@@ -36,6 +36,11 @@ class GenericLayoutOptimizer : public CustomGraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
   Status Init(const RewriterConfig_CustomGraphOptimizer* config) final;
+
+ private:
+  string target_device_ = "GPU";
+  string src_format_ = "NHWC";
+  string dst_format_ = "NCHW";
 };
 
 }  // namespace grappler

@@ -37,5 +37,6 @@ py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct",
+        "@gast_archive//:gast",
     ],
 )

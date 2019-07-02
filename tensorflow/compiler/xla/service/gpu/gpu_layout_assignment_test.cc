@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -349,6 +351,9 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_text));
+  GemmRewriter gemm_rewriter_pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, gemm_rewriter_pass.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -361,8 +366,8 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   Shape expected_shape =
       ShapeUtil::MakeShapeWithLayout(F32, {8, 8, 256, 64}, {3, 2, 1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout(expected_shape),
-                      op::ShapeWithLayout(expected_shape)));
+              op::CustomCall(op::ShapeWithLayout(expected_shape),
+                             op::ShapeWithLayout(expected_shape)));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {

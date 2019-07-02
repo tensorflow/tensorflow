@@ -1494,6 +1494,27 @@ Status ValidateNoInline(const FunctionBody* fbody) {
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
+// Propagate the debug info of `nodes` in function `func` to the `target` node.
+// If the debug info of any node is missing, its node name and function name
+// is used.
+void PropagateDebugInfoToNode(const string& func,
+                              const std::vector<const Node*>& nodes,
+                              NodeDef* target) {
+  if (nodes.empty() || target->has_experimental_debug_info()) {
+    return;
+  }
+  for (const Node* node : nodes) {
+    const auto& node_def = node->def();
+    if (node_def.has_experimental_debug_info()) {
+      target->mutable_experimental_debug_info()->MergeFrom(
+          node_def.experimental_debug_info());
+    } else {
+      target->mutable_experimental_debug_info()->add_original_node_names(
+          node_def.name());
+      target->mutable_experimental_debug_info()->add_original_func_names(func);
+    }
+  }
+}
 }  // namespace
 
 string InlineFunctionBodyOptions::DebugString() const {
@@ -1515,6 +1536,8 @@ string InlineFunctionBodyOptions::DebugString() const {
       ", ignore_noinline=", true_false(ignore_noinline),
       ", override_device=", true_false(ignore_noinline),
       ", initialize_empty_device=", true_false(initialize_empty_device),
+      ", inline_impl_selection_group_functions=",
+      true_false(inline_impl_selection_group_functions),
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs");
@@ -1564,6 +1587,17 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
   if (options.disable_inlining) {
     return errors::InvalidArgument(
         "Function inlining explicitly disabled by 'options.disable_inlining'");
+  }
+
+  if (!options.inline_impl_selection_group_functions) {
+    bool is_impl_selection_group_function =
+        fbody->fdef.attr().find("api_implements") != fbody->fdef.attr().end();
+    if (is_impl_selection_group_function) {
+      return errors::InvalidArgument(
+          "Inlining of implementation selection group function ",
+          fbody->fdef.signature().name(),
+          " is disabled by options.inline_impl_selection_group_functions");
+    }
   }
 
   if (!options.ignore_noinline) {
@@ -1719,6 +1753,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (options.initialize_empty_device && ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
+    PropagateDebugInfoToNode(fbody->fdef.signature().name(), {n}, &ndef);
 
     // Add the function node name as a prefix:
     //  1) to node name to avoid collisions

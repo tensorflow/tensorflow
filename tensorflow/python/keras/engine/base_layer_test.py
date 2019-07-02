@@ -473,6 +473,43 @@ class BaseLayerTest(keras_parameterized.TestCase):
         ValueError, 'not compatible with provided weight shape'):
       layer.set_weights([kernel.T, bias])
 
+  def test_get_config_error(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def __init__(self, my_kwarg='default', **kwargs):
+        super(MyLayer, self).__init__(**kwargs)
+        self.my_kwarg = my_kwarg
+
+    # `__init__` includes kwargs but `get_config` is not overridden, so
+    # an error should be thrown:
+    with self.assertRaises(NotImplementedError):
+      MyLayer('custom').get_config()
+
+    class MyLayerNew(keras.layers.Layer):
+
+      def __init__(self, my_kwarg='default', **kwargs):
+        super(MyLayerNew, self).__init__(**kwargs)
+        self.my_kwarg = my_kwarg
+
+      def get_config(self):
+        config = super(MyLayerNew, self).get_config()
+        config['my_kwarg'] = self.my_kwarg
+        return config
+
+    # Test to make sure that error is not raised if the method call is
+    # from an overridden `get_config`:
+    self.assertEqual(MyLayerNew('custom').get_config()['my_kwarg'], 'custom')
+
+    class MyLayerNew2(keras.layers.Layer):
+
+      def __init__(self, name='MyLayerName', dtype=None, **kwargs):  # pylint:disable=redefined-outer-name
+        super(MyLayerNew2, self).__init__(name=name, dtype=dtype, **kwargs)
+
+    # Check that if the kwargs in `__init__` are base layer constructor
+    # arguments, no error is thrown:
+    self.assertEqual(MyLayerNew2(name='New').get_config()['name'], 'New')
+
 
 class SymbolicSupportTest(test.TestCase):
 

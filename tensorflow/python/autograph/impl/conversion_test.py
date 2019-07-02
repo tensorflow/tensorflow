@@ -276,6 +276,28 @@ class ConversionTest(test.TestCase):
     # but with high likelihood).
     self.assertEqual(len(set(generated_file_names)), 1)
 
+  def test_convert_reentrance(self):
+
+    def test_fn():
+      pass
+
+    # There are no known ways to cause convert to re-enter. So we instrument
+    # an internal function to do that instead.
+    old_node_to_graph = conversion.node_to_graph
+    self.num_conversions = 0
+    def node_to_graph_wrapper(node, context):
+      self.num_conversions += 1
+      if self.num_conversions < 2:
+        conversion.convert(test_fn, self._simple_program_ctx())
+      return old_node_to_graph(node, context)
+
+    try:
+      conversion.node_to_graph = node_to_graph_wrapper
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      self.assertIsNotNone(new_f)
+    finally:
+      conversion.node_to_graph = old_node_to_graph
+
 
 if __name__ == '__main__':
   test.main()

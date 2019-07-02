@@ -368,6 +368,16 @@ SUB
     range      : [-128, 127]
     granularity: per-tensor
 
+SUM
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
 SQUEEZE
   Input 0:
     data_type  : int8

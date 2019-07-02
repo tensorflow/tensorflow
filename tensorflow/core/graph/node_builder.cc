@@ -125,7 +125,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
   Status status;
-  Node* node = graph->AddNode(node_def, &status);
+  Node* node = graph->AddNode(std::move(node_def), &status);
   if (!status.ok()) return status;
 
   node->set_assigned_device_name(assigned_device_);

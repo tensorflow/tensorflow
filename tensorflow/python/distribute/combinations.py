@@ -178,12 +178,13 @@ class EagerGraphCombination(test_combinations.TestCombination):
     return [test_combinations.OptionalParameter("mode")]
 
 
-class NamedDistribution(test_combinations.NamedObject):
+class NamedDistribution(object):
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
   def __init__(self, name, distribution_fn, required_gpus=None,
                required_tpu=False):
-    test_combinations.NamedObject.__init__(self, name, distribution_fn)
+    object.__init__(self)
+    self._name = name
     self._distribution_fn = distribution_fn
     self._required_gpus = required_gpus
     self._required_tpu = required_tpu
@@ -199,6 +200,9 @@ class NamedDistribution(test_combinations.NamedObject):
   @property
   def required_tpu(self):
     return self._required_tpu
+
+  def __repr__(self):
+    return self._name
 
 
 generate = functools.partial(

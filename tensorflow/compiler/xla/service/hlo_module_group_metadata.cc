@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -149,10 +150,9 @@ Status HloModuleGroupMetadata::Build() {
   }
 
   for (HloModule* module : modules_) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-        TuplePointsToAnalysis::Run(module));
-    points_to_analyses_[module] = std::move(points_to_analysis);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                        HloAliasAnalysis::Run(module));
+    alias_analyses_[module] = std::move(alias_analysis);
   }
 
   return Status::OK();

@@ -38,16 +38,8 @@ load(
     "if_mkl_ml",
     "mkl_deps",
 )
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
-    "if_cuda_is_configured",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_is_configured",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -246,9 +238,9 @@ tf_kernel_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
+    gpu_copts = if_not_windows([
+        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+    ]),
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
@@ -276,9 +268,9 @@ cc_library(
 tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
+    gpu_copts = if_not_windows([
+        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+    ]),
     gpu_srcs = [
         "conv_2d.h",
         "conv_2d_gpu.h",
@@ -294,6 +286,7 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
+        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -1303,6 +1296,9 @@ tf_kernel_library(
         "where_op_gpu_impl_3.cu.cc",
         "where_op_gpu_impl_4.cu.cc",
         "where_op_gpu_impl_5.cu.cc",
+        "where_op_gpu_impl_6.cu.cc",
+        "where_op_gpu_impl_7.cu.cc",
+        "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda_or_rocm([
         ":cuda_solvers",
@@ -4191,9 +4187,9 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     srcs = ["depthwise_conv_op.cc"],
     hdrs = ["depthwise_conv_op.h"],
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
+    gpu_copts = if_not_windows([
+        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+    ]),
     gpu_srcs = [
         "depthwise_conv_op.h",
         "depthwise_conv_op_gpu.h",
@@ -4271,7 +4267,6 @@ NN_DEPS = [
     ":conv_2d",
     ":eigen_contraction_kernel",
     ":ops_util",
-    ":gpu_utils",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -5206,9 +5201,9 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
     ],
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
+    gpu_copts = if_not_windows([
+        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+    ]),
     gpu_srcs = [
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
@@ -5565,9 +5560,9 @@ tf_cuda_cc_test(
 
 tf_kernel_library(
     name = "parameterized_truncated_normal_op",
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
+    gpu_copts = if_not_windows([
+        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+    ]),
     prefix = "parameterized_truncated_normal_op",
     deps = [
         "//tensorflow/core:core_cpu",
@@ -6494,9 +6489,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )

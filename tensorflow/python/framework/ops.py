@@ -1700,11 +1700,11 @@ class Operation(object):
     # context managers.
     self._colocation_code_locations = None
     self._control_flow_context = self.graph._get_control_flow_context()
-    # pylint: enable=protected-access
 
     # Initialize self._c_op.
     if c_op:
       self._c_op = c_op
+      op_def = g._get_op_def(c_api.TF_OperationOpType(c_op))
     else:
       if op_def is None:
         op_def = self._graph._get_op_def(node_def.op)
@@ -1714,6 +1714,9 @@ class Operation(object):
           op_def, inputs, node_def.attr)
       self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
                                 control_input_ops)
+    # pylint: enable=protected-access
+
+    self._is_stateful = op_def.is_stateful
 
     # Initialize self._outputs.
     num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
@@ -3447,7 +3450,7 @@ class Graph(object):
     # (2) "is_stateful" is set in OpDef
     # (3) "container" attribute is in OpDef
     # (4) "container" attribute is None
-    if self._container and op.op_def.is_stateful:
+    if self._container and op._is_stateful:  # pylint: disable=protected-access
       try:
         container_attr = op.get_attr("container")
       except ValueError:
@@ -6150,9 +6153,6 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-name_scope_cache = {}
-
-
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
@@ -6225,9 +6225,7 @@ class name_scope(object):  # pylint: disable=invalid-name
       return self._name_scope.__enter__()
 
     if self._in_eager_mode:
-      scope_name, old_name = enter_eager_name_scope(self._ctx, self._name,
-                                                    self._default_name)
-      self._old_name = old_name
+      scope_name, self._old_name = enter_eager_name_scope(self._ctx, self._name)
       return scope_name
     else:
       if self._name is None and self._values is not None:
@@ -6239,14 +6237,19 @@ class name_scope(object):  # pylint: disable=invalid-name
             % (self._name, self._default_name))
       if self._values is None:
         self._values = []
-      g = _get_graph_from_inputs(self._values)
-      self._g_manager = g.as_default()
-      self._g_manager.__enter__()
+      if self._values:
+        g = _get_graph_from_inputs(self._values)
+        self._g_manager = g.as_default()
+        self._g_manager.__enter__()
+      else:
+        g = get_default_graph()
+        self._g_manager = None
       try:
         self._name_scope = g.name_scope(self._name)
         return self._name_scope.__enter__()
       except:
-        self._g_manager.__exit__(*sys.exc_info())
+        if self._g_manager is not None:
+          self._g_manager.__exit__(*sys.exc_info())
         raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
@@ -6256,29 +6259,25 @@ class name_scope(object):  # pylint: disable=invalid-name
       self._ctx.scope_name = self._old_name
     else:
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
-      self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
+      if self._g_manager is not None:
+        self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
 
 
-def enter_eager_name_scope(ctx, name, default_name=None):
+def enter_eager_name_scope(ctx, name):
   """Updates the eager context to enter the given name scope."""
   old_name = ctx.scope_name
   if not name:
     scope_name = ""
   else:
-    if name[-1] == "/":
+    if name.endswith("/"):
       # A trailing slash breaks out of nested name scopes, indicating a
       # fully specified scope name, for compatibility with Graph.name_scope.
       scope_name = name
     else:
-      # TODO(tomhennigan) Benchmark and consider removing the cache.
-      cache_key = name, old_name, default_name
-      scope_name = name_scope_cache.get(cache_key, None)
-      if scope_name is None:
-        scope_name = name + "/"
-        if old_name:
-          scope_name = old_name + scope_name
-        name_scope_cache[cache_key] = scope_name
+      scope_name = name + "/"
+      if old_name:
+        scope_name = old_name + scope_name
   ctx.scope_name = scope_name
   return scope_name, old_name
 

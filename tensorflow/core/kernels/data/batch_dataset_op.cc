@@ -194,7 +194,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
              ++component_index) {
           const Tensor& first_element = batch_elements[0][component_index];
           TensorShape batch_component_shape({num_batch_elements});
-          batch_component_shape.AppendShape(first_element.shape());
+          // NOTE(mrry): Copy the shape of the first element here, because
+          // `first_element.shape()` will become undefined after the 0th batch
+          // element is moved into the output batch.
+          TensorShape first_element_shape(first_element.shape());
+          batch_component_shape.AppendShape(first_element_shape);
           out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
                                     batch_component_shape);
           if (!out_tensors->back().IsInitialized()) {
@@ -217,12 +221,12 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           mutex status_mu;
           for (size_t i = 0; i < num_batch_elements; ++i) {
             if (batch_elements[i][component_index].shape() !=
-                first_element.shape()) {
+                first_element_shape) {
               return errors::InvalidArgument(
                   "Cannot batch tensors with different shapes in "
                   "component ",
                   component_index, ". First element had shape ",
-                  first_element.shape().DebugString(), " and element ", i,
+                  first_element_shape.DebugString(), " and element ", i,
                   " had shape ",
                   batch_elements[i][component_index].shape().DebugString(),
                   ".");

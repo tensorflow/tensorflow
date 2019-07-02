@@ -889,6 +889,61 @@ INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
                          GatherLoopFusionTest,
                          ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
                          GatherLoopFusionTestSpec::Name);
+
+TEST_F(InstructionFusionTest, NoFuseReduceMajor) {
+  absl::string_view module_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[50,60]{1,0} parameter(1)
+  c = f32[50,60]{1,0} add(a, b)
+  init = f32[] constant(0)
+  ROOT r = f32[60]{0} reduce(c, init), dimensions={0}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+TEST_F(InstructionFusionTest, FuseReduceMinor) {
+  absl::string_view module_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[50,60]{1,0} parameter(1)
+  c = f32[50,60]{1,0} add(a, b)
+  init = f32[] constant(0)
+  ROOT r = f32[] reduce(c, init), dimensions={0,1}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_TRUE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

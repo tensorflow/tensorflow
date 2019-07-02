@@ -18,6 +18,10 @@ limitations under the License.
 #include <complex>
 
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -25,11 +29,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
-#include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
-#include "tensorflow/stream_executor/rocm/rocm_helpers.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/rocm/rocm_stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
@@ -86,6 +86,7 @@ namespace wrap {
 
 #endif
 
+// clang-format off
 #define ROCFFT_ROUTINE_EACH(__macro) \
   __macro(hipfftDestroy)             \
   __macro(hipfftSetStream)           \
@@ -110,6 +111,8 @@ namespace wrap {
   __macro(hipfftExecC2R)             \
   __macro(hipfftExecZ2Z)             \
   __macro(hipfftExecR2C)             \
+
+// clang-format on
 
 ROCFFT_ROUTINE_EACH(STREAM_EXECUTOR_ROCFFT_WRAP)
 

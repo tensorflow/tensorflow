@@ -232,8 +232,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
-    # This setting combination requires quantization nodes to be present in
-    # order to build the engine.
+    # Ensure use_calibration=True in case of INT8 precision
     return (run_params.use_calibration or
             not IsQuantizationMode(run_params.precision_mode))
 

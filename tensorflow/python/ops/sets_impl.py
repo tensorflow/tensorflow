@@ -266,6 +266,13 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
     the last dimension the same. Elements along the last dimension contain the
     differences.
+
+  Raises:
+    TypeError: If inputs are invalid types, or if `a` and `b` have
+        different types.
+    ValueError: If `a` is sparse and `b` is dense.
+    errors_impl.InvalidArgumentError: If the shapes of `a` and `b` do not
+        match in any dimension other than the last dimension.
   """
   a, b, flipped = _convert_to_tensors_or_sparse_tensors(a, b)
   if flipped:

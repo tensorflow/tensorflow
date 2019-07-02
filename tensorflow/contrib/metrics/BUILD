@@ -26,6 +26,10 @@ py_library(
         "python/ops/set_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",

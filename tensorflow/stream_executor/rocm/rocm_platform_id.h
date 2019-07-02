@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 
-#define TENSORFLOW_ROCM_USE_DYNAMIC_LINKING
-
 #include "tensorflow/stream_executor/platform.h"
 
 namespace stream_executor {

@@ -218,6 +218,22 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
+// Creates a new forward accumulator and adds it to the active set.
+PyObject* TFE_Py_ForwardAccumulatorNew();
+
+// Removes a forward accumulator from the active set, meaning it will no longer
+// be watching operations.
+void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
+
+// Tell the forward accumulator `accumulator` to watch `tensor`, with a Tensor
+// tangent vector `tangent` of matching shape and dtype.
+void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
+                                    PyObject* tangent);
+
+// Looks up the Jacobian-vector product of `tensor` in the forward accumulator
+// `accumulator`. Returns None if no JVP is available.
+PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
+
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in

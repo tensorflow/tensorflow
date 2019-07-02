@@ -23,13 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace model {
-
-std::shared_ptr<Parameter> MakeParameter(const string& name,
-                                         std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max) {
-  return std::make_shared<Parameter>(name, state, min, max);
-}
-
 namespace {
 
 // Given the average time between output events (`output_time`), the average
@@ -43,19 +36,19 @@ namespace {
 // problem as an M/M/1/K queue
 // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
 double ComputeWaitTime(double output_time, double input_time,
-                       int64 buffer_size) {
+                       double buffer_size) {
   if (output_time == 0 || input_time == 0) {
     return output_time;
   }
   if (input_time == output_time) {
-    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
     return p_buffer_empty * output_time;
   }
-  const double alpha = 1.0L / static_cast<double>(input_time);
-  const double beta = 1.0L / static_cast<double>(output_time);
+  const double alpha = 1.0L / input_time;
+  const double beta = 1.0L / output_time;
   const double p_buffer_empty =
       (1.0L - beta / alpha) /
-      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+      (1.0L - std::pow((beta / alpha), (buffer_size + 1.0L)));
   return p_buffer_empty * output_time;
 }
 
@@ -81,28 +74,28 @@ class InterleaveMany : public Node {
   // output time of inputs comprising the interleave "cycle".
   double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double delta = SelfProcessingTimeLocked() * (inputs_.size() - 1);
+    double delta = SelfProcessingTimeLocked() * (num_inputs() - 1);
     input_times->back() += delta;
     auto cleanup = gtl::MakeCleanup(
         [input_times, delta]() { input_times->back() -= delta; });
     double output_time = (OutputTimeForInputs(input_times) -
                           inputs_.front()->OutputTime(input_times)) /
-                         static_cast<double>(inputs_.size() - 1);
+                         static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + output_time;
   }
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double processing_time =
-        (ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime()) /
-        static_cast<double>(inputs_.size() - 1);
+    double processing_time = (TotalProcessingTimeForInputs() -
+                              inputs_.front()->TotalProcessingTime()) /
+                             static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + processing_time;
   }
 };
@@ -142,16 +135,16 @@ class AsyncInterleaveMany : public Node {
   // `buffer_size` is derived from parallelism.
   double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double old_input_time = input_times->back();
     double new_input_time =
-        SelfProcessingTimeLocked() * static_cast<double>(inputs_.size() - 1);
+        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    double parallelism = inputs_.size() - 1;  // default to cycle length
+    double parallelism = num_inputs() - 1;  // default to cycle length
     if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
       parallelism = std::min(static_cast<int>(parallelism),
                              static_cast<int>((*parameter)->value));
@@ -166,11 +159,11 @@ class AsyncInterleaveMany : public Node {
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double processing_time =
-        ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
+        TotalProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
     return SelfProcessingTimeLocked() +
            processing_time / static_cast<double>(num_inputs() - 1);
   }
@@ -209,7 +202,7 @@ class KnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -267,7 +260,7 @@ class AsyncKnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -319,7 +312,7 @@ class UnknownRatio : public Node {
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return SelfProcessingTimeLocked() + ratio * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio * TotalProcessingTimeForInputs();
   }
 };
 
@@ -343,11 +336,17 @@ class Unknown : public Node {
 
   // The processing time is the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return ProcessingTimeForInputs();
+    return TotalProcessingTimeForInputs();
   }
 };
 
 }  // namespace
+
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max) {
+  return std::make_shared<Parameter>(name, state, min, max);
+}
 
 std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args) {
   return std::make_shared<InterleaveMany>(std::move(args));
@@ -426,68 +425,10 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
   }
 }
 
-// The optimization algorithm starts by setting all tunable parallelism
-// parameters to 1. It then repeatedly identifies the parameter whose increase
-// in parallelism decreases the output time the most. This process is repeated
-// until all parameters reach their maximum values or the projected output time
-// is less than or equal to the processing time needed to produce an element
-// divided by CPU budget.
-void Model::Optimize(int64 cpu_budget) {
-  std::shared_ptr<Node> snapshot;
-  {
-    tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot(nullptr);
-  }
-  VLOG(2) << "Starting optimization of tunable parameters";
-  const double processing_time = TotalProcessingTime(snapshot);
-  auto parameters = CollectTunableParameters(snapshot);
-  for (auto& pair : parameters) {
-    pair.second->value = 1;
-  }
-  while (true) {
-    const double output_time = OutputTime(snapshot);
-    bool all_max = true;
-    for (auto& pair : parameters) {
-      if (pair.second->value < pair.second->max) {
-        all_max = false;
-        break;
-      }
-    }
-    if (output_time < processing_time / cpu_budget || all_max) {
-      break;
-    }
-    double best_delta = -1.0L;
-    Parameter* best_parameter = nullptr;
-    for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
-        continue;
-      }
-      pair.second->value++;
-      double new_output_time = OutputTime(snapshot);
-      double delta = output_time - new_output_time;
-      if (delta > best_delta) {
-        best_delta = delta;
-        best_parameter = pair.second.get();
-      }
-      pair.second->value--;
-    }
-    if (!best_parameter) {
-      LOG(WARNING) << "Failed to find a tunable parameter that would "
-                      "decrease the output time. This means that the "
-                      "autotuning optimization got stuck in a local maximum. "
-                      "The optimization attempt will be aborted.";
-      return;
-    }
-    best_parameter->value++;
-  }
-  VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& pair : parameters) {
-    auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
-    mutex_lock l(*parameter->state->mu);
-    parameter->state->value = parameter->value;
-    parameter->state->cond_var->notify_all();
+void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget) {
+  switch (algorithm) {
+    case AutotuneAlgorithm::HILL_CLIMB:
+      OptimizeHillClimb(cpu_budget);
   }
 }
 
@@ -550,6 +491,65 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
   std::map<string, std::shared_ptr<Parameter>> parameters;
   node->CollectTunableParameters(&parameters);
   return parameters;
+}
+
+void Model::OptimizeHillClimb(int64 cpu_budget) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot(nullptr);
+  }
+  VLOG(2) << "Starting optimization of tunable parameters";
+  const double processing_time = TotalProcessingTime(snapshot);
+  auto parameters = CollectTunableParameters(snapshot);
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
+  }
+  while (true) {
+    const double output_time = OutputTime(snapshot);
+    bool all_max = true;
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
+        all_max = false;
+        break;
+      }
+    }
+    if (output_time < processing_time / cpu_budget || all_max) {
+      break;
+    }
+    double best_delta = -1.0L;
+    Parameter* best_parameter = nullptr;
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
+        continue;
+      }
+      pair.second->value++;
+      double new_output_time = OutputTime(snapshot);
+      double delta = output_time - new_output_time;
+      if (delta > best_delta) {
+        best_delta = delta;
+        best_parameter = pair.second.get();
+      }
+      pair.second->value--;
+    }
+    if (!best_parameter) {
+      LOG(WARNING) << "Failed to find a tunable parameter that would "
+                      "decrease the output time. This means that the "
+                      "autotuning optimization got stuck in a local maximum. "
+                      "The optimization attempt will be aborted.";
+      return;
+    }
+    best_parameter->value++;
+  }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node) {

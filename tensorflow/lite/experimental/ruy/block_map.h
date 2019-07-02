@@ -20,20 +20,6 @@ limitations under the License.
 
 namespace ruy {
 
-// The value and even the meaning of this constant are empirically
-// determined. Coarsely speaking, it's compared with the size of source
-// LHS and RHS operands to determine whether they are big enough to be worth
-// traversing in a more complicated "cache friendly" order. The current
-// value is roughly the minimum size of a L1 cache on any CPU that we currently
-// care about, e.g. ARM Cortex-A53. But we honestly don't even know the precise
-// extent to which this should be related to L1 cache size.
-//
-// A lower value is not necessarily 'safer' from a cache-friendliness
-// perspective: it means switching sooner (at smaller sizes) to more complicated
-// traversal orders, which might be adversarial to the CPU's auto-prefetching
-// or to the TLB.
-static constexpr int kCacheFriendlyLoopThreshold = 32 * 1024;
-
 enum class BlockMapTraversalOrder {
   // Plain old row-by-row or column-by-column traversal.
   kLinear,
@@ -126,7 +112,7 @@ struct BlockMap {
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
-                  BlockMap* block_map);
+                  int cache_friendly_traversal_threshold, BlockMap* block_map);
 
 // Maps an integer index to a (block_r, block_c) block position in the grid.
 void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,

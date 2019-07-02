@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
-
 #include <unistd.h>
+
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -41,11 +40,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
-#include "tensorflow/stream_executor/rocm/rocm_driver.h"
-#include "tensorflow/stream_executor/rocm/rocm_event.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/rocm/rocm_stream.h"
-#include "tensorflow/stream_executor/rocm/rocm_timer.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
@@ -82,7 +77,7 @@ static GpuTimer* AsGpuTimer(Timer* timer) {
 // N.B. we must lose constness in order to pass a suitable type to the existing
 // librocm APIs, so the caller should take care to only pass the result of const
 // GPU memory conversions to librocm functions which will honor constness.
-static hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase &gpu_mem) {
+static hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
   return const_cast<hipDeviceptr_t>(gpu_mem.opaque());
 }
 
@@ -221,7 +216,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 
@@ -258,7 +253,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      if (!LoadModuleFromHsaco(hsaco, &module)) {
+      if (!GpuDriver::LoadHsaco(context_, hsaco, &module)) {
         LOG(ERROR) << "failed to load HSACO\n";
         return false;
       }
@@ -612,7 +607,7 @@ port::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
     return port::Status{
         port::error::INTERNAL,
         absl::StrFormat("error recording waiting for ROCM event on stream %p",
-                     stream)};
+                        stream)};
   }
 }
 

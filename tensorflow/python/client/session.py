@@ -1359,6 +1359,11 @@ class BaseSession(SessionInterface):
         except KeyError:
           pass
       message = error_interpolation.interpolate(message, self._graph)
+      if 'only supports NHWC tensor format' in message:
+        message += ('\nA possible workaround: Try disabling Grappler optimizer'
+                    '\nby modifying the config for creating the session eg.'
+                    '\nsession_config.graph_options.rewrite_options.'
+                    'disable_meta_optimizer = True')
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):

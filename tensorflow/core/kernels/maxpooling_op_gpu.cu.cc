@@ -101,6 +101,7 @@ __global__ void MaxPoolForwardNCHW(
   }
 }
 
+#if GOOGLE_CUDA
 // The parameters for MaxPoolForwardNoMaskKernel_NCHW_VECT_C are the same as for
 // MaxPoolForwardNCHW above, except that mask is not supported, and each
 // element of the input and output contains 4 adjacent channel values for
@@ -130,18 +131,13 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (c * height + h) * width + w;
-#if GOOGLE_CUDA
          maxval = __vmaxs4(maxval, bottom_data_n[idx]);
-#elif TENSORFLOW_USE_ROCM
-        // ROCM TODO properly implement this function with corresponding GCN
-        // instruction
-        maxval = maxval;
-#endif
       }
     }
     top_data[index] = maxval;
   }
 }
+#endif // GOOGLE_CUDA
 
 template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNHWC(
@@ -387,6 +383,7 @@ __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
 
 namespace functor {
 
+#if GOOGLE_CUDA
 // Note: channels is the outer channels (dim 1) which has already been
 // divided by 4.
 bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
@@ -406,6 +403,7 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
       pad_t, pad_l, top_data));
   return d.ok();
 }
+#endif // GOOGLE_CUDA
 
 template <typename T>
 bool MaxPoolForwardWithOptionalArgmax<T>::operator()(

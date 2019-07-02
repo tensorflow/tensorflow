@@ -54,6 +54,11 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
     return wrapped_->ReleaseWorker(target, worker);
   }
 
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return wrapped_->GetEagerClientCache(eager_client_cache);
+  }
+
   // Set *locality with the DeviceLocality of the specified remote device
   // within its local environment.  Returns true if *locality
   // was set, using only locally cached data.  Returns false

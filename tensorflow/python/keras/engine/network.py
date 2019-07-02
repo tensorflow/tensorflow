@@ -218,8 +218,6 @@ class Network(base_layer.Layer):
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
-    # A dictionary that maps metric names to metric result tensors.
-    self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
@@ -593,19 +591,6 @@ class Network(base_layer.Layer):
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
-
-  @property
-  def _all_metrics_tensors(self):
-    """Returns the network's symbolic metric tensors."""
-    # TODO(psv): Remove this property.
-    metrics_tensors = {}
-    for layer in self.layers:
-      if isinstance(layer, Network):
-        metrics_tensors.update(layer._all_metrics_tensors)
-      else:
-        metrics_tensors.update(layer._metrics_tensors)
-    metrics_tensors.update(self._metrics_tensors)
-    return metrics_tensors
 
   @property
   def input_spec(self):
@@ -1796,12 +1781,15 @@ def _map_graph_network(inputs, outputs):
       nodes_depths[inbound_node] = max(depth + 1, previous_depth)
 
   # Handle inputs that are not connected to outputs.
+  # We do not error out here because the inputs may be used to compute losses
+  # and metrics.
   for input_t in inputs:
     input_layer = input_t._keras_history[0]
     if input_layer not in layers_depths:
       layers_depths[input_layer] = 0
       layer_indices[input_layer] = -1
       nodes_depths[input_layer._inbound_nodes[0]] = 0
+      network_nodes.add(_make_node_key(input_layer.name, 0))
 
   # Build a dict {depth: list of nodes with this depth}
   nodes_by_depth = collections.defaultdict(list)

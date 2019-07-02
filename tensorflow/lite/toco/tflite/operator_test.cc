@@ -895,6 +895,10 @@ TEST_F(OperatorTest, VersioningMeanTest) {
   SimpleVersioningTest<MeanOperator>();
 }
 
+TEST_F(OperatorTest, VersioningSumTest) {
+  SimpleVersioningTest<TensorFlowSumOperator>();
+}
+
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
 TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
