@@ -119,6 +119,48 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
   llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
 }
 
+// returns the targetmachine, given a triple.
+std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
+    llvm::Triple triple, absl::string_view cpu_name,
+    const HloModuleConfig& hlo_module_config, absl::string_view feature_str) {
+  std::string error;
+  const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
+  if (target == nullptr) {
+    LOG(FATAL) << "unable to find target for triple '" << triple.str() << "'"
+               << " -- " << error;
+    return nullptr;
+  }
+
+  TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
+
+  // enable fma synthesis.
+  target_options.AllowFPOpFusion = FPOpFusion::Fast;
+
+  // set the verbose assembly options.
+  target_options.MCOptions.AsmVerbose = false;
+
+  // the selection of codegen optimization level is copied from function
+  // getcodegenoptlevel in //external/llvm/tools/opt/opt.cpp.
+  CodeGenOpt::Level codegen_opt_level;
+  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
+    case 1:
+      codegen_opt_level = CodeGenOpt::Less;
+      break;
+    case 2:
+      codegen_opt_level = CodeGenOpt::Default;
+      break;
+    case 3:
+      codegen_opt_level = CodeGenOpt::Aggressive;
+      break;
+    default:
+      codegen_opt_level = CodeGenOpt::None;
+  }
+  return absl::WrapUnique(target->createTargetMachine(
+      triple.str(), llvm_ir::AsStringRef(cpu_name), llvm_ir::AsStringRef(feature_str), target_options,
+      getRelocModel(), getCodeModel(),
+      codegen_opt_level));
+}
+
 } // namespace
 
 
@@ -196,44 +238,6 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                  << sm_version;
   }
   return absl::StrCat("sm_", sm_version);
-}
-
-// Returns the TargetMachine, given a triple.
-std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, absl::string_view cpu_name,
-    const HloModuleConfig& hlo_module_config) {
-  std::string error;
-  const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
-  if (target == nullptr) {
-    LOG(FATAL) << "Unable to find Target for triple '" << triple.str() << "'"
-               << " -- " << error;
-    return nullptr;
-  }
-
-  TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-
-  // Set the verbose assembly options.
-  target_options.MCOptions.AsmVerbose = false;
-
-  // The selection of codegen optimization level is copied from function
-  // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
-  CodeGenOpt::Level codegen_opt_level;
-  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
-    case 1:
-      codegen_opt_level = CodeGenOpt::Less;
-      break;
-    case 2:
-      codegen_opt_level = CodeGenOpt::Default;
-      break;
-    case 3:
-      codegen_opt_level = CodeGenOpt::Aggressive;
-      break;
-    default:
-      codegen_opt_level = CodeGenOpt::None;
-  }
-  return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
-      getRelocModel(), getCodeModel(), codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -379,7 +383,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
-      target_triple, GetSmName(compute_capability), hlo_module_config);
+      target_triple, GetSmName(compute_capability), hlo_module_config, "+ptx60");
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
@@ -512,50 +516,6 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
   result.push_back(tensorflow::strings::StrCat("oclc_isa_version_",
                                                amdgpu_version, ".amdgcn.bc"));
   return std::move(result);
-}
-
-// returns the targetmachine, given a triple.
-std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, absl::string_view cpu_name,
-    const HloModuleConfig& hlo_module_config) {
-  std::string error;
-  const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
-  if (target == nullptr) {
-    LOG(FATAL) << "unable to find target for triple '" << triple.str() << "'"
-               << " -- " << error;
-    return nullptr;
-  }
-
-  TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-
-  // enable fma synthesis.
-  target_options.AllowFPOpFusion = FPOpFusion::Fast;
-
-  // set the verbose assembly options.
-  target_options.MCOptions.AsmVerbose = false;
-
-  // the selection of codegen optimization level is copied from function
-  // getcodegenoptlevel in //external/llvm/tools/opt/opt.cpp.
-  CodeGenOpt::Level codegen_opt_level;
-  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
-    case 1:
-      codegen_opt_level = CodeGenOpt::Less;
-      break;
-    case 2:
-      codegen_opt_level = CodeGenOpt::Default;
-      break;
-    case 3:
-      codegen_opt_level = CodeGenOpt::Aggressive;
-      break;
-    default:
-      codegen_opt_level = CodeGenOpt::None;
-  }
-  // Disable code object v3 and use v2 for now.
-  const std::string FeaturesStr = "-code-object-v3";
-  return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name), FeaturesStr, target_options,
-      getRelocModel(), getCodeModel(),
-      codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -769,7 +729,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   // Figure out the exact name of the processor as known to the AMDGPU backend
   // from the gpu_architecture flag.
   std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
-      target_triple, absl::StrCat("gfx", amdgpu_version), hlo_module_config);
+      target_triple, absl::StrCat("gfx", amdgpu_version), hlo_module_config, "-code-object-v3");
 
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
