@@ -67,6 +67,64 @@ namespace xla {
 namespace gpu {
 namespace {
 
+// Convenience function for producing a name of a temporary compilation product
+// from the input filename.
+string MakeNameForTempProduct(absl::string_view input_filename,
+                              absl::string_view extension) {
+  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
+                                  extension);
+}
+
+// Initializes LLVM passes. Uses the PassRegistry mechanism.
+void InitializePasses(llvm::PassRegistry* pass_registry) {
+  llvm::initializeCore(*pass_registry);
+  llvm::initializeCodeGen(*pass_registry);
+  llvm::initializeScalarOpts(*pass_registry);
+  llvm::initializeObjCARCOpts(*pass_registry);
+  llvm::initializeVectorization(*pass_registry);
+  llvm::initializeIPO(*pass_registry);
+  llvm::initializeAnalysis(*pass_registry);
+  llvm::initializeTransformUtils(*pass_registry);
+  llvm::initializeInstCombine(*pass_registry);
+  llvm::initializeInstrumentation(*pass_registry);
+  llvm::initializeTarget(*pass_registry);
+  llvm::initializeCodeGenPreparePass(*pass_registry);
+}
+
+// Emits the given module to a bit code file.
+void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
+  std::error_code error_code;
+  llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
+                               llvm::sys::fs::F_None);
+  if (error_code) {
+    LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
+  }
+
+  llvm::WriteBitcodeToFile(module, outfile.os());
+  outfile.keep();
+}
+
+// LLVM has an extensive flags mechanism of its own, which is only accessible
+// through the command line. Internal libraries within LLVM register parsers for
+// flags, with no other way to configure them except pass these flags.
+// To do this programmatically, we invoke ParseCommandLineOptions manually with
+// a "fake argv".
+// Note: setting flags with this method is stateful, since flags are just
+// static globals within LLVM libraries.
+void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
+  std::vector<const char*> fake_argv = {""};
+  for (const string& cl_opt : cl_opts) {
+    fake_argv.push_back(cl_opt.c_str());
+  }
+  llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+}
+
+} // namespace
+
+
+// Logic specific to LLVM NVPTX backend
+namespace nvptx {
+
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
@@ -140,30 +198,6 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   return absl::StrCat("sm_", sm_version);
 }
 
-// Convenience function for producing a name of a temporary compilation product
-// from the input filename.
-string MakeNameForTempProduct(absl::string_view input_filename,
-                              absl::string_view extension) {
-  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
-                                  extension);
-}
-
-// Initializes LLVM passes. Uses the PassRegistry mechanism.
-void InitializePasses(llvm::PassRegistry* pass_registry) {
-  llvm::initializeCore(*pass_registry);
-  llvm::initializeCodeGen(*pass_registry);
-  llvm::initializeScalarOpts(*pass_registry);
-  llvm::initializeObjCARCOpts(*pass_registry);
-  llvm::initializeVectorization(*pass_registry);
-  llvm::initializeIPO(*pass_registry);
-  llvm::initializeAnalysis(*pass_registry);
-  llvm::initializeTransformUtils(*pass_registry);
-  llvm::initializeInstCombine(*pass_registry);
-  llvm::initializeInstrumentation(*pass_registry);
-  llvm::initializeTarget(*pass_registry);
-  llvm::initializeCodeGenPreparePass(*pass_registry);
-}
-
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::Triple triple, absl::string_view cpu_name,
@@ -232,19 +266,6 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.populateModulePassManager(*module_passes);
 }
 
-// Emits the given module to a bit code file.
-void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
-  std::error_code error_code;
-  llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
-                               llvm::sys::fs::F_None);
-  if (error_code) {
-    LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
-  }
-
-  llvm::WriteBitcodeToFile(module, outfile.os());
-  outfile.keep();
-}
-
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
 string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
@@ -266,21 +287,6 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
   }
 
   return ptx;
-}
-
-// LLVM has an extensive flags mechanism of its own, which is only accessible
-// through the command line. Internal libraries within LLVM register parsers for
-// flags, with no other way to configure them except pass these flags.
-// To do this programmatically, we invoke ParseCommandLineOptions manually with
-// a "fake argv".
-// Note: setting flags with this method is stateful, since flags are just
-// static globals within LLVM libraries.
-void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
-  std::vector<const char*> fake_argv = {""};
-  for (const string& cl_opt : cl_opts) {
-    fake_argv.push_back(cl_opt.c_str());
-  }
-  llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
 }
 
 // Returns whether the module could use any libdevice functions. This function
@@ -479,37 +485,14 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
-}  // namespace
+}  // namespace nvptx
 
-StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
-                              const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
 
-  string ptx;
-  {
-    tensorflow::profiler::TraceMe activity(
-        [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
-    TF_ASSIGN_OR_RETURN(
-        ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
-                                libdevice_dir_path));
-  }
-  return ptx;
-}
-
-}  // namespace gpu
-}  // namespace xla
-
-namespace xla {
-namespace gpu {
-namespace {
+// Logic specific to LLVM AMDGPU backend
+namespace amdgpu {
 
 // Default inline threshold value to use in llvm.
-const int kDefaultAMDGPUInlineThreshold = 1048576;
+const int kDefaultInlineThreshold = 1048576;
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
 static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
@@ -532,7 +515,7 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
 }
 
 // returns the targetmachine, given a triple.
-std::unique_ptr<llvm::TargetMachine> GetTargetAMDGPUMachine(
+std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::Triple triple, absl::string_view cpu_name,
     const HloModuleConfig& hlo_module_config) {
   std::string error;
@@ -579,7 +562,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetAMDGPUMachine(
 // level (opt_level) and size optimization level (size_level). Both module
 // and function-level passes are added, so two pass managers are passed in and
 // modified by this function.
-void AddAMDGPUOptimizationPasses(unsigned opt_level, unsigned size_level,
+void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
                            llvm::TargetMachine* target_machine,
                            llvm::legacy::PassManagerBase* module_passes,
                            llvm::legacy::FunctionPassManager* function_passes) {
@@ -588,7 +571,7 @@ void AddAMDGPUOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.SizeLevel = size_level;
 
   if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(kDefaultAMDGPUInlineThreshold);
+    builder.Inliner = llvm::createFunctionInliningPass(kDefaultInlineThreshold);
   } else {
     // Only inline functions marked with "alwaysinline".
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
@@ -785,7 +768,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the AMDGPU backend
   // from the gpu_architecture flag.
-  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetAMDGPUMachine(
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
       target_triple, absl::StrCat("gfx", amdgpu_version), hlo_module_config);
 
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
@@ -806,7 +789,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   CHECK_GE(opt_level, 2)
       << "The XLA GPU backend doesn't support unoptimized code generation";
 
-  AddAMDGPUOptimizationPasses(opt_level,
+  AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
                         &function_passes);
 
@@ -841,7 +824,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
+void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
 
@@ -859,14 +842,34 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
-}  // namespace
+}  // namespace amdgpu
+
+StatusOr<string> CompileToPtx(llvm::Module* module,
+                              std::pair<int, int> compute_capability,
+                              const HloModuleConfig& hlo_module_config,
+                              const string& libdevice_dir_path) {
+  static std::once_flag backend_init_flag;
+  std::call_once(backend_init_flag, nvptx::GPUBackendInit, hlo_module_config);
+
+  string ptx;
+  {
+    tensorflow::profiler::TraceMe activity(
+        [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileModuleToPtx(module, compute_capability, hlo_module_config,
+                                libdevice_dir_path));
+  }
+  return ptx;
+}
 
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                 int amdgpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+  std::call_once(backend_init_flag, amdgpu::GPUBackendInit, hlo_module_config);
   std::vector<uint8> hsaco;
   {
     tensorflow::profiler::TraceMe activity(
@@ -875,7 +878,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
     XLA_SCOPED_LOGGING_TIMER("Compile module " +
                              llvm_ir::AsString(module->getName()));
     TF_ASSIGN_OR_RETURN(
-        hsaco, CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
+        hsaco, amdgpu::CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
                                   rocdl_dir_path));
   }
   return std::move(hsaco);
