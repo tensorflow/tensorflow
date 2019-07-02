@@ -67,7 +67,12 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
 
   bool ComputeIsEnabled() {
     char* log_xla_activity = getenv("TF_LOG_XLA_ACTIVITY");
-    return log_xla_activity && !strcmp(log_xla_activity, "1");
+    if (log_xla_activity == nullptr) {
+      bool enabled_by_default = true;
+      return enabled_by_default;
+    }
+
+    return absl::string_view(log_xla_activity) == "1";
   }
 };
 
