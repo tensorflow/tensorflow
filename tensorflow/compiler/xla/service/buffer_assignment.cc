@@ -877,11 +877,11 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
         return false;
       }
 
-      for (const HloPosition& assgiend_buffer_position :
+      for (const HloPosition& assigned_buffer_position :
            assigned_buffer.positions()) {
         // Copy instruction don't share a buffer with their input operand.
         if (new_value->instruction()->IsUserOf(
-                assgiend_buffer_position.instruction) &&
+                assigned_buffer_position.instruction) &&
             new_value->instruction()->opcode() == HloOpcode::kCopy) {
           VLOG(4) << "Can't assign: assignee " << assigned_buffer
                   << " is used at copy instruction " << new_value;
