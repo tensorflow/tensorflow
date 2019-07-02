@@ -22,11 +22,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 
-// exp10() is not a standard function
-#if defined(__APPLE__)
-#define exp10(x) __exp10(x)
-#endif
-
 namespace mlir {
 namespace OpTrait {
 namespace TFL {
@@ -80,7 +75,7 @@ class FixedResultUniformScale {
       Builder builder(op->getContext());
       IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *
-                           ::exp10(static_cast<double>(ScaleExp));
+                           ::pow(10.0, static_cast<double>(ScaleExp));
       return UniformQuantizedType::getChecked(
           Sign, storage_type, result_type.getElementType(), scale, ZeroPoint,
           StorageTypeMin, StorageTypeMax, builder.getUnknownLoc());
