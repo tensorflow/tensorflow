@@ -512,7 +512,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::Runbackend - CompileToHsaco");
     TF_ASSIGN_OR_RETURN(hsaco, CompileToHsaco(&llvm_module, isa_version,
-                                              module->config(), rocdl_dir_));
+                                              module->config(), rocdl_dir_, stream_exec));
   }
 
   if (!ir_dump_directory.empty()) {

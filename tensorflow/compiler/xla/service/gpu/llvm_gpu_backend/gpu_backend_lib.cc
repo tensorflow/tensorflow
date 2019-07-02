@@ -317,7 +317,8 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 StatusOr<std::unique_ptr<llvm::TargetMachine>> ConstructLLVMTargetMachineForModule(llvm::Module* module,
                                     std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
-                                    const string& libdevice_dir_path) {
+                                    const string& libdevice_dir_path,
+                                    se::StreamExecutor* stream_exec) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -609,7 +610,8 @@ Status LinkROCDLIfNecessary(
 StatusOr<std::unique_ptr<llvm::TargetMachine>> ConstructLLVMTargetMachineForModule(llvm::Module* module,
                                       int amdgpu_version,
                                       const HloModuleConfig& hlo_module_config,
-                                      const string& rocdl_dir_path) {
+                                      const string& rocdl_dir_path,
+                                      se::StreamExecutor* stream_exec) {
   // Link the input module with ROCDL, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -713,7 +715,8 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 StatusOr<string> CompileToPtx(llvm::Module* module,
                               GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path) {
+                              const string& libdevice_dir_path,
+                              se::StreamExecutor* stream_exec) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, nvptx::NVPTXBackendInit, hlo_module_config);
 
@@ -735,7 +738,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
     TF_ASSIGN_OR_RETURN(
         target_machine, nvptx::ConstructLLVMTargetMachineForModule(module, absl::get<std::pair<int, int>>(gpu_version), hlo_module_config,
-                                libdevice_dir_path));
+                                libdevice_dir_path, stream_exec));
     TF_ASSIGN_OR_RETURN(ptx, nvptx::EmitModuleToPTX(module, target_machine.get()));
   }
   return ptx;
@@ -744,7 +747,8 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                             GpuVersion gpu_version,
                                             const HloModuleConfig& hlo_module_config,
-                                            const string& rocdl_dir_path) {
+                                            const string& rocdl_dir_path,
+                                            se::StreamExecutor* stream_exec) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, amdgpu::AMDGPUBackendInit, hlo_module_config);
 
@@ -756,7 +760,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(target_machine, amdgpu::ConstructLLVMTargetMachineForModule(module, absl::get<int>(gpu_version),
-                                                     hlo_module_config, rocdl_dir_path));
+                                                     hlo_module_config, rocdl_dir_path, stream_exec));
     TF_ASSIGN_OR_RETURN(hsaco, amdgpu::EmitModuleToHsaco(module, target_machine.get()));
   }
   return std::move(hsaco);

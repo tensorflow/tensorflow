@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
+
 namespace xla {
 namespace gpu {
 
@@ -42,7 +43,8 @@ using GpuVersion = absl::variant<std::pair<int, int>, int>;
 StatusOr<string> CompileToPtx(llvm::Module* module,
                               GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path);
+                              const string& libdevice_dir_path,
+                              se::StreamExecutor* stream_exec);
 
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
@@ -50,7 +52,8 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                             GpuVersion gpu_version,
                                             const HloModuleConfig& hlo_module_config,
-                                            const string& rocdl_dir_path);
+                                            const string& rocdl_dir_path,
+                                            se::StreamExecutor* stream_exec);
 
 }  // namespace gpu
 }  // namespace xla
