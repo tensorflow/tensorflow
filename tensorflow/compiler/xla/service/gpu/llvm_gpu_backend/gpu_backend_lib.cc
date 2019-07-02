@@ -275,7 +275,7 @@ static string GetSmName(std::pair<int, int> compute_capability) {
 
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
-string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
+StatusOr<string> EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
   std::string ptx;  // need a std::string instead of a ::string.
   {
     llvm::raw_string_ostream stream(ptx);
@@ -314,17 +314,10 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   return LinkWithBitcodeVector(module, libdevice_path_vector);
 }
 
-StatusOr<string> CompileModuleToPtx(llvm::Module* module,
+StatusOr<std::unique_ptr<llvm::TargetMachine>> ConstructLLVMTargetMachineForModule(llvm::Module* module,
                                     std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
-  // If the module has no functions or globals, there's nothing to compile. Just
-  // return an empty string.
-  if (module->empty() && module->global_empty()) {
-    VLOG(2) << "Module '" << module->getName().str()
-            << "' is empty. Skipping compilation.";
-    return string();
-  }
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -417,8 +410,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  // Finally, produce PTX.
-  return EmitModuleToPTX(module, target_machine.get());
+  return target_machine;
 }
 
 // One-time module initializer.
@@ -726,14 +718,25 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
   std::call_once(backend_init_flag, nvptx::NVPTXBackendInit, hlo_module_config);
 
   string ptx;
+  std::unique_ptr<llvm::TargetMachine> target_machine;
   {
     tensorflow::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
+
+    // If the module has no functions or globals, there's nothing to compile. Just
+    // return an empty string.
+    if (module->empty() && module->global_empty()) {
+      VLOG(2) << "Module '" << module->getName().str()
+              << "' is empty. Skipping compilation.";
+      return string();
+    }
+
     TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileModuleToPtx(module, absl::get<std::pair<int, int>>(gpu_version), hlo_module_config,
+        target_machine, nvptx::ConstructLLVMTargetMachineForModule(module, absl::get<std::pair<int, int>>(gpu_version), hlo_module_config,
                                 libdevice_dir_path));
+    TF_ASSIGN_OR_RETURN(ptx, nvptx::EmitModuleToPTX(module, target_machine.get()));
   }
   return ptx;
 }
