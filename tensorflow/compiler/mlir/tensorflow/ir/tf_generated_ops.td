@@ -2262,6 +2262,48 @@ precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$split_dim,
+    TF_Tensor:$value,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$value,
+    TF_I32OrI64Tensor:$size_splits,
+    I32Tensor:$split_dim,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes square root of x element-wise.";
 

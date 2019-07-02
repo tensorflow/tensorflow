@@ -1819,6 +1819,51 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   );
 }
 
+def TFL_SplitOp : TFL_Op<"split", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+    Splits the `value` tensor along `split_dim` into a number of sub-tensors
+    with same shape as the original one, except for `split_dim`. Same as
+    tf.Split.
+  }];
+
+  let arguments = (ins
+    I32Tensor:$split_dim,
+    TensorOf<[F32, I16, I32, I64]>:$value,
+    I32Attr:$num_splits
+  );
+
+  let results = (outs
+    Variadic<TensorOf<[F32, I16, I32, I64]>>:$outputs
+  );
+
+  let hasOptions = 1;
+}
+
+def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+    Splits the `value` tensor along `split_dim` into a number of sub-tensors
+    with same shape as the original one, except for `split_dim`. The grouping
+    of the resultant sub-tensors is decided by `size-splits`. Same as tf.SplitV.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I16, I32, I64]>:$value,
+    I32Tensor:$size_splits,
+    I32Tensor:$split_dim,
+    I32Attr:$num_splits
+  );
+
+  let results = (outs
+    Variadic<TensorOf<[F32, I16, I32, I64]>>:$outputs
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [NoSideEffect]> {
   let summary = "ResizeBilinear Op";
 

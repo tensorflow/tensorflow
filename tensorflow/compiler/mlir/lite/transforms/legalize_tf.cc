@@ -70,6 +70,8 @@ DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(Pack);
+DECL_CONVERT_OP(Split);
+DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(TopKV2);
 DECL_CONVERT_OP(Unpack);
 
@@ -173,6 +175,38 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
   return matchSuccess();
 }
 
+PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_split_op = cast<TF::SplitOp>(op);
+
+  auto output_types = functional::map([](Value* v) { return v->getType(); },
+                                      tf_split_op.output());
+  // Number of splits cannot be negative.
+  auto num_split =
+      rewriter.getI32IntegerAttr(tf_split_op.num_split().getZExtValue());
+
+  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, output_types,
+                                            tf_split_op.split_dim(),
+                                            tf_split_op.value(), num_split);
+  return matchSuccess();
+}
+
+PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_splitv_op = cast<TF::SplitVOp>(op);
+
+  auto output_types = functional::map([](Value* v) { return v->getType(); },
+                                      tf_splitv_op.output());
+  // Number of splits cannot be negative.
+  auto num_split =
+      rewriter.getI32IntegerAttr(tf_splitv_op.num_split().getZExtValue());
+
+  rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
+      op, output_types, tf_splitv_op.value(), tf_splitv_op.size_splits(),
+      tf_splitv_op.split_dim(), num_split);
+  return matchSuccess();
+}
+
 PatternMatchResult ConvertTFTopKV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   // TopK in TFL is always sorted so we ignore that attribute here.
@@ -205,8 +239,8 @@ void LegalizeTF::runOnFunction() {
   populateWithGenerated(ctx, &patterns);
   RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFGatherOp,
                      ConvertTFGatherV2Op, ConvertTFMatMulOp, ConvertTFPackOp,
-                     ConvertTFTopKV2Op, ConvertTFUnpackOp>::build(patterns,
-                                                                  ctx);
+                     ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFTopKV2Op,
+                     ConvertTFUnpackOp>::build(patterns, ctx);
   applyPatternsGreedily(func, std::move(patterns));
 }
 
