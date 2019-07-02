@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.platform import test
@@ -112,6 +114,20 @@ class CallTreesTest(converter_testing.TestCase):
           result.test_fn(None, 1, 2, **{'c': 3}),
           converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 5)
       self.assertListEqual(self.dynamic_calls, [((1,), {'b': 2, 'c': 3})])
+
+  def test_debugger_set_trace(self):
+
+    tracking_list = []
+
+    pdb = imp.new_module('fake_pdb')
+    pdb.set_trace = lambda: tracking_list.append(1)
+
+    def test_fn():
+      return pdb.set_trace()
+
+    with self.converted(test_fn, call_trees, {'pdb': pdb}) as result:
+      result.test_fn()
+      self.assertListEqual(tracking_list, [1])
 
   def test_class_method(self):
 

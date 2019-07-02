@@ -78,6 +78,14 @@ class CallTreeTransformer(converter.Base):
     full_name = str(anno.getanno(node.func, anno.Basic.QN, default=''))
     if full_name.startswith('ag__.'):
       return self.generic_visit(node)
+
+    # Calls to pdb.set_trace or ipdb.set_trace are never converted. We don't use
+    # the normal mechanisms to bypass these literals because they are sensitive
+    # to the frame they are being called from.
+    # TODO(mdan): Generalize this to a "static whitelist" config.
+    if full_name in ('pdb.set_trace', 'ipdb.set_trace'):
+      return self.generic_visit(node)
+
     if (full_name == 'print' and
         not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return self.generic_visit(node)
