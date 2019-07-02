@@ -161,6 +161,37 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level));
 }
 
+// Adds the standard LLVM optimization passes, based on the speed optimization
+// level (opt_level) and size optimization level (size_level). Both module
+// and function-level passes are added, so two pass managers are passed in and
+// modified by this function.
+void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
+                           llvm::TargetMachine* target_machine,
+                           llvm::legacy::PassManagerBase* module_passes,
+                           llvm::legacy::FunctionPassManager* function_passes,
+                           int inline_threshold) {
+  PassManagerBuilder builder;
+  builder.OptLevel = opt_level;
+  builder.SizeLevel = size_level;
+
+  if (opt_level > 1) {
+    builder.Inliner = llvm::createFunctionInliningPass(inline_threshold);
+  } else {
+    // Only inline functions marked with "alwaysinline".
+    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
+  }
+
+  builder.DisableUnrollLoops = opt_level == 0;
+  builder.LoopVectorize = opt_level > 0;
+  builder.SLPVectorize = opt_level > 1 && size_level < 2;
+
+  // NVPTX's early-as-possible passes include NVVM reflect.
+  target_machine->adjustPassManager(builder);
+
+  builder.populateFunctionPassManager(*function_passes);
+  builder.populateModulePassManager(*module_passes);
+}
+
 } // namespace
 
 
@@ -238,36 +269,6 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                  << sm_version;
   }
   return absl::StrCat("sm_", sm_version);
-}
-
-// Adds the standard LLVM optimization passes, based on the speed optimization
-// level (opt_level) and size optimization level (size_level). Both module
-// and function-level passes are added, so two pass managers are passed in and
-// modified by this function.
-void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
-                           llvm::TargetMachine* target_machine,
-                           llvm::legacy::PassManagerBase* module_passes,
-                           llvm::legacy::FunctionPassManager* function_passes) {
-  PassManagerBuilder builder;
-  builder.OptLevel = opt_level;
-  builder.SizeLevel = size_level;
-
-  if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(kDefaultInlineThreshold);
-  } else {
-    // Only inline functions marked with "alwaysinline".
-    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
-  }
-
-  builder.DisableUnrollLoops = opt_level == 0;
-  builder.LoopVectorize = opt_level > 0;
-  builder.SLPVectorize = opt_level > 1 && size_level < 2;
-
-  // NVPTX's early-as-possible passes include NVVM reflect.
-  target_machine->adjustPassManager(builder);
-
-  builder.populateFunctionPassManager(*function_passes);
-  builder.populateModulePassManager(*module_passes);
 }
 
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
@@ -412,7 +413,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes);
+                        &function_passes, kDefaultInlineThreshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
@@ -516,35 +517,6 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
   result.push_back(tensorflow::strings::StrCat("oclc_isa_version_",
                                                amdgpu_version, ".amdgcn.bc"));
   return std::move(result);
-}
-
-// Adds the standard LLVM optimization passes, based on the speed optimization
-// level (opt_level) and size optimization level (size_level). Both module
-// and function-level passes are added, so two pass managers are passed in and
-// modified by this function.
-void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
-                           llvm::TargetMachine* target_machine,
-                           llvm::legacy::PassManagerBase* module_passes,
-                           llvm::legacy::FunctionPassManager* function_passes) {
-  PassManagerBuilder builder;
-  builder.OptLevel = opt_level;
-  builder.SizeLevel = size_level;
-
-  if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(kDefaultInlineThreshold);
-  } else {
-    // Only inline functions marked with "alwaysinline".
-    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
-  }
-
-  builder.DisableUnrollLoops = opt_level == 0;
-  builder.LoopVectorize = opt_level > 0;
-  builder.SLPVectorize = opt_level > 1 && size_level < 2;
-
-  target_machine->adjustPassManager(builder);
-
-  builder.populateFunctionPassManager(*function_passes);
-  builder.populateModulePassManager(*module_passes);
 }
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
@@ -751,7 +723,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
 
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes);
+                        &function_passes, kDefaultInlineThreshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
