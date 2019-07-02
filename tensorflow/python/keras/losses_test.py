@@ -826,7 +826,6 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), expected_value, 3)
 
   def test_shape_mismatch(self):
-    # Test case fot GitHub issue 30040.
     y_true = np.array(
         [[1.], [1.], [1.], [0.], [1.], [0.], [0.], [1.], [1.], [0.]]
     ).astype(np.float32)
@@ -838,7 +837,7 @@ class BinaryCrossentropyTest(test.TestCase):
     loss = bce_obj(y_true, y_pred)
     self.assertAlmostEqual(self.evaluate(loss), 9.23662, 3)
     with self.assertRaisesRegexp(
-        ValueError, 'target and output must have the same shape'):
+        ValueError, 'Shapes .+ are incompatible'):
       loss = bce_obj(np.squeeze(y_true), y_pred)
 
 
