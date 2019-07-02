@@ -395,6 +395,6 @@ class LMDBDataset(dataset_ops.DatasetSource):
     super(LMDBDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return (structure.TensorStructure(dtypes.string, []),
             structure.TensorStructure(dtypes.string, []))

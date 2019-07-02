@@ -156,7 +156,7 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
       A `Dataset` that has the same elements the inputs.
     """
     self._datasets = list(datasets)
-    self._structure = self._datasets[0]._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._datasets[0].element_spec
     variant_tensor = (
         gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
             [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
@@ -168,8 +168,8 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
     return self._datasets
 
   @property
-  def _element_structure(self):
-    return self._datasets[0]._element_structure  # pylint: disable=protected-access
+  def element_spec(self):
+    return self._element_spec
 
 
 class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
@@ -242,14 +242,13 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
-    input_structure = dataset_ops.DatasetStructure(
-        dataset_ops.get_structure(input_dataset))
+    input_structure = dataset_ops.DatasetStructure(input_dataset.element_spec)
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(
             f, "ChooseFastestV2", input_structure=input_structure)
         for f in functions
     ]
-    self._structure = self._funcs[0].output_structure._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._funcs[0].output_structure._element_spec  # pylint: disable=protected-access
 
     self._captured_arguments = []
     for f in self._funcs:
@@ -279,5 +278,5 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
                                                       variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec

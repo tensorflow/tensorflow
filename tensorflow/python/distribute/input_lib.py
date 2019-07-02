@@ -480,7 +480,7 @@ class DistributedDataset(_IterableInput):
     self._input_workers = input_workers
     # TODO(anjalisridhar): Identify if we need to set this property on the
     # iterator.
-    self._element_structure = dataset._element_structure  # pylint: disable=protected-access
+    self._element_spec = dataset.element_spec
     self._strategy = strategy
 
   def __iter__(self):
@@ -490,7 +490,7 @@ class DistributedDataset(_IterableInput):
                                                       self._input_workers)
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
-      iterator._element_structure = self._element_structure  # pylint: disable=protected-access
+      iterator.element_spec = self._element_spec
       return iterator
     raise RuntimeError("__iter__() is only supported inside of tf.function "
                        "or when eager execution is enabled.")
@@ -537,7 +537,7 @@ class DistributedDatasetV1(DistributedDataset):
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
-    iterator._element_structure = self._element_structure  # pylint: disable=protected-access
+    iterator.element_spec = self._element_spec
     return iterator
 
 
@@ -670,9 +670,9 @@ class DatasetIterator(DistributedIteratorV1):
         dist_dataset._cloned_datasets, input_workers)  # pylint: disable=protected-access
     super(DatasetIterator, self).__init__(
         input_workers,
-        worker_iterators,  # pylint: disable=protected-access
+        worker_iterators,
         strategy)
-    self._element_structure = dist_dataset._element_structure  # pylint: disable=protected-access
+    self._element_spec = dist_dataset._element_spec  # pylint: disable=protected-access
 
 
 def _dummy_tensor_fn(value_structure):

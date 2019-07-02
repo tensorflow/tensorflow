@@ -69,5 +69,5 @@ class KafkaDataset(dataset_ops.DatasetSource):
                                          self._group, self._eof, self._timeout)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])

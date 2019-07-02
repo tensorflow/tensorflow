@@ -46,7 +46,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, num_workers, index):
     self._input_dataset = input_dataset
 
-    self._structure = input_dataset._element_structure  # pylint: disable=protected-access
+    self._element_spec = input_dataset.element_spec
     variant_tensor = ged_ops.experimental_auto_shard_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_workers=num_workers,
@@ -55,8 +55,8 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 def _AutoShardDatasetV1(input_dataset, num_workers, index):
@@ -85,7 +85,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     input_classes = dataset_ops.get_legacy_output_classes(self._input_dataset)
     output_shapes = nest.map_structure(recalculate_output_shapes, input_shapes)
 
-    self._structure = structure.convert_legacy_structure(
+    self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
     variant_tensor = ged_ops.experimental_rebatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -94,8 +94,8 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 _AutoShardDatasetV1.__doc__ = _AutoShardDataset.__doc__

@@ -115,7 +115,7 @@ class _TextLineDataset(dataset_ops.DatasetSource):
     super(_TextLineDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -157,7 +157,7 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
     super(TextLineDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -209,7 +209,7 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
     super(_TFRecordDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -225,7 +225,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
     if not isinstance(self._map_func.output_structure,
                       dataset_ops.DatasetStructure):
       raise TypeError("`map_func` must return a `Dataset` object.")
-    self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
@@ -257,8 +257,8 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
     return [self._map_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _transformation_name(self):
     return "tf.data.experimental.parallel_interleave()"
@@ -321,7 +321,7 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
     return self._impl._inputs()  # pylint: disable=protected-access
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -408,7 +408,7 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
     super(_FixedLengthRecordDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -466,7 +466,7 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
     super(FixedLengthRecordDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 

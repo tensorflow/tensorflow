@@ -662,7 +662,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
-    self._structure = tuple(
+    self._element_spec = tuple(
         structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
     variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
@@ -678,8 +678,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 @tf_export(v1=["data.experimental.CsvDataset"])
@@ -955,7 +955,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         data_source_name, dtype=dtypes.string, name="data_source_name")
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
-    self._structure = nest.map_structure(
+    self._element_spec = nest.map_structure(
         lambda dtype: structure.TensorStructure(dtype, []), output_types)
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
@@ -963,8 +963,8 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 @tf_export(v1=["data.experimental.SqlDataset"])
