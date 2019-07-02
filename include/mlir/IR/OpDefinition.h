@@ -71,11 +71,18 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return state; }
 
-  ///  Return the context this operation belongs to.
+  /// Return the context this operation belongs to.
   MLIRContext *getContext() { return getOperation()->getContext(); }
+
+  /// Print the operation to the given stream.
+  void print(raw_ostream &os) { state->print(os); }
+
+  /// Dump this operation.
+  void dump() { state->dump(); }
 
   /// The source location the operation was defined or derived from.
   Location getLoc() { return state->getLoc(); }
+  void setLoc(Location loc) { state->setLoc(loc); }
 
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() { return state->getAttrs(); }
@@ -96,6 +103,12 @@ public:
   void setAttr(StringRef name, Attribute value) {
     setAttr(Identifier::get(name, getContext()), value);
   }
+
+  /// Set the attributes held by this operation.
+  void setAttrs(ArrayRef<NamedAttribute> attributes) {
+    state->setAttrs(attributes);
+  }
+  void setAttrs(NamedAttributeList newAttrs) { state->setAttrs(newAttrs); }
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
@@ -127,6 +140,20 @@ public:
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
   InFlightDiagnostic emitRemark(const Twine &message = {});
+
+  /// Walk the operation in postorder, calling the callback for each nested
+  /// operation(including this one).
+  void walk(const std::function<void(Operation *)> &callback) {
+    state->walk(callback);
+  }
+
+  /// Specialization of walk to only visit operations of 'OpTy'.
+  template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
+    walk([&](Operation *opInst) {
+      if (auto op = dyn_cast<OpTy>(opInst))
+        callback(op);
+    });
+  }
 
   // These are default implementations of customization hooks.
 public:
@@ -796,8 +823,6 @@ public:
   static AbstractOperation::OperationProperties getOperationProperties() {
     return BaseProperties<Traits<ConcreteType>...>::getTraitProperties();
   }
-
-  // TODO: Provide a dump() method.
 
   /// Expose the type we are instantiated on to template machinery that may want
   /// to introspect traits on this operation.
