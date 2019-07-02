@@ -786,6 +786,9 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
+    tags = [
+        "noasan",  # TODO(b/136563684): flaky
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
