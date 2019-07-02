@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 #include <random>
 #include <vector>
@@ -42,7 +42,7 @@ string Prefix(const string& prefix) {
   return strings::StrCat(testing::TmpDir(), "/", prefix);
 }
 
-// Construct a data  input directory by prepending the test data root
+// Construct a data input directory by prepending the test data root
 // directory to <prefix>
 string TestdataPrefix(const string& prefix) {
   return strings::StrCat(testing::TensorFlowSrcRoot(),
@@ -135,9 +135,12 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
 Status FlipEndiannessBit(const string& prefix) {
   Env* env = Env::Default();
   const string metadata_tmp_path = Prefix("some_tmp_path");
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &file));
-  table::TableBuilder builder(table::Options(), file.get());
+  std::unique_ptr<WritableFile> metadata_file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &metadata_file));
+  // We create the builder lazily in case we run into an exception earlier, in
+  // which case we'd forget to call Finish() and TableBuilder's destructor
+  // would complain.
+  std::unique_ptr<table::TableBuilder> builder;
 
   // Reads the existing metadata file, and fills the builder.
   {
@@ -164,15 +167,18 @@ Status FlipEndiannessBit(const string& prefix) {
     } else {
       header.set_endianness(BundleHeaderProto::LITTLE);
     }
-    builder.Add(iter->key(), header.SerializeAsString());
+    builder.reset(
+        new table::TableBuilder(table::Options(), metadata_file.get()));
+    builder->Add(iter->key(), header.SerializeAsString());
     iter->Next();
 
     // Adds the non-header entries unmodified.
-    for (; iter->Valid(); iter->Next()) builder.Add(iter->key(), iter->value());
+    for (; iter->Valid(); iter->Next())
+      builder->Add(iter->key(), iter->value());
   }
-  TF_RETURN_IF_ERROR(builder.Finish());
+  TF_RETURN_IF_ERROR(builder->Finish());
   TF_RETURN_IF_ERROR(env->RenameFile(metadata_tmp_path, MetaFilename(prefix)));
-  return file->Close();
+  return metadata_file->Close();
 }
 
 template <typename T>
