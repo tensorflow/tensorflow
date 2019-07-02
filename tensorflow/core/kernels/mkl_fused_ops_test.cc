@@ -655,7 +655,6 @@ public:
     const Tensor& output = *GetOutput(0);
     const Tensor& output_layout = *GetOutput(3);
     CommonTestUtilities<quint8> conv_comp;
-    std::cout << "Compare 1st:" << std::endl;
     conv_comp.ConvertAndCompareIntegral(dtype, output, output_layout, expected);
 
     TF_ASSERT_OK(RunOpKernel());
@@ -664,7 +663,6 @@ public:
     const Tensor& output_new = *GetOutput(0);
     const Tensor& output_layout_new = *GetOutput(3);
     CommonTestUtilities<quint8> conv_comp_new;
-    std::cout << "Compare 2nd:" << std::endl;
     conv_comp_new.ConvertAndCompareIntegral(dtype, output_new, output_layout_new,
                                     expected);
 
@@ -677,18 +675,13 @@ TEST_F(BiasCacheTest, Conv2DBiasCacheTest) {
   const int image_height = 3;
   const int image_batch_count = 1;
 
-  std::cout << "before image" << std::endl;
   Tensor image(DT_QUINT8, {image_batch_count, image_height, image_width, depth});
   test::FillValues<quint8>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  std::cout << "image ok !!!!!!!!!!!!!!" << std::endl;
 
   const int kFilterSize = 3;
   const int kFilterCount = 1;
   Tensor filter(DT_QINT8, {kFilterSize, kFilterSize, depth, kFilterCount});
   test::FillValues<qint8>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
-
-   std::cout << "filter ok" << std::endl;
 
   Tensor bias(DT_FLOAT, {kFilterCount});
   test::FillValues<float>(&bias, {1});
