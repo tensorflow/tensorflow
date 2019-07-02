@@ -44,8 +44,7 @@ def _ShapeTensor(shape):
     dtype = dtypes.int32
   else:
     if isinstance(shape, (tuple, list)):
-      shape = [val.value if isinstance(
-          val, tensor_shape.Dimension) else val for val in shape]
+      shape = [tensor_shape.dimension_value(dim) for dim in shape]
     dtype = None
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
