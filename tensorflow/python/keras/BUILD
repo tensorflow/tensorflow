@@ -1483,7 +1483,7 @@ tf_py_test(
 
 tf_py_test(
     name = "feature_columns_integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/feature_columns_integration_test.py"],
     additional_deps = [
         ":keras",
@@ -1492,7 +1492,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
     ],
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+    ],
 )
 
 tf_py_test(
