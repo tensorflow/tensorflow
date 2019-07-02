@@ -1251,15 +1251,26 @@ TEST(DynamicAnyOpTest, Scalar) {
 }
 
 // Tests for reduce_all
-TEST(ConstAllOpTestFalse, NotKeepDims) {
-  std::vector<bool> data = {false, false, false, false, false, false,
-                            false, true,  false, false, false, true};
-  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}}, {4},
-                    {1, 0, -3, -3}, false);
+TEST(ConstAllOpsTestMixed, NotKeepDims) {
+  std::vector<bool> data = {true, true, false, false, true, true,
+                            true, true,  false, false, true, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, false);
   m.SetInput(data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false, false}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false, true}));
+}
+
+TEST(ConstAllOpsTestMixed, KeepDims) {
+  std::vector<bool> data = {true, true, false, false, true, true,
+                            true, true,  false, false, true, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false, true}));
 }
 
 TEST(ConstAllOpTestTrue, NotKeepDims) {
