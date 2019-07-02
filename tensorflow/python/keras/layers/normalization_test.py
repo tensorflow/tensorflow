@@ -216,6 +216,23 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     if context.executing_eagerly():
       self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
 
+  @keras_parameterized.run_all_keras_modes
+  def test_batchnorm_ignore_masked_values(self):
+    padded_data = np.array([[[1, 5], [2, 5], [0, 0], [0, 0]] for _ in range(10)], dtype='float32')  # Pad value of 0
+    data = np.array([[[1, 5], [2, 5]] for _ in range(10)], dtype='float32')
+
+    input = tf.keras.layers.Input((None, 2))
+    masked = tf.keras.layers.Masking()(input)
+    normed = BatchNormalization(momentum=0.0)(masked)
+    model = tf.keras.models.Model(input, normed)
+
+    model.fit(x=padded_data, y=padded_data, batch_size=10, epochs=5)
+    moments_mask = model.layers[2].get_weights()
+    model.fit(x=data, y=data, batch_size=10, epochs=5)
+    moments = model.layers[2].get_weights()
+    self.assertEqual(moments_mask[2][0], moments[2][0]) # moving average mean comparison
+    self.assertEqual(moments_mask[3][0], moments_mask[3][0])  # moving average variance comparison
+
   def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
 
     class MyModel(keras.Model):
