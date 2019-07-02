@@ -349,6 +349,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
+        tensorflow::Safe_PyObjectPtr name_attr(
+            PyObject_GetAttrString(elem, "name"));
         SWIG_exception_fail(
             SWIG_TypeError,
             tensorflow::strings::StrCat(
@@ -363,8 +365,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
-                .c_str());
+                TFE_GetPythonString(name_attr.get())
+            ).c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,
