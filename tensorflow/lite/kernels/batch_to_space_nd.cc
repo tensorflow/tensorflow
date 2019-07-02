@@ -79,7 +79,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     prod_block_shape *= block_shape[dim];
   }
 
-  // Number of batch must be multiple of (block_shape[0] * ...  * block_shape[M]).
+  // Number of batch must be multiple of
+  // (block_shape[0] * ...  * block_shape[M]).
   TF_LITE_ENSURE_EQ(context, input_size->data[0] % prod_block_shape, 0);
 
   // output_batch_size =  [batch / prod(block_shape)]
