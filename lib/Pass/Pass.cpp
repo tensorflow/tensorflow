@@ -21,6 +21,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "PassDetail.h"
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
@@ -238,7 +239,7 @@ namespace {
 /// Pass to verify a function and signal failure if necessary.
 class FunctionVerifier : public FunctionPass<FunctionVerifier> {
   void runOnFunction() {
-    if (failed(getFunction().verify()))
+    if (failed(verify(getFunction())))
       signalPassFailure();
     markAllAnalysesPreserved();
   }
@@ -247,7 +248,7 @@ class FunctionVerifier : public FunctionPass<FunctionVerifier> {
 /// Pass to verify a module and signal failure if necessary.
 class ModuleVerifier : public ModulePass<ModuleVerifier> {
   void runOnModule() {
-    if (failed(getModule().verify()))
+    if (failed(verify(getModule())))
       signalPassFailure();
     markAllAnalysesPreserved();
   }

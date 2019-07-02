@@ -21,6 +21,7 @@
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -4151,7 +4152,7 @@ Module mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
 
   // Make sure the parse module has no other structural problems detected by
   // the verifier.
-  if (failed(module->verify()))
+  if (failed(verify(*module)))
     return nullptr;
 
   return module.release();

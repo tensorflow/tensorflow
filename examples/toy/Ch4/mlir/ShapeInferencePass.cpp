@@ -22,6 +22,7 @@
 
 #include "toy/Dialect.h"
 
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardTypes.h"
@@ -195,7 +196,7 @@ public:
         argList[0]->replaceAllUsesWith(argList[blockArgSize]);
         entryBlock.eraseArgument(0);
       }
-      assert(succeeded(f.verify()));
+      assert(succeeded(mlir::verify(f)));
     }
     LLVM_DEBUG(llvm::dbgs()
                << "Run shape inference on : '" << f.getName() << "'\n");
@@ -361,7 +362,7 @@ public:
       auto newType =
           mlir::FunctionType::get(argumentsType, retTy, &getContext());
       f.setType(newType);
-      assert(succeeded(f.verify()));
+      assert(succeeded(mlir::verify(f)));
       break;
     }
     return mlir::success();

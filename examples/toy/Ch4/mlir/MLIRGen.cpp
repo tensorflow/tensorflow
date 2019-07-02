@@ -24,6 +24,7 @@
 #include "toy/AST.h"
 #include "toy/Dialect.h"
 
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
@@ -82,7 +83,7 @@ public:
     // FIXME: (in the next chapter...) without registering a dialect in MLIR,
     // this won't do much, but it should at least check some structural
     // properties.
-    if (failed(theModule->verify())) {
+    if (failed(mlir::verify(*theModule))) {
       emitError(mlir::UnknownLoc::get(&context), "Module verification error");
       return nullptr;
     }

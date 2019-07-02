@@ -21,6 +21,7 @@
 
 #include "mlir/Support/TranslateClParser.h"
 
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
@@ -39,7 +40,7 @@ static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
 
 static LogicalResult printMLIROutput(Module module,
                                      llvm::StringRef outputFilename) {
-  if (failed(module.verify()))
+  if (failed(verify(module)))
     return failure();
   auto file = openOutputFile(outputFilename);
   if (!file)

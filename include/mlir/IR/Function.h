@@ -302,11 +302,6 @@ public:
   // Other
   //===--------------------------------------------------------------------===//
 
-  /// Perform (potentially expensive) checks of invariants, used to detect
-  /// compiler bugs.  On error, this reports the error through the MLIRContext
-  /// and returns failure.
-  LogicalResult verify();
-
   void print(raw_ostream &os);
   void dump();
 

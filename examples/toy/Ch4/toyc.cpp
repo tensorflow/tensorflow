@@ -24,6 +24,7 @@
 #include "toy/Parser.h"
 #include "toy/Passes.h"
 
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
@@ -113,7 +114,7 @@ int dumpMLIR() {
       llvm::errs() << "Error can't load file " << inputFilename << "\n";
       return 3;
     }
-    if (failed(module->verify())) {
+    if (failed(mlir::verify(*module))) {
       llvm::errs() << "Error verifying MLIR module\n";
       return 4;
     }

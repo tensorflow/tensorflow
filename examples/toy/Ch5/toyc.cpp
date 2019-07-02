@@ -26,6 +26,7 @@
 #include "toy/Passes.h"
 
 #include "linalg1/Dialect.h"
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
@@ -150,7 +151,7 @@ mlir::OwningModuleRef loadFileAndProcessModule(
       llvm::errs() << "Error can't load file " << inputFilename << "\n";
       return nullptr;
     }
-    if (failed(module->verify())) {
+    if (failed(mlir::verify(*module))) {
       llvm::errs() << "Error verifying MLIR module\n";
       return nullptr;
     }

@@ -33,6 +33,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
@@ -292,84 +293,85 @@ LogicalResult OperationVerifier::verifyDominance(Operation &op) {
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns failure.
-LogicalResult Function::verify() {
-  OperationVerifier opVerifier(getContext());
+LogicalResult mlir::verify(Operation *op) {
+  return OperationVerifier(op->getContext()).verify(*op);
+}
+
+/// Perform (potentially expensive) checks of invariants, used to detect
+/// compiler bugs.  On error, this reports the error through the MLIRContext and
+/// returns failure.
+LogicalResult mlir::verify(Function fn) {
+  OperationVerifier opVerifier(fn.getContext());
   llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
-                                   getName().c_str());
+                                   fn.getName().c_str());
 
   // Check that the function name is valid.
-  if (!opVerifier.isValidName(getName().strref()))
-    return emitError("invalid function name '") << getName() << "'";
+  if (!opVerifier.isValidName(fn.getName().strref()))
+    return fn.emitError("invalid function name '") << fn.getName() << "'";
 
   /// Verify that all of the attributes are okay.
-  for (auto attr : getAttrs()) {
+  for (auto attr : fn.getAttrs()) {
     if (!opVerifier.isValidName(attr.first))
-      return emitError("invalid attribute name '") << attr.first << "'";
+      return fn.emitError("invalid attribute name '") << attr.first << "'";
 
     /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
     /// the namespace.
     if (!attr.first.strref().contains('.'))
-      return emitError("functions may only have dialect attributes");
+      return fn.emitError("functions may only have dialect attributes");
 
     // Verify this attribute with the defining dialect.
     if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-      if (failed(dialect->verifyFunctionAttribute(*this, attr)))
+      if (failed(dialect->verifyFunctionAttribute(fn, attr)))
         return failure();
   }
 
   /// Verify that all of the argument attributes are okay.
-  for (unsigned i = 0, e = getNumArguments(); i != e; ++i) {
-    for (auto attr : getArgAttrs(i)) {
+  for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
+    for (auto attr : fn.getArgAttrs(i)) {
       if (!opVerifier.isValidName(attr.first))
-        return emitError("invalid attribute name '")
+        return fn.emitError("invalid attribute name '")
                << attr.first << "' on argument " << i;
 
       /// Check that the attribute is a dialect attribute, i.e. contains a '.'
       /// for the namespace.
       if (!attr.first.strref().contains('.'))
-        return emitError("function arguments may only have dialect attributes");
+        return fn.emitError(
+            "function arguments may only have dialect attributes");
 
       // Verify this attribute with the defining dialect.
       if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-        if (failed(dialect->verifyFunctionArgAttribute(*this, i, attr)))
+        if (failed(dialect->verifyFunctionArgAttribute(fn, i, attr)))
           return failure();
     }
   }
 
   // External functions have nothing more to check.
-  if (isExternal())
+  if (fn.isExternal())
     return success();
 
   // Verify that the argument list of the function and the arg list of the first
   // block line up.
-  auto *firstBB = &front();
-  auto fnInputTypes = getType().getInputs();
+  auto *firstBB = &fn.front();
+  auto fnInputTypes = fn.getType().getInputs();
   if (fnInputTypes.size() != firstBB->getNumArguments())
-    return emitError("first block of function must have ")
+    return fn.emitError("first block of function must have ")
            << fnInputTypes.size() << " arguments to match function signature";
   for (unsigned i = 0, e = firstBB->getNumArguments(); i != e; ++i)
     if (fnInputTypes[i] != firstBB->getArgument(i)->getType())
-      return emitError("type of argument #")
+      return fn.emitError("type of argument #")
              << i << " must match corresponding argument in function signature";
 
   // Finally, verify the body of the function.
-  return opVerifier.verify(*this);
+  return opVerifier.verify(fn);
 }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns failure.
-LogicalResult Operation::verify() {
-  return OperationVerifier(getContext()).verify(*this);
-}
-
-/// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  On error, this reports the error through the MLIRContext and
-/// returns failure.
-LogicalResult Module::verify() {
+LogicalResult mlir::verify(Module module) {
   // Check that all functions are uniquely named.
   llvm::StringMap<Location> nameToOrigLoc;
-  for (auto fn : *this) {
+  for (auto fn : module) {
     auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
     if (!it.second)
       return fn.emitError()
@@ -379,8 +381,8 @@ LogicalResult Module::verify() {
   }
 
   // Check that each function is correct.
-  for (auto fn : *this)
-    if (failed(fn.verify()))
+  for (auto fn : module)
+    if (failed(verify(fn)))
       return failure();
 
   return success();

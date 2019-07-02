@@ -20,6 +20,7 @@
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Analysis/Verifier.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
@@ -92,7 +93,7 @@ inline void cleanupAndPrintFunction(mlir::Function f) {
     }
   };
   auto pm = cleanupPassManager();
-  check(f.getModule().verify());
+  check(mlir::verify(f.getModule()));
   check(pm->run(f.getModule()));
   if (printToOuts)
     f.print(llvm::outs());

@@ -160,11 +160,6 @@ public:
   /// take O(N) where N is the number of operations within the parent block.
   bool isBeforeInBlock(Operation *other);
 
-  /// Perform (potentially expensive) checks of invariants, used to detect
-  /// compiler bugs.  On error, this reports the error through the MLIRContext
-  /// and returns failure.
-  LogicalResult verify();
-
   void print(raw_ostream &os);
   void dump();
 
