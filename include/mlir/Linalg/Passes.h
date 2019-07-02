@@ -32,7 +32,8 @@ class ModulePassBase;
 namespace linalg {
 FunctionPassBase *createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
 
-FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
+FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
+                                         bool promoteViews = false);
 
 FunctionPassBase *createLowerLinalgToLoopsPass();
 
