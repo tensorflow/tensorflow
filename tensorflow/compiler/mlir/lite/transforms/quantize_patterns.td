@@ -51,7 +51,6 @@ def : Pat<(TFL_QuantizeOp:$q
 
 // Quantize the Conv2DOp if the input and weight are dequantized. The scale of
 // the bias input is determined by the scales of input and weight operands.
-// TODO(fengliuai): propagate the quantization parameters to the bias input.
 def : Pat<(TFL_QuantizeOp
               (TFL_Conv2DOp
                   (TFL_DequantizeOp $in),
@@ -78,7 +77,6 @@ def : Pat<(TFL_QuantizeOp
 // Quantize the DepthwiseConv2DOp if the input and weight are dequantized. The
 // scale of the bias input is determined by the scales of input and weight
 // operands.
-// TODO(fengliuai): propagate the quantization parameters to the bias input.
 def : Pat<(TFL_QuantizeOp
               (TFL_DepthwiseConv2DOp
                   (TFL_DequantizeOp $in),
@@ -126,3 +124,13 @@ def : Pat<(TFL_QuantizeOp (TFL_AveragePool2DOp (TFL_DequantizeOp $in),
           (TFL_AveragePool2DOp $in,
               $filter_height, $filter_width, $fused_activation_function,
               $padding, $stride_h, $stride_w)>;
+
+// Quantize the MaxPool2DOp if the input is dequantized and output is
+// quantized. The pre-quantize pass can guarantee both quantization parameters
+// are the same.
+def : Pat<(TFL_QuantizeOp (TFL_MaxPool2DOp (TFL_DequantizeOp $in),
+              $padding, $stride_w, $tride_h, $stride_width, $stride_height,
+              $fused_activation_function), $output_type),
+          (TFL_MaxPool2DOp $in,
+              $padding, $stride_w, $tride_h, $stride_width, $stride_height,
+              $fused_activation_function)>;
