@@ -192,6 +192,20 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.populateModulePassManager(*module_passes);
 }
 
+// Returns whether the module could use any libdevice functions. This function
+// may have false positives -- the module might not use libdevice even if this
+// function returns true.
+bool CouldNeedLibdevice(const llvm::Module& module) {
+  for (const llvm::Function& function : module.functions()) {
+    // This is a conservative approximation -- not all such functions are in
+    // libdevice.
+    if (!function.isIntrinsic() && function.isDeclaration()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace
 
 
@@ -292,20 +306,6 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
   }
 
   return ptx;
-}
-
-// Returns whether the module could use any libdevice functions. This function
-// may have false positives -- the module might not use libdevice even if this
-// function returns true.
-bool CouldNeedLibdevice(const llvm::Module& module) {
-  for (const llvm::Function& function : module.functions()) {
-    // This is a conservative approximation -- not all such functions are in
-    // libdevice.
-    if (!function.isIntrinsic() && function.isDeclaration()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Links libdevice into the given module if the module needs libdevice.
@@ -625,25 +625,11 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
   return std::move(hsaco);
 }
 
-// Returns whether the module could use any ROCm-Device-Libs functions. This
-// function may have false positives -- the module might not use rocdl even if
-// this function returns true.
-bool CouldNeedROCDL(const llvm::Module& module) {
-  for (const llvm::Function& function : module.functions()) {
-    // This is a conservative approximation -- not all such functions are in
-    // ROCm-Device-Libs.
-    if (!function.isIntrinsic() && function.isDeclaration()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Links ROCm-Device-Libs into the given module if the module needs it.
 tensorflow::Status LinkROCDLIfNecessary(
     llvm::Module* module, int amdgpu_version,
     const string& rocdl_dir_path) {
-  if (!CouldNeedROCDL(*module)) {
+  if (!CouldNeedLibdevice(*module)) {
     return tensorflow::Status::OK();
   }
 
