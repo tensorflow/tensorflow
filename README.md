@@ -13,8 +13,8 @@ main TensorFlow repository soon.
 
 # How to Contribute
 
-We'd love to accept your patches and contributions to this project soon. But we
-are not yet ready to accept community contributions at this time.
+Thank you for your interest in contributing to MLIR! If you want to contribute
+to MLIR, be sure to review the [contribution guidelines](CONTRIBUTING.md).
 
 ## More resources
 
@@ -67,7 +67,7 @@ project that compiles down to MLIR.
 
 ## Compiler infrastructure
 
-We benefitted from experience gained from building other IRs (HLO, LLVM and SIL)
+We benefited from experience gained from building other IRs (HLO, LLVM and SIL)
 when building MLIR. We will directly adopt existing best practices, e.g. writing
 and maintaining an IR spec, building an IR verifier, providing the ability to
 dump and parse MLIR files to text, writing extensive unit tests with the
