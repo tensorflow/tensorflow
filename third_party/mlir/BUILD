@@ -57,7 +57,6 @@ cc_library(
         "include/mlir/IR/DialectHooks.h",
         "include/mlir/IR/DialectSymbolRegistry.def",
         "include/mlir/IR/Function.h",
-        "include/mlir/IR/FunctionGraphTraits.h",
         "include/mlir/IR/Identifier.h",
         "include/mlir/IR/IntegerSet.h",
         "include/mlir/IR/Location.h",
@@ -406,6 +405,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":StandardOps",
         ":Support",
     ],
 )
@@ -1068,21 +1068,6 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
-        ":ViewFunctionGraph",
-        "@llvm//:support",
-    ],
-)
-
-cc_library(
-    name = "ViewFunctionGraph",
-    srcs = ["lib/Transforms/ViewFunctionGraph.cpp"],
-    hdrs = ["include/mlir/Transforms/ViewFunctionGraph.h"],
-    includes = ["include"],
-    deps = [
-        ":Analysis",
-        ":IR",
-        ":Pass",
-        ":Support",
         "@llvm//:support",
     ],
 )
