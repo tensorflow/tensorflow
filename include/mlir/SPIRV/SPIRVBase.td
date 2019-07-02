@@ -310,7 +310,9 @@ def SPV_SamplerUseAttr:
 // Base class for all SPIR-V ops.
 class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<SPV_Dialect, mnemonic, traits> {
-  // Opcode for the binary format. Ops cannot be directly serialized will
+  // Opcode for the binary format.
+  // See https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html for
+  // the opcode for each operation. Ops that cannot be directly serialized will
   // leave this field as unset.
   int opcode = ?;
 

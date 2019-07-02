@@ -134,6 +134,21 @@ void Serializer::processHeader(SmallVectorImpl<uint32_t> &header) {
   constexpr uint8_t kMajorVersion = 1;
   constexpr uint8_t kMinorVersion = 0;
 
+  // See "2.3. Physical Layout of a SPIR-V Module and Instruction" in the SPIR-V
+  // spec for the definition of the binary module header.
+  //
+  // The first five words of a SPIR-V module must be:
+  // +-------------------------------------------------------------------------+
+  // | Magic number                                                            |
+  // +-------------------------------------------------------------------------+
+  // | Version number (bytes: 0 | major number | minor number | 0)             |
+  // +-------------------------------------------------------------------------+
+  // | Generator magic number                                                  |
+  // +-------------------------------------------------------------------------+
+  // | Bound (all result <id>s in the module guaranteed to be less than it)    |
+  // +-------------------------------------------------------------------------+
+  // | 0 (reserved for instruction schema)                                     |
+  // +-------------------------------------------------------------------------+
   header.push_back(spirv::kMagicNumber);
   header.push_back((kMajorVersion << 16) | (kMinorVersion << 8));
   header.push_back(kGeneratorNumber);
@@ -152,13 +167,13 @@ void Serializer::processMemoryModel() {
       {getPrefixedOpcode(kNumWords, spirv::kOpMemoryModelOpcode), am, mm});
 }
 
-bool spirv::serialize(spirv::ModuleOp module,
-                      SmallVectorImpl<uint32_t> &binary) {
+LogicalResult spirv::serialize(spirv::ModuleOp module,
+                               SmallVectorImpl<uint32_t> &binary) {
   Serializer serializer(module);
 
   if (failed(serializer.serialize()))
-    return false;
+    return failure();
 
   serializer.collect(binary);
-  return true;
+  return success();
 }

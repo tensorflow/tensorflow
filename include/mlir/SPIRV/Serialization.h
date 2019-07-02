@@ -26,15 +26,16 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+class LogicalResult;
 class MLIRContext;
 
 namespace spirv {
 class ModuleOp;
 
-/// Serializes the given SPIR-V `module` and writes to `binary`. Returns true on
-/// success; otherwise, reports errors to the error handler registered with the
-/// MLIR context for `module` and returns false.
-bool serialize(ModuleOp module, SmallVectorImpl<uint32_t> &binary);
+/// Serializes the given SPIR-V `module` and writes to `binary`. On failure,
+/// reports errors to the error handler registered with the MLIR context for
+/// `module`.
+LogicalResult serialize(ModuleOp module, SmallVectorImpl<uint32_t> &binary);
 
 /// Deserializes the given SPIR-V `binary` module and creates a MLIR ModuleOp
 /// in the given `context`. Returns the ModuleOp on success; otherwise, reports

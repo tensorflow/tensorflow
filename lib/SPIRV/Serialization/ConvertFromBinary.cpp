@@ -39,12 +39,9 @@ Block *createOneBlockFunction(Builder builder, Module module) {
   auto fn = Function::create(builder.getUnknownLoc(), "spirv_module", fnType);
   module.push_back(fn);
 
-  auto *block = new Block();
-  fn.push_back(block);
-
-  OperationState state(builder.getUnknownLoc(), ReturnOp::getOperationName());
-  ReturnOp::build(&builder, &state);
-  block->push_back(Operation::create(state));
+  fn.addEntryBlock();
+  auto *block = &fn.front();
+  OpBuilder(block).create<ReturnOp>(builder.getUnknownLoc());
 
   return block;
 }
@@ -64,15 +61,15 @@ OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
 
   // Make sure the input stream can be treated as a stream of SPIR-V words
   auto start = file->getBufferStart();
-  auto end = file->getBufferEnd();
-  if ((start - end) % sizeof(uint32_t) != 0) {
+  auto size = file->getBufferSize();
+  if (size % sizeof(uint32_t) != 0) {
     emitError(UnknownLoc::get(context))
         << "SPIR-V binary module must contain integral number of 32-bit words";
     return {};
   }
 
   auto binary = llvm::makeArrayRef(reinterpret_cast<const uint32_t *>(start),
-                                   (end - start) / sizeof(uint32_t));
+                                   size / sizeof(uint32_t));
 
   auto spirvModule = spirv::deserialize(binary, context);
   if (!spirvModule)

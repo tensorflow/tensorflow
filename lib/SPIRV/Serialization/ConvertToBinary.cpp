@@ -37,7 +37,7 @@ LogicalResult serializeModule(Module module, StringRef outputFilename) {
 
   SmallVector<uint32_t, 0> binary;
   bool done = false;
-  bool success = false;
+  auto result = failure();
 
   // TODO(antiagainst): we are checking there is only one SPIR-V ModuleOp in
   // this module and serialize it. This is due to the restriction of the current
@@ -53,11 +53,11 @@ LogicalResult serializeModule(Module module, StringRef outputFilename) {
       }
 
       done = true;
-      success = spirv::serialize(spirvModule, binary);
+      result = spirv::serialize(spirvModule, binary);
     });
   }
 
-  if (!success)
+  if (failed(result))
     return failure();
 
   auto file = openOutputFile(outputFilename);
