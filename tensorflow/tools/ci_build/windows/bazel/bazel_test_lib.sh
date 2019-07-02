@@ -16,10 +16,6 @@
 #
 
 function run_configure_for_cpu_build {
-  sed -i \
-    -e "s/^_TF_MIN_BAZEL_VERSION =.*$/_TF_MIN_BAZEL_VERSION = '0.24.1'/" \
-    -e "s/^_TF_MAX_BAZEL_VERSION =.*$/_TF_MAX_BAZEL_VERSION = '0.24.1'/" \
-    configure.py
   yes "" | ./configure
 }
 
@@ -27,10 +23,6 @@ function run_configure_for_gpu_build {
   # Enable CUDA support
   export TF_NEED_CUDA=1
 
-  sed -i \
-    -e "s/^_TF_MIN_BAZEL_VERSION =.*$/_TF_MIN_BAZEL_VERSION = '0.24.1'/" \
-    -e "s/^_TF_MAX_BAZEL_VERSION =.*$/_TF_MAX_BAZEL_VERSION = '0.24.1'/" \
-    configure.py
   yes "" | ./configure
 }
 

@@ -592,10 +592,6 @@ do_configure_test() {
   do
     export TF_NEED_CUDA=${WITH_CUDA}
     export PYTHON_BIN_PATH=$(which python)
-    sed -i \
-      -e "s/^_TF_MIN_BAZEL_VERSION =.*$/_TF_MIN_BAZEL_VERSION = '0.24.1'/" \
-      -e "s/^_TF_MAX_BAZEL_VERSION =.*$/_TF_MAX_BAZEL_VERSION = '0.24.1'/" \
-      configure.py
     yes "" | ./configure
 
     RESULT=$?
