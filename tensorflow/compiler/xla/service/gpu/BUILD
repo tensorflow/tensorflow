@@ -980,6 +980,7 @@ cc_library(
         ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
+        ":gpu_scatter_expander",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -1348,6 +1349,18 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpu_scatter_expander",
+    srcs = ["gpu_scatter_expander.cc"],
+    hdrs = ["gpu_scatter_expander.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:scatter_expander",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
