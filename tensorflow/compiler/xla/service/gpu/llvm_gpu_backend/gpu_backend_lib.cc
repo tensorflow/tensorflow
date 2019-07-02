@@ -720,7 +720,7 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 }  // namespace amdgpu
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+                              GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
@@ -733,14 +733,14 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileModuleToPtx(module, compute_capability, hlo_module_config,
+        ptx, nvptx::CompileModuleToPtx(module, absl::get<std::pair<int, int>>(gpu_version), hlo_module_config,
                                 libdevice_dir_path));
   }
   return ptx;
 }
 
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
-                                            int amdgpu_version,
+                                            GpuVersion gpu_version,
                                             const HloModuleConfig& hlo_module_config,
                                             const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
@@ -753,7 +753,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
+        hsaco, amdgpu::CompileModuleToHsaco(module, absl::get<int>(gpu_version), hlo_module_config,
                                   rocdl_dir_path));
   }
   return std::move(hsaco);

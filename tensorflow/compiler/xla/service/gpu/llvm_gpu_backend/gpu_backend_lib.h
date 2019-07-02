@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/variant.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -28,6 +29,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using GpuVersion = absl::variant<std::pair<int, int>, int>;
 
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
@@ -37,7 +40,7 @@ namespace gpu {
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
 StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+                              GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path);
 
@@ -45,7 +48,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
-                                            int amdgpu_version,
+                                            GpuVersion gpu_version,
                                             const HloModuleConfig& hlo_module_config,
                                             const string& rocdl_dir_path);
 
