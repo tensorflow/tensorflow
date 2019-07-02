@@ -1424,6 +1424,13 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_RSQRT>;
         }
         break;
+      case kTfLiteBuiltinPow:
+        // NN API only supports float inputs to this op.
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            context->tensors[node->inputs->data[0]].type == kTfLiteFloat32) {
+          return BasicMappingFn<ANEURALNETWORKS_POW>;
+        }
+        break;
       case kTfLiteBuiltinSin:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           return BasicMappingFn<ANEURALNETWORKS_SIN>;

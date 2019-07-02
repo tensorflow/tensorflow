@@ -1429,6 +1429,7 @@ cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

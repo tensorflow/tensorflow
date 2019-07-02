@@ -108,6 +108,16 @@ TEST(PowOpModel, BroadcastTest) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
 
+TEST(PowOpModel, BroadcastFloatTest) {
+  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                          {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
+  model.PopulateTensor<float>(model.input1(), {12, 2, 7, 8});
+  model.PopulateTensor<float>(model.input2(), {4});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
+}
+
 template <typename T>
 void CalculateTrueResults(const std::vector<T>& input_data, T exponent,
                           int flat_size, std::vector<T>* output_data) {
