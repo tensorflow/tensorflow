@@ -139,6 +139,13 @@ else:
     ```
     """
 
+tf.raw_ops.__doc__ += """
+
+Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
+[the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md) 
+for details. Unless you are library writer, you likely do not need to use these
+ops directly.
+"""
 
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
