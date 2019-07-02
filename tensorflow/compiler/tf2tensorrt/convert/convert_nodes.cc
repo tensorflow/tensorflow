@@ -1542,8 +1542,8 @@ void Converter::MaybeApplyQuantizationRanges() {
         }
         if (index < last_matcher) {
           fused_candidates.push_back(layer);
+          layer = layer_consumers[layer].front();
         }
-        layer = layer_consumers[layer].front();
       }
       if (!fused_candidates.empty()) {
         VLOG(1) << pattern.first;
