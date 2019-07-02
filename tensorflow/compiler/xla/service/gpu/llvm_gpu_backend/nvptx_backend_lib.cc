@@ -63,39 +63,33 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
+
+// Forward declaration for logic specific to LLVM NVPTX backend
+namespace nvptx {
 
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
 // we see an unrecognized compute capability, we return "sm_35".
-static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>({
-      {{3, 5}, 35},
-      {{3, 7}, 37},
-      {{5, 0}, 50},
-      {{5, 2}, 52},
-      {{5, 3}, 53},
-      {{6, 0}, 60},
-      {{6, 1}, 61},
-      {{6, 2}, 62},
-      {{7, 0}, 70},
-      {{7, 2}, 72},
-      {{7, 5}, 75},
-  });
-  int sm_version = 35;
-  auto it = m->find(compute_capability);
-  if (it != m->end()) {
-    sm_version = it->second;
-  } else {
-    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
-                 << ", " << compute_capability.second << ") ."
-                 << "Defaulting to telling LLVM that we're compiling for sm_"
-                 << sm_version;
-  }
-  return absl::StrCat("sm_", sm_version);
-}
+static string GetSmName(std::pair<int, int> compute_capability);
+
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                std::pair<int, int> compute_capability,
+                                const string& libdevice_dir_path);
+}  // namespace nvptx
+
+// Forward declaration for logic specific to LLVM AMDGPU backend
+namespace amdgpu {
+
+// Inline threshold value to use in LLVM AMDGPU backend.
+const int kAMDGPUInlineThreshold = 1048576;
+
+Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
+                            const string& rocdl_dir_path);
+}  // namespace amdgpu
+
+namespace {
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
@@ -124,7 +118,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::Triple triple, absl::string_view cpu_name,
-    const HloModuleConfig& hlo_module_config) {
+    const HloModuleConfig& hlo_module_config, absl::string_view feature_str) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
   if (target == nullptr) {
@@ -155,8 +149,9 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level = CodeGenOpt::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
-      getRelocModel(), getCodeModel(), codegen_opt_level));
+      triple.str(), llvm_ir::AsStringRef(cpu_name),
+      llvm_ir::AsStringRef(feature_str), target_options, getRelocModel(),
+      getCodeModel(), codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -166,13 +161,14 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
                            llvm::TargetMachine* target_machine,
                            llvm::legacy::PassManagerBase* module_passes,
-                           llvm::legacy::FunctionPassManager* function_passes) {
+                           llvm::legacy::FunctionPassManager* function_passes,
+                           int inline_threshold) {
   PassManagerBuilder builder;
   builder.OptLevel = opt_level;
   builder.SizeLevel = size_level;
 
   if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(kDefaultInlineThreshold);
+    builder.Inliner = llvm::createFunctionInliningPass(inline_threshold);
   } else {
     // Only inline functions marked with "alwaysinline".
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
@@ -202,29 +198,6 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   outfile.keep();
 }
 
-// Emits the given module to PTX. target_machine is an initialized TargetMachine
-// for the NVPTX target.
-string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
-  std::string ptx;  // need a std::string instead of a ::string.
-  {
-    llvm::raw_string_ostream stream(ptx);
-    llvm::buffer_ostream pstream(stream);
-    // The extension is stripped by IrDumpingPassManager, so we need to
-    // get creative to add a suffix.
-    IrDumpingPassManager codegen_passes(
-        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
-        "", false);
-    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
-        llvm::Triple(module->getTargetTriple())));
-
-    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::TargetMachine::CGFT_AssemblyFile);
-    codegen_passes.run(*module);
-  }
-
-  return ptx;
-}
-
 // LLVM has an extensive flags mechanism of its own, which is only accessible
 // through the command line. Internal libraries within LLVM register parsers for
 // flags, with no other way to configure them except pass these flags.
@@ -243,7 +216,7 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
 // Returns whether the module could use any libdevice functions. This function
 // may have false positives -- the module might not use libdevice even if this
 // function returns true.
-bool CouldNeedLibdevice(const llvm::Module& module) {
+bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
     // This is a conservative approximation -- not all such functions are in
     // libdevice.
@@ -254,68 +227,70 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
   return false;
 }
 
-// Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                std::pair<int, int> compute_capability,
-                                const string& libdevice_dir_path) {
-  if (!CouldNeedLibdevice(*module)) {
-    return Status::OK();
-  }
-
-  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
-  // older CUDAs.
-  string libdevice_path =
-      tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
-  if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
-  }
-
-  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  std::unique_ptr<llvm::Module> libdevice_module =
-      LoadIRModule(libdevice_path, &module->getContext());
-
+// Links the module with a vector of path to bitcode modules
+// The paths are guaranteed to exist.
+Status LinkWithBitcodeVector(llvm::Module* module,
+                             const std::vector<string>& bitcode_path_vector) {
   llvm::Linker linker(*module);
-  if (linker.linkInModule(
-          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
-          [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&GVS](const GlobalValue& GV) {
-              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
-            });
-          })) {
-    return xla::InternalError("Error linking libdevice from %s",
-                              libdevice_path);
+
+  for (auto& bitcode_path : bitcode_path_vector) {
+    if (!tensorflow::Env::Default()->FileExists(bitcode_path).ok()) {
+      LOG(WARNING) << "bitcode module is required by this HLO module but was "
+                      "not found at "
+                   << bitcode_path;
+      return xla::InternalError("bitcode module not found at %s", bitcode_path);
+    }
+
+    std::unique_ptr<llvm::Module> bitcode_module =
+        LoadIRModule(bitcode_path, &module->getContext());
+    if (linker.linkInModule(
+            std::move(bitcode_module), llvm::Linker::Flags::LinkOnlyNeeded,
+            [](Module& M, const StringSet<>& GVS) {
+              internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+                return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+              });
+            })) {
+      return xla::InternalError("Error linking bitcode module from %s",
+                                bitcode_path);
+    }
   }
   return Status::OK();
 }
 
-StatusOr<string> CompileModuleToPtx(llvm::Module* module,
-                                    std::pair<int, int> compute_capability,
+StatusOr<std::unique_ptr<llvm::TargetMachine>>
+ConstructLLVMTargetMachineForModule(llvm::Module* module,
+                                    GpuVersion gpu_version,
                                     const HloModuleConfig& hlo_module_config,
-                                    const string& libdevice_dir_path) {
-  // If the module has no functions or globals, there's nothing to compile. Just
-  // return an empty string.
-  if (module->empty() && module->global_empty()) {
-    VLOG(2) << "Module '" << module->getName().str()
-            << "' is empty. Skipping compilation.";
-    return string();
+                                    const string& device_bitcode_dir_path,
+                                    se::StreamExecutor* stream_exec) {
+  // Check if we are running the backend for NVPTX or AMDGPU
+  bool isNVPTX = (stream_exec->platform_kind() == se::PlatformKind::kCuda);
+
+  if (isNVPTX) {
+    // Link the input module with libdevice, to pull in implementations of some
+    // builtins.
+    TF_RETURN_IF_ERROR(nvptx::LinkLibdeviceIfNecessary(
+        module, absl::get<std::pair<int, int>>(gpu_version),
+        device_bitcode_dir_path));
+  } else {
+    // Link the input module with ROCDL
+    TF_RETURN_IF_ERROR(amdgpu::LinkROCDLIfNecessary(
+        module, absl::get<int>(gpu_version), device_bitcode_dir_path));
   }
-  // Link the input module with libdevice, to pull in implementations of some
-  // builtins.
-  TF_RETURN_IF_ERROR(
-      LinkLibdeviceIfNecessary(module, compute_capability, libdevice_dir_path));
 
-  // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
-  // can access it.
-  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
-                        hlo_module_config.debug_options().xla_gpu_ftz());
+  // Add NVPTX-specific flags and attributes to the module
+  if (isNVPTX) {
+    // Set the flush-denormals-to-zero flag on the module so the NVVM reflect
+    // pass can access it.
+    module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
+                          hlo_module_config.debug_options().xla_gpu_ftz());
 
-  // If ftz is enabled, set it as an attribute on every function in the module.
-  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
-    for (llvm::Function& fn : *module) {
-      fn.addFnAttr("nvptx-f32ftz", "true");
+    // If ftz is enabled, set it as an attribute on every function in the
+    // module.
+    if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+      for (llvm::Function& fn : *module) {
+        fn.addFnAttr("nvptx-f32ftz", "true");
+      }
     }
   }
 
@@ -332,13 +307,28 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::UnknownArch) {
     LOG(WARNING) << "target triple not found in the module";
-    target_triple = llvm::Triple("nvptx64-unknown-unknown");
+    if (isNVPTX) {
+      target_triple = llvm::Triple("nvptx64-unknown-unknown");
+    } else {
+      target_triple = llvm::Triple("amdgcn--amdhsa-amdgiz");
+    }
   }
 
-  // Figure out the exact name of the processor as known to the NVPTX backend
-  // from the gpu_architecture flag.
-  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
-      target_triple, GetSmName(compute_capability), hlo_module_config);
+  // Construct LLVM TargetMachine
+  std::unique_ptr<llvm::TargetMachine> target_machine;
+  if (isNVPTX) {
+    // Figure out the exact name of the processor as known to the NVPTX backend
+    // from the gpu_architecture flag.
+    target_machine = GetTargetMachine(
+        target_triple,
+        nvptx::GetSmName(absl::get<std::pair<int, int>>(gpu_version)),
+        hlo_module_config, "+ptx60");
+  } else {
+    target_machine = GetTargetMachine(
+        target_triple, absl::StrCat("gfx", absl::get<int>(gpu_version)),
+        hlo_module_config, "-code-object-v3");
+  }
+
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
@@ -365,9 +355,12 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
     LOG(ERROR) << std::string(80, '*');
   }
 
+  // Add optimization passes, and set inliner threshold
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes);
+                        &function_passes,
+                        (isNVPTX) ? nvptx::kDefaultInlineThreshold
+                                  : amdgpu::kAMDGPUInlineThreshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
@@ -394,13 +387,87 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  // Finally, produce PTX.
-  return EmitModuleToPTX(module, target_machine.get());
+  return std::move(target_machine);
+}
+}  // namespace
+
+// Logic specific to LLVM NVPTX backend
+namespace nvptx {
+
+// Gets the GPU name as it's known to LLVM for a given compute capability.  If
+// we see an unrecognized compute capability, we return "sm_35".
+static string GetSmName(std::pair<int, int> compute_capability) {
+  static auto* m = new std::map<std::pair<int, int>, int>({
+      {{3, 5}, 35},
+      {{3, 7}, 37},
+      {{5, 0}, 50},
+      {{5, 2}, 52},
+      {{5, 3}, 53},
+      {{6, 0}, 60},
+      {{6, 1}, 61},
+      {{6, 2}, 62},
+      {{7, 0}, 70},
+      {{7, 2}, 72},
+      {{7, 5}, 75},
+  });
+  int sm_version = 35;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    sm_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to telling LLVM that we're compiling for sm_"
+                 << sm_version;
+  }
+  return absl::StrCat("sm_", sm_version);
+}
+
+// Emits the given module to PTX. target_machine is an initialized TargetMachine
+// for the NVPTX target.
+StatusOr<string> EmitModuleToPTX(Module* module,
+                                 llvm::TargetMachine* target_machine) {
+  std::string ptx;  // need a std::string instead of a ::string.
+  {
+    llvm::raw_string_ostream stream(ptx);
+    llvm::buffer_ostream pstream(stream);
+    // The extension is stripped by IrDumpingPassManager, so we need to
+    // get creative to add a suffix.
+    IrDumpingPassManager codegen_passes(
+        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
+        "", false);
+    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+        llvm::Triple(module->getTargetTriple())));
+
+    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
+                                        llvm::TargetMachine::CGFT_AssemblyFile);
+    codegen_passes.run(*module);
+  }
+
+  return ptx;
+}
+
+// Links libdevice into the given module if the module needs libdevice.
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                std::pair<int, int> compute_capability,
+                                const string& libdevice_dir_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return Status::OK();
+  }
+
+  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
+  // older CUDAs.
+  string libdevice_path =
+      tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
+  std::vector<string> libdevice_path_vector{libdevice_path};
+  return LinkWithBitcodeVector(module, libdevice_path_vector);
 }
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
+void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
 
@@ -444,24 +511,74 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
-}  // namespace
+}  // namespace nvptx
+
+// Logic specific to LLVM AMDGPU backend
+namespace amdgpu {
+
+// Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
+static std::vector<string> GetROCDLPaths(int amdgpu_version,
+                                         const string& rocdl_dir_path) {
+  // AMDGPU version-neutral bitcodes
+  std::vector<string> result{"hc.amdgcn.bc",
+                             "opencl.amdgcn.bc",
+                             "ocml.amdgcn.bc",
+                             "ockl.amdgcn.bc",
+                             "oclc_finite_only_off.amdgcn.bc",
+                             "oclc_daz_opt_off.amdgcn.bc",
+                             "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+                             "oclc_unsafe_math_off.amdgcn.bc"};
+
+  // AMDGPU version-specific bitcodes
+  result.push_back(tensorflow::io::JoinPath(
+      rocdl_dir_path, tensorflow::strings::StrCat(
+                          "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+  return std::move(result);
+}
+
+// Links ROCm-Device-Libs into the given module if the module needs it.
+Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
+                            const string& rocdl_dir_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return tensorflow::Status::OK();
+  }
+
+  return LinkWithBitcodeVector(module,
+                               GetROCDLPaths(amdgpu_version, rocdl_dir_path));
+}
+
+}  // namespace amdgpu
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+                              GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path) {
+                              const string& libdevice_dir_path,
+                              se::StreamExecutor* stream_exec) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
+  std::call_once(backend_init_flag, nvptx::NVPTXBackendInit, hlo_module_config);
 
   string ptx;
+  std::unique_ptr<llvm::TargetMachine> target_machine;
   {
     tensorflow::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
-    TF_ASSIGN_OR_RETURN(
-        ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
-                                libdevice_dir_path));
+
+    // If the module has no functions or globals, there's nothing to compile.
+    // Just return an empty string.
+    if (module->empty() && module->global_empty()) {
+      VLOG(2) << "Module '" << module->getName().str()
+              << "' is empty. Skipping compilation.";
+      return string();
+    }
+
+    TF_ASSIGN_OR_RETURN(target_machine,
+                        ConstructLLVMTargetMachineForModule(
+                            module, gpu_version, hlo_module_config,
+                            libdevice_dir_path, stream_exec));
+    TF_ASSIGN_OR_RETURN(ptx,
+                        nvptx::EmitModuleToPTX(module, target_machine.get()));
   }
   return ptx;
 }
