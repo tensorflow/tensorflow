@@ -10,16 +10,16 @@ func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
   %J = linalg.range %c0:%arg2:%c1 : !linalg.range
   %K = linalg.range %c0:%arg3:%c1 : !linalg.range
-  %A = linalg.view %arg0[%I, %K] : !linalg.view<?x?xf32>
-  %B = linalg.view %arg0[%K, %J] : !linalg.view<?x?xf32>
-  %C = linalg.view %arg0[%I, %J] : !linalg.view<?x?xf32>
+  %A = linalg.view %arg0[%I, %K] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+  %B = linalg.view %arg0[%K, %J] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+  %C = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
   linalg.matmul(%A, %B, %C) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
   return
 }
 // CHECK-LABEL: func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
+//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
 //       CHECK: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //       CHECK: %[[N:.*]] = linalg.dim %[[B]], 1 : !linalg.view<?x?xf32>
@@ -38,16 +38,16 @@ func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
   %c1 = constant 1 : index
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
   %J = linalg.range %c0:%arg2:%c1 : !linalg.range
-  %2 = linalg.view %arg0[%I, %J] : !linalg.view<?x?xf32>
-  %3 = linalg.view %arg0[%J] : !linalg.view<?xf32>
-  %4 = linalg.view %arg0[%I] : !linalg.view<?xf32>
+  %2 = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+  %3 = linalg.view %arg0[%J] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+  %4 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
   linalg.matvec(%2, %3, %4) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
   return
 }
 // CHECK-LABEL: func @matvec(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
+//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+//       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
 //       CHECK: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //       CHECK: linalg.for %i0 = %c0 to %[[M]] step %c1 {
@@ -63,16 +63,16 @@ func @dot(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
-  %1 = linalg.view %arg0[%I] : !linalg.view<?xf32>
-  %2 = linalg.view %arg0[%I] : !linalg.view<?xf32>
-  %3 = linalg.view %arg0[] : !linalg.view<f32>
+  %1 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+  %2 = linalg.view %arg0[%I] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+  %3 = linalg.view %arg0[] : !linalg.buffer<?xf32> -> !linalg.view<f32>
   linalg.dot(%1, %2, %3) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
   return
 }
 // CHECK-LABEL: func @dot(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
-//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
-//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
-//       CHECK: %[[C:.*]] = linalg.view %arg0[] : !linalg.view<f32>
+//       CHECK: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+//       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+//       CHECK: %[[C:.*]] = linalg.view %arg0[] : !linalg.buffer<?xf32> -> !linalg.view<f32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?xf32>
 //       CHECK: linalg.for %i0 = %c0 to %[[K]] step %c1 {
 //   CHECK-DAG:   %[[a:.*]] = linalg.load %[[A]][%i0] : !linalg.view<?xf32>

@@ -490,12 +490,19 @@ ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
                                         OperationState *result) {
   OpAsmParser::OperandType bufferInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
-  Type type;
+  Type bType, type;
   if (parser->parseOperand(bufferInfo) ||
       parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+      parser->parseColon() || parser->parseType(bType) ||
+      parser->parseArrow() || parser->parseType(type)) {
     return failure();
+  }
+
+  BufferType bufferType = bType.dyn_cast<BufferType>();
+  if (!bufferType) {
+    return parser->emitError(parser->getNameLoc(), "buffer type expected");
+  }
 
   ViewType viewType = type.dyn_cast<ViewType>();
   if (!viewType)
@@ -504,10 +511,7 @@ ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
     return parser->emitError(parser->getNameLoc(), "expected")
            << viewType.getRank() << " range indexings";
   return failure(
-      parser->resolveOperand(
-          bufferInfo,
-          BufferType::get(type.getContext(), viewType.getElementType()),
-          result->operands) ||
+      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
       (!indexingsInfo.empty() &&
        parser->resolveOperands(indexingsInfo, RangeType::get(type.getContext()),
                                result->operands)) ||
@@ -517,7 +521,7 @@ ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
 // A ViewOp prints as:
 //
 // ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg.view<?x?xf32>
+//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
 // ```
 //
 // Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
@@ -527,7 +531,7 @@ void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
   interleave(
       getIndexings().begin(), getIndexings().end(), [&](Value *v) { *p << *v; },
       [&]() { *p << ", "; });
-  *p << "] : " << getType();
+  *p << "] : " << getSupportingBuffer()->getType() << " -> " << getType();
 }
 
 ///////////////////// Operations defined with Tablegen /////////////////////////

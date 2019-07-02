@@ -205,6 +205,12 @@ public:
   // Token Parsing
   //===--------------------------------------------------------------------===//
 
+  /// Parse a '->' token.
+  virtual ParseResult parseArrow() = 0;
+
+  /// Parse a '->' token if present
+  virtual ParseResult parseOptionalArrow() = 0;
+
   /// Parse a `:` token.
   virtual ParseResult parseColon() = 0;
 

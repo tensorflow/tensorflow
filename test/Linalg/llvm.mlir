@@ -22,7 +22,7 @@ func @range(%arg0: index) {
 //  CHECK-NEXT:   %5 = llvm.insertvalue %1, %4[2] : !llvm<"{ i64, i64, i64 }">
 
 func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1] : !linalg.view<?xf32>
+  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
   return
 }
 // CHECK-LABEL: func @view(%arg0: !llvm<"{ float*, i64 }">, %arg1: !llvm<"{ i64, i64, i64 }">) {
@@ -41,7 +41,7 @@ func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   %12 = llvm.insertvalue %11, %8[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 
 func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1, %arg2, %arg3] : !linalg.view<?x?x?xf32>
+  %0 = linalg.view %arg0[%arg1, %arg2, %arg3] : !linalg.buffer<?xf32> -> !linalg.view<?x?x?xf32>
   return
 }
 // CHECK-LABEL: func @view3d(%arg0: !llvm<"{ float*, i64 }">, %arg1: !llvm<"{ i64, i64, i64 }">, %arg2: !llvm<"{ i64, i64, i64 }">, %arg3: !llvm<"{ i64, i64, i64 }">) {
@@ -56,7 +56,7 @@ func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.
 //  CHECK-NEXT:   %16 = llvm.insertvalue %15, %12[3, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 
 func @slice(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1] : !linalg.view<?xf32>
+  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
   %1 = linalg.slice %0[%arg1] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
   return
 }

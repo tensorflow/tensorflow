@@ -26,6 +26,7 @@
 #include "mlir/Parser.h"
 #include "mlir/Support/LLVM.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -115,24 +116,32 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
     return RangeType::get(getContext());
   else if (spec.consume_front("buffer")) {
     if (spec.consume_front("<") && spec.consume_back(">")) {
+      StringRef sizeSpec, typeSpec;
+      std::tie(sizeSpec, typeSpec) = spec.split('x');
+      if (typeSpec.empty()) {
+        emitError(loc, "expected 'x' followed by element type");
+        return Type();
+      }
       // Check for '?'
       int64_t bufferSize = -1;
-      if (!spec.consume_front("?")) {
-        unsigned long long parsedBufferSize = 0;
-        if (spec.consumeInteger(10, parsedBufferSize)) {
+      if (!sizeSpec.consume_front("?")) {
+        if (sizeSpec.consumeInteger(10, bufferSize)) {
           emitError(loc, "expected buffer size to be an unsigned integer");
           return Type();
         }
-        bufferSize = static_cast<int64_t>(parsedBufferSize);
       }
-      if (!spec.consume_front("x")) {
-        emitError(loc, "missing x in buffer type descrition : ") << spec;
+      if (!sizeSpec.empty()) {
+        emitError(loc, "unexpected token '") << sizeSpec << "'";
+      }
+
+      typeSpec = typeSpec.trim();
+      auto t = mlir::parseType(typeSpec, context);
+      if (!t) {
+        emitError(loc, "invalid type specification: '") << typeSpec << "'";
         return Type();
       }
-      if (auto t = mlir::parseType(spec, context))
-        return (bufferSize == -1
-                    ? BufferType::get(getContext(), t)
-                    : BufferType::get(getContext(), t, bufferSize));
+      return (bufferSize == -1 ? BufferType::get(getContext(), t)
+                               : BufferType::get(getContext(), t, bufferSize));
     }
   } else if (spec.consume_front("view")) {
     if (spec.consume_front("<") && spec.consume_back(">")) {

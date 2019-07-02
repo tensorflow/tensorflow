@@ -3199,6 +3199,16 @@ public:
   // Token Parsing
   //===--------------------------------------------------------------------===//
 
+  /// Parse a `->` token.
+  ParseResult parseArrow() override {
+    return parser.parseToken(Token::arrow, "expected '->'");
+  }
+
+  /// Parses a `->` if present.
+  ParseResult parseOptionalArrow() override {
+    return success(parser.consumeIf(Token::arrow));
+  }
+
   /// Parse a `:` token.
   ParseResult parseColon() override {
     return parser.parseToken(Token::colon, "expected ':'");
