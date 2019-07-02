@@ -132,7 +132,7 @@ Build Type                                                                      
 *   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
 *   [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
-*   [TensorFlow Blog](https://medium.com/tensorflow)
+*   [TensorFlow Blog](https://blog.tensorflow.org)
 *   [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
 *   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
