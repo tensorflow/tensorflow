@@ -364,6 +364,7 @@ tf_cuda_library(
             ":c_api_internal",
             ":tf_tensor",
             "//tensorflow/core:framework",
+            "//tensorflow/core:framework_lite",
         ],
     }),
 )
