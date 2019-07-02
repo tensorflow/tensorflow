@@ -149,7 +149,6 @@ StringRef tblgen::EnumAttrCase::getSymbol() const {
 }
 
 int64_t tblgen::EnumAttrCase::getValue() const {
-  assert(isStrCase() && "cannot get value for EnumAttrCase");
   return def->getValueAsInt("value");
 }
 
