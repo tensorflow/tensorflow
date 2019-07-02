@@ -22,6 +22,7 @@ def tf_xla_py_test(
         tags = [],
         data = [],
         main = None,
+        enabled_backends = None,
         disabled_backends = None,
         use_xla_device = True,
         **kwargs):
@@ -46,6 +47,8 @@ def tf_xla_py_test(
       tags: Tags to apply to the generated targets.
       data: Data dependencies of the target.
       main: Same as py_test's main attribute.
+      enabled_backends: A list of backends that should be tested. Supported
+        values include "cpu" and "gpu". If not specified, defaults to None.
       disabled_backends: A list of backends that should not be tested. Supported
         values include "cpu" and "gpu". If not specified, defaults to None.
       use_xla_device: If true then the --test_device argument is set to XLA_CPU
@@ -53,12 +56,14 @@ def tf_xla_py_test(
         GPU.
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
+    if enabled_backends == None:
+        enabled_backends = all_backends()
     if disabled_backends == None:
         disabled_backends = []
     if type(disabled_backends) != "list":
         fail("disabled_backends must be a list of strings", "disabled_backends")
 
-    enabled_backends = [b for b in all_backends() if b not in disabled_backends]
+    backends = [b for b in enabled_backends if b not in disabled_backends]
     test_names = []
 
     if use_xla_device:
@@ -68,7 +73,7 @@ def tf_xla_py_test(
         cpu_xla_device = "CPU"
         gpu_xla_device = "GPU"
 
-    for backend in enabled_backends:
+    for backend in backends:
         test_name = "{}_{}".format(name, backend)
         backend_tags = ["tf_xla_{}".format(backend)]
         backend_args = []

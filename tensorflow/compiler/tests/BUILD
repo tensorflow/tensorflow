@@ -217,6 +217,29 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "complex_div_test",
+    size = "medium",
+    srcs = ["complex_div_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 2,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],
