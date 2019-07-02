@@ -44,8 +44,8 @@ namespace stream_executor {
 namespace rocm {
 
 string DriverVersionToString(DriverVersion version) {
-	  return absl::StrFormat("%d.%d.%d", std::get<0>(version), std::get<1>(version),
-			                           std::get<2>(version));
+  return absl::StrFormat("%d.%d.%d", std::get<0>(version), std::get<1>(version),
+                         std::get<2>(version));
 }
 
 string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
@@ -118,7 +118,7 @@ void Diagnostician::LogDiagnosticInformation() {
 /* static */ void Diagnostician::LogDriverVersionInformation() {
   LOG(INFO) << "hostname: " << port::Hostname();
   if (VLOG_IS_ON(1)) {
-    const char *value = getenv("LD_LIBRARY_PATH");
+    const char* value = getenv("LD_LIBRARY_PATH");
     string library_path = value == nullptr ? "" : value;
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
@@ -127,12 +127,12 @@ void Diagnostician::LogDiagnosticInformation() {
       if (piece.empty()) {
         continue;
       }
-      DIR *dir = opendir(piece.c_str());
+      DIR* dir = opendir(piece.c_str());
       if (dir == nullptr) {
         VLOG(1) << "could not open \"" << piece << "\"";
         continue;
       }
-      while (dirent *entity = readdir(dir)) {
+      while (dirent* entity = readdir(dir)) {
         VLOG(1) << piece << " :: " << entity->d_name;
       }
       closedir(dir);
@@ -160,8 +160,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
-  auto iterate_phdr =
-      [](struct dl_phdr_info *info, size_t size, void *data) -> int {
+  auto iterate_phdr = [](struct dl_phdr_info* info, size_t size,
+                         void* data) -> int {
     if (strstr(info->dlpi_name, "librocm.so.1")) {
       VLOG(1) << "found DLL info with name: " << info->dlpi_name;
       char resolved_path[PATH_MAX] = {0};
@@ -169,12 +169,12 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
         return 0;
       }
       VLOG(1) << "found DLL info with resolved path: " << resolved_path;
-      const char *slash = rindex(resolved_path, '/');
+      const char* slash = rindex(resolved_path, '/');
       if (slash == nullptr) {
         return 0;
       }
-      const char *so_suffix = ".so.";
-      const char *dot = strstr(slash, so_suffix);
+      const char* so_suffix = ".so.";
+      const char* dot = strstr(slash, so_suffix);
       if (dot == nullptr) {
         return 0;
       }
@@ -194,8 +194,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 }
 
 port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
-    const string &driver_version_file_contents) {
-  static const char *kDriverFilePrelude = "Kernel Module  ";
+    const string& driver_version_file_contents) {
+  static const char* kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == string::npos) {
     return port::Status{
@@ -231,10 +231,8 @@ void Diagnostician::WarnOnDsoKernelMismatch(
 }
 
 port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
-  auto status =
-    port::Status{port::error::UNIMPLEMENTED,
-                 "kernel reported driver version not implemented"
-    };
+  auto status = port::Status{port::error::UNIMPLEMENTED,
+                             "kernel reported driver version not implemented"};
   return status;
 }
 

@@ -524,7 +524,6 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
      ])
      + if_rocm_is_configured([
-        "//tensorflow/stream_executor/rocm:rocm_stream",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
      ]),

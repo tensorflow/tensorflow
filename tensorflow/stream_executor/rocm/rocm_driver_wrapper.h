@@ -31,10 +31,10 @@ namespace tensorflow {
 namespace wrap {
 #ifdef PLATFORM_GOOGLE
 // Use static linked library
-#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                       \
-  template <typename... Args>                                              \
+#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                          \
+  template <typename... Args>                                            \
   auto hipSymbolName(Args... args)->decltype(::hipSymbolName(args...)) { \
-    return ::hipSymbolName(args...);                                      \
+    return ::hipSymbolName(args...);                                     \
   }
 
 // This macro wraps a global identifier, given by hipSymbolName, in a callable
