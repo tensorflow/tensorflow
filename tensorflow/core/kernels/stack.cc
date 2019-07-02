@@ -66,9 +66,10 @@ class Stack : public ResourceBase {
       return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
                                      "its max_size (", max_size_, ")");
     }
-    int index = stack_.size() - 1;
+    int index = stack_.size();
     unswapped_lru_.push_back(index);
-    stack_.push_back({value, unswapped_lru_.end()});
+    auto iter = std::next(unswapped_lru_.rbegin()).base();
+    stack_.push_back({value, iter});
     return Status::OK();
   }
 
@@ -86,8 +87,11 @@ class Stack : public ResourceBase {
     }
     *value = stack_.back().first;
     auto iter = stack_.back().second;
-    if (iter != unswapped_lru_.end()) {
-      unswapped_lru_.erase(iter);
+    for (auto i = unswapped_lru_.begin(); i != unswapped_lru_.end(); i++) {
+      if (i == iter) {
+        unswapped_lru_.erase(iter);
+        break;
+      }
     }
     stack_.pop_back();
     return Status::OK();
