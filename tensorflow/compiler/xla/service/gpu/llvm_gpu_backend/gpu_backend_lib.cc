@@ -195,7 +195,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 // Returns whether the module could use any libdevice functions. This function
 // may have false positives -- the module might not use libdevice even if this
 // function returns true.
-bool CouldNeedLibdevice(const llvm::Module& module) {
+bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
     // This is a conservative approximation -- not all such functions are in
     // libdevice.
@@ -204,6 +204,35 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
     }
   }
   return false;
+}
+
+// Links the module with a vector of path to bitcode modules
+// The paths are guaranteed to exist.
+Status LinkWithBitcodeVector(llvm::Module* module, const std::vector<string>& bitcode_path_vector) {
+  llvm::Linker linker(*module);
+
+  for (auto& bitcode_path : bitcode_path_vector) {
+    if (!tensorflow::Env::Default()->FileExists(bitcode_path).ok()) {
+      LOG(WARNING)
+          << "bitcode module is required by this HLO module but was not found at "
+          << bitcode_path;
+      return xla::InternalError("bitcode module not found at %s", bitcode_path);
+    }
+
+    std::unique_ptr<llvm::Module> bitcode_module =
+        LoadIRModule(bitcode_path, &module->getContext());
+    if (linker.linkInModule(
+            std::move(bitcode_module), llvm::Linker::Flags::LinkOnlyNeeded,
+            [](Module& M, const StringSet<>& GVS) {
+              internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+                return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+              });
+            })) {
+      return xla::InternalError("Error linking bitcode module from %s",
+                                bitcode_path);
+    }
+  }
+  return Status::OK();
 }
 
 } // namespace
@@ -271,7 +300,7 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 std::pair<int, int> compute_capability,
                                 const string& libdevice_dir_path) {
-  if (!CouldNeedLibdevice(*module)) {
+  if (!CouldNeedDeviceBitcode(*module)) {
     return Status::OK();
   }
 
@@ -279,29 +308,10 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   // older CUDAs.
   string libdevice_path =
       tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
-  if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
-  }
 
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  std::unique_ptr<llvm::Module> libdevice_module =
-      LoadIRModule(libdevice_path, &module->getContext());
-
-  llvm::Linker linker(*module);
-  if (linker.linkInModule(
-          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
-          [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&GVS](const GlobalValue& GV) {
-              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
-            });
-          })) {
-    return xla::InternalError("Error linking libdevice from %s",
-                              libdevice_path);
-  }
-  return Status::OK();
+  std::vector<string> libdevice_path_vector{libdevice_path};
+  return LinkWithBitcodeVector(module, libdevice_path_vector);
 }
 
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
@@ -467,7 +477,8 @@ namespace amdgpu {
 const int kAMDGPUInlineThreshold = 1048576;
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
-static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
+static std::vector<string> GetROCDLPaths(int amdgpu_version,
+                                         const string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes
   std::vector<string> result {
     "hc.amdgcn.bc",
@@ -481,8 +492,9 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
   };
 
   // AMDGPU version-specific bitcodes
-  result.push_back(tensorflow::strings::StrCat("oclc_isa_version_",
-                                               amdgpu_version, ".amdgcn.bc"));
+  result.push_back(tensorflow::io::JoinPath(
+      rocdl_dir_path, tensorflow::strings::StrCat(
+                          "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
   return std::move(result);
 }
 
@@ -591,37 +603,15 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
-tensorflow::Status LinkROCDLIfNecessary(
+Status LinkROCDLIfNecessary(
     llvm::Module* module, int amdgpu_version,
     const string& rocdl_dir_path) {
-  if (!CouldNeedLibdevice(*module)) {
+  if (!CouldNeedDeviceBitcode(*module)) {
     return tensorflow::Status::OK();
   }
 
-  llvm::Linker linker(*module);
-
-  // ROCm-Device-Libs is shipped as a collection of bitcodes
-  std::vector<string> rocdl_bitcode_vector = GetROCDLFilenames(amdgpu_version);
-
-  for (auto& rocdl_bitcode : rocdl_bitcode_vector) {
-    string rocdl_path = tensorflow::io::JoinPath(rocdl_dir_path,
-                                                 rocdl_bitcode);
-    TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(rocdl_path));
-    VLOG(1) << "Linking with ROCDL bitcode from: " << rocdl_path;
-    std::unique_ptr<llvm::Module> rocdl_module =
-        LoadIRModule(rocdl_path, &module->getContext());
-    if (linker.linkInModule(
-            std::move(rocdl_module), llvm::Linker::Flags::LinkOnlyNeeded,
-            [](Module& M, const StringSet<>& GVS) {
-              internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
-                return !GV.hasName() || (GVS.count(GV.getName()) == 0);
-              });
-            })) {
-      return tensorflow::errors::Internal(tensorflow::strings::StrCat(
-          "Error linking ROCm-Device-Libs from ", rocdl_path));
-    }
-  }
-  return tensorflow::Status::OK();
+  return LinkWithBitcodeVector(module,
+                               GetROCDLPaths(amdgpu_version, rocdl_dir_path));
 }
 
 StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
