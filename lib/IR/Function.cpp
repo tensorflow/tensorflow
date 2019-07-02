@@ -188,7 +188,7 @@ void Function::addEntryBlock() {
   entry->addArguments(impl->type.getInputs());
 }
 
-void Function::walk(const std::function<void(Operation *)> &callback) {
+void Function::walk(llvm::function_ref<void(Operation *)> callback) {
   getBody().walk(callback);
 }
 

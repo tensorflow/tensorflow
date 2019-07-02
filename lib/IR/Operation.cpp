@@ -298,7 +298,7 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 // Operation Walkers
 //===----------------------------------------------------------------------===//
 
-void Operation::walk(const std::function<void(Operation *)> &callback) {
+void Operation::walk(llvm::function_ref<void(Operation *)> callback) {
   // Visit any internal operations.
   for (auto &region : getRegions())
     region.walk(callback);

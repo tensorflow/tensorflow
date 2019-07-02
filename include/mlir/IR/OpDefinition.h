@@ -143,12 +143,12 @@ public:
 
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one).
-  void walk(const std::function<void(Operation *)> &callback) {
+  void walk(llvm::function_ref<void(Operation *)> callback) {
     state->walk(callback);
   }
 
   /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
+  template <typename OpTy> void walk(llvm::function_ref<void(OpTy)> callback) {
     walk([&](Operation *opInst) {
       if (auto op = dyn_cast<OpTy>(opInst))
         callback(op);

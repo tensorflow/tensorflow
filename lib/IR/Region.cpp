@@ -173,7 +173,7 @@ bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
 
 /// Walk the operations in this block in postorder, calling the callback for
 /// each operation.
-void Region::walk(const std::function<void(Operation *)> &callback) {
+void Region::walk(llvm::function_ref<void(Operation *)> callback) {
   for (auto &block : *this)
     block.walk(callback);
 }

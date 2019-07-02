@@ -233,14 +233,14 @@ Block *Block::getSinglePredecessor() {
 // Operation Walkers
 //===----------------------------------------------------------------------===//
 
-void Block::walk(const std::function<void(Operation *)> &callback) {
+void Block::walk(llvm::function_ref<void(Operation *)> callback) {
   walk(begin(), end(), callback);
 }
 
 /// Walk the operations in the specified [begin, end) range of this block,
 /// calling the callback for each operation.
 void Block::walk(Block::iterator begin, Block::iterator end,
-                 const std::function<void(Operation *)> &callback) {
+                 llvm::function_ref<void(Operation *)> callback) {
   for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
     op.walk(callback);
 }

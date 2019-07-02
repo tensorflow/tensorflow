@@ -117,7 +117,7 @@ public:
 
   /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.
-  void walk(const std::function<void(Operation *)> &callback);
+  void walk(llvm::function_ref<void(Operation *)> callback);
 
   /// Displays the CFG in a window. This is for use from the debugger and
   /// depends on Graphviz to generate the graph.

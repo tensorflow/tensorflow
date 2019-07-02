@@ -424,10 +424,10 @@ public:
 
   /// Walk this operation in postorder, calling the callback for each operation
   /// including this one.
-  void walk(const std::function<void(Operation *)> &callback);
+  void walk(llvm::function_ref<void(Operation *)> callback);
 
   /// Specialization of walk to only visit operations of 'T'.
-  template <typename T> void walk(std::function<void(T)> callback) {
+  template <typename T> void walk(llvm::function_ref<void(T)> callback) {
     walk([&](Operation *op) {
       if (auto derivedOp = dyn_cast<T>(op))
         callback(derivedOp);
