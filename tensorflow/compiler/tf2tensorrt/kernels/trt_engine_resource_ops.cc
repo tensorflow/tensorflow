@@ -193,6 +193,10 @@ class DumpTRTEngineCache : public OpKernel {
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
 
     for (const auto& pair : resource->cache_) {
+      // Ignore engines that failed to build.
+      const std::unique_ptr<EngineContext>& engine = pair.second;
+      if (!engine || !engine->cuda_engine) continue;
+
       TRTEngineInstance engine_instance;
       // Add input shapes.
       const std::vector<TensorShape>& engine_input_shapes = pair.first;
@@ -200,7 +204,6 @@ class DumpTRTEngineCache : public OpKernel {
         shape.AsProto(engine_instance.add_input_shapes());
       }
       // Add the serialized engine.
-      const std::unique_ptr<EngineContext>& engine = pair.second;
       TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(
           engine->cuda_engine->serialize());
       engine_instance.set_serialized_engine(engine_data->data(),
