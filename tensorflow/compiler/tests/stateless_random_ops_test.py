@@ -128,7 +128,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
             shape=[n], seed=seed_t, dtype=dtype)
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
         random_test_util.test_truncated_normal(
-            self.assertEqual, self.assertAllClose, dtype, n, y)
+            self.assertEqual, self.assertAllClose, n, y,
+            variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
 
 
 if __name__ == '__main__':
