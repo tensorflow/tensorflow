@@ -500,7 +500,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine, int amdgpu_version) {
+std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
   char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
 
@@ -700,7 +700,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   module_passes.run(*module);
 
   // Finally, produce HSA Code Object.
-  return std::move(EmitModuleToHsaco(module, target_machine.get(), amdgpu_version));
+  return std::move(EmitModuleToHsaco(module, target_machine.get()));
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
