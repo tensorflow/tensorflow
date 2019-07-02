@@ -104,10 +104,10 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   }];
 }
 
-def StrCaseA: EnumAttrCase<"A">;
-def StrCaseB: EnumAttrCase<"B">;
+def StrCaseA: StrEnumAttrCase<"A">;
+def StrCaseB: StrEnumAttrCase<"B">;
 
-def SomeStrEnum: EnumAttr<
+def SomeStrEnum: StrEnumAttr<
   "SomeStrEnum", "", [StrCaseA, StrCaseB]>;
 
 def StrEnumAttrOp : TEST_Op<"str_enum_attr"> {
@@ -247,10 +247,10 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 // Test Legalization
 //===----------------------------------------------------------------------===//
 
-def Test_LegalizerEnum_Success : EnumAttrCase<"Success">;
-def Test_LegalizerEnum_Failure : EnumAttrCase<"Failure">;
+def Test_LegalizerEnum_Success : StrEnumAttrCase<"Success">;
+def Test_LegalizerEnum_Failure : StrEnumAttrCase<"Failure">;
 
-def Test_LegalizerEnum : EnumAttr<"Success", "Failure",
+def Test_LegalizerEnum : StrEnumAttr<"Success", "Failure",
   [Test_LegalizerEnum_Success, Test_LegalizerEnum_Failure]>;
 
 def ILLegalOpA : TEST_Op<"illegal_op_a">, Results<(outs I32:$res)>;

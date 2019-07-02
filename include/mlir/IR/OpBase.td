@@ -655,8 +655,7 @@ class EnumAttrCaseInfo<string sym, int val> {
 }
 
 // An enum attribute case stored with StringAttr.
-// TODO(antiagainst): rename this to StrEnumAttrCase to be consistent
-class EnumAttrCase<string sym, int val = -1> :
+class StrEnumAttrCase<string sym, int val = -1> :
     EnumAttrCaseInfo<sym, val>,
     StringBasedAttr<
       CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
@@ -736,9 +735,8 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
 // Op attributes of this kind are stored as StringAttr. Extra verification will
 // be generated on the string though: only the symbols of the allowed cases are
 // permitted as the string value.
-// TODO(antiagainst): rename this to StrEnumAttr to be consistent
-class EnumAttr<string name, string description,
-                  list<EnumAttrCase> cases> :
+class StrEnumAttr<string name, string description,
+                  list<StrEnumAttrCase> cases> :
     EnumAttrInfo<name, cases>,
     StringBasedAttr<
       And<[StrAttr.predicate, Or<!foreach(case, cases, case.predicate)>]>,

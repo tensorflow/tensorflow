@@ -67,14 +67,14 @@ def fxpmath_EwUnaryFn_Tanh    : fxpmath_ConstEwUnaryFn<"TANH">;
 // Comparison functions (compares relative to zero on a subtraction result).
 //===----------------------------------------------------------------------===//
 
-def fxpmath_CompareZ    : EnumAttrCase<"CMPZ">;
-def fxpmath_CompareNZ   : EnumAttrCase<"CMPNZ">;
-def fxpmath_CompareLZ   : EnumAttrCase<"CMPLZ">;
-def fxpmath_CompareLZE  : EnumAttrCase<"CMPLZE">;
-def fxpmath_CompareGZ   : EnumAttrCase<"CMPGZ">;
-def fxpmath_CompareGZE  : EnumAttrCase<"CMPGZE">;
+def fxpmath_CompareZ    : StrEnumAttrCase<"CMPZ">;
+def fxpmath_CompareNZ   : StrEnumAttrCase<"CMPNZ">;
+def fxpmath_CompareLZ   : StrEnumAttrCase<"CMPLZ">;
+def fxpmath_CompareLZE  : StrEnumAttrCase<"CMPLZE">;
+def fxpmath_CompareGZ   : StrEnumAttrCase<"CMPGZ">;
+def fxpmath_CompareGZE  : StrEnumAttrCase<"CMPGZE">;
 
-def fxpmath_CompareFnAttr : EnumAttr<"ComparisonFn",
+def fxpmath_CompareFnAttr : StrEnumAttr<"ComparisonFn",
     "Type of subtraction-result comparison to perform.",
     [
       fxpmath_CompareZ,

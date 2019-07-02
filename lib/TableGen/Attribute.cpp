@@ -141,7 +141,7 @@ tblgen::EnumAttrCase::EnumAttrCase(const llvm::DefInit *init)
 }
 
 bool tblgen::EnumAttrCase::isStrCase() const {
-  return def->isSubClassOf("EnumAttrCase");
+  return def->isSubClassOf("StrEnumAttrCase");
 }
 
 StringRef tblgen::EnumAttrCase::getSymbol() const {
@@ -163,7 +163,7 @@ tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
 
 bool tblgen::EnumAttr::isStrEnum() const {
-  return def->isSubClassOf("EnumAttr");
+  return def->isSubClassOf("StrEnumAttr");
 }
 
 StringRef tblgen::EnumAttr::getEnumClassName() const {
