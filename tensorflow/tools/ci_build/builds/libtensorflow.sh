@@ -58,6 +58,12 @@ function build_libtensorflow_tarball() {
     export TF_NEED_ROCM=0
   fi
   bazel clean --expunge
+  # Don't do in-place sed as this needs to run on mac and linux
+  sed \
+    -e "s/^_TF_MIN_BAZEL_VERSION =.*$/_TF_MIN_BAZEL_VERSION = '0.24.1'/" \
+    -e "s/^_TF_MAX_BAZEL_VERSION =.*$/_TF_MAX_BAZEL_VERSION = '0.24.1'/" \
+    configure.py > configure.py.new
+  mv configure.py.new configure.py
   yes "" | ./configure
 
   # Remove this test call when
