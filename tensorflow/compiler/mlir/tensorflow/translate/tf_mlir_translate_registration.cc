@@ -40,7 +40,7 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 }  // namespace
 
-static std::unique_ptr<Module> GraphdefToMlirTranslateFunction(
+static OwningModuleRef GraphdefToMlirTranslateFunction(
     llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
@@ -51,7 +51,7 @@ static std::unique_ptr<Module> GraphdefToMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
-static std::unique_ptr<Module> GraphdefToSplattedMlirTranslateFunction(
+static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
@@ -62,7 +62,7 @@ static std::unique_ptr<Module> GraphdefToSplattedMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
-static bool MlirToGraphdefTranslateFunction(Module* module,
+static bool MlirToGraphdefTranslateFunction(Module module,
                                             llvm::StringRef output_filename) {
   if (!module) return true;
 
@@ -77,7 +77,7 @@ static bool MlirToGraphdefTranslateFunction(Module* module,
   // TODO(fengliuai): Add exporter flags.
   tensorflow::ExporterConfigs confs;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::ConvertMlirToGraphdef(*module, confs));
+      tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
     return true;

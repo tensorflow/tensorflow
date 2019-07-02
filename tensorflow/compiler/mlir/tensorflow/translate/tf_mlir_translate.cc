@@ -39,7 +39,7 @@ namespace tensorflow {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
-static StatusOr<std::unique_ptr<mlir::Module>> GraphdefToMlirImport(
+static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -64,7 +64,7 @@ static StatusOr<std::unique_ptr<mlir::Module>> GraphdefToMlirImport(
   return ConvertGraphdefToMlir(graphdef, debug_info, specs, context);
 }
 
-std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
+mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -82,7 +82,7 @@ std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
   return module_or.ConsumeValueOrDie();
 }
 
-std::unique_ptr<mlir::Module> GraphdefToSplattedMlirTranslateFunction(
+mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,

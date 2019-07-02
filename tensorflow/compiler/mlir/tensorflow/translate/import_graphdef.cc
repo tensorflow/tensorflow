@@ -74,7 +74,7 @@ namespace {
 class Importer {
  public:
   // Main entry point: converts the given graph to an MLIR Module.
-  static StatusOr<std::unique_ptr<mlir::Module>> Convert(
+  static StatusOr<mlir::OwningModuleRef> Convert(
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs);
@@ -82,10 +82,10 @@ class Importer {
  private:
   explicit Importer(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::Module* module,
+      const NodeSpecs& specs, mlir::Module module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : module_(module),
-        context_(module->getContext()),
+        context_(module.getContext()),
         tf_name_to_mlir_name_(tf_name_to_mlir_name),
         graph_flib_(flib),
         specs_(specs),
@@ -252,7 +252,7 @@ class Importer {
   using NodeValueMap = absl::flat_hash_map<int, mlir::Operation*>;
 
   std::unique_ptr<mlir::OpBuilder> builder_;
-  mlir::Module* module_;
+  mlir::Module module_;
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
@@ -572,7 +572,7 @@ StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_->getNamedFunction(mlir_func_name);
+  auto func = module_.getNamedFunction(mlir_func_name);
   return builder_->getFunctionAttr(func);
 }
 
@@ -676,7 +676,7 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_->getNamedFunction(mlir_grad_func_name);
+    auto grad_func = module_.getNamedFunction(mlir_grad_func_name);
     auto gradient_attr = builder_->getFunctionAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
@@ -1114,7 +1114,7 @@ Status Importer::Convert(llvm::StringRef func_name,
   auto function = mlir::Function::create(mlir::UnknownLoc::get(context_),
                                          func_name, func_type, attrs);
 
-  module_->push_back(function);
+  module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
   auto* bb = builder_->createBlock();
@@ -1246,11 +1246,11 @@ StatusOr<mlir::FunctionType> Importer::InferLibFunctionType(
   return builder.getFunctionType(arg_types, ret_types);
 }
 
-StatusOr<std::unique_ptr<mlir::Module>> Importer::Convert(
+StatusOr<mlir::OwningModuleRef> Importer::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const NodeSpecs& specs) {
-  auto module = absl::make_unique<mlir::Module>(context);
+  mlir::OwningModuleRef module = mlir::Module::create(context);
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   Importer importer(flib_def, debug_info, specs, module.get(),
                     &tf_name_to_mlir_name);
@@ -1288,7 +1288,7 @@ StatusOr<std::unique_ptr<mlir::Module>> Importer::Convert(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<mlir::Module>> ConvertGraphdefToMlir(
+StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
     const NodeSpecs& specs, mlir::MLIRContext* context,
     bool add_default_attributes) {
@@ -1307,7 +1307,7 @@ StatusOr<std::unique_ptr<mlir::Module>> ConvertGraphdefToMlir(
                             context);
 }
 
-StatusOr<std::unique_ptr<mlir::Module>> ConvertGraphToMlir(
+StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
     mlir::MLIRContext* context) {

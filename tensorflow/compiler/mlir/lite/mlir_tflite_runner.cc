@@ -94,8 +94,7 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context;
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
-  std::unique_ptr<mlir::Module> module(
-      mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.

@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 namespace mlir {
-static mlir::Operation* ExtractOnlyOp(mlir::Module* module) {
-  mlir::Function fn = module->getNamedFunction("main");
+static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
+  mlir::Function fn = module.getNamedFunction("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;
@@ -38,8 +38,8 @@ static mlir::Operation* ExtractOnlyOp(mlir::Module* module) {
   return &block.front();
 }
 
-static bool MlirToTfNodeDef(Module* module, llvm::StringRef filename) {
-  auto* context = module->getContext();
+static bool MlirToTfNodeDef(Module module, llvm::StringRef filename) {
+  auto* context = module.getContext();
 
   auto file = openOutputFile(filename);
   if (!file) {

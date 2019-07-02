@@ -30,7 +30,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-stream_executor::port::StatusOr<std::unique_ptr<mlir::Module>>
+stream_executor::port::StatusOr<mlir::OwningModuleRef>
 LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
@@ -46,7 +46,7 @@ LoadFromGraphdefOrMlirSource(
 // attribute "tf.quantize" by the importer module.
 // TODO(fengliuai): switch to the cmd flag once the flags are moved to this
 // file with main method.
-bool ShouldRunQuantizePasses(mlir::Module* m);
+bool ShouldRunQuantizePasses(mlir::Module m);
 
 // Add the MLIR passes that convert TF control flow dialect to TF Lite dialect
 // to a MLIR `pass_manager`. These passes first raise the control flow in the TF
@@ -69,7 +69,7 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
 // main function, Quantization is applied. If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFControlFlowToTFLOrFlatbuffer(
-    mlir::Module* module, bool export_to_mlir, bool emit_builtin_tflite_ops,
+    mlir::Module module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, std::string* result);
 }  // namespace tensorflow

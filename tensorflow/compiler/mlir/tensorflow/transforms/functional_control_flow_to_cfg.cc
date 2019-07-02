@@ -151,9 +151,9 @@ static bool LowerIfOp(IfOp op) {
   Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
   if (!cond_i1) return true;
 
-  auto* module = op_inst->getFunction().getModule();
-  auto then_fn = module->getNamedFunction(op.getThen());
-  auto else_fn = module->getNamedFunction(op.getElse());
+  auto module = op_inst->getFunction().getModule();
+  auto then_fn = module.getNamedFunction(op.getThen());
+  auto else_fn = module.getNamedFunction(op.getElse());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -208,9 +208,9 @@ static bool LowerWhileOp(WhileOp op) {
 
   OpBuilder builder(op_inst);
 
-  auto* module = op_inst->getFunction().getModule();
-  auto cond_fn = module->getNamedFunction(op.getCond());
-  auto body_fn = module->getNamedFunction(op.getBody());
+  auto module = op_inst->getFunction().getModule();
+  auto cond_fn = module.getNamedFunction(op.getCond());
+  auto body_fn = module.getNamedFunction(op.getBody());
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two

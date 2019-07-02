@@ -29,18 +29,17 @@ namespace tensorflow {
 
 // Given a GraphDef, returns a MLIR module containing the graph in control-flow
 // form.
-stream_executor::port::StatusOr<std::unique_ptr<mlir::Module>>
-ConvertGraphdefToMlir(const GraphDef& graphdef,
-                      const GraphDebugInfo& debug_info, const NodeSpecs& specs,
-                      mlir::MLIRContext* context,
-                      bool add_default_attributes = true);
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
+    const GraphDef& graphdef, const GraphDebugInfo& debug_info,
+    const NodeSpecs& specs, mlir::MLIRContext* context,
+    bool add_default_attributes = true);
 
 // Given a Graph, returns a MLIR module containing the graph in control-flow
 // form.
-stream_executor::port::StatusOr<std::unique_ptr<mlir::Module>>
-ConvertGraphToMlir(const Graph& graph, const GraphDebugInfo& debug_info,
-                   const FunctionLibraryDefinition& flib_def,
-                   const NodeSpecs& specs, mlir::MLIRContext* context);
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
+    const Graph& graph, const GraphDebugInfo& debug_info,
+    const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
+    mlir::MLIRContext* context);
 
 }  // namespace tensorflow
 

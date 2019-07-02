@@ -35,9 +35,10 @@ namespace tensorflow {
 
 using mlir::MLIRContext;
 using mlir::Module;
+using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
 
-StatusOr<std::unique_ptr<Module>> LoadFromGraphdefOrMlirSource(
+StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     const std::string &input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string> &extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
@@ -56,7 +57,7 @@ StatusOr<std::unique_ptr<Module>> LoadFromGraphdefOrMlirSource(
     }
 
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return std::unique_ptr<Module>(mlir::parseSourceFile(*source_mgr, context));
+    return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
   for (const auto &tf_opdefs_string : extra_tf_opdefs) {
     tensorflow::OpDef opdef;
@@ -86,8 +87,8 @@ StatusOr<std::unique_ptr<Module>> LoadFromGraphdefOrMlirSource(
       context);
 }
 
-bool ShouldRunQuantizePasses(mlir::Module *m) {
-  if (mlir::Function main_fn = m->getNamedFunction("main")) {
+bool ShouldRunQuantizePasses(mlir::Module m) {
+  if (mlir::Function main_fn = m.getNamedFunction("main")) {
     return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
            mlir::Attribute();
   }
@@ -131,10 +132,10 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
 }
 
 Status ConvertTFControlFlowToTFLOrFlatbuffer(
-    mlir::Module *module, bool export_to_mlir, bool emit_builtin_tflite_ops,
+    mlir::Module module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, std::string *result) {
-  mlir::StatusScopedDiagnosticHandler statusHandler(module->getContext(),
+  mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
   mlir::PassManager pm;
   bool run_quantize = ShouldRunQuantizePasses(module);
@@ -149,7 +150,7 @@ Status ConvertTFControlFlowToTFLOrFlatbuffer(
 
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
-    module->print(os);
+    module.print(os);
     return Status::OK();
   }
 

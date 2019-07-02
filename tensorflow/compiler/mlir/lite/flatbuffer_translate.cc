@@ -243,18 +243,18 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
 // TODO(hinsu): Now that translation is done by making a single pass over the
 // MLIR module, consider inlining these validation checks at the place where
 // these invariants are assumed instead of checking upfront.
-static bool IsValidTFLiteMlirModule(Module* module) {
-  MLIRContext* context = module->getContext();
+static bool IsValidTFLiteMlirModule(Module module) {
+  MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
-  Function main_fn = module->getNamedFunction("main");
+  Function main_fn = module.getNamedFunction("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
            false;
   }
 
-  for (auto fn : module->getFunctions()) {
+  for (auto fn : module.getFunctions()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -323,14 +323,14 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
-  static Optional<std::string> Translate(Module* module,
+  static Optional<std::string> Translate(Module module,
                                          bool emit_builtin_tflite_ops,
                                          bool emit_select_tf_ops,
                                          bool emit_custom_ops);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(Module* module, bool emit_builtin_tflite_ops,
+  explicit Translator(Module module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops)
       : module_(module), builder_(kInitialBufferSize) {
     // The first buffer must be empty according to the schema definition.
@@ -345,8 +345,8 @@ class Translator {
     if (emit_custom_ops) {
       enabled_op_types_.emplace(OpType::kCustomOp);
     }
-    tf_dialect_ = module->getContext()->getRegisteredDialect("tf");
-    tfl_dialect_ = module->getContext()->getRegisteredDialect("tfl");
+    tf_dialect_ = module.getContext()->getRegisteredDialect("tf");
+    tfl_dialect_ = module.getContext()->getRegisteredDialect("tfl");
   }
 
   Optional<std::string> TranslateInternal();
@@ -403,7 +403,7 @@ class Translator {
   // Returns a unique name starting with a given prefix.
   std::string UniqueName(llvm::StringRef prefix);
 
-  Module* module_;
+  Module module_;
 
   flatbuffers::FlatBufferBuilder builder_;
   BufferOffset<tflite::Buffer> empty_buffer_;
@@ -927,7 +927,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
-Optional<std::string> Translator::Translate(Module* module,
+Optional<std::string> Translator::Translate(Module module,
                                             bool emit_builtin_tflite_ops,
                                             bool emit_select_tf_ops,
                                             bool emit_custom_ops) {
@@ -942,13 +942,13 @@ Optional<std::string> Translator::TranslateInternal() {
   // first function in the list. This is required as the first subgraph in the
   // model is entry point for the model.
   std::vector<Function> functions;
-  functions.reserve(std::distance(module_->begin(), module_->end()));
+  functions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
-  Function main_fn = module_->getNamedFunction("main");
+  Function main_fn = module_.getNamedFunction("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_->getFunctions()) {
+  for (auto fn : module_.getFunctions()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
@@ -992,7 +992,7 @@ Optional<std::string> Translator::TranslateInternal() {
 // * Ops with variable tensors
 //
 bool tflite::MlirToFlatBufferTranslateFunction(
-    Module* module, std::string* serialized_flatbuffer,
+    Module module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
     bool emit_custom_ops) {
   auto maybe_translated = Translator::Translate(
@@ -1002,7 +1002,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
   return false;
 }
 
-static bool MlirToFlatBufferFileTranslateFunction(Module* module,
+static bool MlirToFlatBufferFileTranslateFunction(Module module,
                                                   llvm::StringRef filename) {
   std::string serialized_flatbuffer;
   if (tflite::MlirToFlatBufferTranslateFunction(
@@ -1012,7 +1012,7 @@ static bool MlirToFlatBufferFileTranslateFunction(Module* module,
 
   auto file = openOutputFile(filename);
   if (!file) {
-    auto* context = module->getContext();
+    auto* context = module.getContext();
     return emitError(UnknownLoc::get(context), "failed to open output file ")
                << filename,
            true;

@@ -267,12 +267,12 @@ LogicalResult IfOp::verify() {
   auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto *module = getOperation()->getFunction().getModule();
-  auto thenFn = module->getNamedFunction(thenAttr.getValue());
+  auto module = getOperation()->getFunction().getModule();
+  auto thenFn = module.getNamedFunction(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
            << thenAttr;
-  auto elseFn = module->getNamedFunction(elseAttr.getValue());
+  auto elseFn = module.getNamedFunction(elseAttr.getValue());
   if (!elseFn)
     return emitOpError("else_branch refers to an undefined function : ")
            << elseAttr;
@@ -721,8 +721,8 @@ LogicalResult WhileOp::verify() {
   auto condAttr = getAttrOfType<FunctionAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto *module = getOperation()->getFunction().getModule();
-  auto condFn = module->getNamedFunction(condAttr.getValue());
+  auto module = getOperation()->getFunction().getModule();
+  auto condFn = module.getNamedFunction(condAttr.getValue());
   auto condFuncType = condFn.getType();
 
   // Verify that the cond function has exactly one result.
@@ -731,7 +731,7 @@ LogicalResult WhileOp::verify() {
 
   auto bodyAttr = getAttrOfType<FunctionAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
-  auto bodyFn = module->getNamedFunction(bodyAttr.getValue());
+  auto bodyFn = module.getNamedFunction(bodyAttr.getValue());
   auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(getOperandTypes());
