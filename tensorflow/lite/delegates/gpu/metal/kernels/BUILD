@@ -1,3 +1,6 @@
+load("//java/com/google/wireless/qa/mobileharness/client/builddefs:mobile_test.bzl", "mobile_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -322,5 +325,43 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+    ],
+)
+
+objc_library(
+    name = "add_tests_lib",
+    testonly = 1,
+    srcs = ["add_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":add",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "add_test_unit",
+    minimum_os_version = "9.0",
+    tags = ["notap"],
+    deps = [":add_tests_lib"],
+)
+
+mobile_test(
+    name = "add_test_mh",
+    decorators = ["IosRealDeviceSysLogDecorator"],
+    device = "IosRealDevice",
+    dimensions = {
+        "pool": "shared",
+        "device_class": "iphone",
+        "architecture": "arm64",
+    },
+    driver = "IosXcTest",
+    files = {
+        "test_app": ["//tools/build_defs/apple/testing:ios_default_host.ipa"],
+        "xctest": ["//tensorflow/lite/delegates/gpu/metal/kernels:add_test_unit.zip"],
+    },
+    tags = [
+        "local",
+        "notap",
     ],
 )
