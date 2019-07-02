@@ -29,9 +29,15 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(3) << "Logging XlaAutoClusteringActivity disabled";
       return Status::OK();
     }
-    VLOG(2) << "Logging XlaAutoClusteringActivity";
-    VLOG(3) << auto_clustering_activity.DebugString();
-    Logger::Singleton()->LogProto(auto_clustering_activity);
+
+    if (Logger* logger = Logger::GetSingletonAsync()) {
+      VLOG(2) << "Logging XlaAutoClusteringActivity";
+      VLOG(3) << auto_clustering_activity.DebugString();
+      logger->LogProto(auto_clustering_activity);
+    } else {
+      VLOG(2) << "Not logging: logger not ready yet.";
+    }
+
     return Status::OK();
   }
 
@@ -41,9 +47,15 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
       return Status::OK();
     }
-    VLOG(2) << "Logging XlaJitCompilationActivity";
-    VLOG(3) << jit_compilation_activity.DebugString();
-    Logger::Singleton()->LogProto(jit_compilation_activity);
+
+    if (Logger* logger = Logger::GetSingletonAsync()) {
+      VLOG(2) << "Logging XlaJitCompilationActivity";
+      VLOG(3) << jit_compilation_activity.DebugString();
+      logger->LogProto(jit_compilation_activity);
+    } else {
+      VLOG(2) << "Not logging: logger not ready yet.";
+    }
+
     return Status::OK();
   }
 

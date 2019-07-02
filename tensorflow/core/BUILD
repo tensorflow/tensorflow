@@ -498,7 +498,12 @@ cc_library(
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [":lib_proto_parsing"],
+    deps = [
+        ":lib",
+        ":lib_proto_parsing",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 filegroup(

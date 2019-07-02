@@ -147,7 +147,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     *log.add_results() = profile;
   }
   if (!crash_on_checking_failure) {
-    tensorflow::Logger::Singleton()->LogProto(log);
+    tensorflow::Logger::GetSingleton()->LogProto(log);
   }
 
   // Choose fastest correct GEMM, but allow for incorrect results (since the
