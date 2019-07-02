@@ -398,6 +398,17 @@ func @greater_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<
 // CHECK:  return %0 : tensor<8x16xi1>
 }
 
+//TODO(b/136498739): Add failure test for non-broadcastable types, since currently
+// we can't catch this error.
+func @less_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
+  %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+  return %0 : tensor<8x16xi1>
+
+// CHECK-LABEL: less_equal
+// CHECK:  %0 = "tfl.less_equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+// CHECK:  return %0 : tensor<8x16xi1>
+}
+
 func @rank(%arg0: tensor<11x16xf32>) -> tensor<1xi32> {
   %0 = "tf.Rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>

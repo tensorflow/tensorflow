@@ -151,6 +151,7 @@ def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
 def : Pat<(TF_LessOp $l, $r), (TFL_LessOp $l, $r)>;
 def : Pat<(TF_GreaterOp $l, $r), (TFL_GreaterOp $l, $r)>;
 
+def : Pat<(TF_LessEqualOp $l, $r), (TFL_LessEqualOp $l, $r)>;
 def : Pat<(TF_GreaterEqualOp $l, $r), (TFL_GreaterEqualOp $l, $r)>;
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;

@@ -544,6 +544,30 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let hasOptions = 1;
 }
 
+// Same type check of lhs and rhs is handled by the Broadcastable trait.
+def TFL_LessEqualOp : TFL_Op<"less_equal", [Broadcastable, NoSideEffect]> {
+  let summary = "Less_equal operator";
+
+  let description = [{
+    Element-wise less_equal operation.
+  }];
+
+  let arguments = (
+    // TODO(haoliang): missing Uint8
+      ins TensorOf<[F32, I32, I64, I8]>:$lhs,
+      TensorOf<[F32, I32, I64, I8]>:$rhs);
+
+  let results = (outs TFL_BoolTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
+
+  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+
+  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let hasOptions = 0;
+}
+
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [Broadcastable, NoSideEffect]> {
   let summary = "Greater_equal operator";
 
