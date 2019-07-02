@@ -920,8 +920,6 @@ ifeq ($(TARGET),IOS)
   endif
 endif
 
-
-
 # Runs proto_text to generate C++ source files from protos.
 $(PROTO_TEXT): $(PROTO_TEXT_OBJS) $(PROTO_TEXT_PB_H_FILES)
 	@mkdir -p $(dir $@)
