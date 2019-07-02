@@ -2518,6 +2518,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
       {"MatrixDiagV2", ConvertSimpleOperator<MatrixDiagV2Operator, 5, 1>},
       {"MatrixSetDiag", ConvertSimpleOperator<MatrixSetDiagOperator, 2, 1>},
+      {"MatrixSetDiagV2", ConvertSimpleOperator<MatrixSetDiagV2Operator, 3, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},

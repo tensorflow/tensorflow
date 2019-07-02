@@ -174,6 +174,7 @@ enum class OperatorType : uint8 {
   kMatrixDiag,
   kMatrixSetDiag,
   kMatrixDiagV2,
+  kMatrixSetDiagV2
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -2126,6 +2127,14 @@ struct MatrixDiagV2Operator : Operator {
 //         tensor.
 struct MatrixSetDiagOperator : Operator {
   MatrixSetDiagOperator() : Operator(OperatorType::kMatrixSetDiag) {}
+};
+
+// Matrix Set Diag Operator V2:
+// Construct a batched diagonal tensor with given input and diagonal values.
+// Not fully supported, constains 1 extra inputs compared to MatrixSetDiag,
+// support default parameters settings which performs the same as MatrixSetDiag
+struct MatrixSetDiagV2Operator : Operator {
+  MatrixSetDiagV2Operator() : Operator(OperatorType::kMatrixSetDiagV2) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

@@ -123,6 +123,7 @@ inline void RunGraphTransformations(
 
 // List of all graph transformations
 DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
+DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixSetDiagV2ToV1)
 DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixDiagV2ToV1)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
 DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
