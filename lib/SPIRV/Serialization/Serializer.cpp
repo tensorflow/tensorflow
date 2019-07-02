@@ -142,12 +142,8 @@ void Serializer::processHeader(SmallVectorImpl<uint32_t> &header) {
 }
 
 void Serializer::processMemoryModel() {
-  // TODO(antiagainst): use IntegerAttr-backed enum attributes to avoid the
-  // excessive string conversions here.
-  auto mm = static_cast<uint32_t>(*spirv::symbolizeMemoryModel(
-      module.getAttrOfType<StringAttr>("memory_model").getValue()));
-  auto am = static_cast<uint32_t>(*spirv::symbolizeAddressingModel(
-      module.getAttrOfType<StringAttr>("addressing_model").getValue()));
+  uint32_t mm = module.getAttrOfType<IntegerAttr>("memory_model").getInt();
+  uint32_t am = module.getAttrOfType<IntegerAttr>("addressing_model").getInt();
 
   constexpr uint32_t kNumWords = 3;
 

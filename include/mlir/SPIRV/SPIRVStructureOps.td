@@ -48,6 +48,31 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
     This op has only one region, which only contains one block. The block
     must be terminated via the `spv._module_end` op.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    addressing-model ::= `"Logical"` | `"Physical32"` | `"Physical64"`
+    memory-model ::= `"Simple"` | `"GLSL450"` | `"OpenCL"` | `"VulkanKHR"`
+    spv-module-op ::= `spv.module` addressing-model memory-model
+                      region
+                      (`attributes` attribute-dict)?
+    ```
+
+    For example:
+
+    ```
+    spv.module "Logical" "VulkanKHR" { }
+
+    spv.module "Logical" "VulkanKHR" {
+      func @do_nothing() -> () {
+        spv.Return
+      }
+    } attributes {
+      capability = ["Shader"],
+      extension = ["SPV_KHR_16bit_storage"]
+    }
+    ```
   }];
 
   let arguments = (ins

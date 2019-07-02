@@ -280,10 +280,6 @@ StorageClass PointerType::getStorageClass() {
   return getImpl()->getStorageClass();
 }
 
-StringRef PointerType::getStorageClassStr() {
-  return stringifyStorageClass(getStorageClass());
-}
-
 //===----------------------------------------------------------------------===//
 // RuntimeArrayType
 //===----------------------------------------------------------------------===//

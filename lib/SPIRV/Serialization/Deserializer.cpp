@@ -31,6 +31,15 @@
 
 using namespace mlir;
 
+template <typename Dst, typename Src>
+inline Dst bitwiseCast(Src source) noexcept {
+  Dst dest;
+  static_assert(sizeof(source) == sizeof(dest),
+                "bitwiseCast requires same source and destination bitwidth");
+  std::memcpy(&dest, &source, sizeof(dest));
+  return dest;
+}
+
 namespace {
 /// A SPIR-V module serializer.
 ///
@@ -152,22 +161,11 @@ LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
   if (operands.size() != 2)
     return emitError(unknownLoc, "OpMemoryModel must have two operands");
 
-  // TODO(antiagainst): use IntegerAttr-backed enum attributes to avoid the
-  // excessive string conversions here.
-
-  auto am = spirv::symbolizeAddressingModel(operands.front());
-  if (!am)
-    return emitError(unknownLoc, "unknown addressing model for OpMemoryModel");
-
-  auto mm = spirv::symbolizeMemoryModel(operands.back());
-  if (!mm)
-    return emitError(unknownLoc, "unknown memory model for OpMemoryModel");
-
   module->setAttr(
       "addressing_model",
-      opBuilder.getStringAttr(spirv::stringifyAddressingModel(*am)));
-  module->setAttr("memory_model",
-                  opBuilder.getStringAttr(spirv::stringifyMemoryModel(*mm)));
+      opBuilder.getI32IntegerAttr(bitwiseCast<int32_t>(operands.front())));
+  module->setAttr("memory_model", opBuilder.getI32IntegerAttr(
+                                      bitwiseCast<int32_t>(operands.back())));
 
   return success();
 }

@@ -76,7 +76,6 @@ public:
   Type getPointeeType();
 
   StorageClass getStorageClass();
-  StringRef getStorageClassStr();
 };
 
 // SPIR-V run-time array type

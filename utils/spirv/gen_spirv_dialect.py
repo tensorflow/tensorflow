@@ -79,11 +79,11 @@ def split_list_into_sublists(items, offset):
 
 
 def gen_operand_kind_enum_attr(operand_kind):
-  """Generates the TableGen EnumAttr definition for the given operand kind.
+  """Generates the TableGen I32EnumAttr definition for the given operand kind.
 
     Returns:
         - The operand kind's name
-        - A string containing the TableGen EnumAttr definition
+        - A string containing the TableGen I32EnumAttr definition
     """
   if 'enumerants' not in operand_kind:
     return '', ''
@@ -96,7 +96,7 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the definition for each enum case
   fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
-            'EnumAttrCase<"{symbol}", {value}>;'
+            'I32EnumAttrCase<"{symbol}", {value}>;'
   case_defs = [
       fmt_str.format(
           acronym=kind_acronym,
@@ -120,9 +120,11 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the enum attribute definition
   enum_attr = 'def SPV_{name}Attr :\n    '\
-      'EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]> {{\n'\
-      '  let cppNamespace = "::mlir::spirv";\n'\
-      '  let underlyingType = "uint32_t";\n}}'.format(
+      'I32EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]> {{\n'\
+      '  let returnType = "::mlir::spirv::{name}";\n'\
+      '  let convertFromStorage = '\
+            '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
+      '  let cppNamespace = "::mlir::spirv";\n}}'.format(
           name=kind_name, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
 

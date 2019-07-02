@@ -23,6 +23,7 @@
 #define MLIR_SPIRV_SPIRVOPS_H_
 
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/SPIRV/SPIRVTypes.h"
 
 namespace mlir {
 namespace spirv {

@@ -144,6 +144,15 @@ func @load_incorrect_attributes() -> () {
 
 // -----
 
+func @load_unknown_memory_access() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{invalid memory access specifier: "Something"}}
+  %1 = spv.Load "Function" %0 ["Something"] : f32
+  return
+}
+
+// -----
+
 func @aligned_load_incorrect_attributes() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
   // expected-error @+1 {{expected ']'}}
@@ -165,14 +174,11 @@ func @return_not_in_func() -> () {
 // -----
 
 func @return_mismatch_func_signature() -> () {
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     func @work() -> (i32) {
       // expected-error @+1 {{cannot be used in functions returning value}}
       spv.Return
     }
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -340,7 +346,7 @@ func @variable_init(%arg0: f32) -> () {
 func @storage_class_mismatch() -> () {
   %0 = spv.constant 5.0 : f32
   // expected-error @+1 {{storage class must match result pointer's storage class}}
-  %1 = "spv.Variable"(%0) {storage_class = "Uniform"} : (f32) -> !spv.ptr<f32, Function>
+  %1 = "spv.Variable"(%0) {storage_class = 2: i32} : (f32) -> !spv.ptr<f32, Function>
   return
 }
 

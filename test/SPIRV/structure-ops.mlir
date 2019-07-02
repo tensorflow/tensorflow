@@ -61,22 +61,17 @@ func @value_result_type_mismatch() -> () {
 
 // CHECK-LABEL: func @module_without_cap_ext
 func @module_without_cap_ext() -> () {
-  // CHECK: spv.module
-  spv.module { } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
-  }
+  // CHECK: spv.module "Logical" "VulkanKHR"
+  spv.module "Logical" "VulkanKHR" { }
   return
 }
 
 // CHECK-LABEL: func @module_with_cap_ext
 func @module_with_cap_ext() -> () {
-  // CHECK: spv.module
-  spv.module { } attributes {
+  // CHECK: attributes {capability = ["Shader"], extension = ["SPV_KHR_16bit_storage"]}
+  spv.module "Logical" "VulkanKHR" { } attributes {
     capability = ["Shader"],
-    extension = ["SPV_KHR_16bit_storage"],
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
+    extension = ["SPV_KHR_16bit_storage"]
   }
   return
 }
@@ -84,11 +79,8 @@ func @module_with_cap_ext() -> () {
 // CHECK-LABEL: func @module_with_explict_module_end
 func @module_with_explict_module_end() -> () {
   // CHECK: spv.module
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     spv._module_end
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -96,13 +88,10 @@ func @module_with_explict_module_end() -> () {
 // CHECK-LABEL: func @module_with_func
 func @module_with_func() -> () {
   // CHECK: spv.module
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     func @do_nothing() -> () {
       spv.Return
     }
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -110,24 +99,32 @@ func @module_with_func() -> () {
 // -----
 
 func @missing_addressing_model() -> () {
-  // expected-error@+1 {{requires attribute 'addressing_model'}}
-  spv.module { } attributes {}
+  // expected-error@+1 {{requires string for addressing model}}
+  spv.module { }
   return
 }
 
 // -----
 
 func @wrong_addressing_model() -> () {
-  // expected-error@+1 {{attribute 'addressing_model' failed to satisfy constraint}}
-  spv.module { } attributes {addressing_model = "Physical", memory_model = "VulkanHKR"}
+  // expected-error@+1 {{unknown addressing model: "Physical"}}
+  spv.module "Physical" { }
   return
 }
 
 // -----
 
 func @missing_memory_model() -> () {
-  // expected-error@+1 {{requires attribute 'memory_model'}}
-  spv.module { } attributes {addressing_model = "Logical"}
+  // expected-error@+1 {{requires string for memory model}}
+  spv.module "Logical" { }
+  return
+}
+
+// -----
+
+func @wrong_memory_model() -> () {
+  // expected-error@+1 {{unknown memory model: "Bla"}}
+  spv.module "Logical" "Bla" { }
   return
 }
 
@@ -135,14 +132,11 @@ func @missing_memory_model() -> () {
 
 func @module_with_multiple_blocks() -> () {
   // expected-error @+1 {{failed to verify constraint: region with 1 blocks}}
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
   ^first:
     spv.Return
   ^second:
     spv.Return
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -150,12 +144,9 @@ func @module_with_multiple_blocks() -> () {
 // -----
 
 func @use_non_spv_op_inside_module() -> () {
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     // expected-error @+1 {{'spv.module' can only contain func and spv.* ops}}
     "dialect.op"() : () -> ()
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -163,14 +154,11 @@ func @use_non_spv_op_inside_module() -> () {
 // -----
 
 func @use_non_spv_op_inside_func() -> () {
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     func @do_nothing() -> () {
       // expected-error @+1 {{functions in 'spv.module' can only contain spv.* ops}}
       "dialect.op"() : () -> ()
     }
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -178,12 +166,9 @@ func @use_non_spv_op_inside_func() -> () {
 // -----
 
 func @use_extern_func() -> () {
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     // expected-error @+1 {{'spv.module' cannot contain external functions}}
     func @extern() -> ()
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }
@@ -191,7 +176,7 @@ func @use_extern_func() -> () {
 // -----
 
 func @module_with_nested_func() -> () {
-  spv.module {
+  spv.module "Logical" "VulkanKHR" {
     func @outer_func() -> () {
       // expected-error @+1 {{'spv.module' cannot contain nested functions}}
       func @inner_func() -> () {
@@ -199,9 +184,6 @@ func @module_with_nested_func() -> () {
       }
       spv.Return
     }
-  } attributes {
-    addressing_model = "Logical",
-    memory_model = "VulkanKHR"
   }
   return
 }

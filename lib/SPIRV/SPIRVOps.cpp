@@ -28,14 +28,26 @@
 
 using namespace mlir;
 
+// TODO(antiagainst): generate these strings using ODS.
+static constexpr const char kAddressingModelAttrName[] = "addressing_model";
 static constexpr const char kBindingAttrName[] = "binding";
 static constexpr const char kDescriptorSetAttrName[] = "descriptor_set";
+static constexpr const char kMemoryModelAttrName[] = "memory_model";
 static constexpr const char kStorageClassAttrName[] = "storage_class";
 static constexpr const char kValueAttrName[] = "value";
 
 //===----------------------------------------------------------------------===//
 // Common utility functions
 //===----------------------------------------------------------------------===//
+
+template <typename Dst, typename Src>
+inline Dst bitwiseCast(Src source) noexcept {
+  Dst dest;
+  static_assert(sizeof(source) == sizeof(dest),
+                "bitwiseCast requires same source and destination bitwidth");
+  std::memcpy(&dest, &source, sizeof(dest));
+  return dest;
+}
 
 static ParseResult parseStorageClassAttribute(spirv::StorageClass &storageClass,
                                               OpAsmParser *parser,
@@ -54,7 +66,7 @@ static ParseResult parseStorageClassAttribute(spirv::StorageClass &storageClass,
   auto storageClassOptional = spirv::symbolizeStorageClass(
       storageClassAttr.cast<StringAttr>().getValue());
   if (!storageClassOptional) {
-    return parser->emitError(loc, "invalid storage class specifier :")
+    return parser->emitError(loc, "invalid storage class specifier: ")
            << storageClassAttr;
   }
   storageClass = storageClassOptional.getValue();
@@ -70,13 +82,13 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
     return success();
   }
 
+  StringRef memAccessAttrName = LoadStoreOpTy::getMemoryAccessAttrName();
   Attribute memAccessAttr;
+  SmallVector<NamedAttribute, 1> attrs;
   auto loc = parser->getCurrentLocation();
-  if (parser->parseAttribute(memAccessAttr,
-                             LoadStoreOpTy::getMemoryAccessAttrName(),
-                             state->attributes)) {
+
+  if (parser->parseAttribute(memAccessAttr, memAccessAttrName, attrs))
     return failure();
-  }
   // Check that this is a memory attribute
   if (!memAccessAttr.isa<StringAttr>()) {
     return parser->emitError(loc, "expected a string memory access specifier");
@@ -84,9 +96,12 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
   auto memAccessOptional =
       spirv::symbolizeMemoryAccess(memAccessAttr.cast<StringAttr>().getValue());
   if (!memAccessOptional) {
-    return parser->emitError(loc, "invalid memory access specifier :")
+    return parser->emitError(loc, "invalid memory access specifier: ")
            << memAccessAttr;
   }
+  state->addAttribute(memAccessAttrName,
+                      parser->getBuilder().getI32IntegerAttr(
+                          bitwiseCast<int32_t>(*memAccessOptional)));
 
   if (auto memAccess =
           memAccessOptional.getValue() == spirv::MemoryAccess::Aligned) {
@@ -115,9 +130,9 @@ static void
 printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter *printer,
                            SmallVectorImpl<StringRef> &elidedAttrs) {
   // Print optional memory access attribute.
-  if (auto memaccess = loadStoreOp.memory_access()) {
+  if (auto memAccess = loadStoreOp.memory_access()) {
     elidedAttrs.push_back(LoadStoreOpTy::getMemoryAccessAttrName());
-    *printer << " [\"" << memaccess << "\"";
+    *printer << " [\"" << stringifyMemoryAccess(*memAccess) << "\"";
 
     // Print integer alignment attribute.
     if (auto alignment = loadStoreOp.alignment()) {
@@ -134,10 +149,10 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
   // memory-access attribute is Aligned, then the alignment attribute must be
   // present.
   auto *op = loadStoreOp.getOperation();
-  auto memaccessAttr = op->getAttr(LoadStoreOpTy::getMemoryAccessAttrName());
-  if (!memaccessAttr) {
-    // Alignment attribute shouldnt be present if memory access attribute is not
-    // present.
+  auto memAccessAttr = op->getAttr(LoadStoreOpTy::getMemoryAccessAttrName());
+  if (!memAccessAttr) {
+    // Alignment attribute shouldn't be present if memory access attribute is
+    // not present.
     if (op->getAttr(LoadStoreOpTy::getAlignmentAttrName())) {
       return loadStoreOp.emitOpError(
           "invalid alignment specification without aligned memory access "
@@ -146,10 +161,15 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
     return success();
   }
 
-  if (auto memaccess =
-          spirv::symbolizeMemoryAccess(
-              memaccessAttr.template cast<StringAttr>().getValue()) ==
-          spirv::MemoryAccess::Aligned) {
+  auto memAccessVal = memAccessAttr.template cast<IntegerAttr>();
+  auto memAccess = spirv::symbolizeMemoryAccess(memAccessVal.getInt());
+
+  if (!memAccess) {
+    return loadStoreOp.emitOpError("invalid memory access specifier: ")
+           << memAccessVal;
+  }
+
+  if (*memAccess == spirv::MemoryAccess::Aligned) {
     if (!op->getAttr(LoadStoreOpTy::getAlignmentAttrName())) {
       return loadStoreOp.emitOpError("missing alignment value");
     }
@@ -284,10 +304,9 @@ static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *state) {
 static void print(spirv::LoadOp loadOp, OpAsmPrinter *printer) {
   auto *op = loadOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs;
-  *printer
-      << spirv::LoadOp::getOperationName() << " \""
-      << loadOp.ptr()->getType().cast<spirv::PointerType>().getStorageClassStr()
-      << "\" ";
+  StringRef sc = stringifyStorageClass(
+      loadOp.ptr()->getType().cast<spirv::PointerType>().getStorageClass());
+  *printer << spirv::LoadOp::getOperationName() << " \"" << sc << "\" ";
   // Print the pointer operand.
   printer->printOperand(loadOp.ptr());
 
@@ -321,12 +340,56 @@ void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
 }
 
 static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
+  Builder builder = parser->getBuilder();
   Region *body = state->addRegion();
 
-  if (parser->parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}) ||
-      parser->parseKeyword("attributes") ||
-      parser->parseOptionalAttributeDict(state->attributes))
+  Attribute addressingModel, memoryModel;
+  SmallVector<NamedAttribute, 2> attrs;
+
+  // Parse addressing model
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseAttribute(addressingModel, kAddressingModelAttrName, attrs))
     return failure();
+  if (!addressingModel.isa<StringAttr>()) {
+    return parser->emitError(loc,
+                             "requires string for addressing model but found '")
+           << addressingModel << "'";
+  }
+  auto addrModel = spirv::symbolizeAddressingModel(
+      addressingModel.cast<StringAttr>().getValue());
+  if (!addrModel) {
+    return parser->emitError(loc, "unknown addressing model: ")
+           << addressingModel;
+  }
+  state->addAttribute(
+      kAddressingModelAttrName,
+      builder.getI32IntegerAttr(bitwiseCast<int32_t>(*addrModel)));
+
+  // Parse memory model
+  loc = parser->getCurrentLocation();
+  if (parser->parseAttribute(memoryModel, kMemoryModelAttrName, attrs))
+    return failure();
+  if (!memoryModel.isa<StringAttr>()) {
+    return parser->emitError(loc,
+                             "requires string for memory model but found '")
+           << memoryModel << "'";
+  }
+  auto memModel =
+      spirv::symbolizeMemoryModel(memoryModel.cast<StringAttr>().getValue());
+  if (!memModel) {
+    return parser->emitError(loc, "unknown memory model: ") << memoryModel;
+  }
+  state->addAttribute(
+      kMemoryModelAttrName,
+      builder.getI32IntegerAttr(bitwiseCast<int32_t>(*memModel)));
+
+  if (parser->parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
+    return failure();
+
+  if (succeeded(parser->parseOptionalKeyword("attributes"))) {
+    if (parser->parseOptionalAttributeDict(state->attributes))
+      return failure();
+  }
 
   ensureModuleEnd(body, parser->getBuilder(), state->location);
 
@@ -335,11 +398,33 @@ static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
 
 static void print(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
   auto *op = moduleOp.getOperation();
-  *printer << spirv::ModuleOp::getOperationName();
+
+  // Only print out addressing model and memory model in a nicer way if both
+  // presents. Otherwise, print them in the general form. This helps debugging
+  // ill-formed ModuleOp.
+  SmallVector<StringRef, 2> elidedAttrs;
+  if (op->getAttr(kAddressingModelAttrName) &&
+      op->getAttr(kMemoryModelAttrName)) {
+    *printer << spirv::ModuleOp::getOperationName() << " \""
+             << spirv::stringifyAddressingModel(moduleOp.addressing_model())
+             << "\" \"" << spirv::stringifyMemoryModel(moduleOp.memory_model())
+             << '"';
+    elidedAttrs.assign({kAddressingModelAttrName, kMemoryModelAttrName});
+  }
+
   printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
                        /*printBlockTerminators=*/false);
-  *printer << " attributes";
-  printer->printOptionalAttrDict(op->getAttrs());
+
+  bool printAttrDict = elidedAttrs.size() != 2 ||
+                       llvm::any_of(op->getAttrs(), [](NamedAttribute attr) {
+                         return attr.first != kAddressingModelAttrName &&
+                                attr.first != kMemoryModelAttrName;
+                       });
+
+  if (printAttrDict) {
+    *printer << " attributes";
+    printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  }
 }
 
 static LogicalResult verify(spirv::ModuleOp moduleOp) {
@@ -419,12 +504,9 @@ static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *state) {
 static void print(spirv::StoreOp storeOp, OpAsmPrinter *printer) {
   auto *op = storeOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs;
-  *printer << spirv::StoreOp::getOperationName() << " \""
-           << storeOp.ptr()
-                  ->getType()
-                  .cast<spirv::PointerType>()
-                  .getStorageClassStr()
-           << "\" ";
+  StringRef sc = stringifyStorageClass(
+      storeOp.ptr()->getType().cast<spirv::PointerType>().getStorageClass());
+  *printer << spirv::StoreOp::getOperationName() << " \"" << sc << "\" ";
   // Print the pointer operand
   printer->printOperand(storeOp.ptr());
   *printer << ", ";
@@ -501,9 +583,8 @@ static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
     state->addOperands(init);
   }
 
-  // TODO(antiagainst): The enum attribute should be integer backed so we don't
-  // have these excessive string conversions.
-  auto attr = parser->getBuilder().getStringAttr(ptrType.getStorageClassStr());
+  auto attr = parser->getBuilder().getI32IntegerAttr(
+      bitwiseCast<int32_t>(ptrType.getStorageClass()));
   state->addAttribute(kStorageClassAttrName, attr);
 
   return success();
@@ -538,11 +619,11 @@ static LogicalResult verify(spirv::VariableOp varOp) {
   // SPIR-V spec: "Storage Class is the Storage Class of the memory holding the
   // object. It cannot be Generic. It must be the same as the Storage Class
   // operand of the Result Type."
-  if (varOp.storage_class() == "Generic")
+  if (varOp.storage_class() == spirv::StorageClass::Generic)
     return varOp.emitOpError("storage class cannot be 'Generic'");
 
   auto pointerType = varOp.pointer()->getType().cast<spirv::PointerType>();
-  if (varOp.storage_class() != pointerType.getStorageClassStr())
+  if (varOp.storage_class() != pointerType.getStorageClass())
     return varOp.emitOpError(
         "storage class must match result pointer's storage class");
 
