@@ -478,9 +478,7 @@ class DistributedDataset(_IterableInput):
           self._cloned_datasets.append(cloned_dataset)
 
     self._input_workers = input_workers
-    # TODO(anjalisridhar): Identify if we need to set this property on the
-    # iterator.
-    self._element_spec = dataset.element_spec
+    self.element_spec = dataset.element_spec
     self._strategy = strategy
 
   def __iter__(self):
@@ -490,7 +488,7 @@ class DistributedDataset(_IterableInput):
                                                       self._input_workers)
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
-      iterator.element_spec = self._element_spec
+      iterator.element_spec = self.element_spec
       return iterator
     raise RuntimeError("__iter__() is only supported inside of tf.function "
                        "or when eager execution is enabled.")
@@ -537,7 +535,7 @@ class DistributedDatasetV1(DistributedDataset):
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
-    iterator.element_spec = self._element_spec
+    iterator.element_spec = self.element_spec
     return iterator
 
 
@@ -672,7 +670,7 @@ class DatasetIterator(DistributedIteratorV1):
         input_workers,
         worker_iterators,
         strategy)
-    self._element_spec = dist_dataset._element_spec  # pylint: disable=protected-access
+    self.element_spec = dist_dataset.element_spec  # pylint: disable=protected-access
 
 
 def _dummy_tensor_fn(value_structure):
