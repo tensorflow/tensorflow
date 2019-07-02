@@ -65,7 +65,7 @@ enum class CmpIPredicate {
 enum class CmpFPredicate {
   FirstValidValue,
   // Always false
-  FALSE = FirstValidValue,
+  AlwaysFalse = FirstValidValue,
   // Ordered comparisons
   OEQ,
   OGT,
@@ -85,7 +85,7 @@ enum class CmpFPredicate {
   // Any unordered
   UNO,
   // Always true
-  TRUE,
+  AlwaysTrue,
   // Number of predicates.
   NumPredicates
 };

@@ -752,7 +752,7 @@ OpFoldResult CmpIOp::fold(ArrayRef<Attribute> operands) {
 // Returns an array of mnemonics for CmpFPredicates indexed by values thereof.
 static inline const char *const *getCmpFPredicateNames() {
   static const char *predicateNames[] = {
-      /*FALSE*/ "false",
+      /*AlwaysFalse*/ "false",
       /*OEQ*/ "oeq",
       /*OGT*/ "ogt",
       /*OGE*/ "oge",
@@ -767,7 +767,7 @@ static inline const char *const *getCmpFPredicateNames() {
       /*ULE*/ "ule",
       /*UNE*/ "une",
       /*UNO*/ "uno",
-      /*TRUE*/ "true",
+      /*AlwaysTrue*/ "true",
   };
   static_assert(std::extent<decltype(predicateNames)>::value ==
                     (size_t)CmpFPredicate::NumPredicates,
@@ -779,7 +779,7 @@ static inline const char *const *getCmpFPredicateNames() {
 // Returns NumPredicates (one-past-end) if there is no such mnemonic.
 CmpFPredicate CmpFOp::getPredicateByName(StringRef name) {
   return llvm::StringSwitch<CmpFPredicate>(name)
-      .Case("false", CmpFPredicate::FALSE)
+      .Case("false", CmpFPredicate::AlwaysFalse)
       .Case("oeq", CmpFPredicate::OEQ)
       .Case("ogt", CmpFPredicate::OGT)
       .Case("oge", CmpFPredicate::OGE)
@@ -794,7 +794,7 @@ CmpFPredicate CmpFOp::getPredicateByName(StringRef name) {
       .Case("ule", CmpFPredicate::ULE)
       .Case("une", CmpFPredicate::UNE)
       .Case("uno", CmpFPredicate::UNO)
-      .Case("true", CmpFPredicate::TRUE)
+      .Case("true", CmpFPredicate::AlwaysTrue)
       .Default(CmpFPredicate::NumPredicates);
 }
 
@@ -886,7 +886,7 @@ static bool applyCmpPredicate(CmpFPredicate predicate, const APFloat &lhs,
                               const APFloat &rhs) {
   auto cmpResult = lhs.compare(rhs);
   switch (predicate) {
-  case CmpFPredicate::FALSE:
+  case CmpFPredicate::AlwaysFalse:
     return false;
   case CmpFPredicate::OEQ:
     return cmpResult == APFloat::cmpEqual;
@@ -922,7 +922,7 @@ static bool applyCmpPredicate(CmpFPredicate predicate, const APFloat &lhs,
     return cmpResult != APFloat::cmpEqual;
   case CmpFPredicate::UNO:
     return cmpResult == APFloat::cmpUnordered;
-  case CmpFPredicate::TRUE:
+  case CmpFPredicate::AlwaysTrue:
     return true;
   default:
     llvm_unreachable("unknown comparison predicate");
