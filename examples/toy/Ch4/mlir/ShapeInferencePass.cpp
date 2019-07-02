@@ -119,7 +119,7 @@ public:
   };
 
   void runOnModule() override {
-    auto &module = getModule();
+    auto module = getModule();
     auto main = module.getNamedFunction("main");
     if (!main) {
       emitError(mlir::UnknownLoc::get(module.getContext()),

@@ -339,7 +339,7 @@ private:
 /// conversion object. This function returns failure if a type conversion
 /// failed.
 LLVM_NODISCARD LogicalResult applyConversionPatterns(
-    Module &module, ConversionTarget &target, TypeConverter &converter,
+    Module module, ConversionTarget &target, TypeConverter &converter,
     OwningRewritePatternList &&patterns);
 
 /// Convert the given functions with the provided conversion patterns. This

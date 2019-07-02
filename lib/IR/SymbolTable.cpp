@@ -21,8 +21,8 @@
 using namespace mlir;
 
 /// Build a symbol table with the symbols within the given module.
-SymbolTable::SymbolTable(Module *module) : context(module->getContext()) {
-  for (auto func : *module) {
+SymbolTable::SymbolTable(Module module) : context(module.getContext()) {
+  for (auto func : module) {
     auto inserted = symbolTable.insert({func.getName(), func});
     (void)inserted;
     assert(inserted.second &&

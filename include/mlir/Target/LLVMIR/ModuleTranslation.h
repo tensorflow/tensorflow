@@ -24,7 +24,7 @@
 #define MLIR_TARGET_LLVMIR_MODULETRANSLATION_H
 
 #include "mlir/IR/Block.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/Value.h"
 
 #include "llvm/IR/BasicBlock.h"
@@ -48,7 +48,7 @@ namespace LLVM {
 class ModuleTranslation {
 public:
   template <typename T = ModuleTranslation>
-  static std::unique_ptr<llvm::Module> translateModule(Module &m) {
+  static std::unique_ptr<llvm::Module> translateModule(Module m) {
     auto llvmModule = prepareLLVMModule(m);
 
     T translator(m);
@@ -63,17 +63,17 @@ protected:
   // Translate the given MLIR module expressed in MLIR LLVM IR dialect into an
   // LLVM IR module.  The MLIR LLVM IR dialect holds a pointer to an
   // LLVMContext, the LLVM IR module will be created in that context.
-  explicit ModuleTranslation(Module &module) : mlirModule(module) {}
+  explicit ModuleTranslation(Module module) : mlirModule(module) {}
   virtual ~ModuleTranslation() {}
 
   virtual bool convertOperation(Operation &op, llvm::IRBuilder<> &builder);
-  static std::unique_ptr<llvm::Module> prepareLLVMModule(Module &m);
+  static std::unique_ptr<llvm::Module> prepareLLVMModule(Module m);
 
 private:
 
   bool convertFunctions();
-  bool convertOneFunction(Function &func);
-  void connectPHINodes(Function &func);
+  bool convertOneFunction(Function func);
+  void connectPHINodes(Function func);
   bool convertBlock(Block &bb, bool ignoreArguments);
 
   template <typename Range>
@@ -83,7 +83,7 @@ private:
                                   Location loc);
 
   // Original and translated module.
-  Module &mlirModule;
+  Module mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
 
 protected:

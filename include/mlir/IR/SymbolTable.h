@@ -31,7 +31,7 @@ class MLIRContext;
 class SymbolTable {
 public:
   /// Build a symbol table with the symbols within the given module.
-  SymbolTable(Module *module);
+  SymbolTable(Module module);
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names never include the @ on them.

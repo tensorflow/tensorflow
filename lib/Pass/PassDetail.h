@@ -76,7 +76,7 @@ public:
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
   /// Run the executor on the given module.
-  LogicalResult run(Module *module, ModuleAnalysisManager &mam);
+  LogicalResult run(Module module, ModuleAnalysisManager &mam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.

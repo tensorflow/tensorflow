@@ -170,13 +170,13 @@ public:
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     // Insert the `malloc` declaration if it is not already present.
-    auto *module = op->getFunction().getModule();
-    Function mallocFunc = module->getNamedFunction("malloc");
+    auto module = op->getFunction().getModule();
+    Function mallocFunc = module.getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
       mallocFunc =
           Function::create(rewriter.getUnknownLoc(), "malloc", mallocType);
-      module->push_back(mallocFunc);
+      module.push_back(mallocFunc);
     }
 
     // Get MLIR types for injecting element pointer.
@@ -231,12 +231,12 @@ public:
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
-    auto *module = op->getFunction().getModule();
-    Function freeFunc = module->getNamedFunction("free");
+    auto module = op->getFunction().getModule();
+    Function freeFunc = module.getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(voidPtrTy, {});
       freeFunc = Function::create(rewriter.getUnknownLoc(), "free", freeType);
-      module->push_back(freeFunc);
+      module.push_back(freeFunc);
     }
 
     // Get MLIR types for extracting element pointer.
@@ -576,7 +576,7 @@ public:
 static Function getLLVMLibraryCallImplDefinition(Function libFn) {
   auto implFnName = (libFn.getName().str() + "_impl");
   auto module = libFn.getModule();
-  if (auto f = module->getNamedFunction(implFnName)) {
+  if (auto f = module.getNamedFunction(implFnName)) {
     return f;
   }
   SmallVector<Type, 4> fnArgTypes;
@@ -590,7 +590,7 @@ static Function getLLVMLibraryCallImplDefinition(Function libFn) {
 
   // Insert the implementation function definition.
   auto implFnDefn = Function::create(libFn.getLoc(), implFnName, implFnType);
-  module->push_back(implFnDefn);
+  module.push_back(implFnDefn);
   return implFnDefn;
 }
 
@@ -603,7 +603,7 @@ static Function getLLVMLibraryCallDeclaration(Operation *op,
   assert(isa<LinalgOp>(op));
   auto fnName = LinalgOp::getLibraryCallName();
   auto module = op->getFunction().getModule();
-  if (auto f = module->getNamedFunction(fnName)) {
+  if (auto f = module.getNamedFunction(fnName)) {
     return f;
   }
 
@@ -620,7 +620,7 @@ static Function getLLVMLibraryCallDeclaration(Operation *op,
          "have void return types");
   auto libFnType = FunctionType::get(inputTypes, {}, op->getContext());
   auto libFn = Function::create(op->getLoc(), fnName, libFnType);
-  module->push_back(libFn);
+  module.push_back(libFn);
   // Return after creating the function definition. The body will be created
   // later.
   return libFn;
@@ -802,7 +802,7 @@ static void lowerLinalgForToCFG(Function &f) {
 }
 
 void LowerLinalgToLLVMPass::runOnModule() {
-  auto &module = getModule();
+  auto module = getModule();
 
   for (auto f : module.getFunctions()) {
     lowerLinalgSubViewOps(f);

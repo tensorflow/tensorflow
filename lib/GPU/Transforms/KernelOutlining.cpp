@@ -97,7 +97,7 @@ namespace {
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
-    ModuleManager moduleManager(&getModule());
+    ModuleManager moduleManager(getModule());
     for (auto func : getModule()) {
       func.walk<mlir::gpu::LaunchOp>([&](mlir::gpu::LaunchOp op) {
         Function outlinedFunc = outlineKernelFunc(op);

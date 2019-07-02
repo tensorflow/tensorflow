@@ -91,7 +91,7 @@ public:
   explicit ModuleState(MLIRContext *context) : context(context) {}
 
   // Initializes module state, populating affine map state.
-  void initialize(Module *module);
+  void initialize(Module module);
 
   Twine getAttributeAlias(Attribute attr) const {
     auto alias = attrToAlias.find(attr);
@@ -301,12 +301,12 @@ void ModuleState::initializeSymbolAliases() {
 }
 
 // Initializes module state, populating affine map and integer set state.
-void ModuleState::initialize(Module *module) {
+void ModuleState::initialize(Module module) {
   // Initialize the symbol aliases.
   initializeSymbolAliases();
 
   // Walk the module and visit each operation.
-  for (auto fn : *module) {
+  for (auto fn : module) {
     visitType(fn.getType());
     for (auto attr : fn.getAttrs())
       ModuleState::visitAttribute(attr.second);
@@ -331,7 +331,7 @@ public:
     interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
   }
 
-  void print(Module *module);
+  void print(Module module);
 
   /// Print the given attribute. If 'mayElideType' is true, some attributes are
   /// printed without the type when the type matches the default used in the
@@ -451,13 +451,13 @@ void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
   }
 }
 
-void ModulePrinter::print(Module *module) {
+void ModulePrinter::print(Module module) {
   // Output the aliases at the top level.
   state.printAttributeAliases(os);
   state.printTypeAliases(os);
 
   // Print the module.
-  for (auto fn : *module)
+  for (auto fn : module)
     print(fn);
 }
 
@@ -1784,8 +1784,8 @@ void Function::dump() { print(llvm::errs()); }
 
 void Module::print(raw_ostream &os) {
   ModuleState state(getContext());
-  state.initialize(this);
-  ModulePrinter(os, state).print(this);
+  state.initialize(*this);
+  ModulePrinter(os, state).print(*this);
 }
 
 void Module::dump() { print(llvm::errs()); }

@@ -223,7 +223,7 @@ private:
 /// An analysis manager for a specific module instance.
 class ModuleAnalysisManager {
 public:
-  ModuleAnalysisManager(Module *module, PassInstrumentor *passInstrumentor)
+  ModuleAnalysisManager(Module module, PassInstrumentor *passInstrumentor)
       : moduleAnalyses(module), passInstrumentor(passInstrumentor) {}
   ModuleAnalysisManager(const ModuleAnalysisManager &) = delete;
   ModuleAnalysisManager &operator=(const ModuleAnalysisManager &) = delete;
@@ -273,7 +273,7 @@ private:
       functionAnalyses;
 
   /// The analyses for the owning module.
-  detail::AnalysisMap<Module *> moduleAnalyses;
+  detail::AnalysisMap<Module> moduleAnalyses;
 
   /// An optional instrumentation object.
   PassInstrumentor *passInstrumentor;

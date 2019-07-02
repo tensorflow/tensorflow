@@ -60,7 +60,7 @@ public:
 
   /// Run the passes within this manager on the provided module.
   LLVM_NODISCARD
-  LogicalResult run(Module *module);
+  LogicalResult run(Module module);
 
   //===--------------------------------------------------------------------===//
   // Pipeline Building

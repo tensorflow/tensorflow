@@ -34,10 +34,10 @@ using namespace mlir;
 
 // Adds a one-block function named as `spirv_module` to `module` and returns the
 // block. The created block will be terminated by `std.return`.
-Block *createOneBlockFunction(Builder builder, Module *module) {
+Block *createOneBlockFunction(Builder builder, Module module) {
   auto fnType = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
   auto fn = Function::create(builder.getUnknownLoc(), "spirv_module", fnType);
-  module->push_back(fn);
+  module.push_back(fn);
 
   auto *block = new Block();
   fn.push_back(block);
@@ -51,8 +51,8 @@ Block *createOneBlockFunction(Builder builder, Module *module) {
 
 // Deserializes the SPIR-V binary module stored in the file named as
 // `inputFilename` and returns a module containing the SPIR-V module.
-std::unique_ptr<Module> deserializeModule(llvm::StringRef inputFilename,
-                                          MLIRContext *context) {
+OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
+                                  MLIRContext *context) {
   Builder builder(context);
 
   std::string errorMessage;
@@ -83,7 +83,7 @@ std::unique_ptr<Module> deserializeModule(llvm::StringRef inputFilename,
   // converted SPIR-V ModuleOp inside a MLIR module. This should be changed to
   // return the SPIR-V ModuleOp directly after module and function are migrated
   // to be general ops.
-  std::unique_ptr<Module> module(builder.createModule());
+  OwningModuleRef module(builder.createModule());
   Block *block = createOneBlockFunction(builder, module.get());
   block->push_front(spirvModule->getOperation());
 

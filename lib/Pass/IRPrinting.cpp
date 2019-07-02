@@ -66,7 +66,7 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
 
     // Print the function name and a newline before the Module.
     out << " (function: " << function.getName() << ")\n";
-    function.getModule()->print(out);
+    function.getModule().print(out);
     return;
   }
 
@@ -80,8 +80,8 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
   }
 
   // Print the given module.
-  assert(llvm::any_isa<Module *>(ir) && "unexpected IR unit");
-  llvm::any_cast<Module *>(ir)->print(out);
+  assert(llvm::any_isa<Module>(ir) && "unexpected IR unit");
+  llvm::any_cast<Module>(ir).print(out);
 }
 
 /// Instrumentation hooks.

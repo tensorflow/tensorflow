@@ -37,7 +37,7 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-Function makeFunctionWithAMatmulOp(Module &module, StringRef name) {
+Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
   mlir::Function f = linalg::common::makeFunction(
@@ -66,11 +66,11 @@ Function makeFunctionWithAMatmulOp(Module &module, StringRef name) {
 
 TEST_FUNC(foo) {
   MLIRContext context;
-  Module module(&context);
-  mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_loops");
+  OwningModuleRef module = Module::create(&context);
+  mlir::Function f = makeFunctionWithAMatmulOp(*module, "matmul_as_loops");
   lowerToLoops(f);
 
-  convertLinalg3ToLLVM(module);
+  convertLinalg3ToLLVM(*module);
 
   // clang-format off
   // CHECK:      {{.*}} = llvm.extractvalue {{.*}}[1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
@@ -104,7 +104,7 @@ TEST_FUNC(foo) {
   // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
   // CHECK-NEXT: llvm.store {{.*}}, {{.*}} : !llvm<"float*">
   // clang-format on
-  module.print(llvm::outs());
+  module->print(llvm::outs());
 }
 
 int main() {

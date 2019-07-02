@@ -47,8 +47,7 @@ static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:
-  explicit ModuleTranslation(Module &module)
-      : LLVM::ModuleTranslation(module) {}
+  explicit ModuleTranslation(Module module) : LLVM::ModuleTranslation(module) {}
   ~ModuleTranslation() override {}
 
 protected:
@@ -62,7 +61,7 @@ protected:
 };
 } // namespace
 
-std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module &m) {
+std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module m) {
   ModuleTranslation translation(m);
   auto llvmModule =
       LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
@@ -91,11 +90,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module &m) {
 
 static TranslateFromMLIRRegistration
     registration("mlir-to-nvvmir",
-                 [](Module *module, llvm::StringRef outputFilename) {
+                 [](Module module, llvm::StringRef outputFilename) {
                    if (!module)
                      return true;
 
-                   auto llvmModule = mlir::translateModuleToNVVMIR(*module);
+                   auto llvmModule = mlir::translateModuleToNVVMIR(module);
                    if (!llvmModule)
                      return true;
 

@@ -136,7 +136,7 @@ public:
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
-    Function printfFunc = getPrintf(*op->getFunction().getModule());
+    Function printfFunc = getPrintf(op->getFunction().getModule());
 
     auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();
@@ -205,13 +205,13 @@ private:
 
   /// Return the prototype declaration for printf in the module, create it if
   /// necessary.
-  Function getPrintf(Module &module) const {
+  Function getPrintf(Module module) const {
     auto printfFunc = module.getNamedFunction("printf");
     if (printfFunc)
       return printfFunc;
 
     // Create a function declaration for printf, signature is `i32 (i8*, ...)`
-    Builder builder(&module);
+    Builder builder(module);
     auto *dialect =
         module.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
 

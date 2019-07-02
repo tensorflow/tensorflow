@@ -34,10 +34,12 @@ class MLIRContext;
 class Module;
 
 namespace detail {
+class ModuleStorage;
+
 /// This class represents all of the internal state of a Function. This allows
 /// for the Function class to be value typed.
 class FunctionStorage
-    : public llvm::ilist_node_with_parent<FunctionStorage, Module> {
+    : public llvm::ilist_node_with_parent<FunctionStorage, ModuleStorage> {
   FunctionStorage(Location location, StringRef name, FunctionType type,
                   ArrayRef<NamedAttribute> attrs = {});
   FunctionStorage(Location location, StringRef name, FunctionType type,
@@ -47,7 +49,7 @@ class FunctionStorage
   Identifier name;
 
   /// The module this function is embedded into.
-  Module *module = nullptr;
+  ModuleStorage *module = nullptr;
 
   /// The source location the function was defined or derived from.
   Location location;
@@ -116,7 +118,7 @@ public:
   }
 
   MLIRContext *getContext();
-  Module *getModule() { return impl->module; }
+  Module getModule();
 
   /// Add an entry block to an empty function, and set up the block arguments
   /// to match the signature of the function.
@@ -541,7 +543,7 @@ struct ilist_traits<::mlir::detail::FunctionStorage>
                              function_iterator first, function_iterator last);
 
 private:
-  mlir::Module *getContainingModule();
+  mlir::detail::ModuleStorage *getContainingModule();
 };
 
 // Functions hash just like pointers.

@@ -115,7 +115,7 @@ public:
   void runOnModule() override {
     llvmDialect =
         getModule().getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-    auto &module = getModule();
+    auto module = getModule();
     Builder builder(&getContext());
 
     auto functions = module.getFunctions();

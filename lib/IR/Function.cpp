@@ -43,12 +43,14 @@ FunctionStorage::FunctionStorage(Location location, StringRef name,
       type(type), attrs(attrs), argAttrs(argAttrs), body(this) {}
 
 MLIRContext *Function::getContext() { return getType().getContext(); }
+Module Function::getModule() { return impl->module; }
 
-Module *llvm::ilist_traits<FunctionStorage>::getContainingModule() {
-  size_t Offset(
-      size_t(&((Module *)nullptr->*Module::getSublistAccess(nullptr))));
+ModuleStorage *llvm::ilist_traits<FunctionStorage>::getContainingModule() {
+  size_t Offset(size_t(
+      &((ModuleStorage *)nullptr->*ModuleStorage::getSublistAccess(nullptr))));
   iplist<FunctionStorage> *Anchor(static_cast<iplist<FunctionStorage> *>(this));
-  return reinterpret_cast<Module *>(reinterpret_cast<char *>(Anchor) - Offset);
+  return reinterpret_cast<ModuleStorage *>(reinterpret_cast<char *>(Anchor) -
+                                           Offset);
 }
 
 /// This is a trait method invoked when a Function is added to a Module.  We
@@ -74,7 +76,7 @@ void llvm::ilist_traits<FunctionStorage>::transferNodesFromList(
     function_iterator last) {
   // If we are transferring functions within the same module, the Module
   // pointer doesn't need to be updated.
-  Module *curParent = getContainingModule();
+  ModuleStorage *curParent = getContainingModule();
   if (curParent == otherList.getContainingModule())
     return;
 
@@ -87,8 +89,8 @@ void llvm::ilist_traits<FunctionStorage>::transferNodesFromList(
 
 /// Unlink this function from its Module and delete it.
 void Function::erase() {
-  if (auto *module = getModule())
-    getModule()->functions.erase(impl);
+  if (auto module = getModule())
+    module.impl->functions.erase(impl);
   else
     delete impl;
 }

@@ -23,7 +23,7 @@ class Module;
 } // end namespace mlir
 
 namespace linalg {
-void convertLinalg3ToLLVM(mlir::Module &module);
+void convertLinalg3ToLLVM(mlir::Module module);
 } // end namespace linalg
 
 #endif // LINALG3_CONVERTTOLLVMDIALECT_H_

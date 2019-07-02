@@ -27,7 +27,7 @@
 
 namespace mlir {
 class MLIRContext;
-class Module;
+class OwningModuleRef;
 } // namespace mlir
 
 namespace toy {
@@ -35,8 +35,7 @@ class ModuleAST;
 
 /// Emit IR for the given Toy moduleAST, returns a newly created MLIR module
 /// or nullptr on failure.
-std::unique_ptr<mlir::Module> mlirGen(mlir::MLIRContext &context,
-                                      ModuleAST &moduleAST);
+mlir::OwningModuleRef mlirGen(mlir::MLIRContext &context, ModuleAST &moduleAST);
 } // namespace toy
 
 #endif // MLIR_TUTORIAL_TOY_MLIRGEN_H_

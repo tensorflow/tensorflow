@@ -54,10 +54,10 @@ namespace {
 struct MyFunctionPass : public FunctionPass<MyFunctionPass> {
   void runOnFunction() override {
     // Get the current function being operated on.
-    Function *f = getFunction();
+    Function f = getFunction();
 
     // Operate on the operations within the function.
-    f->walk([](Operation *inst) {
+    f.walk([](Operation *inst) {
       ....
     });
   }
@@ -94,10 +94,10 @@ namespace {
 struct MyModulePass : public ModulePass<MyModulePass> {
   void runOnModule() override {
     // Get the current module being operated on.
-    Module *m = getModule();
+    Module m = getModule();
 
     // Operate on the functions within the module.
-    for (auto &func : *m) {
+    for (auto func : m) {
       ....
     }
   }
@@ -149,7 +149,7 @@ struct MyFunctionAnalysis {
 /// An interesting module analysis.
 struct MyModuleAnalysis {
   // Compute this analysis with the provided module.
-  MyModuleAnalysis(Module *module);
+  MyModuleAnalysis(Module module);
 };
 
 void MyFunctionPass::runOnFunction() {
@@ -181,7 +181,7 @@ void MyModulePass::runOnModule() {
 
   // Query MyFunctionAnalysis for a child function of the current module. It
   // will be computed if it doesn't exist.
-  auto *fn = &*getModule().begin();
+  auto fn = *getModule().begin();
   MyFunctionAnalysis &myAnalysis = getFunctionAnalysis<MyFunctionAnalysis>(fn);
 }
 ```
@@ -255,7 +255,7 @@ pm.addPass(new MyFunctionPass3());
 pm.addPass(new MyModulePass2());
 
 // Run the pass manager on a module.
-Module *m = ...;
+Module m = ...;
 if (failed(pm.run(m)))
     ... // One of the passes signaled a failure.
 ```
@@ -384,7 +384,7 @@ unsigned domInfoCount;
 pm.addInstrumentation(new DominanceCounterInstrumentation(domInfoCount));
 
 // Run the pass manager on a module.
-Module *m = ...;
+Module m = ...;
 if (failed(pm.run(m)))
     ...
 

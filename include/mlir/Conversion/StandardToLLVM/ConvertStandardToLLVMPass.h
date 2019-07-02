@@ -48,7 +48,7 @@ namespace LLVM {
 /// support different values coming from the same predecessor.  If a block has
 /// another block as a successor more than once with different values, insert
 /// a new dummy block for LLVM PHI nodes to tell the sources apart.
-void ensureDistinctSuccessors(Module *m);
+void ensureDistinctSuccessors(Module m);
 } // namespace LLVM
 
 } // namespace mlir

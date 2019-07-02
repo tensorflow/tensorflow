@@ -406,11 +406,11 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 };
 } // end anonymous namespace
 
-void linalg::convertToLLVM(mlir::Module &module) {
+void linalg::convertToLLVM(mlir::Module module) {
   // Remove affine constructs if any by using an existing pass.
   PassManager pm;
   pm.addPass(createLowerAffinePass());
-  auto rr = pm.run(&module);
+  auto rr = pm.run(module);
   (void)rr;
   assert(succeeded(rr) && "affine loop lowering failed");
 

@@ -1128,7 +1128,7 @@ auto ConversionTarget::getOpAction(OperationName op) const
 /// conversion object. If conversion fails for specific functions, those
 /// functions remains unmodified.
 LogicalResult
-mlir::applyConversionPatterns(Module &module, ConversionTarget &target,
+mlir::applyConversionPatterns(Module module, ConversionTarget &target,
                               TypeConverter &converter,
                               OwningRewritePatternList &&patterns) {
   SmallVector<Function, 32> allFunctions(module.getFunctions());

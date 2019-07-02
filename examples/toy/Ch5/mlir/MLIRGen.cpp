@@ -67,10 +67,10 @@ public:
 
   /// Public API: convert the AST for a Toy module (source file) to an MLIR
   /// Module.
-  std::unique_ptr<mlir::Module> mlirGen(ModuleAST &moduleAST) {
+  mlir::OwningModuleRef mlirGen(ModuleAST &moduleAST) {
     // We create an empty MLIR module and codegen functions one at a time and
     // add them to the module.
-    theModule = make_unique<mlir::Module>(&context);
+    theModule = mlir::Module::create(&context);
 
     for (FunctionAST &F : moduleAST) {
       auto func = mlirGen(F);
@@ -97,7 +97,7 @@ private:
   mlir::MLIRContext &context;
 
   /// A "module" matches a source file: it contains a list of functions.
-  std::unique_ptr<mlir::Module> theModule;
+  mlir::OwningModuleRef theModule;
 
   /// The builder is a helper class to create IR inside a function. It is
   /// re-initialized every time we enter a function and kept around as a
@@ -469,8 +469,8 @@ private:
 namespace toy {
 
 // The public API for codegen.
-std::unique_ptr<mlir::Module> mlirGen(mlir::MLIRContext &context,
-                                      ModuleAST &moduleAST) {
+mlir::OwningModuleRef mlirGen(mlir::MLIRContext &context,
+                              ModuleAST &moduleAST) {
   return MLIRGenImpl(context).mlirGen(moduleAST);
 }
 

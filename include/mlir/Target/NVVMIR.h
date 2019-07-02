@@ -30,7 +30,6 @@ class Module;
 } // namespace llvm
 
 namespace mlir {
-
 class Module;
 
 /// Convert the given MLIR module into NVVM IR. This conversion requires the
@@ -38,7 +37,7 @@ class Module;
 /// from the registered LLVM IR dialect.  In case of error, report it
 /// to the error handler registered with the MLIR context, if any (obtained from
 /// the MLIR module), and return `nullptr`.
-std::unique_ptr<llvm::Module> translateModuleToNVVMIR(Module &m);
+std::unique_ptr<llvm::Module> translateModuleToNVVMIR(Module m);
 
 } // namespace mlir
 

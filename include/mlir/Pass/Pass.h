@@ -138,8 +138,7 @@ private:
 /// Pass to transform a module. Derived passes should not inherit from this
 /// class directly, and instead should use the CRTP ModulePass class.
 class ModulePassBase : public Pass {
-  using PassStateT =
-      detail::PassExecutionState<Module *, ModuleAnalysisManager>;
+  using PassStateT = detail::PassExecutionState<Module, ModuleAnalysisManager>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -153,7 +152,7 @@ protected:
   virtual void runOnModule() = 0;
 
   /// Return the current module being transformed.
-  Module &getModule() { return *getPassState().irAndPassFailed.getPointer(); }
+  Module getModule() { return getPassState().irAndPassFailed.getPointer(); }
 
   /// Return the MLIR context for the current module being transformed.
   MLIRContext &getContext() { return *getModule().getContext(); }
@@ -172,7 +171,7 @@ protected:
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(Module *module, ModuleAnalysisManager &mam);
+  LogicalResult run(Module module, ModuleAnalysisManager &mam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;

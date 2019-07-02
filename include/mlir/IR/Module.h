@@ -27,12 +27,46 @@
 #include "llvm/ADT/ilist.h"
 
 namespace mlir {
+class Module;
+
+namespace detail {
+class ModuleStorage {
+  explicit ModuleStorage(MLIRContext *context) : context(context) {}
+
+  /// getSublistAccess() - Returns pointer to member of function list
+  static llvm::iplist<FunctionStorage> ModuleStorage::*
+  getSublistAccess(FunctionStorage *) {
+    return &ModuleStorage::functions;
+  }
+
+  /// The context attached to this module.
+  MLIRContext *context;
+
+  /// This is the actual list of functions the module contains.
+  llvm::iplist<FunctionStorage> functions;
+
+  friend Module;
+  friend struct llvm::ilist_traits<FunctionStorage>;
+  friend FunctionStorage;
+  friend Function;
+};
+} // end namespace detail
 
 class Module {
 public:
-  explicit Module(MLIRContext *context) : context(context) {}
+  Module(detail::ModuleStorage *impl = nullptr) : impl(impl) {}
 
-  MLIRContext *getContext() { return context; }
+  /// Construct a new module object with the given context.
+  static Module create(MLIRContext *context) {
+    return new detail::ModuleStorage(context);
+  }
+
+  MLIRContext *getContext() { return impl->context; }
+
+  /// Allow converting a Module to bool for null checks.
+  operator bool() const { return impl; }
+  bool operator==(Module other) const { return impl == other.impl; }
+  bool operator!=(Module other) const { return !(*this == other); }
 
   /// An iterator class used to iterate over the held functions.
   class iterator : public llvm::mapped_iterator<
@@ -56,14 +90,14 @@ public:
   llvm::iterator_range<iterator> getFunctions() { return {begin(), end()}; }
 
   // Iteration over the functions in the module.
-  iterator begin() { return functions.begin(); }
-  iterator end() { return functions.end(); }
-  Function front() { return &functions.front(); }
-  Function back() { return &functions.back(); }
+  iterator begin() { return impl->functions.begin(); }
+  iterator end() { return impl->functions.end(); }
+  Function front() { return &impl->functions.front(); }
+  Function back() { return &impl->functions.back(); }
 
-  void push_back(Function fn) { functions.push_back(fn.impl); }
+  void push_back(Function fn) { impl->functions.push_back(fn.impl); }
   void insert(iterator insertPt, Function fn) {
-    functions.insert(insertPt.getCurrent(), fn.impl);
+    impl->functions.insert(insertPt.getCurrent(), fn.impl);
   }
 
   // Interfaces for working with the symbol table.
@@ -79,6 +113,7 @@ public:
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
   Function getNamedFunction(Identifier name) {
+    auto &functions = impl->functions;
     auto it = llvm::find_if(functions, [name](detail::FunctionStorage &fn) {
       return Function(&fn).getName() == name;
     });
@@ -93,22 +128,27 @@ public:
   void print(raw_ostream &os);
   void dump();
 
+  /// Erase the current module.
+  void erase() {
+    assert(impl && "expected valid module");
+    delete impl;
+  }
+
+  /// Methods for supporting PointerLikeTypeTraits.
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>(impl);
+  }
+  static Module getFromOpaquePointer(const void *pointer) {
+    return reinterpret_cast<detail::ModuleStorage *>(
+        const_cast<void *>(pointer));
+  }
+
 private:
-  friend struct llvm::ilist_traits<detail::FunctionStorage>;
   friend detail::FunctionStorage;
   friend Function;
 
-  /// getSublistAccess() - Returns pointer to member of function list
-  static llvm::iplist<detail::FunctionStorage> Module::*
-  getSublistAccess(detail::FunctionStorage *) {
-    return &Module::functions;
-  }
-
-  /// The context attached to this module.
-  MLIRContext *context;
-
-  /// This is the actual list of functions the module contains.
-  llvm::iplist<detail::FunctionStorage> functions;
+  /// The internal impl storage object.
+  detail::ModuleStorage *impl = nullptr;
 };
 
 /// A class used to manage the symbols held by a module. This class handles
@@ -116,7 +156,7 @@ private:
 /// efficent named lookup to held symbols.
 class ModuleManager {
 public:
-  ModuleManager(Module *module) : module(module), symbolTable(module) {}
+  ModuleManager(Module module) : module(module), symbolTable(module) {}
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names must never include the @ on them.
@@ -127,11 +167,11 @@ public:
   /// Insert a new symbol into the module, auto-renaming it as necessary.
   void insert(Function function) {
     symbolTable.insert(function);
-    module->push_back(function);
+    module.push_back(function);
   }
   void insert(Module::iterator insertPt, Function function) {
     symbolTable.insert(function);
-    module->insert(insertPt, function);
+    module.insert(insertPt, function);
   }
 
   /// Remove the given symbol from the module symbol table and then erase it.
@@ -141,14 +181,51 @@ public:
   }
 
   /// Return the internally held module.
-  Module *getModule() const { return module; }
+  Module getModule() const { return module; }
 
   /// Return the context of the internal module.
-  MLIRContext *getContext() const { return module->getContext(); }
+  MLIRContext *getContext() const { return getModule().getContext(); }
 
 private:
-  Module *module;
+  Module module;
   SymbolTable symbolTable;
+};
+
+/// This class acts as an owning reference to a Module, and will automatically
+/// destory the held Module if valid.
+class OwningModuleRef {
+public:
+  OwningModuleRef(std::nullptr_t = nullptr) {}
+  OwningModuleRef(Module module) : module(module) {}
+  OwningModuleRef(OwningModuleRef &&other) : module(other.release()) {}
+  ~OwningModuleRef() {
+    if (module)
+      module.erase();
+  }
+
+  // Assign from another module reference.
+  OwningModuleRef &operator=(OwningModuleRef &&other) {
+    if (module)
+      module.erase();
+    module = other.release();
+    return *this;
+  }
+
+  /// Allow accessing the internal module.
+  Module get() const { return module; }
+  Module operator*() const { return module; }
+  Module *operator->() { return &module; }
+  explicit operator bool() const { return module; }
+
+  /// Release the referenced module.
+  Module release() {
+    Module released;
+    std::swap(released, module);
+    return released;
+  }
+
+private:
+  Module module;
 };
 
 //===--------------------------------------------------------------------===//
@@ -195,5 +272,21 @@ public:
 };
 
 } // end namespace mlir
+
+namespace llvm {
+
+/// Allow stealing the low bits of ModuleStorage.
+template <> struct PointerLikeTypeTraits<mlir::Module> {
+public:
+  static inline void *getAsVoidPointer(mlir::Module I) {
+    return const_cast<void *>(I.getAsOpaquePointer());
+  }
+  static inline mlir::Module getFromVoidPointer(void *P) {
+    return mlir::Module::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = 3 };
+};
+
+} // end namespace llvm
 
 #endif // MLIR_IR_MODULE_H

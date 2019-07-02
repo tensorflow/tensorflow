@@ -89,8 +89,8 @@ static llvm::cl::list<std::string>
                  llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
                  llvm::cl::cat(clOptionsCategory));
 
-static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
-                                              MLIRContext *context) {
+static OwningModuleRef parseMLIRInput(StringRef inputFilename,
+                                      MLIRContext *context) {
   // Set up the input file.
   std::string errorMessage;
   auto file = openInputFile(inputFilename, &errorMessage);
@@ -101,7 +101,7 @@ static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
 
   llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return std::unique_ptr<Module>(parseSourceFile(sourceMgr, context));
+  return OwningModuleRef(parseSourceFile(sourceMgr, context));
 }
 
 // Initialize the relevant subsystems of LLVM.
@@ -151,7 +151,7 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
 // - canonicalization
 // - affine to standard lowering
 // - standard to llvm lowering
-static LogicalResult convertAffineStandardToLLVMIR(Module *module) {
+static LogicalResult convertAffineStandardToLLVMIR(Module module) {
   PassManager manager;
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
@@ -161,9 +161,9 @@ static LogicalResult convertAffineStandardToLLVMIR(Module *module) {
 }
 
 static Error compileAndExecuteFunctionWithMemRefs(
-    Module *module, StringRef entryPoint,
+    Module module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  Function mainFunction = module->getNamedFunction(entryPoint);
+  Function mainFunction = module.getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction.getBlocks().empty()) {
     return make_string_error("entry point not found");
   }
@@ -204,9 +204,9 @@ static Error compileAndExecuteFunctionWithMemRefs(
 }
 
 static Error compileAndExecuteSingleFloatReturnFunction(
-    Module *module, StringRef entryPoint,
+    Module module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  Function mainFunction = module->getNamedFunction(entryPoint);
+  Function mainFunction = module.getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction.isExternal()) {
     return make_string_error("entry point not found");
   }

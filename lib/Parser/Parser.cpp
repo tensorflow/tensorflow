@@ -3857,7 +3857,7 @@ class ModuleParser : public Parser {
 public:
   explicit ModuleParser(ParserState &state) : Parser(state) {}
 
-  ParseResult parseModule(Module *module);
+  ParseResult parseModule(Module module);
 
 private:
   /// Parse an attribute alias declaration.
@@ -3875,7 +3875,7 @@ private:
       StringRef &name, FunctionType &type,
       SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
       SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
-  ParseResult parseFunc(Module *module);
+  ParseResult parseFunc(Module module);
 };
 } // end anonymous namespace
 
@@ -4039,7 +4039,7 @@ ParseResult ModuleParser::parseFunctionSignature(
 ///   function-body ::= `{` block+ `}`
 ///   function-attributes ::= `attributes` attribute-dict
 ///
-ParseResult ModuleParser::parseFunc(Module *module) {
+ParseResult ModuleParser::parseFunc(Module module) {
   consumeToken();
 
   StringRef name;
@@ -4061,7 +4061,7 @@ ParseResult ModuleParser::parseFunc(Module *module) {
   // Okay, the function signature was parsed correctly, create the function now.
   auto function =
       Function::create(getEncodedSourceLocation(loc), name, type, attrs);
-  module->push_back(function);
+  module.push_back(function);
 
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
@@ -4097,7 +4097,7 @@ ParseResult ModuleParser::parseFunc(Module *module) {
 }
 
 /// This is the top-level module parser.
-ParseResult ModuleParser::parseModule(Module *module) {
+ParseResult ModuleParser::parseModule(Module module) {
   while (1) {
     switch (getToken().getKind()) {
     default:
@@ -4139,16 +4139,15 @@ ParseResult ModuleParser::parseModule(Module *module) {
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns
 /// null.
-Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
-                              MLIRContext *context) {
+Module mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
+                             MLIRContext *context) {
 
   // This is the result module we are parsing into.
-  std::unique_ptr<Module> module(new Module(context));
+  OwningModuleRef module(Module::create(context));
 
   ParserState state(sourceMgr, context);
-  if (ModuleParser(state).parseModule(module.get())) {
+  if (ModuleParser(state).parseModule(*module))
     return nullptr;
-  }
 
   // Make sure the parse module has no other structural problems detected by
   // the verifier.
@@ -4161,7 +4160,7 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
 /// This parses the file specified by the indicated filename and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-Module *mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
+Module mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
   llvm::SourceMgr sourceMgr;
   return parseSourceFile(filename, sourceMgr, context);
 }
@@ -4170,8 +4169,8 @@ Module *mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
 /// SourceMgr and returns an MLIR module if it was valid.  If not, the error
 /// message is emitted through the error handler registered in the context, and
 /// a null pointer is returned.
-Module *mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
-                              MLIRContext *context) {
+Module mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
+                             MLIRContext *context) {
   if (sourceMgr.getNumBuffers() != 0) {
     // TODO(b/136086478): Extend to support multiple buffers.
     emitError(mlir::UnknownLoc::get(context),
@@ -4192,7 +4191,7 @@ Module *mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
 
 /// This parses the program string to a MLIR module if it was valid. If not,
 /// it emits diagnostics and returns null.
-Module *mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
+Module mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
   auto memBuffer = MemoryBuffer::getMemBuffer(moduleStr);
   if (!memBuffer)
     return nullptr;

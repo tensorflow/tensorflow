@@ -26,19 +26,19 @@ namespace {
 /// Minimal class definitions for two analyses.
 struct MyAnalysis {
   MyAnalysis(Function) {}
-  MyAnalysis(Module *) {}
+  MyAnalysis(Module) {}
 };
 struct OtherAnalysis {
   OtherAnalysis(Function) {}
-  OtherAnalysis(Module *) {}
+  OtherAnalysis(Module) {}
 };
 
 TEST(AnalysisManagerTest, FineGrainModuleAnalysisPreservation) {
   MLIRContext context;
 
   // Test fine grain invalidation of the module analysis manager.
-  std::unique_ptr<Module> module(new Module(&context));
-  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
+  OwningModuleRef module(Module::create(&context));
+  ModuleAnalysisManager mam(*module, /*passInstrumentor=*/nullptr);
 
   // Query two different analyses, but only preserve one before invalidating.
   mam.getAnalysis<MyAnalysis>();
@@ -58,14 +58,14 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
   Builder builder(&context);
 
   // Create a function and a module.
-  std::unique_ptr<Module> module(new Module(&context));
+  OwningModuleRef module(Module::create(&context));
   Function func1 =
       Function::create(builder.getUnknownLoc(), "foo",
                        builder.getFunctionType(llvm::None, llvm::None));
   module->push_back(func1);
 
   // Test fine grain invalidation of the function analysis manager.
-  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
+  ModuleAnalysisManager mam(*module, /*passInstrumentor=*/nullptr);
   FunctionAnalysisManager fam = mam.slice(func1);
 
   // Query two different analyses, but only preserve one before invalidating.
@@ -86,7 +86,7 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
   Builder builder(&context);
 
   // Create a function and a module.
-  std::unique_ptr<Module> module(new Module(&context));
+  OwningModuleRef module(Module::create(&context));
   Function func1 =
       Function::create(builder.getUnknownLoc(), "foo",
                        builder.getFunctionType(llvm::None, llvm::None));
@@ -94,7 +94,7 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
 
   // Test fine grain invalidation of a function analysis from within a module
   // analysis manager.
-  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
+  ModuleAnalysisManager mam(*module, /*passInstrumentor=*/nullptr);
 
   // Query two different analyses, but only preserve one before invalidating.
   mam.getFunctionAnalysis<MyAnalysis>(func1);

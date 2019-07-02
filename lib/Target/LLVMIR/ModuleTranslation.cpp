@@ -275,7 +275,7 @@ static Value *getPHISourceValue(Block *current, Block *pred,
              : terminator.getSuccessorOperand(1, index);
 }
 
-void ModuleTranslation::connectPHINodes(Function &func) {
+void ModuleTranslation::connectPHINodes(Function func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
@@ -306,7 +306,7 @@ static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
 }
 
 // Sort function blocks topologically.
-static llvm::SetVector<Block *> topologicalSort(Function &f) {
+static llvm::SetVector<Block *> topologicalSort(Function f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
@@ -320,7 +320,7 @@ static llvm::SetVector<Block *> topologicalSort(Function &f) {
   return blocks;
 }
 
-bool ModuleTranslation::convertOneFunction(Function &func) {
+bool ModuleTranslation::convertOneFunction(Function func) {
   // Clear the block and value mappings, they are only relevant within one
   // function.
   blockMapping.clear();
@@ -404,7 +404,7 @@ bool ModuleTranslation::convertFunctions() {
   return false;
 }
 
-std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(Module &m) {
+std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(Module m) {
   auto *dialect = m.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
 

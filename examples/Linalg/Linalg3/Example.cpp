@@ -34,7 +34,7 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-Function makeFunctionWithAMatmulOp(Module &module, StringRef name) {
+Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
   mlir::Function f = linalg::common::makeFunction(
@@ -63,7 +63,7 @@ Function makeFunctionWithAMatmulOp(Module &module, StringRef name) {
 
 TEST_FUNC(matmul_as_matvec) {
   MLIRContext context;
-  Module module(&context);
+  Module module = Module::create(&context);
   mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_matvec");
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
@@ -81,7 +81,7 @@ TEST_FUNC(matmul_as_matvec) {
 
 TEST_FUNC(matmul_as_dot) {
   MLIRContext context;
-  Module module(&context);
+  Module module = Module::create(&context);
   mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_dot");
   lowerToFinerGrainedTensorContraction(f);
   lowerToFinerGrainedTensorContraction(f);
@@ -102,7 +102,7 @@ TEST_FUNC(matmul_as_dot) {
 
 TEST_FUNC(matmul_as_loops) {
   MLIRContext context;
-  Module module(&context);
+  Module module = Module::create(&context);
   mlir::Function f = makeFunctionWithAMatmulOp(module, "matmul_as_loops");
   lowerToLoops(f);
   composeSliceOps(f);
@@ -134,7 +134,7 @@ TEST_FUNC(matmul_as_loops) {
 
 TEST_FUNC(matmul_as_matvec_as_loops) {
   MLIRContext context;
-  Module module(&context);
+  Module module = Module::create(&context);
   mlir::Function f =
       makeFunctionWithAMatmulOp(module, "matmul_as_matvec_as_loops");
   lowerToFinerGrainedTensorContraction(f);
@@ -165,7 +165,7 @@ TEST_FUNC(matmul_as_matvec_as_loops) {
 
 TEST_FUNC(matmul_as_matvec_as_affine) {
   MLIRContext context;
-  Module module(&context);
+  Module module = Module::create(&context);
   mlir::Function f =
       makeFunctionWithAMatmulOp(module, "matmul_as_matvec_as_affine");
   lowerToFinerGrainedTensorContraction(f);

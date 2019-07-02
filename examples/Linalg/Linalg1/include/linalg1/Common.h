@@ -57,7 +57,7 @@ inline mlir::MemRefType floatMemRefType(mlir::MLIRContext *context,
 }
 
 /// A basic function builder
-inline mlir::Function makeFunction(mlir::Module &module, llvm::StringRef name,
+inline mlir::Function makeFunction(mlir::Module module, llvm::StringRef name,
                                    llvm::ArrayRef<mlir::Type> types,
                                    llvm::ArrayRef<mlir::Type> resultTypes) {
   auto *context = module.getContext();
@@ -92,7 +92,7 @@ inline void cleanupAndPrintFunction(mlir::Function f) {
     }
   };
   auto pm = cleanupPassManager();
-  check(f.getModule()->verify());
+  check(f.getModule().verify());
   check(pm->run(f.getModule()));
   if (printToOuts)
     f.print(llvm::outs());

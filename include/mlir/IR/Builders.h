@@ -57,12 +57,12 @@ class UnitAttr;
 class Builder {
 public:
   explicit Builder(MLIRContext *context) : context(context) {}
-  explicit Builder(Module *module);
+  explicit Builder(Module module);
 
   MLIRContext *getContext() const { return context; }
 
   Identifier getIdentifier(StringRef str);
-  Module *createModule();
+  Module createModule();
 
   // Locations.
   Location getUnknownLoc();

@@ -139,7 +139,7 @@ LogicalResult
 GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(Function &function) {
   Builder builder(function.getContext());
 
-  std::unique_ptr<Module> module(builder.createModule());
+  OwningModuleRef module = builder.createModule();
 
   // TODO(herhut): Also handle called functions.
   module->push_back(function.clone());
@@ -147,8 +147,9 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(Function &function) {
   auto llvmModule = translateModuleToNVVMIR(*module);
   auto cubin = convertModuleToCubin(*llvmModule, function);
 
-  if (!cubin)
+  if (!cubin) {
     return function.emitError("Translation to CUDA binary failed.");
+  }
 
   function.setAttr(kCubinAnnotation,
                    builder.getStringAttr({cubin->data(), cubin->size()}));

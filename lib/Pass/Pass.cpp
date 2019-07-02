@@ -75,7 +75,7 @@ LogicalResult FunctionPassBase::run(Function fn, FunctionAnalysisManager &fam) {
 }
 
 /// Forwarding function to execute this pass.
-LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
+LogicalResult ModulePassBase::run(Module module, ModuleAnalysisManager &mam) {
   // Initialize the pass state.
   passState.emplace(module, mam);
 
@@ -124,7 +124,7 @@ LogicalResult detail::FunctionPassExecutor::run(Function function,
 }
 
 /// Run all of the passes in this manager over the current module.
-LogicalResult detail::ModulePassExecutor::run(Module *module,
+LogicalResult detail::ModulePassExecutor::run(Module module,
                                               ModuleAnalysisManager &mam) {
   // Run each of the held passes.
   for (auto &pass : passes)
@@ -261,7 +261,7 @@ PassManager::PassManager(bool verifyPasses)
 PassManager::~PassManager() {}
 
 /// Run the passes within this manager on the provided module.
-LogicalResult PassManager::run(Module *module) {
+LogicalResult PassManager::run(Module module) {
   ModuleAnalysisManager mam(module, instrumentor.get());
   return mpe->run(module, mam);
 }

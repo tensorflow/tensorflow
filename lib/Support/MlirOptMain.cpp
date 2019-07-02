@@ -50,7 +50,7 @@ static LogicalResult
 performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
                SourceMgr &sourceMgr, MLIRContext *context,
                const std::vector<const mlir::PassRegistryEntry *> &passList) {
-  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, context));
+  OwningModuleRef module(parseSourceFile(sourceMgr, context));
   if (!module)
     return failure();
 
@@ -63,7 +63,7 @@ performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
   applyPassManagerCLOptions(pm);
 
   // Run the pipeline.
-  if (failed(pm.run(module.get())))
+  if (failed(pm.run(*module)))
     return failure();
 
   // Print the output.

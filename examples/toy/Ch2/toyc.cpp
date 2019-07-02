@@ -75,7 +75,7 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
 
 int dumpMLIR() {
   mlir::MLIRContext context;
-  std::unique_ptr<mlir::Module> module;
+  mlir::OwningModuleRef module;
   if (inputType == InputType::MLIR ||
       llvm::StringRef(inputFilename).endswith(".mlir")) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
@@ -86,7 +86,7 @@ int dumpMLIR() {
     }
     llvm::SourceMgr sourceMgr;
     sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
-    module.reset(mlir::parseSourceFile(sourceMgr, &context));
+    module = mlir::parseSourceFile(sourceMgr, &context);
     if (!module) {
       llvm::errs() << "Error can't load file " << inputFilename << "\n";
       return 3;

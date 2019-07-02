@@ -152,8 +152,8 @@ private:
 // The types in comments give the actual types expected/returned but the API
 // uses void pointers. This is fine as they have the same linkage in C.
 void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
-  Module &module = getModule();
-  Builder builder(&module);
+  Module module = getModule();
+  Builder builder(module);
   if (!module.getNamedFunction(cuModuleLoadName)) {
     module.push_back(
         Function::create(loc, cuModuleLoadName,
@@ -343,7 +343,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
                                ArrayRef<Value *>{cuModule, data.getResult(0)});
   // Get the function from the module. The name corresponds to the name of
   // the kernel function.
-  auto cuModuleRef =
+  auto cuOwningModuleRef =
       builder.create<LLVM::LoadOp>(loc, getPointerType(), cuModule);
   auto kernelName = generateKernelNameConstant(kernelFunction, loc, builder);
   auto cuFunction = allocatePointer(builder, loc);
@@ -352,7 +352,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getCUResultType()},
       builder.getFunctionAttr(cuModuleGetFunction),
-      ArrayRef<Value *>{cuFunction, cuModuleRef, kernelName});
+      ArrayRef<Value *>{cuFunction, cuOwningModuleRef, kernelName});
   // Grab the global stream needed for execution.
   Function cuGetStreamHelper =
       getModule().getNamedFunction(cuGetStreamHelperName);

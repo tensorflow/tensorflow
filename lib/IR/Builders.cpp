@@ -26,13 +26,13 @@
 #include "mlir/Support/Functional.h"
 using namespace mlir;
 
-Builder::Builder(Module *module) : context(module->getContext()) {}
+Builder::Builder(Module module) : context(module.getContext()) {}
 
 Identifier Builder::getIdentifier(StringRef str) {
   return Identifier::get(str, context);
 }
 
-Module *Builder::createModule() { return new Module(context); }
+Module Builder::createModule() { return Module::create(context); }
 
 //===----------------------------------------------------------------------===//
 // Locations.

@@ -31,7 +31,7 @@
 
 using namespace mlir;
 
-LogicalResult serializeModule(Module *module, StringRef outputFilename) {
+LogicalResult serializeModule(Module module, StringRef outputFilename) {
   if (!module)
     return failure();
 
@@ -45,7 +45,7 @@ LogicalResult serializeModule(Module *module, StringRef outputFilename) {
   // wrapping the SPIR-V ModuleOp inside a MLIR module. This should be changed
   // to take in the SPIR-V ModuleOp directly after module and function are
   // migrated to be general ops.
-  for (auto fn : *module) {
+  for (auto fn : module) {
     fn.walk<spirv::ModuleOp>([&](spirv::ModuleOp spirvModule) {
       if (done) {
         spirvModule.emitError("found more than one 'spv.module' op");
@@ -73,6 +73,6 @@ LogicalResult serializeModule(Module *module, StringRef outputFilename) {
 
 static TranslateFromMLIRRegistration
     registration("serialize-spirv",
-                 [](Module *module, StringRef outputFilename) {
+                 [](Module module, StringRef outputFilename) {
                    return failed(serializeModule(module, outputFilename));
                  });

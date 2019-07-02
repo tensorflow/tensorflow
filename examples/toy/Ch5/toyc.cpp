@@ -101,7 +101,7 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
   return parser.ParseModule();
 }
 
-mlir::LogicalResult optimize(mlir::Module &module) {
+mlir::LogicalResult optimize(mlir::Module module) {
   mlir::PassManager pm;
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createShapeInferencePass());
@@ -111,10 +111,10 @@ mlir::LogicalResult optimize(mlir::Module &module) {
   // Apply any generic pass manager command line options.
   applyPassManagerCLOptions(pm);
 
-  return pm.run(&module);
+  return pm.run(module);
 }
 
-mlir::LogicalResult lowerDialect(mlir::Module &module, bool OnlyLinalg) {
+mlir::LogicalResult lowerDialect(mlir::Module module, bool OnlyLinalg) {
   mlir::PassManager pm;
   pm.addPass(createEarlyLoweringPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -127,14 +127,14 @@ mlir::LogicalResult lowerDialect(mlir::Module &module, bool OnlyLinalg) {
   // Apply any generic pass manager command line options.
   applyPassManagerCLOptions(pm);
 
-  return pm.run(&module);
+  return pm.run(module);
 }
 
-std::unique_ptr<mlir::Module> loadFileAndProcessModule(
+mlir::OwningModuleRef loadFileAndProcessModule(
     mlir::MLIRContext &context, bool EnableLinalgLowering = false,
     bool EnableLLVMLowering = false, bool EnableOpt = false) {
 
-  std::unique_ptr<mlir::Module> module;
+  mlir::OwningModuleRef module;
   if (inputType == InputType::MLIR ||
       llvm::StringRef(inputFilename).endswith(".mlir")) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
@@ -145,7 +145,7 @@ std::unique_ptr<mlir::Module> loadFileAndProcessModule(
     }
     llvm::SourceMgr sourceMgr;
     sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
-    module.reset(mlir::parseSourceFile(sourceMgr, &context));
+    module = mlir::parseSourceFile(sourceMgr, &context);
     if (!module) {
       llvm::errs() << "Error can't load file " << inputFilename << "\n";
       return nullptr;
@@ -252,7 +252,7 @@ int runJit() {
   // the module.
   auto optPipeline = mlir::makeOptimizingTransformer(
       /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0);
-  auto maybeEngine = mlir::ExecutionEngine::create(module.get(), optPipeline);
+  auto maybeEngine = mlir::ExecutionEngine::create(*module, optPipeline);
   assert(maybeEngine && "failed to construct an execution engine");
   auto &engine = maybeEngine.get();
 

@@ -37,7 +37,7 @@ using namespace mlir;
 // Storage for the translation function wrappers that survive the parser.
 static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
 
-static LogicalResult printMLIROutput(Module &module,
+static LogicalResult printMLIROutput(Module module,
                                      llvm::StringRef outputFilename) {
   if (failed(module.verify()))
     return failure();
@@ -62,7 +62,7 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
     TranslateFunction wrapper = [function](StringRef inputFilename,
                                            StringRef outputFilename,
                                            MLIRContext *context) {
-      std::unique_ptr<Module> module = function(inputFilename, context);
+      OwningModuleRef module = function(inputFilename, context);
       if (!module)
         return failure();
       return printMLIROutput(*module, outputFilename);
@@ -79,8 +79,8 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
                                            MLIRContext *context) {
       llvm::SourceMgr sourceMgr;
       SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
-      auto module = std::unique_ptr<Module>(
-          parseSourceFile(inputFilename, sourceMgr, context));
+      auto module =
+          OwningModuleRef(parseSourceFile(inputFilename, sourceMgr, context));
       if (!module)
         return failure();
       return failure(function(module.get(), outputFilename));

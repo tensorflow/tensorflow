@@ -38,7 +38,7 @@ class Module;
 /// from the registered LLVM IR dialect.  In case of error, report it
 /// to the error handler registered with the MLIR context, if any (obtained from
 /// the MLIR module), and return `nullptr`.
-std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m);
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module m);
 
 } // namespace mlir
 

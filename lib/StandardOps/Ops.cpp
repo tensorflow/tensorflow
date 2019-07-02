@@ -440,7 +440,7 @@ static LogicalResult verify(CallOp op) {
   auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' function attribute");
-  auto fn = op.getOperation()->getFunction().getModule()->getNamedFunction(
+  auto fn = op.getOperation()->getFunction().getModule().getNamedFunction(
       fnAttr.getValue());
   if (!fn)
     return op.emitOpError() << "'" << fnAttr.getValue()
@@ -1107,7 +1107,7 @@ static LogicalResult verify(ConstantOp &op) {
       return op.emitOpError("requires 'value' to be a function reference");
 
     // Try to find the referenced function.
-    auto fn = op.getOperation()->getFunction().getModule()->getNamedFunction(
+    auto fn = op.getOperation()->getFunction().getModule().getNamedFunction(
         fnAttr.getValue());
     if (!fn)
       return op.emitOpError("reference to undefined function 'bar'");

@@ -322,7 +322,7 @@ void packFunctionArguments(llvm::Module *module) {
 ExecutionEngine::~ExecutionEngine() = default;
 
 Expected<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::create(Module *m,
+ExecutionEngine::create(Module m,
                         std::function<llvm::Error(llvm::Module *)> transformer,
                         ArrayRef<StringRef> sharedLibPaths) {
   auto engine = llvm::make_unique<ExecutionEngine>();
@@ -330,7 +330,7 @@ ExecutionEngine::create(Module *m,
   if (!expectedJIT)
     return expectedJIT.takeError();
 
-  auto llvmModule = translateModuleToLLVMIR(*m);
+  auto llvmModule = translateModuleToLLVMIR(m);
   if (!llvmModule)
     return make_string_error("could not convert to LLVM IR");
   // FIXME: the triple should be passed to the translation or dialect conversion

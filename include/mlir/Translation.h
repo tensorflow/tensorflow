@@ -27,17 +27,17 @@
 namespace mlir {
 class MLIRContext;
 class Module;
+class OwningModuleRef;
 
 /// Interface of the function that translates a file to MLIR.  The
 /// implementation should create a new MLIR Module in the given context and
 /// return a pointer to it, or a nullptr in case of any error.
 using TranslateToMLIRFunction =
-    std::function<std::unique_ptr<Module>(llvm::StringRef, MLIRContext *)>;
+    std::function<OwningModuleRef(llvm::StringRef, MLIRContext *)>;
 /// Interface of the function that translates MLIR to a different format and
 /// outputs the result to a file.  The implementation should return "true" on
 /// error and "false" otherwise.  It is allowed to modify the module.
-using TranslateFromMLIRFunction =
-    std::function<bool(Module *, llvm::StringRef)>;
+using TranslateFromMLIRFunction = std::function<bool(Module, llvm::StringRef)>;
 
 /// Use Translate[To|From]MLIRRegistration as a global initialiser that
 /// registers a function and associates it with name. This requires that a

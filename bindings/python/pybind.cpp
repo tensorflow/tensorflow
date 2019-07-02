@@ -146,8 +146,8 @@ struct PythonFunction {
 /// Trivial C++ wrappers make use of the EDSC C API.
 struct PythonMLIRModule {
   PythonMLIRModule()
-      : mlirContext(), module(new mlir::Module(&mlirContext)),
-        moduleManager(module.get()) {}
+      : mlirContext(), module(mlir::Module::create(&mlirContext)),
+        moduleManager(*module) {}
 
   PythonType makeScalarType(const std::string &mlirElemType,
                             unsigned bitwidth) {
@@ -197,12 +197,12 @@ struct PythonMLIRModule {
     manager.addPass(mlir::createCSEPass());
     manager.addPass(mlir::createLowerAffinePass());
     manager.addPass(mlir::createConvertToLLVMIRPass());
-    if (failed(manager.run(module.get()))) {
+    if (failed(manager.run(*module))) {
       llvm::errs() << "conversion to the LLVM IR dialect failed\n";
       return;
     }
 
-    auto created = mlir::ExecutionEngine::create(module.get());
+    auto created = mlir::ExecutionEngine::create(*module);
     llvm::handleAllErrors(created.takeError(),
                           [](const llvm::ErrorInfoBase &b) {
                             b.log(llvm::errs());
@@ -235,7 +235,7 @@ struct PythonMLIRModule {
 private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
-  std::unique_ptr<mlir::Module> module;
+  mlir::OwningModuleRef module;
   mlir::ModuleManager moduleManager;
   std::unique_ptr<mlir::ExecutionEngine> engine;
 };
