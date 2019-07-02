@@ -132,6 +132,7 @@ cc_library(
         ":IR",
         ":StandardOps",
         ":Support",
+        ":TransformUtils",
         ":VectorOps",
         "@llvm//:support",
     ],
@@ -844,6 +845,9 @@ cc_library(
     srcs = [
         "lib/Conversion/AffineToGPU/AffineToGPUPass.cpp",
     ],
+    hdrs = [
+        "include/mlir/Conversion/AffineToGPU/AffineToGPUPass.h",
+    ],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1160,18 +1164,6 @@ cc_binary(
         "@llvm//:support",
         "@local_config_mlir//test:TestDialect",
         "@local_config_mlir//test:TestTransforms",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
     ],
 )
 
