@@ -93408,6 +93408,18 @@ op {
   }
 }
 op {
+  name: "WriteFile"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "WriteGraphSummary"
   input_arg {
     name: "writer"

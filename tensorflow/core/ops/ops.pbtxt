@@ -47212,6 +47212,7 @@ op {
     name: "contents"
     type: DT_STRING
   }
+  is_stateful: true
 }
 op {
   name: "WriteGraphSummary"
