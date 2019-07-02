@@ -2212,6 +2212,46 @@ precise description.
 ### Results:
 1. `output`: tensor of tf.dtype values
 
+## tf.Split (TF::SplitOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+
+### Operands:
+1. `split_dim`: tensor of 32-bit integer values
+1. `value`: tensor of tf.dtype values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_split` | `IntegerAttr` | 64-bit integer attribute whose minimal value is 1 attribute |
+| `T` | `Attribute` | derived attribute attribute |
+
+### Results:
+1. `output`: tensor of tf.dtype values
+
+## tf.SplitV (TF::SplitVOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+
+### Operands:
+1. `value`: tensor of tf.dtype values
+1. `size_splits`: tensor of 32/64-bit integer values
+1. `split_dim`: tensor of 32-bit integer values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_split` | `IntegerAttr` | 64-bit integer attribute whose minimal value is 1 attribute |
+| `Tlen` | `Attribute` | derived attribute attribute |
+| `T` | `Attribute` | derived attribute attribute |
+
+### Results:
+1. `output`: tensor of tf.dtype values
+
 ## tf.Sqrt (TF::SqrtOp)
 Computes square root of x element-wise.
 

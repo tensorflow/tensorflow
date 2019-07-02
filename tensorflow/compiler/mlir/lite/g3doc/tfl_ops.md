@@ -542,6 +542,22 @@ Element-wise Leaky ReLU operator
 ### Results:
 1. `output`: tensor of any type values
 
+## tfl.less_equal (TFL::LessEqualOp)
+Less_equal operator
+
+### Description:
+
+Element-wise less_equal operation.
+
+### Operands:
+1. `lhs`: tensor of 32-bit float or 32-bit integer or 64-bit integer or 8-bit integer values
+1. `rhs`: tensor of 32-bit float or 32-bit integer or 64-bit integer or 8-bit integer values
+
+### Attributes:
+
+### Results:
+1. `output`: tensor of 1-bit integer values
+
 ## tfl.less (TFL::LessOp)
 Less operator
 
@@ -1230,6 +1246,49 @@ This operation reshapes space dimensions into the "batch" dimension 0
 
 ### Results:
 1. `output`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
+## tfl.split (TFL::SplitOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+Splits the `value` tensor along `split_dim` into a number of sub-tensors
+with same shape as the original one, except for `split_dim`. Same as
+tf.Split.
+
+### Operands:
+1. `split_dim`: tensor of 32-bit integer values
+1. `value`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_splits` | `IntegerAttr` | 32-bit integer attribute attribute |
+
+### Results:
+1. `outputs`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
+## tfl.split_v (TFL::SplitVOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+Splits the `value` tensor along `split_dim` into a number of sub-tensors
+with same shape as the original one, except for `split_dim`. The grouping
+of the resultant sub-tensors is decided by `size-splits`. Same as tf.SplitV.
+
+### Operands:
+1. `value`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+1. `size_splits`: tensor of 32-bit integer values
+1. `split_dim`: tensor of 32-bit integer values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_splits` | `IntegerAttr` | 32-bit integer attribute attribute |
+
+### Results:
+1. `outputs`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
 
 ## tfl.sqrt (TFL::SqrtOp)
 Square root operator
