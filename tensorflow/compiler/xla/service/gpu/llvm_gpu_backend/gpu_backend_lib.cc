@@ -413,7 +413,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
+void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
 
@@ -463,8 +463,8 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
 // Logic specific to LLVM AMDGPU backend
 namespace amdgpu {
 
-// Default inline threshold value to use in llvm.
-const int kDefaultInlineThreshold = 1048576;
+// Inline threshold value to use in LLVM AMDGPU backend.
+const int kAMDGPUInlineThreshold = 1048576;
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
 static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
@@ -509,11 +509,9 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
   SmallString<128> path;
 
   // inject IR
-  bool inject_ir = false;
   std::string inject_ir_path = tensorflow::io::JoinPath(".", ir_filename);
   if (llvm::sys::fs::exists(inject_ir_path)) {
     LOG(INFO) << "use inject_ir_path: " << inject_ir_path << "\n";
-    inject_ir = true;
   }
 
   // inject ISA
@@ -676,7 +674,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
 
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes, kDefaultInlineThreshold);
+                        &function_passes, kAMDGPUInlineThreshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
@@ -707,12 +705,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   return std::move(EmitModuleToHsaco(module, target_machine.get(), amdgpu_version));
 }
 
-// One-time module initializer.
-// Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
-  // Feed all customized flags here, so we can override them with llvm_cl_opts
-  // without redeploy the compiler for development purpose.
-
+void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 
   // Initialize the AMDGPU target; it's the only target we link with, so call its
@@ -722,7 +715,6 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
 
-  // Initialize the LLVM optimization passes.
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
 }
@@ -734,7 +726,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, nvptx::GPUBackendInit, hlo_module_config);
+  std::call_once(backend_init_flag, nvptx::NVPTXBackendInit, hlo_module_config);
 
   string ptx;
   {
@@ -750,18 +742,18 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 }
 
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
-                                int amdgpu_version,
-                                const HloModuleConfig& hlo_module_config,
-                                const string& rocdl_dir_path) {
+                                            int amdgpu_version,
+                                            const HloModuleConfig& hlo_module_config,
+                                            const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, amdgpu::GPUBackendInit, hlo_module_config);
+  std::call_once(backend_init_flag, amdgpu::AMDGPUBackendInit, hlo_module_config);
+
   std::vector<uint8> hsaco;
   {
     tensorflow::profiler::TraceMe activity(
-        [&] { return absl::StrCat("Compiling IR", llvm_ir::AsString(module->getName())); },
+        [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
         tensorflow::profiler::TraceMeLevel::kInfo);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " +
-                             llvm_ir::AsString(module->getName()));
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
                                   rocdl_dir_path));
