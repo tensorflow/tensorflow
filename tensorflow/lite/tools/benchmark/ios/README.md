@@ -18,7 +18,7 @@ Mobilenet_1.0_224 model
 ## To build/install/run
 
 - Follow instructions at
-[iOS build for TFLite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/ios.md)
+[iOS build for TFLite](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/build_ios.md)
 to build TFLite.
 
 Running
