@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,28 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
+#include "tensorflow/compiler/xla/tests/exhaustive_op_test_utils.h"
 
-#include "tensorflow/compiler/xla/bit_cast.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/compiler/xla/tests/test_macros.h"
+#ifdef __FAST_MATH__
+#error "Can't be compiled with fast math on"
+#endif
 
 namespace xla {
-namespace {
-
-struct ErrorSpec {
-  float abs_err;
-  float rel_err;
-
-  // If true, will consider -0 not near to +0 and vice versa.  Note that
-  // +epsilon may still be considered close to -0, depending on the error spec;
-  // this only covers the case when both `expected` and `actual` are equal to 0.
-  bool strict_signed_zeros = false;
-};
 
 using Eigen::half;
 
@@ -170,188 +155,48 @@ float HostDigamma(float x) {
   return result - reflection;
 }
 
-// For f32, f16, and bf16, we need 9, 5, and 4 decimal places of precision to be
-// guaranteed that we're printing the full number.
-//
-// (The general formula is, given a floating-point number with S significand
-// bits, the number of decimal digits needed to print it to full precision is
-//
-//   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103).
-//
-// See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
-string StringifyNum(float x) {
-  return absl::StrFormat("%0.9g (0x%08x)", x, BitCast<uint32>(x));
-}
-
-string StringifyNum(half x) {
-  return absl::StrFormat("%0.5g (0x%04x)", static_cast<float>(x),
-                         BitCast<uint16>(x));
-}
-
-string StringifyNum(bfloat16 x) {
-  return absl::StrFormat("%0.4g (0x%04x)", static_cast<float>(x),
-                         BitCast<uint16>(x));
-}
-
-ErrorSpec DefaultF32SpecGenerator(float) { return ErrorSpec{0.0001, 0.0001}; }
-
-ErrorSpec DefaultF16SpecGenerator(float) { return ErrorSpec{0.001, 0.001}; }
-
-ErrorSpec DefaultBF16SpecGenerator(float) { return ErrorSpec{0.002, 0.02}; }
-
-std::function<ErrorSpec(float)> GetDefaultSpecGenerator(PrimitiveType ty) {
-  switch (ty) {
-    case F32:
-      return DefaultF32SpecGenerator;
-    case F16:
-      return DefaultF16SpecGenerator;
-    case BF16:
-      return DefaultBF16SpecGenerator;
-    default:
-      LOG(FATAL) << "Unhandled Type";
-  }
-}
-
-// Test parameter is a tuple containing
-//   - primitive type under test,
-//   - (begin, end) range under test, as zero-extended int64s bitcast to the
-//     primtive type under test.
-class ExhaustiveOpTest
-    : public ClientLibraryTestBase,
-      public ::testing::WithParamInterface<
-          std::tuple<PrimitiveType, std::pair<int64, int64>>> {
+class ExhaustiveRealUnaryTestBase : public ExhaustiveOpTestBase {
  public:
-  ExhaustiveOpTest()
-      : ty_(std::get<0>(GetParam())), platform_(client_->platform()->Name()) {}
+  explicit ExhaustiveRealUnaryTestBase(PrimitiveType ty)
+      : ExhaustiveOpTestBase(ty) {}
 
-  void Run(std::function<XlaOp(XlaOp)> enqueue_op,
-           float (*evaluate_op)(float)) {
-    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
-  }
-
-  void Run(std::function<XlaOp(XlaOp)> enqueue_op, float (*evaluate_op)(float),
-           std::function<ErrorSpec(float)> error_sepc_gen) {
-    SetFastMathDisabled(true);
-
-    // Run all HLO passes.  In particular, constant folding is disabled by
-    // default for tests, but we need to run it in order to tickle some bugs.
-    mutable_debug_options()->clear_xla_disable_hlo_passes();
-
-    switch (ty_) {
-      case F32:
-        RunImpl<float, uint32>(enqueue_op, evaluate_op, error_sepc_gen);
-        break;
-      case F16:
-        RunImpl<half, uint16>(enqueue_op, evaluate_op, error_sepc_gen);
-        break;
-      case BF16:
-        RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op, error_sepc_gen);
-        break;
-      default:
-        LOG(FATAL) << "Unhandled type.";
-    }
-  }
-
-  template <typename T, typename IntegralT>
+  // A helper for implementing the Run method for unary op test. It constructs
+  // the HLO module, compiles and runs the module and checks the result.
+  //
+  // T: is the input and output data type.
+  // RefT: is the type used for the host function to get the reference result.
+  //  RefT is different from T when T is of less than 32 bits, that is half and
+  //  bfloat16.
+  //
+  // We use a function pointer for evaluate_op for performance because it is
+  // called each time an output element is compared inside a loop in routine
+  // ExpectNear.
+  template <typename T, typename RefT>
   void RunImpl(std::function<XlaOp(XlaOp)> enqueue_op,
-               float (*evaluate_op)(float),
+               RefT (*evaluate_op)(RefT), const Literal& input_literal,
                std::function<ErrorSpec(float)> error_spec_gen) {
-    static_assert(
-        sizeof(T) == sizeof(IntegralT),
-        "IntegralT must be an unsigned integer type of the same width as T.");
-
-    PrimitiveType ty;
-    std::pair<int64, int64> test_range;
-    std::tie(ty, test_range) = GetParam();
-    int64 begin, end;
-    std::tie(begin, end) = test_range;
-
-    LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
-
-    int64 input_size = end - begin;
-    Literal input_literal = LiteralUtil::CreateFromDimensions(ty, {input_size});
-    absl::Span<T> input_arr = input_literal.data<T>();
-    for (int64 i = 0; i < input_size; i++) {
-      IntegralT input_val = i + begin;
-      // If the operation is known to be buggy on a specific input clamp that
-      // input to 0 under the assumption that the op is at least correct on 0.
-      if (known_incorrect_fn_ && known_incorrect_fn_(input_val)) {
-        input_arr[i] = T{0};
-      } else {
-        input_arr[i] = BitCast<T>(input_val);
-      }
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                            BuildAndRunComputation(enqueue_op, input_literal));
-    ExpectNear<T>(input_literal, result_literal, evaluate_op, error_spec_gen);
-  }
-
-  StatusOr<Literal> BuildAndRunComputation(
-      const std::function<XlaOp(XlaOp)>& enqueue_op,
-      const Literal& input_literal) {
     XlaBuilder builder(TestName());
-    auto input = Parameter(&builder, 0, input_literal.shape(), "input");
+    XlaOp input = Parameter(&builder, 0, input_literal.shape(), "input");
     enqueue_op(input);
-    TF_ASSIGN_OR_RETURN(XlaComputation comp, builder.Build());
-
-    // Build and run the computation using the LocalClient API, rather than the
-    // plain Client API, which is used by ClientLibraryTestBase.  This is
-    // because the plain Client API results does more memcpys to/from Literals,
-    // and that's slow given that we're touching a lot of data here.
-    //
-    // Copy debug options from ClientLibraryTestBase.  In particular, we're
-    // interested in disabling constant folding.
-    ExecutableBuildOptions build_opts;
-    *build_opts.mutable_debug_options() = *mutable_debug_options();
-    TF_ASSIGN_OR_RETURN(
-        auto executable,
-        client_->Compile(comp, {&input_literal.shape()}, build_opts));
-
-    TF_ASSIGN_OR_RETURN(
-        ScopedShapedBuffer input_data,
-        client_->LiteralToShapedBuffer(input_literal, /*device_ordinal=*/0));
-
-    ExecutableRunOptions run_opts;
-    run_opts.set_allocator(client_->backend().memory_allocator());
-    run_opts.set_intra_op_thread_pool(
-        client_->backend().eigen_intra_op_thread_pool_device());
-    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executable->Run({&input_data}, run_opts));
-
-    TF_ASSIGN_OR_RETURN(Literal result_literal,
-                        client_->ShapedBufferToLiteral(result));
-    return std::move(result_literal);
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            RunComputation(comp, {&input_literal}));
+    ExpectNear<T, RefT>(input_literal, result_literal, evaluate_op,
+                        error_spec_gen);
   }
 
-  template <typename T>
-  bool IsClose(T expected, T actual, ErrorSpec spec) {
-    float expected_f32 = static_cast<float>(expected);
-    float actual_f32 = static_cast<float>(actual);
-    float abs_err = std::abs(expected_f32 - actual_f32);
-    float rel_err = abs_err / std::abs(expected_f32);
-    if (spec.strict_signed_zeros && actual == T{0} && expected == T{0}) {
-      // Check sign of zero.
-      return std::signbit(actual_f32) == std::signbit(expected_f32);
-    }
-    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
-           (std::isnan(expected_f32) && std::isnan(actual_f32)) ||
-           (std::isinf(expected_f32) && std::isinf(actual_f32) &&
-            (expected_f32 > 0) == (actual_f32 > 0));
-  }
-
-  template <typename T>
+  // We essentially reimplement LiteralTestUtil::Near here because
+  //  a) this streamlined implementation is much faster, and
+  //  b) we can print out better error messages (namely, we can print out
+  //     which floating-point value input failed, while LiteralTestUtil::Near
+  //     can only print out the input index that failed).
+  //  c) we need special handling of certain inputs.  For example, we say that
+  //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
+  //     and just needs to be close to one of them.
+  template <typename T, typename RefT>
   void ExpectNear(const Literal& input_literal, const Literal& result_literal,
-                  float (*evaluate_op)(float),
+                  RefT (*evaluate_op)(RefT),
                   std::function<ErrorSpec(float)> error_spec_gen) {
-    // We essentially reimplement LiteralTestUtil::Near here because
-    //  a) this streamlined implementation is much faster, and
-    //  b) we can print out better error messages (namely, we can print out
-    //     which floating-point value input failed, while LiteralTestUtil::Near
-    //     can only print out the input index that failed).
-    //  c) we need special handling of certain inputs.  For example, we say that
-    //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
-    //     and just needs to be close to one of them.
     absl::Span<const T> input_arr = input_literal.data<T>();
     absl::Span<const T> result_arr = result_literal.data<T>();
     ASSERT_EQ(result_arr.size(), input_arr.size());
@@ -361,28 +206,28 @@ class ExhaustiveOpTest
     const T expected_at_pos_zero = static_cast<T>(evaluate_op(0));
     const T expected_at_neg_zero = static_cast<T>(evaluate_op(-0.0));
     const T expected_at_pos_min_normal_float =
-        static_cast<T>(evaluate_op(std::numeric_limits<float>::min()));
+        static_cast<T>(evaluate_op(std::numeric_limits<RefT>::min()));
     const T expected_at_neg_min_normal_float =
-        static_cast<T>(evaluate_op(-std::numeric_limits<float>::min()));
+        static_cast<T>(evaluate_op(-std::numeric_limits<RefT>::min()));
+
     for (int64 i = 0; i < input_arr.size(); ++i) {
       T input = input_arr[i];
-      float input_f32 = static_cast<float>(input);
+      RefT input_ref_ty = static_cast<RefT>(input);
       T actual = result_arr[i];
-      T expected = static_cast<T>(evaluate_op(input_f32));
+      T expected = static_cast<T>(evaluate_op(input_ref_ty));
 
-      ErrorSpec error_spec = error_spec_gen(input_f32);
+      ErrorSpec error_spec = error_spec_gen(input_ref_ty);
 
-      if (IsClose(expected, actual, error_spec)) {
+      // We only implement fpclassify for float and double, so we call
+      // IsClose<float> for half and bfloat16.
+      if (IsClose(static_cast<RefT>(expected), static_cast<RefT>(actual),
+                  error_spec)) {
         continue;
       }
 
-      // Easy case: If `input` is not denormal and
-      // !IsClose(expected, actual, error_spec), print an error.
-      //
-      // (This doesn't correctly detect f16 and bfloat16 denormals!  This seems
-      // to be OK for now, but at some point we may need to implement fpclassify
-      // for half and bfloat.)
-      if (std::fpclassify(input_f32) != FP_SUBNORMAL) {
+      // Easy case: If `input` is not denormal and !IsClose(expected, actual,
+      // error_spec), print an error.
+      if (std::fpclassify(input_ref_ty) != FP_SUBNORMAL) {
         PrintMismatch(&mismatches, [&] {
           return absl::StrFormat("Mismatch on %s. Expected %s, but got %s.",
                                  StringifyNum(input), StringifyNum(expected),
@@ -405,17 +250,22 @@ class ExhaustiveOpTest
       // (In particular, the XLA:CPU implementation of log flushes positive
       // denormals to min-normal-float.  This seems kind of reasonable if our
       // goal is to avoid infinities because they cause nans?)
-      T sign_preserving_ftz_expected =
-          std::signbit(input_f32) ? expected_at_neg_zero : expected_at_pos_zero;
-      T flush_to_normal_expected = std::signbit(input_f32)
+      T sign_preserving_ftz_expected = std::signbit(input_ref_ty)
+                                           ? expected_at_neg_zero
+                                           : expected_at_pos_zero;
+      T flush_to_normal_expected = std::signbit(input_ref_ty)
                                        ? expected_at_neg_min_normal_float
                                        : expected_at_pos_min_normal_float;
-      T sign_nonpreserving_ftz_expected =
-          std::signbit(input_f32) ? expected_at_pos_zero : expected_at_neg_zero;
-      if (IsClose(sign_preserving_ftz_expected, actual, error_spec) ||
-          IsClose(flush_to_normal_expected, actual, error_spec) ||
+      T sign_nonpreserving_ftz_expected = std::signbit(input_ref_ty)
+                                              ? expected_at_pos_zero
+                                              : expected_at_neg_zero;
+      if (IsClose(static_cast<RefT>(sign_preserving_ftz_expected),
+                  static_cast<RefT>(actual), error_spec) ||
+          IsClose(static_cast<RefT>(flush_to_normal_expected),
+                  static_cast<RefT>(actual), error_spec) ||
           (relaxed_denormal_signs_ &&
-           IsClose(sign_nonpreserving_ftz_expected, actual, error_spec))) {
+           IsClose(static_cast<RefT>(sign_nonpreserving_ftz_expected),
+                   static_cast<RefT>(actual), error_spec))) {
         continue;
       }
 
@@ -452,58 +302,89 @@ class ExhaustiveOpTest
     }
     EXPECT_EQ(mismatches, 0);
   }
+};
 
-  template <typename ErrorGenerator>
-  void PrintMismatch(int64* mismatches, const ErrorGenerator& err_generator) {
-    // We send a few mismatches to gunit so they show up nicely in test logs.
-    // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
-    // at vlog level 2.
-    constexpr int64 kMaxMismatchesLoggedToGunit = 10;
-    constexpr int64 kMaxMismatchesLoggedToErr = 1000;
+// Exhaustive test for unary operations for <= 32bit floating point types.
+//
+// Test parameter is a tuple containing
+//   - primitive type under test,
+//   - (begin, end) range under test, as zero-extended int64s bitcast to the
+//     primtive type under test.
+class Exhaustive32BitOrLessUnaryTest
+    : public ExhaustiveRealUnaryTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, std::pair<int64, int64>>> {
+ public:
+  typedef float (*F32EvaluateOp)(float);
 
-    (*mismatches)++;
-    if (*mismatches < kMaxMismatchesLoggedToGunit) {
-      FAIL() << err_generator();
-    } else if (*mismatches < kMaxMismatchesLoggedToErr || VLOG_IS_ON(2)) {
-      LOG(ERROR) << err_generator();
-    } else if (*mismatches == kMaxMismatchesLoggedToErr) {
-      LOG(ERROR) << "Not printing any more mismatches; pass "
-                    "--vmodule=exhaustive_op_test=2 to see "
-                    "all of them.";
+  Exhaustive32BitOrLessUnaryTest()
+      : ExhaustiveRealUnaryTestBase(std::get<0>(GetParam())) {}
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, F32EvaluateOp evaluate_op) {
+    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
+  }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, F32EvaluateOp evaluate_op,
+           std::function<ErrorSpec(float)> error_spec_gen) {
+    SetFastMathDisabled(true);
+
+    // Run all HLO passes.  In particular, constant folding is disabled by
+    // default for tests, but we need to run it in order to tickle some bugs.
+    mutable_debug_options()->clear_xla_disable_hlo_passes();
+    Literal input_literal = CreateInputLiteral();
+    switch (ty_) {
+      case F32:
+        FillInput<float>(&input_literal);
+        return RunImpl<float, float>(enqueue_op, evaluate_op, input_literal,
+                                     error_spec_gen);
+      case F16:
+        FillInput<half>(&input_literal);
+        return RunImpl<half, float>(enqueue_op, evaluate_op, input_literal,
+                                    error_spec_gen);
+      case BF16:
+        FillInput<bfloat16>(&input_literal);
+        return RunImpl<bfloat16, float>(enqueue_op, evaluate_op, input_literal,
+                                        error_spec_gen);
+      default:
+        LOG(FATAL) << "Unhandled type.";
     }
   }
 
   // Sets error parameters appropriately for testing sin/cos/tan.
   void SetParamsForSinCosTan();
 
-  // The following members are set during construction so testcases can read
-  // these values and use them e.g. to influence the values given to the mutable
-  // members below.
+ private:
+  int64 GetInputSize() override {
+    int64 begin, end;
+    std::tie(begin, end) = std::get<1>(GetParam());
+    VLOG(2) << "Checking range [" << begin << ", " << end << ")";
+    return end - begin;
+  }
 
-  // The primitive type under test.
-  const PrimitiveType ty_;
+  // Generates all the input values for the test. The the range of the bit
+  // representation of the input values is described by the test parameter as
+  // a pair of int64 representing the starting bit pattern and the ending
+  // pattern. Each bit representation is first truncated to the integral type of
+  // the same bit as the type being tested, if needed, and then bitcasted to the
+  // type being tested.
+  template <typename T>
+  void FillInput(Literal* input_literal) {
+    using IntegralT = typename IntegralTypeWithByteWidth<sizeof(T)>::type;
+    int64 input_size = input_literal->element_count();
+    int64 begin, end;
+    std::tie(begin, end) = std::get<1>(GetParam());
+    VLOG(2) << "Checking range [" << begin << ", " << end << ")";
+    CHECK_EQ(input_size, end - begin);
 
-  // The platform under test.
-  const string platform_;
-
-  // Tests can set the following variables for control over execution.  This is
-  // safe because each XLA_TEST_P instantiates a new instance of this class.
-
-  // Testing will ignore inputs for which known_incorect_fn_ returns true.  (Its
-  // argument is the type under test, e.g. f32, zero-extended to int64).
-  std::function<bool(int64)> known_incorrect_fn_;
-
-  // If true, allows denormals to be flushed to non-sign-preserving 0.
-  //
-  // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
-  // a negative number) or -inf (flush the denormal to sign-perserving zero,
-  // then sqrt(-0)).  But with this as true, we'll also accept 0 (sqrt(0)).
-  //
-  // XLA:GPU preserves denormal signs, but other backends don't.
-  bool relaxed_denormal_signs_ = platform_ != "CUDA";
+    absl::Span<T> input_arr = input_literal->data<T>();
+    for (int64 i = 0; i < input_size; i++) {
+      IntegralT input_val = i + begin;
+      input_arr[i] = ConvertAndReplaceKnownIncorrectValueWith<T>(input_val, 0);
+    }
+  }
 };
 
-XLA_TEST_P(ExhaustiveOpTest, Log) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Log) {
   auto error_spec_gen = GetDefaultSpecGenerator(ty_);
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
     error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
@@ -512,7 +393,7 @@ XLA_TEST_P(ExhaustiveOpTest, Log) {
   Run(Log, std::log, error_spec_gen);
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Log1p) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Log1p) {
   auto error_spec_gen = GetDefaultSpecGenerator(ty_);
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
     error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
@@ -521,7 +402,7 @@ XLA_TEST_P(ExhaustiveOpTest, Log1p) {
   Run(Log1p, std::log1p, error_spec_gen);
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Exp) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Exp) {
   // When x < -105, the true value of exp(x) is smaller than the smallest F32,
   // so exp(x) should return exactly 0. We want our implementation of exp to
   // return exactly 0 as well, as not doing so implies either that our
@@ -553,7 +434,7 @@ XLA_TEST_P(ExhaustiveOpTest, Exp) {
   }
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Expm1) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Expm1) {
   auto default_spec_gen = GetDefaultSpecGenerator(ty_);
   auto error_spec_gen = [default_spec_gen](float x) {
     if (x < -105) {
@@ -582,17 +463,17 @@ XLA_TEST_P(ExhaustiveOpTest, Expm1) {
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
 // this *did* find a bug, namely that some backends were assuming sqrt(x) ==
 // pow(x, 0.5), but this is not true for x == -inf.
-XLA_TEST_P(ExhaustiveOpTest, PowOneHalf) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, PowOneHalf) {
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); },
       +[](float x) { return std::pow(x, 0.5f); });
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Rsqrt) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Rsqrt) {
   Run(
       Rsqrt, +[](float x) { return 1 / std::sqrt(x); });
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Sqrt) {
   auto default_spec_gen = GetDefaultSpecGenerator(ty_);
   std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ == "Host" || platform_ == "CUDA") {
@@ -610,7 +491,7 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
 
 // TODO(jlebar): Test trig functions over complex inputs.
 
-XLA_TEST_P(ExhaustiveOpTest, Acosh) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Acosh) {
   // Error inherited from Log, which our implementation of Acosh uses.
   std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
@@ -621,7 +502,7 @@ XLA_TEST_P(ExhaustiveOpTest, Acosh) {
 
   Run(Acosh, std::acosh, error_spec_gen);
 }
-XLA_TEST_P(ExhaustiveOpTest, Asinh) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Asinh) {
   // Error inherited from Log, which our implementation of Asinh uses.
   std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
@@ -631,11 +512,11 @@ XLA_TEST_P(ExhaustiveOpTest, Asinh) {
   }
   Run(Asinh, std::asinh, error_spec_gen);
 }
-XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
-XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
-XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Atanh) { Run(Atanh, std::atanh); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Acos) { Run(Acos, std::acos); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Asin) { Run(Asin, std::asin); }
 
-XLA_TEST_P(ExhaustiveOpTest, Cosh) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Cosh) {
   // Our cosh implementation incorrectly overflows to inf for +/-89.4159851.
   // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
   // max-float, so we deem this acceptable.
@@ -655,7 +536,7 @@ XLA_TEST_P(ExhaustiveOpTest, Cosh) {
   }
   Run(Cosh, host_cosh);
 }
-XLA_TEST_P(ExhaustiveOpTest, Sinh) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Sinh) {
   // Our sinh implementation incorrectly overflows to +/-inf for +/-89.4159851.
   // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
   // max-float, so we deem this acceptable.
@@ -675,9 +556,9 @@ XLA_TEST_P(ExhaustiveOpTest, Sinh) {
   }
   Run(Sinh, host_sinh);
 }
-XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Tanh) { Run(Tanh, std::tanh); }
 
-void ExhaustiveOpTest::SetParamsForSinCosTan() {
+void Exhaustive32BitOrLessUnaryTest::SetParamsForSinCosTan() {
   if (platform_ == "Host" || platform_ == "CUDA") {
     return;
   }
@@ -698,7 +579,7 @@ void ExhaustiveOpTest::SetParamsForSinCosTan() {
   }
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Cos) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Cos) {
   SetParamsForSinCosTan();
   std::function<ErrorSpec(float)> error_spec_gen;
   if (ty_ == F32) {
@@ -708,7 +589,7 @@ XLA_TEST_P(ExhaustiveOpTest, Cos) {
   }
   Run(Cos, std::cos, error_spec_gen);
 }
-XLA_TEST_P(ExhaustiveOpTest, Sin) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Sin) {
   SetParamsForSinCosTan();
   std::function<ErrorSpec(float)> error_spec_gen;
   if (ty_ == F32) {
@@ -718,7 +599,7 @@ XLA_TEST_P(ExhaustiveOpTest, Sin) {
   }
   Run(Sin, std::sin, error_spec_gen);
 }
-XLA_TEST_P(ExhaustiveOpTest, Tan) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Tan) {
   SetParamsForSinCosTan();
   std::function<ErrorSpec(float)> error_spec_gen;
   if (ty_ == F32) {
@@ -730,13 +611,13 @@ XLA_TEST_P(ExhaustiveOpTest, Tan) {
 }
 
 // TODO(jlebar): Enable these.
-// XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
-// XLA_TEST_P(ExhaustiveOpTest, Atan2) { Run(Atan2, std::atan2); }
+// XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Atan) { Run(Atan, std::atan); }
+// XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Atan2) { Run(Atan2, std::atan2); }
 
-XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
-XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
-XLA_TEST_P(ExhaustiveOpTest, ErfInv) { Run(ErfInv, HostErfInv); }
-XLA_TEST_P(ExhaustiveOpTest, Digamma) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Erf) { Run(Erf, std::erf); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Erfc) { Run(Erfc, std::erfc); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, ErfInv) { Run(ErfInv, HostErfInv); }
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Digamma) {
   std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA") {
     // TODO(b/123956399): This is a fairly high error, significantly higher than
@@ -767,7 +648,7 @@ XLA_TEST_P(ExhaustiveOpTest, Digamma) {
     Run(Digamma, HostDigamma, error_spec_gen);
   }
 }
-XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Lgamma) {
   // Our implementation gets within 0.0001 rel error except for ~20 denormal
   // inputs on GPU.  Anyway 0.001 rel error should be good enough for lgamma.
   auto default_spec_gen = GetDefaultSpecGenerator(ty_);
@@ -801,37 +682,26 @@ XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
   Run(Lgamma, host_lgamma, error_spec_gen);
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Round) { Run(Round, std::round); }
-
-std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
-  // We break up the 2^32-element space into small'ish chunks to keep peak
-  // memory usage low.
-  std::vector<std::pair<int64, int64>> result;
-  const int64 step = 1 << 25;
-  for (int64 i = 0; i < (1l << 32); i += step) {
-    result.push_back({i, i + step});
-  }
-  return result;
-}
+XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Round) { Run(Round, std::round); }
 
 INSTANTIATE_TEST_SUITE_P(
-    F32, ExhaustiveOpTest,
+    F32, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(F32),
-                       ::testing::ValuesIn(CreateExhaustiveF32Ranges())));
+                       ::testing::ValuesIn(
+                           ExhaustiveOpTestBase::CreateExhaustiveF32Ranges())));
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 INSTANTIATE_TEST_SUITE_P(
-    F16, ExhaustiveOpTest,
+    F16, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(F16),
                        ::testing::Values(std::make_pair(0, 1 << 16))));
 #endif
 
 #if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
 INSTANTIATE_TEST_SUITE_P(
-    BF16, ExhaustiveOpTest,
+    BF16, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(BF16),
                        ::testing::Values(std::make_pair(0, 1 << 16))));
 #endif
 
-}  // namespace
 }  // namespace xla
