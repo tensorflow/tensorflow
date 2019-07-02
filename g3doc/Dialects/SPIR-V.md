@@ -152,6 +152,24 @@ For example,
 !spv.rtarray<vector<4 x f32>>
 ```
 
+### Struct type
+
+This corresponds to SPIR-V [struct type][StructType]. Its syntax is
+
+``` {.ebnf}
+struct-type ::= `!spv.struct<` spirv-type (` [` integer-literal `]` )?
+                (`, ` spirv-type ( ` [` integer-literal `] ` )? )* `>`
+```
+
+For Example,
+
+``` {.mlir}
+!spv.struct<f32>
+!spv.struct<f32 [0]>
+!spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>
+!spv.struct<f32 [0], i32 [4]>
+```
+
 ## Serialization
 
 The serialization library provides two entry points, `mlir::spirv::serialize()`
@@ -168,7 +186,8 @@ for now). For the latter, please use the assembler/disassembler in the
 
 [SPIR-V]: https://www.khronos.org/registry/spir-v/
 [ArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeArray
+[ImageType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeImage
 [PointerType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypePointer
 [RuntimeArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeRuntimeArray
-[ImageType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeImage
+[StructType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#Structure
 [SPIRV-Tools]: https://github.com/KhronosGroup/SPIRV-Tools

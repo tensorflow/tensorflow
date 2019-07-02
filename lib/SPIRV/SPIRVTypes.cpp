@@ -56,9 +56,9 @@ ArrayType ArrayType::get(Type elementType, int64_t elementCount) {
                    elementCount);
 }
 
-Type ArrayType::getElementType() { return getImpl()->elementType; }
+Type ArrayType::getElementType() const { return getImpl()->elementType; }
 
-int64_t ArrayType::getElementCount() { return getImpl()->elementCount; }
+int64_t ArrayType::getElementCount() const { return getImpl()->elementCount; }
 
 //===----------------------------------------------------------------------===//
 // ImageType
@@ -216,28 +216,32 @@ ImageType
 ImageType::get(std::tuple<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
                           ImageSamplingInfo, ImageSamplerUseInfo, ImageFormat>
                    value) {
-  return Base::get(std::get<0>(value).getContext(), TypeKind::ImageType, value);
+  return Base::get(std::get<0>(value).getContext(), TypeKind::Image, value);
 }
 
-Type ImageType::getElementType() { return getImpl()->elementType; }
+Type ImageType::getElementType() const { return getImpl()->elementType; }
 
-Dim ImageType::getDim() { return getImpl()->getDim(); }
+Dim ImageType::getDim() const { return getImpl()->getDim(); }
 
-ImageDepthInfo ImageType::getDepthInfo() { return getImpl()->getDepthInfo(); }
+ImageDepthInfo ImageType::getDepthInfo() const {
+  return getImpl()->getDepthInfo();
+}
 
-ImageArrayedInfo ImageType::getArrayedInfo() {
+ImageArrayedInfo ImageType::getArrayedInfo() const {
   return getImpl()->getArrayedInfo();
 }
 
-ImageSamplingInfo ImageType::getSamplingInfo() {
+ImageSamplingInfo ImageType::getSamplingInfo() const {
   return getImpl()->getSamplingInfo();
 }
 
-ImageSamplerUseInfo ImageType::getSamplerUseInfo() {
+ImageSamplerUseInfo ImageType::getSamplerUseInfo() const {
   return getImpl()->getSamplerUseInfo();
 }
 
-ImageFormat ImageType::getImageFormat() { return getImpl()->getImageFormat(); }
+ImageFormat ImageType::getImageFormat() const {
+  return getImpl()->getImageFormat();
+}
 
 //===----------------------------------------------------------------------===//
 // PointerType
@@ -274,10 +278,14 @@ PointerType PointerType::get(Type pointeeType, StorageClass storageClass) {
                    storageClass);
 }
 
-Type PointerType::getPointeeType() { return getImpl()->pointeeType; }
+Type PointerType::getPointeeType() const { return getImpl()->pointeeType; }
 
-StorageClass PointerType::getStorageClass() {
+StorageClass PointerType::getStorageClass() const {
   return getImpl()->getStorageClass();
+}
+
+StringRef PointerType::getStorageClassStr() const {
+  return stringifyStorageClass(getStorageClass());
 }
 
 //===----------------------------------------------------------------------===//
@@ -305,4 +313,88 @@ RuntimeArrayType RuntimeArrayType::get(Type elementType) {
                    elementType);
 }
 
-Type RuntimeArrayType::getElementType() { return getImpl()->elementType; }
+Type RuntimeArrayType::getElementType() const { return getImpl()->elementType; }
+
+//===----------------------------------------------------------------------===//
+// StructType
+//===----------------------------------------------------------------------===//
+
+struct spirv::detail::StructTypeStorage : public TypeStorage {
+  StructTypeStorage(unsigned numMembers, Type const *memberTypes,
+                    StructType::LayoutInfo const *layoutInfo)
+      : TypeStorage(numMembers), memberTypes(memberTypes),
+        layoutInfo(layoutInfo) {}
+
+  using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<StructType::LayoutInfo>>;
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getMemberTypes(), getLayoutInfo());
+  }
+
+  static StructTypeStorage *construct(TypeStorageAllocator &allocator,
+                                      const KeyTy &key) {
+    ArrayRef<Type> keyTypes = key.first;
+
+    // Copy the member type and layout information into the bump pointer
+    auto typesList = allocator.copyInto(keyTypes).data();
+
+    const StructType::LayoutInfo *layoutInfoList = nullptr;
+    if (!key.second.empty()) {
+      ArrayRef<StructType::LayoutInfo> keyLayoutInfo = key.second;
+      assert(keyLayoutInfo.size() == keyTypes.size() &&
+             "size of layout information must be same as the size of number of "
+             "elements");
+      layoutInfoList = allocator.copyInto(keyLayoutInfo).data();
+    }
+
+    return new (allocator.allocate<StructTypeStorage>())
+        StructTypeStorage(keyTypes.size(), typesList, layoutInfoList);
+  }
+
+  ArrayRef<Type> getMemberTypes() const {
+    return ArrayRef<Type>(memberTypes, getSubclassData());
+  }
+
+  ArrayRef<StructType::LayoutInfo> getLayoutInfo() const {
+    if (layoutInfo) {
+      return ArrayRef<StructType::LayoutInfo>(layoutInfo, getSubclassData());
+    }
+    return ArrayRef<StructType::LayoutInfo>(nullptr, size_t(0));
+  }
+
+  Type const *memberTypes;
+  StructType::LayoutInfo const *layoutInfo;
+};
+
+StructType StructType::get(ArrayRef<Type> memberTypes) {
+  assert(!memberTypes.empty() && "Struct needs at least one member type");
+  ArrayRef<StructType::LayoutInfo> noLayout(nullptr, size_t(0));
+  return Base::get(memberTypes[0].getContext(), TypeKind::Struct, memberTypes,
+                   noLayout);
+}
+
+StructType StructType::get(ArrayRef<Type> memberTypes,
+                           ArrayRef<StructType::LayoutInfo> layoutInfo) {
+  assert(!memberTypes.empty() && "Struct needs at least one member type");
+  return Base::get(memberTypes.vec().front().getContext(), TypeKind::Struct,
+                   memberTypes, layoutInfo);
+}
+
+size_t StructType::getNumMembers() const {
+  return getImpl()->getSubclassData();
+}
+
+Type StructType::getMemberType(size_t i) const {
+  assert(
+      getNumMembers() > i &&
+      "element index is more than number of members of the SPIR-V StructType");
+  return getImpl()->memberTypes[i];
+}
+
+bool StructType::hasLayout() const { return getImpl()->layoutInfo; }
+
+uint64_t StructType::getOffset(size_t i) const {
+  assert(
+      getNumMembers() > i &&
+      "element index is more than number of members of the SPIR-V StructType");
+  return getImpl()->layoutInfo[i];
+}

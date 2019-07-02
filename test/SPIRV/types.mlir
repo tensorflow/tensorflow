@@ -200,3 +200,51 @@ func @image_parameters_nocomma_4(!spv.image<f32, 1D, NoDepth, NonArrayed, Single
 // expected-error @+1 {{expected more parameters for image type 'SamplerUnknown Unknown'}}
 func @image_parameters_nocomma_5(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown Unknown>) -> ()
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// StructType
+//===----------------------------------------------------------------------===//
+
+// CHECK: func @struct_type(!spv.struct<f32>)
+func @struct_type(!spv.struct<f32>) -> ()
+
+// CHECK: func @struct_type2(!spv.struct<f32 [0]>)
+func @struct_type2(!spv.struct<f32 [0]>) -> ()
+
+// CHECK: func @struct_type_simple(!spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>)
+func @struct_type_simple(!spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>) -> ()
+
+// CHECK: func @struct_type_with_offset(!spv.struct<f32 [0], i32 [4]>)
+func @struct_type_with_offset(!spv.struct<f32 [0], i32 [4]>) -> ()
+
+// CHECK: func @nested_struct(!spv.struct<f32, !spv.struct<f32, i32>>)
+func @nested_struct(!spv.struct<f32, !spv.struct<f32, i32>>)
+
+// CHECK: func @nested_struct_with_offset(!spv.struct<f32 [0], !spv.struct<f32 [0], i32 [4]> [4]>)
+func @nested_struct_with_offset(!spv.struct<f32 [0], !spv.struct<f32 [0], i32 [4]> [4]>)
+
+// -----
+
+// expected-error @+1 {{layout specification must be given for all members}}
+func @struct_type_missing_offset1((!spv.struct<f32, i32 [4]>) -> ()
+
+// -----
+
+// expected-error @+1 {{layout specification must be given for all members}}
+func @struct_type_missing_offset2(!spv.struct<f32 [3], i32>) -> ()
+
+// -----
+
+// expected-error @+1 {{cannot parse type: f32 i32}}
+func @struct_type_missing_comma1(!spv.struct<f32 i32>) -> ()
+
+// -----
+
+// expected-error @+1 {{unexpected extra tokens in layout information: ' i32'}}
+func @struct_type_missing_comma2(!spv.struct<f32 [0] i32>) -> ()
+
+// -----
+
+//  expected-error @+1 {{expected unsigned integer to specify offset of member in struct}}
+func @struct_type_neg_offset(!spv.struct<f32 [-1]>) -> ()

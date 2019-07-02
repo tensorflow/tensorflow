@@ -145,10 +145,10 @@ public:
   unsigned getKind() const;
 
   /// Return the LLVMContext in which this type was uniqued.
-  MLIRContext *getContext();
+  MLIRContext *getContext() const;
 
   /// Get the dialect this type is registered to.
-  Dialect &getDialect();
+  Dialect &getDialect() const;
 
   // Convenience predicates.  This is only for floating point types,
   // derived types should use isa/dyn_cast.

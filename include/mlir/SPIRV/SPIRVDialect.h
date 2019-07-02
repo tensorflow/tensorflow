@@ -38,22 +38,6 @@ public:
 
   /// Prints a type registered to this dialect.
   void printType(Type type, llvm::raw_ostream &os) const override;
-
-private:
-  /// Parses `spec` as a type and verifies it can be used in SPIR-V types.
-  Type parseAndVerifyType(StringRef spec, Location loc) const;
-
-  /// Parses `spec` as a SPIR-V array type.
-  Type parseArrayType(StringRef spec, Location loc) const;
-
-  /// Parses `spec` as a SPIR-V pointer type.
-  Type parsePointerType(StringRef spec, Location loc) const;
-
-  /// Parses `spec` as a SPIR-V run-time array type.
-  Type parseRuntimeArrayType(StringRef spec, Location loc) const;
-
-  /// Parses `spec` as a SPIR-V image type
-  Type parseImageType(StringRef spec, Location loc) const;
 };
 
 } // end namespace spirv

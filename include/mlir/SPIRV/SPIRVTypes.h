@@ -37,14 +37,16 @@ struct ArrayTypeStorage;
 struct ImageTypeStorage;
 struct PointerTypeStorage;
 struct RuntimeArrayTypeStorage;
+struct StructTypeStorage;
 } // namespace detail
 
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
-  ImageType,
+  Image,
   Pointer,
   RuntimeArray,
+  Struct,
 };
 }
 
@@ -58,9 +60,9 @@ public:
 
   static ArrayType get(Type elementType, int64_t elementCount);
 
-  Type getElementType();
+  Type getElementType() const;
 
-  int64_t getElementCount();
+  int64_t getElementCount() const;
 };
 
 // SPIR-V pointer type
@@ -73,9 +75,10 @@ public:
 
   static PointerType get(Type pointeeType, StorageClass storageClass);
 
-  Type getPointeeType();
+  Type getPointeeType() const;
 
-  StorageClass getStorageClass();
+  StorageClass getStorageClass() const;
+  StringRef getStorageClassStr() const;
 };
 
 // SPIR-V run-time array type
@@ -89,16 +92,17 @@ public:
 
   static RuntimeArrayType get(Type elementType);
 
-  Type getElementType();
+  Type getElementType() const;
 };
 
 // SPIR-V image type
+// TODO(ravishankarm) : Move this in alphabetical order
 class ImageType
     : public Type::TypeBase<ImageType, Type, detail::ImageTypeStorage> {
 public:
   using Base::Base;
 
-  static bool kindof(unsigned kind) { return kind == TypeKind::ImageType; }
+  static bool kindof(unsigned kind) { return kind == TypeKind::Image; }
 
   static ImageType
   get(Type elementType, Dim dim,
@@ -118,14 +122,43 @@ public:
       get(std::tuple<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
                      ImageSamplingInfo, ImageSamplerUseInfo, ImageFormat>);
 
-  Type getElementType();
-  Dim getDim();
-  ImageDepthInfo getDepthInfo();
-  ImageArrayedInfo getArrayedInfo();
-  ImageSamplingInfo getSamplingInfo();
-  ImageSamplerUseInfo getSamplerUseInfo();
-  ImageFormat getImageFormat();
+  Type getElementType() const;
+  Dim getDim() const;
+  ImageDepthInfo getDepthInfo() const;
+  ImageArrayedInfo getArrayedInfo() const;
+  ImageSamplingInfo getSamplingInfo() const;
+  ImageSamplerUseInfo getSamplerUseInfo() const;
+  ImageFormat getImageFormat() const;
   // TODO(ravishankarm): Add support for Access qualifier
+};
+
+// SPIR-V struct type
+class StructType
+    : public Type::TypeBase<StructType, Type, detail::StructTypeStorage> {
+
+public:
+  using Base::Base;
+
+  // Layout information used for members in a struct in SPIR-V
+  //
+  // TODO(ravishankarm) : For now this only supports the offset type, so uses
+  // uint64_t value to represent the offset, with
+  // std::numeric_limit<uint64_t>::max indicating no offset. Change this to
+  // something that can hold all the information needed for different member
+  // types
+  using LayoutInfo = uint64_t;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::Struct; }
+
+  static StructType get(ArrayRef<Type> memberTypes);
+
+  static StructType get(ArrayRef<Type> memberTypes,
+                        ArrayRef<LayoutInfo> layoutInfo);
+
+  size_t getNumMembers() const;
+  Type getMemberType(size_t) const;
+  bool hasLayout() const;
+  uint64_t getOffset(size_t) const;
 };
 
 } // end namespace spirv

@@ -83,7 +83,7 @@ def SPV_LoadOp : SPV_Op<"Load"> {
     ### Custom assembly form
 
     ``` {.ebnf}
-    memory-access ::= `"None"` | `"Volatile"` | `"Aligned"` integer-literal
+    memory-access ::= `"None"` | `"Volatile"` | `"Aligned", ` integer-literal
                     | `"NonTemporal"`
 
     load-op ::= ssa-id ` = spv.Load ` storage-class ssa-use
@@ -118,6 +118,8 @@ def SPV_LoadOp : SPV_Op<"Load"> {
       return "alignment";
     }
   }];
+
+  let opcode = 61;
 }
 
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
@@ -157,7 +159,7 @@ def SPV_StoreOp : SPV_Op<"Store"> {
 
     ``` {.ebnf}
     store-op ::= `spv.Store ` storage-class ssa-use `, ` ssa-use `, `
-                  (memory-access)? : spirv-element-type
+                  (`[` memory-access `]`)? `:` spirv-element-type
     ```
 
     For example:
@@ -185,6 +187,8 @@ def SPV_StoreOp : SPV_Op<"Store"> {
       return "alignment";
     }
   }];
+
+  let opcode = 62;
 }
 
 def SPV_VariableOp : SPV_Op<"Variable"> {
