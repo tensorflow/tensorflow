@@ -788,6 +788,7 @@ tf_xla_py_test(
     srcs = ["random_ops_test.py"],
     tags = [
         "noasan",  # TODO(b/136563684): flaky
+        "notap",  # TODO(b/136563684): flaky
     ],
     deps = [
         ":xla_test",
