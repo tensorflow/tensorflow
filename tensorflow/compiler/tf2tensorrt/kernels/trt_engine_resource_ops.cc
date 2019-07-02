@@ -24,10 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -37,54 +40,68 @@ namespace tensorflow {
 namespace tensorrt {
 using ::nvinfer1::IRuntime;
 
-class CreateTRTEngineCache : public OpKernel {
+class CreateTRTEngineCacheHandle : public OpKernel {
  public:
-  explicit CreateTRTEngineCache(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit CreateTRTEngineCacheHandle(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("resource_name", &resource_name_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("max_cached_engines_count", &max_cached_engines_));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "Creating TRT engine cache resource in container " << container_
-            << " for op " << resource_name_ << " on device "
-            << ctx->device()->name();
-    OP_REQUIRES_OK(ctx,
-                   ctx->resource_manager()->Create(
-                       container_, resource_name_,
-                       new TRTEngineCacheResource(ctx, max_cached_engines_)));
+    {
+      mutex_lock l(mutex_);
+      if (!initialized_) {
+        AllocatorAttributes attr;
+        attr.set_on_host(true);
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                               &handle_, attr));
 
-    Tensor* handle;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-    handle->scalar<ResourceHandle>()() =
-        MakeResourceHandle<TRTEngineCacheResource>(ctx, container_,
-                                                   resource_name_);
+        VLOG(1) << "Creating TRT engine cache resource handle for container "
+                << container_ << " and op " << resource_name_ << " on device "
+                << ctx->device()->name();
+        handle_.scalar<ResourceHandle>()() =
+            MakeResourceHandle<TRTEngineCacheResource>(ctx, container_,
+                                                       resource_name_);
+        initialized_ = true;
+      }
+    }
+    ctx->set_output(0, handle_);
   }
 
  private:
   string container_;
   string resource_name_;
+  Tensor handle_;
+  mutex mutex_;
+  bool initialized_ GUARDED_BY(mutex_) = false;
 
-  // Maximum number of cached engines
-  int max_cached_engines_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTEngineCache);
+  TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTEngineCacheHandle);
 };
 
-REGISTER_KERNEL_BUILDER(Name("CreateTRTEngineCache")
+REGISTER_KERNEL_BUILDER(Name("CreateTRTEngineCacheHandle")
                             .Device(DEVICE_GPU)
                             .HostMemory("engine_cache_handle"),
-                        CreateTRTEngineCache);
+                        CreateTRTEngineCacheHandle);
 
 class PopulateTRTEngineCache : public OpKernel {
  public:
-  explicit PopulateTRTEngineCache(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit PopulateTRTEngineCache(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("max_cached_engines_count", &max_cached_engines_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     ResourceHandle handle = HandleFromInput(ctx, 0);
     core::RefCountPtr<TRTEngineCacheResource> resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
+    OP_REQUIRES_OK(
+        ctx, LookupOrCreateResource<TRTEngineCacheResource>(
+                 ctx, handle, &resource,
+                 [this, ctx](TRTEngineCacheResource** resource) -> Status {
+                   *resource = new TRTEngineCacheResource(
+                       ctx, this->max_cached_engines_);
+                   return Status::OK();
+                 }));
 
     auto allocator = resource->allocator_.get();
     OP_REQUIRES(ctx, allocator != nullptr,
@@ -140,6 +157,9 @@ class PopulateTRTEngineCache : public OpKernel {
   }
 
  private:
+  // Maximum number of cached engines
+  int max_cached_engines_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PopulateTRTEngineCache);
 };
 
