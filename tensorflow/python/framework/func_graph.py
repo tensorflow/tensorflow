@@ -765,7 +765,7 @@ def func_graph_from_py_func(name,
           # TODO(mdan): Push this block higher in tf.function's call stack.
           try:
             return autograph.converted_call(
-                original_func, None,
+                original_func,
                 autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,

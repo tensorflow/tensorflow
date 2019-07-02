@@ -133,6 +133,9 @@ class CallTreesTest(converter_testing.TestCase):
 
     class TestClass(object):
 
+      def other_method(self, _):
+        raise ValueError('this should not be called')
+
       def test_method(self, a):
         return self.other_method(a) + 1
 
@@ -145,6 +148,9 @@ class CallTreesTest(converter_testing.TestCase):
   def test_object_method(self):
 
     class TestClass(object):
+
+      def other_method(self, _):
+        raise ValueError('this should not be called')
 
       def test_method(self, a):
         return self.other_method(a) + 1

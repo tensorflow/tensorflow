@@ -90,12 +90,7 @@ class CallTreeTransformer(converter.Base):
         not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return self.generic_visit(node)
 
-    if isinstance(node.func, gast.Attribute):
-      func = gast.Str(node.func.attr)
-      owner = node.func.value
-    else:
-      func = node.func
-      owner = parser.parse_expression('None')
+    func = node.func
 
     starred_arg = None
     normal_args = []
@@ -135,12 +130,11 @@ class CallTreeTransformer(converter.Base):
           keywords=ast_util.keywords_to_dict(normal_keywords))
 
     template = """
-      ag__.converted_call(func, owner, options, args, kwargs)
+      ag__.converted_call(func, options, args, kwargs)
     """
     new_call = templates.replace_as_expression(
         template,
         func=func,
-        owner=owner,
         options=self.ctx.program.options.to_ast(
             internal_convert_user_code=self.ctx.program.options.recursive),
         args=args,
