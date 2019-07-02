@@ -276,6 +276,7 @@ tf_cc_test(
     srcs = ["eager_op_rewrite_registry_test.cc"],
     deps = [
         ":eager_op_rewrite_registry",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
