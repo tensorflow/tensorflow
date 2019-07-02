@@ -56,14 +56,15 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
 
 // Allowed activation function cases
 // These should match the ActivationFunctionType enum in TFLite schema.
-def TFL_AF_None  : EnumAttrCase<"NONE">;
-def TFL_AF_Relu  : EnumAttrCase<"RELU">;
-def TFL_AF_Relu1 : EnumAttrCase<"RELU_N1_TO_1">;
-def TFL_AF_Relu6 : EnumAttrCase<"RELU6">;
-def TFL_AF_Tanh  : EnumAttrCase<"TANH">;
-def TFL_AF_Sign  : EnumAttrCase<"SIGN_BIT">;
+def TFL_AF_None  : StrEnumAttrCase<"NONE">;
+def TFL_AF_Relu  : StrEnumAttrCase<"RELU">;
+def TFL_AF_Relu1 : StrEnumAttrCase<"RELU_N1_TO_1">;
+def TFL_AF_Relu6 : StrEnumAttrCase<"RELU6">;
+def TFL_AF_Tanh  : StrEnumAttrCase<"TANH">;
+def TFL_AF_Sign  : StrEnumAttrCase<"SIGN_BIT">;
 
-def TFL_AFAttr : EnumAttr<"ActivationFunctionType", "fused activation enum", [
+def TFL_AFAttr : StrEnumAttr<
+    "ActivationFunctionType", "fused activation enum", [
       TFL_AF_None,  TFL_AF_Relu, TFL_AF_Relu1,
       TFL_AF_Relu6, TFL_AF_Tanh, TFL_AF_Sign
     ]>;
@@ -74,10 +75,10 @@ def TFL_AFAttr : EnumAttr<"ActivationFunctionType", "fused activation enum", [
 
 // Allowed padding cases
 // These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : EnumAttrCase<"SAME">;
-def TFL_PAD_Valid : EnumAttrCase<"VALID">;
+def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
+def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
 
-def TFL_PaddingAttr : EnumAttr<"Padding", "padding enum", [
+def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
       TFL_PAD_Same, TFL_PAD_Valid
     ]>;
 
@@ -479,12 +480,12 @@ def TFL_DepthwiseConv2DOp :
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
 }
 
-def TFL_FCWO_Default  : EnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : EnumAttrCase<"SHUFFLED4x16INT8">;
+def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
+def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
 
 def TFL_FullyConnectedOptionsWeightFormatAttr :
-    EnumAttr<"FullyConectedOptionsWeightsFormat",
-             "fully connected options weights format", [
+    StrEnumAttr<"FullyConectedOptionsWeightsFormat",
+                "fully connected options weights format", [
       TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
     ]>;
 
