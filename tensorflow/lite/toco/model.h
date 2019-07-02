@@ -172,7 +172,8 @@ enum class OperatorType : uint8 {
   kElu,
   kReverseSequence,
   kMatrixDiag,
-  kMatrixSetDiag
+  kMatrixSetDiag,
+  kMatrixDiagV2,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -2107,6 +2108,14 @@ struct WhereOperator : Operator {
 //         tensor.
 struct MatrixDiagOperator : Operator {
   MatrixDiagOperator() : Operator(OperatorType::kMatrixDiag) {}
+};
+
+// Matrix Diag Operator V2:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Not fully supported, constains 4 extra inputs compared to MatrixDiag, support
+// default parameters settings which performs the same as MatrixDiag
+struct MatrixDiagV2Operator : Operator {
+  MatrixDiagV2Operator() : Operator(OperatorType::kMatrixDiagV2) {}
 };
 
 // Matrix Set Diag Operator:

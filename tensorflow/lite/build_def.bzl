@@ -359,11 +359,9 @@ def generated_test_models_failing(conversion_mode):
             "l2norm",
             # TODO(b/135756979): Eye/MatrixDiag is broken in future
             # forward compatibility horizon
-            "matrix_diag",
             "matrix_set_diag",
             "eye",
         ]
-
     return []
 
 def generated_test_conversion_modes():
