@@ -214,8 +214,6 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
       return ConvertFloatTensor(input_tensor, type, builder);
     case DT_INT32:
       return ConvertIntTensor<uint32_t>(input_tensor, type, builder);
-    case DT_QUINT8:
-      return ConvertIntTensor<uint8_t>(input_tensor, type, builder);
     case DT_INT64:
       return ConvertInt64Tensor(input_tensor, type, builder);
     case DT_BOOL:
