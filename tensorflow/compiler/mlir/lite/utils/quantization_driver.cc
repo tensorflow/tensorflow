@@ -267,7 +267,9 @@ class QuantizationDriver {
     }
     cached.first->second = InitializeState(op, index, in, /*as_result=*/false);
     if (is_argument) {
-      arg_states_[llvm::cast<BlockArgument>(in)] = cached.first->second;
+      auto *arg = llvm::cast<BlockArgument>(in);
+      arg_states_[arg] = cached.first->second;
+      args_.push_back(arg);
     }
   }
 
@@ -299,11 +301,15 @@ class QuantizationDriver {
   // the values from `operand_states_` and `result_state_`.
   std::unordered_map<int, RequantizeState> rescale_states_;
 
-  // Maps of indexes to the propagation state vector from the ops results and
-  // op operands. Both maps are unmodified after initialization.
+  // Maps of indexes to the propagation state vector from the ops operands,
+  // results and arguments.
   llvm::DenseMap<OpValue, int> operand_states_;
   llvm::DenseMap<OpValue, int> result_states_;
   llvm::DenseMap<BlockArgument *, int> arg_states_;
+
+  // This vector is to preserve the arguments order, so the newly inserted
+  // quantized ops for the arguments are deterministically ordered.
+  llvm::SmallVector<BlockArgument *, 4> args_;
 };
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
@@ -656,10 +662,7 @@ bool QuantizationDriver::PropagateParams() {
 }
 
 void QuantizationDriver::Finalize() {
-  std::map<BlockArgument *, int> sorted_states(arg_states_.begin(),
-                                               arg_states_.end());
-  for (auto it : sorted_states) {
-    BlockArgument *arg = it.first;
+  for (auto *arg : args_) {
     auto &state = GetArgQuantState(arg);
     auto &requantize = GetArgRequantizeState(arg);
     if (state.IsEmpty() ||

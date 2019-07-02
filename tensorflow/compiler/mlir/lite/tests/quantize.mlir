@@ -138,9 +138,9 @@ func @QuantizeConcat(tensor<2xf32>, tensor<2xf32>) -> tensor<2x2x!quant.uniform<
   %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
   return %1 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 
-// CHECK: %0 = "tfl.quantize"(%arg0) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
-// CHECK: %1 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
-// CHECK: %2 = "tfl.concatenation"(%0, %1) {axis = 0 : i32, fused_activation_function = "NONE"}
+// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %1 = "tfl.quantize"(%arg0) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %2 = "tfl.concatenation"(%1, %0) {axis = 0 : i32, fused_activation_function = "NONE"}
 // CHECK: return %2 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 }
 
