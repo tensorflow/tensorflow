@@ -15,13 +15,13 @@ package_group(
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
-        "gpu_backend_lib.cc",
         "dump_ir_pass.cc",
+        "nvptx_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
-        "gpu_backend_lib.h",
         "dump_ir_pass.h",
+        "nvptx_backend_lib.h",
         "utils.h",
     ],
     deps = [
