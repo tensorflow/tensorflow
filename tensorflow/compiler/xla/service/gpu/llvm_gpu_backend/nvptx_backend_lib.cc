@@ -391,7 +391,7 @@ ConstructLLVMTargetMachineForModule(llvm::Module* module,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return target_machine;
+  return std::move(target_machine);
 }
 }  // namespace
 
