@@ -288,6 +288,51 @@ public:
     return attrs.remove(name);
   }
 
+  /// A utility iterator that filters out non-dialect attributes.
+  class dialect_attr_iterator
+      : public llvm::filter_iterator<ArrayRef<NamedAttribute>::iterator,
+                                     bool (*)(NamedAttribute)> {
+    static bool filter(NamedAttribute attr) {
+      // Dialect attributes are prefixed by the dialect name, like operations.
+      return attr.first.strref().count('.');
+    }
+
+    explicit dialect_attr_iterator(ArrayRef<NamedAttribute>::iterator it,
+                                   ArrayRef<NamedAttribute>::iterator end)
+        : llvm::filter_iterator<ArrayRef<NamedAttribute>::iterator,
+                                bool (*)(NamedAttribute)>(it, end, &filter) {}
+
+    // Allow access to the constructor.
+    friend Operation;
+  };
+  using dialect_attr_range = llvm::iterator_range<dialect_attr_iterator>;
+
+  /// Return a range corresponding to the dialect attributes for this operation.
+  dialect_attr_range getDialectAttrs() {
+    auto attrs = getAttrs();
+    return {dialect_attr_iterator(attrs.begin(), attrs.end()),
+            dialect_attr_iterator(attrs.end(), attrs.end())};
+  }
+  dialect_attr_iterator dialect_attr_begin() {
+    auto attrs = getAttrs();
+    return dialect_attr_iterator(attrs.begin(), attrs.end());
+  }
+  dialect_attr_iterator dialect_attr_end() {
+    auto attrs = getAttrs();
+    return dialect_attr_iterator(attrs.end(), attrs.end());
+  }
+
+  /// Set the dialect attributes for this operation, and preserve all dependent.
+  template <typename DialectAttrT>
+  void setDialectAttrs(DialectAttrT &&dialectAttrs) {
+    SmallVector<NamedAttribute, 16> attrs;
+    attrs.assign(std::begin(dialectAttrs), std::end(dialectAttrs));
+    for (auto attr : getAttrs())
+      if (!attr.first.strref().count('.'))
+        attrs.push_back(attr);
+    setAttrs(llvm::makeArrayRef(attrs));
+  }
+
   //===--------------------------------------------------------------------===//
   // Blocks
   //===--------------------------------------------------------------------===//

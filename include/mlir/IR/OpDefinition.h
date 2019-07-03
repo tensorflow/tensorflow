@@ -87,6 +87,17 @@ public:
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() { return state->getAttrs(); }
 
+  /// A utility iterator that filters out non-dialect attributes.
+  using dialect_attr_iterator = Operation::dialect_attr_iterator;
+  using dialect_attr_range = Operation::dialect_attr_range;
+
+  /// Return a range corresponding to the dialect attributes for this operation.
+  dialect_attr_range getDialectAttrs() { return state->getDialectAttrs(); }
+  dialect_attr_iterator dialect_attr_begin() {
+    return state->dialect_attr_begin();
+  }
+  dialect_attr_iterator dialect_attr_end() { return state->dialect_attr_end(); }
+
   /// Return an attribute with the specified name.
   Attribute getAttr(StringRef name) { return state->getAttr(name); }
 
@@ -109,6 +120,11 @@ public:
     state->setAttrs(attributes);
   }
   void setAttrs(NamedAttributeList newAttrs) { state->setAttrs(newAttrs); }
+
+  /// Set the dialect attributes for this operation, and preserve all dependent.
+  template <typename DialectAttrs> void setDialectAttrs(DialectAttrs &&attrs) {
+    state->setDialectAttrs(std::move(attrs));
+  }
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
