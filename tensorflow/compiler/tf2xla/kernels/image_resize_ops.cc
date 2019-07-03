@@ -568,12 +568,15 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
   ctx->SetOutput(0, input);
 }
 
+bool static IsGPUDevice(OpKernelConstruction* ctx) {
+  absl::string_view s = ctx->device_type().type_string();
+  return s == DEVICE_GPU_XLA_JIT || s == DEVICE_XLA_GPU;
+}
+
 class ResizeNearestNeighborOp : public XlaOpKernel {
  public:
   explicit ResizeNearestNeighborOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), is_gpu_device_([](absl::string_view s) {
-          return s == DEVICE_GPU_XLA_JIT || s == DEVICE_XLA_GPU;
-        }(ctx->device_type().type_string())) {
+      : XlaOpKernel(ctx), is_gpu_device_(IsGPUDevice(ctx)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
     OP_REQUIRES(
         ctx, align_corners_ == true,
@@ -604,9 +607,7 @@ REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
 class ResizeBilinearOp : public XlaOpKernel {
  public:
   explicit ResizeBilinearOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), is_gpu_device_([](absl::string_view s) {
-          return s == DEVICE_GPU_XLA_JIT || s == DEVICE_XLA_GPU;
-        }(ctx->device_type().type_string())) {
+      : XlaOpKernel(ctx), is_gpu_device_(IsGPUDevice(ctx)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
