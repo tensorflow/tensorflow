@@ -373,6 +373,7 @@ cc_library(
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
+        ":tf_graph_optimization_pass",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
@@ -394,6 +395,27 @@ cc_library(
         ":tf_dialect_passes",
         "@local_config_mlir//:StandardDialectRegistration",
     ],
+)
+
+cc_library(
+    name = "tf_graph_optimization_pass",
+    srcs = ["transforms/tf_graph_optimization_pass.cc"],
+    deps = [
+        ":convert_graphdef",
+        ":mlir_roundtrip_flags",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
