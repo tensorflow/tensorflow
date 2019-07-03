@@ -35,7 +35,7 @@ namespace data {
 /* static */ constexpr const char* const CacheDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const CacheDatasetOp::kOutputShapes;
 
-constexpr char kTensorStrFormat[] = "%%%zuzu_%%%zuzu";
+constexpr char kKeyStrFormat[] = "%%%zuzu_%%%zuzu";
 constexpr char kPaddingSizeStrFormat[] = "%zu";
 constexpr char kFileDatasetPrefix[] = "File";
 constexpr char kMode[] = "Mode";
@@ -66,7 +66,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         num_tensors_(input->output_dtypes().size()),
         tensor_index_padding_size_(StringPaddingSize(num_tensors_)),
         item_index_padding_size_(StringPaddingSize(kMaxItems)),
-        tensor_format_string_(strings::Printf(kTensorStrFormat,
+        tensor_format_string_(strings::Printf(kKeyStrFormat,
                                               item_index_padding_size_,
                                               tensor_index_padding_size_)) {
     input_->Ref();
