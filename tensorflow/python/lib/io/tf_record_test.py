@@ -70,7 +70,7 @@ _TEXT = b"""Gaily bedight,
 
 
 class TFCompressionTestCase(test.TestCase):
-
+  """TFCompression Test"""
   def setUp(self):
     super(TFCompressionTestCase, self).setUp()
     self._num_files = 2
@@ -133,7 +133,7 @@ class TFCompressionTestCase(test.TestCase):
 
 
 class TFRecordWriterTest(TFCompressionTestCase):
-
+  """TFRecordWriter Test"""
   def _AssertFilesEqual(self, a, b, equal):
     for an, bn in zip(a, b):
       with open(an, "rb") as af, open(bn, "rb") as bf:
@@ -172,8 +172,9 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
     # Negative number => better compression.
     return os.path.getsize(fn_a) - os.path.getsize(fn_b)
-
+# pylint: disable=invalid-name
   def testWriteReadZLibFiles(self):
+    """test Write Read ZLib Files"""
     # Write uncompressed then compress manually.
     options = tf_record.TFRecordOptions(TFRecordCompressionType.NONE)
     files = self._CreateFiles(options, prefix="uncompressed")
@@ -194,8 +195,9 @@ class TFRecordWriterTest(TFCompressionTestCase):
         for i, fn in enumerate(compressed_files)
     ]
     self._AssertFilesEqual(uncompressed_files, files, True)
-
+# pylint: disable=invalid-name
   def testWriteReadGzipFiles(self):
+    """test Write Read Gzip Files"""
     # Write uncompressed then compress manually.
     options = tf_record.TFRecordOptions(TFRecordCompressionType.NONE)
     files = self._CreateFiles(options, prefix="uncompressed")
@@ -218,8 +220,9 @@ class TFRecordWriterTest(TFCompressionTestCase):
         for i, fn in enumerate(compressed_files)
     ]
     self._AssertFilesEqual(uncompressed_files, files, True)
-
+# pylint: disable=invalid-name
   def testNoCompressionType(self):
+    """test No Compression Type"""
     self.assertEqual(
         "",
         tf_record.TFRecordOptions.get_compression_type_string(
@@ -235,8 +238,9 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
     with self.assertRaises(ValueError):
       tf_record.TFRecordOptions("BZ2")
-
+# pylint: disable=invalid-name
   def testZlibCompressionType(self):
+    """test Zlib Compression Type"""
     zlib_t = tf_record.TFRecordCompressionType.ZLIB
 
     self.assertEqual(
@@ -253,9 +257,9 @@ class TFRecordWriterTest(TFCompressionTestCase):
         "ZLIB",
         tf_record.TFRecordOptions.get_compression_type_string(
             tf_record.TFRecordOptions(tf_record.TFRecordOptions(zlib_t))))
-
+# pylint: disable=invalid-name
   def testCompressionOptions(self):
-    # Create record with mix of random and repeated data to test compression on.
+    """Create record with mix of random and repeated data to test compression on."""
     rnd = random.Random(123)
     random_record = compat.as_bytes(
         "".join(rnd.choice(string.digits) for _ in range(10000)))
@@ -291,8 +295,10 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):
-
+  """TFRecordWriter Zlib test"""
+# pylint: disable=invalid-name
   def testZLibFlushRecord(self):
+    """test ZLib Flush Record"""
     original = [b"small record"]
     fn = self._WriteRecordsToFile(original, "small_record")
     with open(fn, "rb") as h:
@@ -319,7 +325,7 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     actual = list(tf_record.tf_record_iterator(fn, options=options))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testZlibReadWrite(self):
     """Verify that files produced are zlib compatible."""
     original = [b"foo", b"bar"]
@@ -330,7 +336,7 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     actual = list(tf_record.tf_record_iterator(zfn, options=options))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testZlibReadWriteLarge(self):
     """Verify that writing large contents also works."""
 
@@ -342,7 +348,7 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     actual = list(tf_record.tf_record_iterator(zfn, options=options))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testGzipReadWrite(self):
     """Verify that files produced are gzip compatible."""
     original = [b"foo", b"bar"]
@@ -355,12 +361,13 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
 
 
 class TFRecordIteratorTest(TFCompressionTestCase):
-
+  """TFRecordIterator test"""
   def setUp(self):
     super(TFRecordIteratorTest, self).setUp()
     self._num_records = 7
-
+# pylint: disable=invalid-name
   def testIterator(self):
+    """test Iterator"""
     records = [self._Record(0, i) for i in range(self._num_records)]
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     fn = self._WriteRecordsToFile(records, "compressed_records", options)
@@ -371,7 +378,7 @@ class TFRecordIteratorTest(TFCompressionTestCase):
       self.assertAllEqual(expected, record)
     with self.assertRaises(StopIteration):
       record = next(reader)
-
+# pylint: disable=invalid-name
   def testWriteZlibRead(self):
     """Verify compression with TFRecordWriter is zlib library compatible."""
     original = [b"foo", b"bar"]
@@ -382,7 +389,7 @@ class TFRecordIteratorTest(TFCompressionTestCase):
     zfn = self._ZlibDecompressFile(fn, "write_zlib_read.tfrecord")
     actual = list(tf_record.tf_record_iterator(zfn))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testWriteZlibReadLarge(self):
     """Verify compression for large records is zlib library compatible."""
     # Make it large (about 5MB)
@@ -393,7 +400,7 @@ class TFRecordIteratorTest(TFCompressionTestCase):
     zfn = self._ZlibDecompressFile(fn, "write_zlib_read_large.tfrecord")
     actual = list(tf_record.tf_record_iterator(zfn))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testWriteGzipRead(self):
     original = [b"foo", b"bar"]
     options = tf_record.TFRecordOptions(TFRecordCompressionType.GZIP)
@@ -403,7 +410,7 @@ class TFRecordIteratorTest(TFCompressionTestCase):
     gzfn = self._GzipDecompressFile(fn, "write_gzip_read.tfrecord")
     actual = list(tf_record.tf_record_iterator(gzfn))
     self.assertEqual(actual, original)
-
+# pylint: disable=invalid-name
   def testBadFile(self):
     """Verify that tf_record_iterator throws an exception on bad TFRecords."""
     fn = os.path.join(self.get_temp_dir(), "bad_file")
@@ -421,7 +428,8 @@ class TFRecordIteratorTest(TFCompressionTestCase):
 
 
 class TFRecordWriterCloseAndFlushTests(test.TestCase):
-
+  """TFRecordWriter close and flush tests"""
+# pylint: disable=arguments-differ
   def setUp(self, compression_type=TFRecordCompressionType.NONE):
     super(TFRecordWriterCloseAndFlushTests, self).setUp()
     self._fn = os.path.join(self.get_temp_dir(), "tf_record_writer_test.txt")
@@ -431,14 +439,14 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
   def _Record(self, r):
     return compat.as_bytes("Record %d" % r)
-
+# pylint: disable=invalid-name
   def testWriteAndLeaveOpen(self):
     records = list(map(self._Record, range(self._num_records)))
     for record in records:
       self._writer.write(record)
 
     # Verify no segfault if writer isn't explicitly closed.
-
+# pylint: disable=invalid-name
   def testWriteAndRead(self):
     records = list(map(self._Record, range(self._num_records)))
     for record in records:
@@ -447,32 +455,34 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
     self.assertListEqual(actual, records)
-
+# pylint: disable=invalid-name
   def testFlush(self):
+    """test Flush"""
     records = list(map(self._Record, range(self._num_records)))
-    # pylint: disable=invalid-name
+
     def childProcess(writer, rs):
       for r in rs:
         writer.write(r)
       writer.flush()
-    write_process = multiprocessing.Process(target=childProcess, args=(self._writer, records))
+    write_process = multiprocessing.Process(target=childProcess,
+                                            args=(self._writer, records))
     write_process.start()
     write_process.join()
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
     self.assertListEqual(actual, records)
-
+# pylint: disable=invalid-name
   def testDoubleClose(self):
     self._writer.write(self._Record(0))
     self._writer.close()
     self._writer.close()
-
+# pylint: disable=invalid-name
   def testFlushAfterCloseIsError(self):
     self._writer.write(self._Record(0))
     self._writer.close()
 
     with self.assertRaises(errors_impl.FailedPreconditionError):
       self._writer.flush()
-
+# pylint: disable=invalid-name
   def testWriteAfterCloseIsError(self):
     self._writer.write(self._Record(0))
     self._writer.close()
@@ -482,14 +492,14 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
 
 class TFRecordWriterCloseAndFlushGzipTests(TFRecordWriterCloseAndFlushTests):
-
+# pylint: disable=arguments-differ
   def setUp(self):
     super(TFRecordWriterCloseAndFlushGzipTests,
           self).setUp(TFRecordCompressionType.GZIP)
 
 
 class TFRecordWriterCloseAndFlushZlibTests(TFRecordWriterCloseAndFlushTests):
-
+# pylint: disable=arguments-differ
   def setUp(self):
     super(TFRecordWriterCloseAndFlushZlibTests,
           self).setUp(TFRecordCompressionType.ZLIB)
