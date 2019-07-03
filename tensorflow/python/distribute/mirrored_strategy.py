@@ -376,9 +376,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     super(MirroredExtended, self).__init__(container_strategy)
     if devices is None:
       devices = all_devices()
-    if not devices:
-      raise ValueError("Got an empty `devices` list. Please make sure the "
-                       "`devices` you pass in is not empty.")
+    assert devices, ("Got an empty `devices` list and unable to recognize "
+                     "any local devices.")
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
