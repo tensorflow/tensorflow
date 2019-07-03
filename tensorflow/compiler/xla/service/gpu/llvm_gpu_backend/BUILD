@@ -1,8 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 package(
     default_visibility = [":friends"],
@@ -20,20 +16,14 @@ cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",
-        "utils.cc",
-    ] + if_cuda_is_configured([
         "nvptx_backend_lib.cc",
-    ]) + if_rocm_is_configured([
-        "amdgpu_backend_lib.cc",
-    ]),
+        "utils.cc",
+    ],
     hdrs = [
         "dump_ir_pass.h",
-        "utils.h",
-    ] + if_cuda_is_configured([
         "nvptx_backend_lib.h",
-    ]) + if_rocm_is_configured([
-        "amdgpu_backend_lib.h",
-    ]),
+        "utils.h",
+    ],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -56,7 +46,7 @@ cc_library(
         "@llvm//:ipo",
         "@llvm//:ir_reader",
         "@llvm//:linker",
-        "@llvm//:nvptx_code_gen",  # buildcleaner: keep
+        "@llvm//:nvptx_code_gen",
         "@llvm//:objc_arc",  # buildcleaner: keep
         "@llvm//:scalar",
         "@llvm//:support",

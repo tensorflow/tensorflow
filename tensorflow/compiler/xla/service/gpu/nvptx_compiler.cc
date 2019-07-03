@@ -65,10 +65,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -470,12 +470,12 @@ void WarnIfBadDriverJITVersion() {
 }  // namespace
 
 NVPTXCompiler::NVPTXCompiler()
-    : pointer_size_(llvm::DataLayout(kDataLayout)
+    : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(se::cuda::kCudaPlatformId) {}
 
 NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
-    : pointer_size_(llvm::DataLayout(kDataLayout)
+    : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(platform_id) {}
 
@@ -532,8 +532,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
-  llvm_module.setTargetTriple(kTargetTriple);
-  llvm_module.setDataLayout(kDataLayout);
+  llvm_module.setTargetTriple(nvptx::kTargetTriple);
+  llvm_module.setDataLayout(nvptx::kDataLayout);
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
@@ -625,8 +625,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   string ptx;
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                          module->config(), libdevice_dir));
+    TF_ASSIGN_OR_RETURN(
+        ptx, CompileToPtx(&llvm_module, std::pair<int, int>{cc_major, cc_minor},
+                          module->config(), libdevice_dir, stream_exec));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/true);

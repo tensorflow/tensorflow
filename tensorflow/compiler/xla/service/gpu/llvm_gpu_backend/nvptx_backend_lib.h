@@ -14,20 +14,24 @@ limitations under the License.
 ==============================================================================*/
 
 // LLVM-based compiler backend.
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/variant.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
+
 namespace xla {
 namespace gpu {
+
+using GpuVersion = absl::variant<std::pair<int, int>, int>;
 
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
@@ -37,11 +41,21 @@ namespace gpu {
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
 StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+                              GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path);
+                              const string& libdevice_dir_path,
+                              se::StreamExecutor* stream_exec);
+
+// Compiles the argument module and returns it with LLVM AMDGPU backend.
+// rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
+// The contents of the module may be changed.
+StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
+                                            GpuVersion gpu_version,
+                                            const HloModuleConfig& hlo_module_config,
+                                            const string& rocdl_dir_path,
+                                            se::StreamExecutor* stream_exec);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_

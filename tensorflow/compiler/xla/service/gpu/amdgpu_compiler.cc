@@ -57,13 +57,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/amdgpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/miopen_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -105,12 +106,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-/* static */ const char* AMDGPUCompiler::kTargetTriple = "amdgcn-amd-amdhsa";
-/* static */ const char* AMDGPUCompiler::kDataLayout =
-         "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32"
-         "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
-         "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-A5";
 
 namespace {
 
@@ -383,12 +378,12 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 }  // namespace
 
 AMDGPUCompiler::AMDGPUCompiler()
-    : pointer_size_(llvm::DataLayout(kDataLayout)
+    : pointer_size_(llvm::DataLayout(amdgpu::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(se::rocm::kROCmPlatformId) {}
 
 AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
-    : pointer_size_(llvm::DataLayout(kDataLayout)
+    : pointer_size_(llvm::DataLayout(amdgpu::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(platform_id) {}
 
@@ -431,8 +426,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
-  llvm_module.setTargetTriple(kTargetTriple);
-  llvm_module.setDataLayout(kDataLayout);
+  llvm_module.setTargetTriple(amdgpu::kTargetTriple);
+  llvm_module.setDataLayout(amdgpu::kDataLayout);
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
@@ -517,7 +512,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::Runbackend - CompileToHsaco");
     TF_ASSIGN_OR_RETURN(hsaco, CompileToHsaco(&llvm_module, isa_version,
-                                              module->config(), rocdl_dir_));
+                                              module->config(), rocdl_dir_, stream_exec));
   }
 
   if (!ir_dump_directory.empty()) {

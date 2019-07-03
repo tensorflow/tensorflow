@@ -978,8 +978,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "nvptx_constants",
-    hdrs = ["nvptx_constants.h"],
+    name = "target_constants",
+    hdrs = ["target_constants.h"],
 )
 
 cc_library(
@@ -1034,10 +1034,10 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
-        ":nvptx_constants",
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",
+        ":target_constants",
         ":variadic_op_splitter",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
