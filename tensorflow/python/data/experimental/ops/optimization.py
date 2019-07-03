@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -104,11 +105,18 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
       raise ValueError("At least one transformation should be specified")
     self._transformations = ops.convert_to_tensor(
         transformations, dtype=dtypes.string, name="transformations")
-    variant_tensor = (
-        gen_experimental_dataset_ops.experimental_assert_next_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            self._transformations,
-            **self._flat_structure))
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = (
+          gen_experimental_dataset_ops.assert_next_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              self._transformations,
+              **self._flat_structure))
+    else:
+      variant_tensor = (
+          gen_experimental_dataset_ops.experimental_assert_next_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              self._transformations,
+              **self._flat_structure))
     super(_AssertNextDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -118,10 +126,16 @@ class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset):
     """See `non_serializable()` for details."""
     self._input_dataset = input_dataset
-    variant_tensor = (
-        gen_experimental_dataset_ops.experimental_non_serializable_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            **self._flat_structure))
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = (
+          gen_experimental_dataset_ops.non_serializable_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              **self._flat_structure))
+    else:
+      variant_tensor = (
+          gen_experimental_dataset_ops.experimental_non_serializable_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              **self._flat_structure))
     super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -157,11 +171,18 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
     """
     self._datasets = list(datasets)
     self._element_spec = self._datasets[0].element_spec
-    variant_tensor = (
-        gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
-            [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
-            num_experiments=num_experiments,
-            **self._flat_structure))
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = (
+          gen_experimental_dataset_ops.choose_fastest_dataset(
+              [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
+              num_experiments=num_experiments,
+              **self._flat_structure))
+    else:
+      variant_tensor = (
+          gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
+              [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
+              num_experiments=num_experiments,
+              **self._flat_structure))
     super(_ChooseFastestDataset, self).__init__(variant_tensor)
 
   def _inputs(self):

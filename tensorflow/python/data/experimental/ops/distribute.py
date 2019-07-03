@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -47,11 +48,18 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
-    variant_tensor = ged_ops.experimental_auto_shard_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        num_workers=num_workers,
-        index=index,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.auto_shard_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          index=index,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_auto_shard_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          index=index,
+          **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -87,10 +95,16 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
-    variant_tensor = ged_ops.experimental_rebatch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        num_workers=num_workers,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.rebatch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_rebatch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

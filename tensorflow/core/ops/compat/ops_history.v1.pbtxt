@@ -25429,18 +25429,6 @@ op {
   }
 }
 op {
-  name: "ExperimentalIdentityIndexedDataset"
-  input_arg {
-    name: "size"
-    type: DT_UINT64
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  is_stateful: true
-}
-op {
   name: "ExperimentalIgnoreErrorsDataset"
   input_arg {
     name: "input_dataset"
@@ -25462,46 +25450,6 @@ op {
     has_minimum: true
     minimum: 1
   }
-}
-op {
-  name: "ExperimentalIndexedDatasetGet"
-  input_arg {
-    name: "materialized"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "index"
-    type: DT_UINT64
-  }
-  output_arg {
-    name: "components"
-    type_list_attr: "output_types"
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "ExperimentalIndexedDatasetMaterialize"
-  input_arg {
-    name: "dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "materialized"
-    type: DT_RESOURCE
-  }
-  is_stateful: true
 }
 op {
   name: "ExperimentalIteratorGetDevice"
@@ -25775,34 +25723,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "ExperimentalMaterializedIndexDatasetHandle"
-  output_arg {
-    name: "handle"
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "container"
-    type: "string"
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  is_stateful: true
-}
-op {
   name: "ExperimentalMaxIntraOpParallelismDataset"
   input_arg {
     name: "input_dataset"
@@ -25850,109 +25770,6 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
-  }
-}
-op {
-  name: "ExperimentalNumaMapAndBatchDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "other_arguments"
-    type_list_attr: "Targuments"
-  }
-  input_arg {
-    name: "batch_size"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "num_parallel_calls"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "drop_remainder"
-    type: DT_BOOL
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "f"
-    type: "func"
-  }
-  attr {
-    name: "Targuments"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
-  name: "ExperimentalNumaMapAndBatchDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "other_arguments"
-    type_list_attr: "Targuments"
-  }
-  input_arg {
-    name: "batch_size"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "num_parallel_calls"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "drop_remainder"
-    type: DT_BOOL
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "f"
-    type: "func"
-  }
-  attr {
-    name: "Targuments"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "preserve_cardinality"
-    type: "bool"
-    default_value {
-      b: false
-    }
   }
 }
 op {

@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "ExperimentalNumaMapAndBatchDataset"
+  graph_op_name: "MapAndBatchDataset"
   visibility: HIDDEN
   in_arg {
     name: "input_dataset"
@@ -50,9 +50,5 @@ batches `batch_size` of them.
 
 Unlike a "MapDataset", which applies `f` sequentially, this dataset invokes up
 to `batch_size * num_parallel_batches` copies of `f` in parallel.
-
-Unlike "MapAndBatchDatasetV2", this dataset uses a NUMA-aware thread scheduling
-policy. Because it uses the single-threaded executor, it only supports the
-function-based control flow ops.
 END
 }

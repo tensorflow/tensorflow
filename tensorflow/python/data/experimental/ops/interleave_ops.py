@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -125,11 +126,18 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return (
-        gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
-            self._selector_input._variant_tensor,
-            [data_input._variant_tensor for data_input in self._data_inputs],
-            **self._flat_structure))
+    if compat.forward_compatible(2019, 8, 3):
+      return (
+          gen_experimental_dataset_ops.directed_interleave_dataset(
+              self._selector_input._variant_tensor,
+              [data_input._variant_tensor for data_input in self._data_inputs],
+              **self._flat_structure))
+    else:
+      return (
+          gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
+              self._selector_input._variant_tensor,
+              [data_input._variant_tensor for data_input in self._data_inputs],
+              **self._flat_structure))
     # pylint: enable=protected-access
 
   def _inputs(self):

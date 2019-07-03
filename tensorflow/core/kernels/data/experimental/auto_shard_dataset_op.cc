@@ -76,6 +76,8 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("AutoShardDataset").Device(DEVICE_CPU),
+                        AutoShardDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalAutoShardDataset").Device(DEVICE_CPU),
                         AutoShardDatasetOp);
 
