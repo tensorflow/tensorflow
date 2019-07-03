@@ -171,16 +171,9 @@ class Exporter {
 };
 
 std::string Exporter::UniqueName(llvm::StringRef prefix) {
-  // Remove the digits at the end of prefix.
-  // Otherwise, there would be collision between first instance of prefix =
-  // "foo1" and the second instance of prefix = "foo". In both cases this
-  // function would return "foo1".
-  int i = prefix.size() - 1;
-  while (i >= 0 && isdigit(prefix[i])) i--;
-
-  std::string name = (i >= 0) ? prefix.substr(0, i + 1) : "Unnamed";
+  std::string name = prefix;
   auto& val = name_to_count_[name];
-  if (val) name = (name + llvm::Twine(val)).str();
+  if (val) name = (prefix + llvm::Twine(val)).str();
   ++val;
   return name;
 }
@@ -337,9 +330,6 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
     }
     for (auto* r : input->getResults()) state.types.push_back(r->getType());
     auto* inst = builder.createOperation(state);
-    // If it is one of the specified input names, then the new
-    // instruction should have the same name.
-    op_to_name_[inst].assign(op_to_name_[input]);
     for (int index = 0, e = input->getNumResults(); index != e; ++index) {
       input->getResult(index)->replaceAllUsesWith(inst->getResult(index));
     }
@@ -403,8 +393,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
   Exporter exporter(graph.get(), tf_dialect);
 
-  // Set input and output names and increment the use counter for them to help
-  // generate unique names.
+  // Set input and output names.
   if (!output_names.empty()) {
     auto term = block.getTerminator();
     TF_RET_CHECK(output_names.size() == term->getNumOperands())
@@ -412,14 +401,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
         << ") != terminator operands (" << term->getNumOperands() << ")";
     int i = 0;
     for (auto it : term->getOperands()) {
-      exporter.name_to_count_[output_names[i].str()] = 1;
       exporter.op_to_name_[it->getDefiningOp()] = output_names[i++];
     }
   }
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
-      exporter.name_to_count_[input_names[it.index()].str()] = 1;
       exporter.op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
     }
   }
