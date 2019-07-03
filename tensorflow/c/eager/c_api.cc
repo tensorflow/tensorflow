@@ -568,8 +568,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->HostCPU()->name().c_str(),
-        false, &h_cpu);
+        handle, handle->Context(), handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -913,8 +912,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                const char* device_name,
                                                TF_Status* status) {
   tensorflow::TensorHandle* handle = nullptr;
+  tensorflow::Device* device;
+  status->status = ctx->context->FindDeviceFromName(device_name, &device);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
-                                                 device_name, false, &handle);
+                                                 device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
   }
@@ -984,10 +988,11 @@ TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
                                                      TF_Status* status) {
   // TensorHandles created by PyFuncOp lack context and therefore could
   // not be copied.
-  if (!h->handle->OnHostCPU() && h->handle->Context() != nullptr) {
+  tensorflow::EagerContext* ctx = h->handle->Context();
+  if (!h->handle->OnHostCPU() && ctx != nullptr) {
     tensorflow::TensorHandle* handle = nullptr;
     status->status = tensorflow::EagerCopyToDevice(
-        h->handle, h->handle->Context(), "CPU:0", false, &handle);
+        h->handle, ctx, ctx->HostCPU(), false, &handle);
     if (status->status.ok()) {
       return new TFE_TensorHandle(handle);
     } else {
