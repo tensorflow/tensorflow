@@ -520,16 +520,23 @@ namespace amdgpu {
 static std::vector<string> GetROCDLPaths(int amdgpu_version,
                                          const string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes
-  std::vector<string> result{"hc.amdgcn.bc",
-                             "opencl.amdgcn.bc",
-                             "ocml.amdgcn.bc",
-                             "ockl.amdgcn.bc",
-                             "oclc_finite_only_off.amdgcn.bc",
-                             "oclc_daz_opt_off.amdgcn.bc",
-                             "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-                             "oclc_unsafe_math_off.amdgcn.bc"};
+  std::vector<string> rocdl_filename_vector{
+      "hc.amdgcn.bc",
+      "opencl.amdgcn.bc",
+      "ocml.amdgcn.bc",
+      "ockl.amdgcn.bc",
+      "oclc_finite_only_off.amdgcn.bc",
+      "oclc_daz_opt_off.amdgcn.bc",
+      "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+      "oclc_unsafe_math_off.amdgcn.bc"};
 
-  // AMDGPU version-specific bitcodes
+  // Construct full path to ROCDL bitcode libraries
+  std::vector<string> result;
+  for (auto& filename : rocdl_filename_vector) {
+    result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
+  }
+
+  // Add AMDGPU version-specific bitcodes
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path, tensorflow::strings::StrCat(
                           "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
