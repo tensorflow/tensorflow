@@ -167,6 +167,14 @@ void ConstOp::build(Builder *builder, OperationState *result, Attribute value) {
 
 void ConstOp::build(Builder *builder, OperationState *result, Type type,
                     Attribute value) {
+  // Handle the case where the type and value are already tensors.
+  if (type.isa<TensorType>() && value.isa<ElementsAttr>()) {
+    result->addTypes(type);
+    result->addAttribute("value", value);
+    return;
+  }
+
+  // Otherwise, default to the attribute builder.
   ConstOp::build(builder, result, value);
   assert(type == result->types[0] && "type mismatch in construction");
 }
@@ -873,8 +881,9 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() && value.getType() == type)
+  // If this is an opaque elements attribute or the result type doesn't match
+  // the attribute type, then generate a tf.Const.
+  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
     return builder.create<ConstOp>(loc, type, value);
   return nullptr;
 }
