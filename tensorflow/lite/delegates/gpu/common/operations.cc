@@ -337,7 +337,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
   BHWC new_shape = input[0];
   switch (attr.axis) {
     case Axis::CHANNELS:
-      for (int i = 1; i < input.size(); i++) {
+      for (int i = 1; static_cast<size_t>(i) < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
           return InvalidArgumentError(
               "Height and Width must be the same when concatenating "
@@ -347,7 +347,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
       }
       break;
     case Axis::HEIGHT:
-      for (int i = 1; i < input.size(); i++) {
+      for (int i = 1; static_cast<size_t>(i) < input.size(); i++) {
         if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
           return InvalidArgumentError(
               "Channels and Width must be the same when concatenating "
@@ -357,7 +357,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
       }
       break;
     case Axis::WIDTH:
-      for (int i = 1; i < input.size(); i++) {
+      for (int i = 1; static_cast<size_t>(i) < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
           return InvalidArgumentError(
               "Height and Channels must be the same when concatenating "
