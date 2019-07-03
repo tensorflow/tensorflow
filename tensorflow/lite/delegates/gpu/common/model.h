@@ -255,10 +255,10 @@ class Model : public Graph<TensorT> {
   }
 
   Status SetProducer(NodeId producer, ValueId value) final {
-    ValueDef* v;
+    ValueDef* v = nullptr;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
-    NodeDef* n;
+    NodeDef* n = nullptr;
     RETURN_IF_ERROR(LookupNode(producer, &n));
     Node* node_ptr = n->node.get();
 
@@ -284,7 +284,7 @@ class Model : public Graph<TensorT> {
   }
 
   Status RemoveProducer(ValueId value) final {
-    ValueDef* v;
+    ValueDef* v = nullptr;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
     if (v->producer == nullptr) {
@@ -296,10 +296,10 @@ class Model : public Graph<TensorT> {
   }
 
   Status AddConsumer(NodeId consumer, ValueId value) final {
-    ValueDef* v;
+    ValueDef* v = nullptr;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
-    NodeDef* n;
+    NodeDef* n = nullptr;
     RETURN_IF_ERROR(LookupNode(consumer, &n));
     Node* node_ptr = n->node.get();
 
@@ -320,10 +320,10 @@ class Model : public Graph<TensorT> {
   }
 
   Status RemoveConsumer(NodeId consumer, ValueId value) final {
-    ValueDef* v;
+    ValueDef* v = nullptr;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
-    NodeDef* n;
+    NodeDef* n = nullptr;
     RETURN_IF_ERROR(LookupNode(consumer, &n));
     Node* node_ptr = n->node.get();
     if (std::find(n->inputs.begin(), n->inputs.end(), value_ptr) ==
@@ -336,7 +336,7 @@ class Model : public Graph<TensorT> {
   }
 
   Status DeleteNode(NodeId id) final {
-    NodeDef* n;
+    NodeDef* n = nullptr;
     RETURN_IF_ERROR(LookupNode(id, &n));
     Node* node_ptr = n->node.get();
     for (auto value : n->inputs) {
@@ -352,7 +352,7 @@ class Model : public Graph<TensorT> {
   }
 
   Status DeleteValue(ValueId id) final {
-    ValueDef* v;
+    ValueDef* v = nullptr;
     RETURN_IF_ERROR(LookupValue(id, &v));
     Value<TensorT>* value_ptr = v->value.get();
     if (v->producer != nullptr) {
