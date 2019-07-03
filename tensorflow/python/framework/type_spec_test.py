@@ -267,8 +267,6 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec([5], dtypes.int32),
                       tensor_spec.TensorSpec([5, 8], dtypes.float32)])
-    self.assertEqual(spec._flat_shapes, [[5], [5, 8]])
-    self.assertEqual(spec._flat_types, [dtypes.int32, dtypes.float32])
 
   def testRepr(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool)

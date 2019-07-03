@@ -94,6 +94,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "no_rocm",
         "nomac",
@@ -134,6 +135,7 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "no_rocm",
         "nomac",
@@ -160,6 +162,7 @@ cuda_py_test(
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
+        "no_rocm",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "no_rocm",

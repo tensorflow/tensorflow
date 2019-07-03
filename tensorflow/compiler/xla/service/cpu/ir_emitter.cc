@@ -3125,7 +3125,7 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
   llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
-  if (target_shape.IsTuple() && (target_op->IsMultiOutputFusion() ||
+  if (target_shape.IsTuple() && (target_op->opcode() == HloOpcode::kFusion ||
                                  target_op->opcode() == HloOpcode::kReduce)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);

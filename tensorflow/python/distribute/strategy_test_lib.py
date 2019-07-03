@@ -308,9 +308,21 @@ class DistributionTestBase(test.TestCase):
 
   def _test_input_fn_iterable(
       self, strategy, input_fn, expected_values, ignore_order=False):
-    if not context.executing_eagerly():
-      self.skipTest("Only supported with eager execution.")
+    if context.executing_eagerly():
+      self._test_input_fn_iterable_in_eager_mode(
+          strategy, input_fn, expected_values, ignore_order=False)
+    else:
+      self._test_input_fn_iterable_in_graph_mode(
+          strategy, input_fn, expected_values, ignore_order=False)
 
+  def _test_input_fn_iterable_in_graph_mode(
+      self, strategy, input_fn, expected_values, ignore_order=False):
+    with self.assertRaisesRegexp(RuntimeError, "only supported when eager "
+                                 "execution is enabled"):
+      strategy.experimental_distribute_datasets_from_function(input_fn)
+
+  def _test_input_fn_iterable_in_eager_mode(
+      self, strategy, input_fn, expected_values, ignore_order=False):
     assert_same = self.assertCountEqual if ignore_order else self.assertEqual
 
     iterable = strategy.experimental_distribute_datasets_from_function(input_fn)

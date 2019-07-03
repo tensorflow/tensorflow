@@ -53,18 +53,7 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-// macro wrapper to declare dynamic shared memory
-#if GOOGLE_CUDA
-
-#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-  extern __shared__ __align__(ALIGN) TYPE NAME[]
-
-#elif TENSORFLOW_USE_ROCM
-
-#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-  HIP_DYNAMIC_SHARED(TYPE, NAME)
-
-#endif
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
 
 // macro wrapper to declare dynamic shared memory
 #if GOOGLE_CUDA
@@ -93,10 +82,11 @@ inline const char* GpuGetErrorString(hipError_t error) {
 }
 #endif
 
+// Exact copy from GetCudaStream() in gpu_launch_config.h
+// Returns a raw reference to the current cuda stream. Required by a
+// number of kernel calls (for which StreamInterface* does not work),
+// i.e. CUB and certain cublas primitives.
 inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
-  // Returns a raw reference to the current cuda stream. Required by a
-  // number of kernel calls (for which StreamInterface* does not work),
-  // i.e. CUB and certain cublas primitives.
   const gpuStream_t* ptr = CHECK_NOTNULL(
       reinterpret_cast<const gpuStream_t*>(context->op_device_context()
                                                ->stream()

@@ -89,7 +89,12 @@ def initialize_tpu_system(cluster_resolver=None):
     serialized_topology = output.numpy()
   else:
     master = cluster_resolver.master()
+    cluster_spec = cluster_resolver.cluster_spec()
+
     session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    if cluster_spec:
+      session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
     with ops.Graph().as_default():
       with session_lib.Session(config=session_config, target=master) as sess:
         serialized_topology = sess.run(tpu.initialize_system())

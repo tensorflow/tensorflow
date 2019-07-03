@@ -717,6 +717,31 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.evaluate(x, y)
     model.predict(x)
 
+  @test_util.run_v2_only
+  def test_explicit_device_with_go_backward_and_mask(self):
+    batch_size = 8
+    timestep = 7
+    masksteps = 5
+    units = 4
+
+    inputs = np.random.randn(batch_size, timestep, units).astype(np.float32)
+    mask = np.ones((batch_size, timestep)).astype(np.bool)
+    mask[:, masksteps:] = 0
+
+    # Test for V1 behavior.
+    lstm_v1 = rnn_v1.LSTM(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
+
+    # Test for V2 behavior.
+    lstm = rnn.LSTM(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed = lstm(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
+
 
 @keras_parameterized.run_all_keras_modes(config=_config)
 class LSTMGraphRewriteTest(keras_parameterized.TestCase):

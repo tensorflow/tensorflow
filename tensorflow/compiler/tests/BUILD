@@ -1,11 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test", "tf_gpu_tests_tags")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags","tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
 )
 
 package(
@@ -600,6 +600,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:platform_test",
     ],
 )

@@ -87,7 +87,7 @@ class Adam(optimizer_v2.OptimizerV2):
 
       $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
       $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-      $$v_hat_t := max(v_hat_{t-1}, v_t)
+      $$v_hat_t := max(v_hat_{t-1}, v_t)$$
       $$variable := variable - lr_t * m_t / (\sqrt{v_hat_t} + \epsilon)$$
 
     The default value of 1e-7 for epsilon might not be a good default in

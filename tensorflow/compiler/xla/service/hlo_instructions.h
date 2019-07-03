@@ -315,12 +315,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
-
-  // Returns the barrier config used for the AllReduce implementation of
-  // each backend.
-  string all_reduce_barrier() const { return all_reduce_barrier_; }
-  void set_all_reduce_barrier(string barrier) { all_reduce_barrier_ = barrier; }
+      const absl::optional<int64>& all_reduce_id);
 
   absl::optional<int64> all_reduce_id() const { return all_reduce_id_; }
   void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
@@ -344,9 +339,6 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  // The string representation of the barrier config used for AllReduce.
-  string all_reduce_barrier_;
 
   // For Allreduce nodes from different modules, if they have the same
   // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be

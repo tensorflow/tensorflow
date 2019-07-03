@@ -581,7 +581,8 @@ bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "ReadVariableOp";
+         op == "VarHandleOp" || op == "ReadVariableOp" ||
+         op == "_VarHandlesOp" || op == "_ReadVariablesOp";
 }
 
 bool IsWhile(const NodeDef& node) {

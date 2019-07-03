@@ -1381,8 +1381,7 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 // triangle. The data returned in the other output triangle is arbitrary and
 // implementation-defined.
 //
-// The value returned if `a` is not Hermitian positive definite is
-// implementation-defined.
+// If `a` is not Hermitian positive definite, returns an array full of NaNs.
 XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of

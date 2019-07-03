@@ -62,6 +62,7 @@ struct TrMulParams {
   PMatrix packed_rhs;
   bool lhs_is_prepacked = false;
   bool rhs_is_prepacked = false;
+  int cache_friendly_traversal_threshold = 0;
 
   // Type-erased Spec.
   void* spec = nullptr;

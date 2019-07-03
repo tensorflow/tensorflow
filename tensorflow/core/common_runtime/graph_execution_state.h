@@ -98,13 +98,8 @@ class GraphExecutionState {
 
   // Creates a new `GraphExecutionState` for the given
   // `graph_def`, which represents the entire graph for a session.
-  //
-  // N.B. This method uses `GraphDef::Swap()` and leaves `graph_def`
-  // in an undefined state. If it is necessary to use `*graph_def`
-  // after this call, make an explicit copy of the graph before
-  // calling this method.
   static Status MakeForBaseGraph(
-      GraphDef* graph_def, const GraphExecutionStateOptions& options,
+      GraphDef&& graph_def, const GraphExecutionStateOptions& options,
       std::unique_ptr<GraphExecutionState>* out_state);
 
   // Creates a new `GraphExecutionState` and `SimpleClientGraph`
@@ -168,7 +163,7 @@ class GraphExecutionState {
   }
 
  private:
-  GraphExecutionState(GraphDef* graph_def,
+  GraphExecutionState(GraphDef&& graph_def,
                       const GraphExecutionStateOptions& options);
 
   Status InitBaseGraph(const BuildGraphOptions& options);

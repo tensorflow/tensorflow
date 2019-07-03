@@ -64,9 +64,6 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
         "use_model_in_sequential_keras", model_dir=export_dir)
 
   def test_text_embedding_in_dataset(self):
-    if tf.test.is_gpu_available():
-      self.skipTest("b/132156097 - fails if there is a gpu available")
-
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
@@ -74,15 +71,26 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
   TEST_MNIST_CNN_GENERATE_KWARGS = dict(
-      combinations=combinations.combine(
-          named_strategy=list(ds_utils.named_strategies.values()),
-          retrain_flag_value=["true", "false"],
-          regularization_loss_multiplier=[None, 2]),  # Test for b/134528831.
+      combinations=(
+          combinations.combine(
+              # Test all combinations with tf.saved_model.save().
+              use_keras_save_api=False,
+              named_strategy=list(ds_utils.named_strategies.values()),
+              retrain_flag_value=["true", "false"],
+              regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
+          ) + combinations.combine(
+              # Test few critcial combinations with tf.keras.models.save_model()
+              # which is merely a thin wrapper (as of June 2019).
+              use_keras_save_api=True,
+              named_strategy=None,
+              retrain_flag_value="true",
+              regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
+          )),
       test_combinations=[combinations.NamedGPUCombination()])
 
   @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
-  def test_mnist_cnn(self, named_strategy, retrain_flag_value,
-                     regularization_loss_multiplier):
+  def test_mnist_cnn(self, use_keras_save_api, named_strategy,
+                     retrain_flag_value, regularization_loss_multiplier):
 
     self.skipIfMissingExtraDeps()
 
@@ -103,7 +111,8 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
 
     use_kwargs = dict(fast_test_mode=fast_test_mode,
                       input_saved_model_dir=feature_extrator_dir,
-                      retrain=retrain_flag_value)
+                      retrain=retrain_flag_value,
+                      use_keras_save_api=use_keras_save_api)
     if full_model_dir is not None:
       use_kwargs["output_saved_model_dir"] = full_model_dir
     if named_strategy:

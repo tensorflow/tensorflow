@@ -31,7 +31,10 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
-#ifdef TF_HAS_GPU_FP16
+
+#if GOOGLE_CUDA
+// TODO(rocm): disabling this code on the ROCm platform since the references
+// to `half2` are leading to compile errors.
 
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
@@ -50,7 +53,7 @@ __global__ void ReluGradHalfKernel(const Eigen::half* gradient,
     half2 feature_h2 = reinterpret_cast<const half2*>(feature)[index];
     half2* p_backprop_h2 = reinterpret_cast<half2*>(backprop) + index;
 
-#if __GPU_ARCH__ >= 530
+#if __CUDA_ARCH__ >= 530
     // Fast path, when half2 primitives are available.
     const half2 kZeroH2 = __float2half2_rn(0.f);
     // mask = (feature > 0)
@@ -113,8 +116,7 @@ struct ReluGrad<Device, Eigen::half> {
         d.stream(), gradient.data(), feature.data(), backprop.data(), count));
   }
 };
-
-#endif  // TF_HAS_GPU_FP16
+#endif // GOOGLE_CUDA
 
 #if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,

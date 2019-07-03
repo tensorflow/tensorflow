@@ -236,15 +236,13 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "serialization_test",
     srcs = ["serialization_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":feature_column_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

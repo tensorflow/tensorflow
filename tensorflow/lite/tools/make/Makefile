@@ -99,8 +99,6 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/c/*.c) \
-$(wildcard tensorflow/lite/experimental/c/*.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/allocator.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/block_map.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/blocking_counter.cc) \
@@ -112,7 +110,8 @@ $(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/trmul.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/tune.cc)
+$(wildcard tensorflow/lite/experimental/ruy/tune.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/wait.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \

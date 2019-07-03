@@ -21,7 +21,7 @@ from __future__ import print_function
 import collections
 import contextlib
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import backprop
@@ -160,9 +160,7 @@ def _DefaultGradYs(grad_ys,
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
   grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
   new_grad_ys = []
-  for i in xrange(len(grad_ys)):
-    grad_y = grad_ys[i]
-    y = ys[i]
+  for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
       if grad_y is None:
         if y.dtype.is_complex:
@@ -883,23 +881,23 @@ class AggregationMethod(object):
   aggregating gradients:
 
   *  `ADD_N`: All of the gradient terms are summed as part of one
-     operation using the "AddN" op (see `tf.add_n`). This 
-     method has the property that all gradients must be ready and 
+     operation using the "AddN" op (see `tf.add_n`). This
+     method has the property that all gradients must be ready and
      buffered separately in memory before any aggregation is performed.
   *  `DEFAULT`: The system-chosen default aggregation method.
 
-  The following aggregation methods are experimental and may not 
+  The following aggregation methods are experimental and may not
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce 
-    performance, but it can improve memory utilization because the 
+    using the "AddN" op. This method of summing gradients may reduce
+    performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
   * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
-    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the 
+    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the
     overall sum in a single buffer that is shared across threads.
-    This method of summing gradients can result in a lower memory footprint 
+    This method of summing gradients can result in a lower memory footprint
     and lower latency at the expense of higher CPU/GPU utilization.
     For gradients of types that "AccumulateN" does not support, this
     summation method falls back on the behavior of `EXPERIMENTAL_TREE`

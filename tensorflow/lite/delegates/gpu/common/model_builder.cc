@@ -2059,14 +2059,11 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
       TfLiteIntArrayFree(subgraph);
       return nullptr;
     }
-    if (registration->builtin_code == kTfLiteBuiltinDequantize) {
-      const bool supported_type =
-          context->tensors[node->inputs->data[0]].type ==
-          TfLiteType::kTfLiteFloat16;
-      if (supported_type) {
-        // Record the output->input mapping for the op.
-        node_map[node->outputs->data[0]] = node->inputs->data[0];
-      }
+    if (registration->builtin_code == kTfLiteBuiltinDequantize &&
+        context->tensors[node->inputs->data[0]].type ==
+            TfLiteType::kTfLiteFloat16) {
+      // Record the output->input mapping for the op.
+      node_map[node->outputs->data[0]] = node->inputs->data[0];
     } else {
       // Fix the node's inputs.
       TfLiteIntArray* inputs = node->inputs;

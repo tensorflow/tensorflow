@@ -968,6 +968,18 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     w = model.add_weight('w', [], initializer=keras.initializers.Constant(1))
     self.assertEqual(dtypes.int64, w.dtype)
 
+  def test_disconnected_inputs(self):
+    input_tensor1 = input_layer_lib.Input(shape=[200], name='a')
+    input_tensor2 = input_layer_lib.Input(shape=[10], name='b')
+    output_tensor1 = keras.layers.Dense(units=10)(input_tensor1)
+
+    net = keras.engine.network.Network(
+        inputs=[input_tensor1, input_tensor2], outputs=[output_tensor1])
+    net2 = keras.engine.network.Network.from_config(net.get_config())
+    self.assertLen(net2.inputs, 2)
+    self.assertEqual('a', net2.layers[0].name)
+    self.assertEqual('b', net2.layers[1].name)
+
 
 class DeferredModeTest(test.TestCase):
 

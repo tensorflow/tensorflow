@@ -49,6 +49,7 @@ from __future__ import print_function
 
 from collections import OrderedDict
 import contextlib
+import re
 import types
 import unittest
 
@@ -208,8 +209,8 @@ def generate(combinations, test_combinations=()):
       assert isinstance(combination, OrderedDict)
       name = "".join([
           "_{}_{}".format("".join(filter(str.isalnum, key)),
-                          "".join(filter(str.isalnum, str(value))))
-          for key, value in combination.items()
+                          "".join(filter(str.isalnum, _get_name(value, i))))
+          for i, (key, value) in enumerate(combination.items())
       ])
       named_combinations.append(
           OrderedDict(
@@ -401,3 +402,7 @@ class NamedObject(object):
 
   def __repr__(self):
     return self._name
+
+
+def _get_name(value, index):
+  return re.sub("0[xX][0-9a-fA-F]+", str(index), str(value))

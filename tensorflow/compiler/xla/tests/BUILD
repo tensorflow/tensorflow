@@ -1556,7 +1556,9 @@ xla_test(
 
 xla_test(
     name = "prng_test",
+    timeout = "long",
     srcs = ["prng_test.cc"],
+    shard_count = 6,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",

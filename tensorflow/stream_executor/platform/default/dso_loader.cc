@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "third_party/tensorrt/tensorrt_config.h"
 
 namespace stream_executor {
 namespace internal {
@@ -32,10 +33,6 @@ namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
-
-// TODO(laigd): populate the version string during configuration process. For
-// now hardcoded version 5 since 4.0 is not supported anyway.
-#define TF_TENSORRT_VERSION "5"
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {

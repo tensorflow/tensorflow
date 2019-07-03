@@ -1248,6 +1248,32 @@ class HloInstructionPatternOpcodeImpl {
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
+// has a given custom call target.
+class HloInstructionCustomCallTargetImpl {
+ public:
+  explicit HloInstructionCustomCallTargetImpl(
+      absl::string_view custom_call_target)
+      : custom_call_target_(custom_call_target) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kCustomCall ||
+        inst->custom_call_target() != custom_call_target_) {
+      EXPLAIN << "HloInstruction is not a custom call with a target '"
+              << custom_call_target_ << "'";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "custom call with target '" << custom_call_target_ << "'";
+  }
+
+ private:
+  std::string custom_call_target_;
+};
+
+// An HloInstructionPattern implementation that matches only if the instruction
 // has the given number of operands.
 class HloInstructionPatternNumOperandsImpl {
  public:
@@ -1838,6 +1864,13 @@ class HloInstructionPattern {
       -> decltype(this->AppendImpl(HloInstructionPatternOpcodeImpl(opcode,
                                                                    false))) {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
+  }
+
+  // Modifies the pattern to match only the custom call with a given target.
+  auto WithCustomCallTarget(absl::string_view custom_call_target) const
+      -> decltype(this->AppendImpl(
+          HloInstructionCustomCallTargetImpl(custom_call_target))) {
+    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_target));
   }
 
   auto WithNumOperands(int64 num_operands) const -> decltype(

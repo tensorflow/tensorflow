@@ -89,6 +89,8 @@ struct DividesBy {
 };
 
 #if GOOGLE_CUDA
+// TODO(rocm) : enable this once ROCm platform has support for complex datatypes
+//
 // needed to work around a compiler bug in nvcc - it doesn't seem to like
 // the overloaded ops for std::complex
 template <>
@@ -120,7 +122,7 @@ struct DividesBy<std::complex<double>> {
     return std::complex<double>(result.x, result.y);
   }
 };
-#endif
+#endif  // GOOGLE_CUDA
 
 template <>
 struct DividesBy<float, Eigen::half> {
@@ -229,7 +231,8 @@ __global__ void RowReduceKernel(
 
   __shared__ typename WarpReduce::TempStorage temp_storage;
 
-  sum = WarpReduce(temp_storage).Reduce(sum, op, min(num_cols, TF_RED_WARPSIZE));
+  sum =
+      WarpReduce(temp_storage).Reduce(sum, op, min(num_cols, TF_RED_WARPSIZE));
 
   if (row < num_rows && lane == 0) out[row] = sum;
 }
@@ -283,16 +286,19 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   if (row * num_cols + col < num_rows * num_cols)
     sum = in[row * num_cols + col];
 
-  // 1D array necessary due to bug in CUDA 9 compiler.
-  // TODO(nluehr) revert to 2D array when compiler is ready.
-  // This is to mimic the following, but without any constructors:
-  //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+    // 1D array necessary due to bug in CUDA 9 compiler.
+    // TODO(nluehr) revert to 2D array when compiler is ready.
+    // This is to mimic the following, but without any constructors:
+    //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE *
+    //   (TF_RED_WARPSIZE+1)];
 #if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
-  __shared__ __align__(
-      alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
+  __shared__ __align__(alignof(value_type)) char
+      partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1) *
+                       sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
 #elif TENSORFLOW_USE_ROCM
-  __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+  __shared__ storage_type<value_type>
+      partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1)];
 #endif
 
   row += rows_per_warp * gridDim.y * blockDim.y;
@@ -310,16 +316,17 @@ __global__ void ColumnReduceMax16ColumnsKernel(
     if (lane < num_cols) sum = op(sum, tmp);
   }
 
-  if (lane < num_cols) partial_sums[lane * (TF_RED_WARPSIZE+1) + threadIdx.y] = sum;
+  if (lane < num_cols)
+    partial_sums[lane * (TF_RED_WARPSIZE + 1) + threadIdx.y] = sum;
 
   __syncthreads();
 
   if (threadIdx.y == 0 && threadIdx.x < num_cols) {
-    value_type s = partial_sums[threadIdx.x * (TF_RED_WARPSIZE+1)];
+    value_type s = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1)];
 
     if (blockDim.y > 1) {
       for (int row = 1; row < blockDim.y; ++row) {
-        value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE+1) + row];
+        value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];
         s = op(s, t);
       }
     }
@@ -340,16 +347,19 @@ __global__ void ColumnReduceKernel(
   value_type sum = initVal;
   if (row < num_rows && col < num_cols) sum = in[row * num_cols + col];
 
-  // 1D array necessary due to bug in CUDA 9 compiler.
-  // TODO(nluehr) revert to 2D array when compiler is ready.
-  // This is to mimic the following, but without constructors:
-  //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+    // 1D array necessary due to bug in CUDA 9 compiler.
+    // TODO(nluehr) revert to 2D array when compiler is ready.
+    // This is to mimic the following, but without constructors:
+    //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE *
+    //     (TF_RED_WARPSIZE + 1)];
 #if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
-  __shared__ __align__(
-      alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
+  __shared__ __align__(alignof(value_type)) char
+      partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1) *
+                       sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
 #elif TENSORFLOW_USE_ROCM
-  __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+  __shared__ storage_type<value_type>
+      partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1)];
 #endif
 
   row += gridDim.y * blockDim.y;
@@ -360,12 +370,12 @@ __global__ void ColumnReduceKernel(
     }
   }
 
-  partial_sums[threadIdx.x * (TF_RED_WARPSIZE+1) + threadIdx.y] = sum;
+  partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + threadIdx.y] = sum;
 
   __syncthreads();
 
   if (threadIdx.y == 0 && col < num_cols) {
-    value_type s = partial_sums[threadIdx.x * (TF_RED_WARPSIZE+1)];
+    value_type s = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1)];
 
     // only include input values in the reduction
     // elem   block_rows
@@ -381,7 +391,7 @@ __global__ void ColumnReduceKernel(
         min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
-      value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE+1) + row];
+      value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];
       s = op(s, t);
     }
 
@@ -494,7 +504,8 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     return;
   } else if (in_size <= 1 << 18) {
     const int num_threads = 256;
-    const int num_blocks = std::min(TF_RED_WARPSIZE, Eigen::divup(in_size, num_threads));
+    const int num_blocks =
+        std::min(TF_RED_WARPSIZE, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
     // would be more effective, but all attempts
     // at making this a multiple of the number of
@@ -516,8 +527,8 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     // take care that we only reduce blocks that had some valid elements in them
     // TODO(eriche): CUB currently has a bug in HeadSegmentedReduce that
-    // requires it to be used with a full warp.  Can reduce TF_RED_WARPSIZE -> num_blocks
-    // when this is fixed.
+    // requires it to be used with a full warp.  Can reduce TF_RED_WARPSIZE ->
+    // num_blocks when this is fixed.
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, 1,
                                 TF_RED_WARPSIZE, 0, cu_stream,
                                 (T*)temp_storage.flat<int8_t>().data(), out, 1,
@@ -533,7 +544,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     OP_REQUIRES(
         ctx, success == 0,
-        errors::Internal("CUB reduce error", GpuGetErrorString(success)));
+        errors::Internal("CUB reduce error ", GpuGetErrorString(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
@@ -565,7 +576,8 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
   // setup segment offsets with counting and transform iterator
   RowOffset row_offset_op(num_cols);
   gpuprim::CountingInputIterator<int> counting_iter(0);
-  gpuprim::TransformInputIterator<int, RowOffset, gpuprim::CountingInputIterator<int>>
+  gpuprim::TransformInputIterator<int, RowOffset,
+                                  gpuprim::CountingInputIterator<int>>
       transform_iter(counting_iter, row_offset_op);
 
   size_t temp_storage_bytes = 0;
@@ -595,7 +607,10 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const gpuStream_t& cu_stream) {
   int rows_per_warp = TF_RED_WARPSIZE / extent_y;
-  dim3 block_dim(TF_RED_WARPSIZE, std::min(Eigen::divup(extent_x, rows_per_warp), (1024/TF_RED_WARPSIZE)), 1);
+  dim3 block_dim(
+      TF_RED_WARPSIZE,
+      std::min(Eigen::divup(extent_x, rows_per_warp), (1024 / TF_RED_WARPSIZE)),
+      1);
   dim3 grid_dim(1,
                 Eigen::divup(static_cast<unsigned int>(extent_x),
                              rows_per_warp * block_dim.y),
@@ -624,7 +639,9 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                 (T*)temp_storage.flat<int8_t>().data(),
                                 extent_x, extent_y, op, init));
 
-    dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
+    dim3 new_grid_dim(
+        (grid_dim.y * extent_y + (TF_RED_WARPSIZE - 1)) / TF_RED_WARPSIZE, 1,
+        1);
     dim3 num_threads(128, 1, 1);
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
                                 num_threads, 0, cu_stream,
@@ -637,10 +654,13 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                        int extent_x, int extent_y, Op op,
                                        T init, const gpuStream_t& cu_stream) {
-  dim3 block_dim(TF_RED_WARPSIZE, std::min(extent_x, (1024/TF_RED_WARPSIZE)), 1);
-  dim3 grid_dim((extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
+  dim3 block_dim(TF_RED_WARPSIZE, std::min(extent_x, (1024 / TF_RED_WARPSIZE)),
+                 1);
+  dim3 grid_dim((extent_y + (TF_RED_WARPSIZE - 1)) / TF_RED_WARPSIZE, 1, 1);
 
-  if (grid_dim.x < 16) grid_dim.y = std::min((extent_x + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, TF_RED_WARPSIZE);
+  if (grid_dim.x < 16)
+    grid_dim.y = std::min((extent_x + (TF_RED_WARPSIZE - 1)) / TF_RED_WARPSIZE,
+                          TF_RED_WARPSIZE);
 
   if (grid_dim.y > 2 && grid_dim.y < TF_RED_WARPSIZE) {
     int log2 = Log2Floor(grid_dim.y);
@@ -663,7 +683,9 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
         ColumnReduceKernel<IN_T, T*, Op>, grid_dim, block_dim, 0, cu_stream, in,
         (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
-    dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
+    dim3 new_grid_dim(
+        (grid_dim.y * extent_y + (TF_RED_WARPSIZE - 1)) / TF_RED_WARPSIZE, 1,
+        1);
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
                                 block_dim, 0, cu_stream,
                                 (T*)temp_storage.flat<int8_t>().data(), out,
@@ -713,12 +735,13 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   // setup segment offsets with counting and transform iterator
   RowOffset row_offset_op(extent_x * extent_z);
   gpuprim::CountingInputIterator<int> counting_iter(0);
-  gpuprim::TransformInputIterator<int, RowOffset, gpuprim::CountingInputIterator<int>>
+  gpuprim::TransformInputIterator<int, RowOffset,
+                                  gpuprim::CountingInputIterator<int>>
       transform_iter(counting_iter, row_offset_op);
 
   GatherOp gather_op(extent_x, extent_y, extent_z, false);
   typedef gpuprim::TransformInputIterator<int, GatherOp,
-                                      gpuprim::CountingInputIterator<int>>
+                                          gpuprim::CountingInputIterator<int>>
       gatherIterType;
   gatherIterType gather_iter(counting_iter, gather_op);
 
@@ -975,11 +998,11 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
         outputIterType;
     outputIterType itr((Eigen::half*)out.data(), div_op);
 
-    ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType, ReductionAxes>(
-        ctx, itr, input_itr, in.rank(), in.dimension(0),
-        in.rank() >= 2 ? in.dimension(1) : 1,
-        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        gpuprim::Sum());
+    ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType,
+               ReductionAxes>(ctx, itr, input_itr, in.rank(), in.dimension(0),
+                              in.rank() >= 2 ? in.dimension(1) : 1,
+                              in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
+                              reduction_axes, gpuprim::Sum());
   }
 
   template <typename OUT_T>

@@ -653,8 +653,8 @@ class _BigtableLookupDataset(dataset_ops.DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(tuple(
-        [structure.TensorStructure(dtypes.string, [])] * self._num_outputs))
+    return tuple([structure.TensorStructure(dtypes.string, [])] *
+                 self._num_outputs)
 
 
 class _BigtableScanDataset(dataset_ops.DatasetSource):
@@ -682,9 +682,8 @@ class _BigtableScanDataset(dataset_ops.DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(
-        tuple(
-            [structure.TensorStructure(dtypes.string, [])] * self._num_outputs))
+    return tuple([structure.TensorStructure(dtypes.string, [])] *
+                 self._num_outputs)
 
 
 class _BigtableSampleKeyPairsDataset(dataset_ops.DatasetSource):
@@ -705,6 +704,5 @@ class _BigtableSampleKeyPairsDataset(dataset_ops.DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(
-        (structure.TensorStructure(dtypes.string, []),
-         structure.TensorStructure(dtypes.string, [])))
+    return (structure.TensorStructure(dtypes.string, []),
+            structure.TensorStructure(dtypes.string, []))

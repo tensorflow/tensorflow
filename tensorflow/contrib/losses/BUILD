@@ -19,6 +19,10 @@ py_library(
         "python/metric_learning/metric_loss_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":metric_learning_py",
         "//tensorflow/contrib/framework:framework_py",

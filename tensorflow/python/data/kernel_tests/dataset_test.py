@@ -38,7 +38,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -271,16 +270,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Tensor", lambda: constant_op.constant(37.0),
        structure.TensorStructure(dtypes.float32, [])),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1])),
+          indices=[[0]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1])),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
-          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
-       structure.NestedStructure({
-           "a": structure.TensorStructure(dtypes.float32, []),
-           "b": (structure.TensorStructure(dtypes.string, [1]),
-                 structure.TensorStructure(dtypes.string, []))})),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
+      }, {
+          "a":
+              structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.TensorStructure(
+              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+      }),
       ("Dataset", lambda: dataset_ops.Dataset.from_tensor_slices(
           constant_op.constant([1, 2, 3])),
        dataset_ops.DatasetStructure(
@@ -291,18 +292,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
-    dataset_structure = type_spec.type_spec_from_value(dataset)
+    dataset_structure = structure.type_spec_from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
 
-    # TODO(b/110122868): Add a public API to `tf.data.Dataset` for accessing
-    # the element structure.
-    self.assertTrue(expected_element_structure.is_compatible_with(
-        dataset_structure._element_structure))
-    self.assertTrue(dataset_structure._element_structure.is_compatible_with(
-        expected_element_structure))
-
-    self.assertEqual([dtypes.variant], dataset_structure._flat_types)
-    self.assertEqual([tensor_shape.scalar()], dataset_structure._flat_shapes)
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset), expected_element_structure))
+    self.assertEqual([dtypes.variant],
+                     structure.get_flat_tensor_types(dataset_structure))
+    self.assertEqual([tensor_shape.scalar()],
+                     structure.get_flat_tensor_shapes(dataset_structure))
 
     # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
     # and _to_tensor_list().

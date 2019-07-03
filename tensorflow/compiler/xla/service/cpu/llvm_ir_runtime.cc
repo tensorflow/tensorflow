@@ -126,7 +126,9 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   const llvm::APFloat half = GetIeeeF32(0.5);
   const llvm::APFloat one = GetIeeeF32(1);
 
+  // The constant 1/log(2),
   const llvm::APFloat cephes_LOG2EF = GetIeeeF32(1.44269504088896341);
+
   const llvm::APFloat cephes_exp_C1 = GetIeeeF32(0.693359375);
   const llvm::APFloat cephes_exp_C2 = GetIeeeF32(-2.12194440e-4);
 
@@ -137,25 +139,34 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   const llvm::APFloat cephes_exp_p4 = GetIeeeF32(1.6666665459E-1);
   const llvm::APFloat cephes_exp_p5 = GetIeeeF32(5.0000001201E-1);
 
-  // To compute e^input, we re-express it as
+  // To compute e^x, we re-express it as
   //
-  //   e^input = e^(a + b)
-  //           = e^(a + n log(2))
-  //           = e^a * 2^n.
+  //   e^x = e^(a + b)
+  //       = e^(a + n log(2))
+  //       = e^a * 2^n.
   //
-  // We choose n = floor(a * log(2) + 0.5), restricting the value of `a` to
-  // (-0.5, 0.5).  We then use a polynomial to compute e^a.
+  // We choose n = round(x / log(2)), restricting the value of `a` to
+  // (-log(2)/2, log(2)/2).  We then use a polynomial to compute e^a. The
+  // relative error between our approximation and the true value of e^a is less
+  // than 2^-22.5 for all values of `a` within this range.
 
   // Restrict input to a small range, including some values that evaluate to
-  // +/- inf.  Our computations below aren't particularly sensitive to the exact
-  // choices here, so we choose values a bit larger/smaller than
+  // +/- inf.  Note that for our lower bound, we choose log(2^-126) instead of
+  // log(F32_EPSILON). We do so because this routine always flushes denormal
+  // floating points to 0. Therefore, we only need to worry about exponentiating
+  // up to the smallest representable non-denormal floating point, which is
+  // 2^-126.
   //
-  //   log(F32_MAX) =       88.723...
-  //   log(F32_EPSILON) = -103.279....
+  // Our computations below aren't particularly sensitive to the exact choices
+  // here, so we choose values a bit larger/smaller than
   //
-  input = vsl.Clamp(input, GetIeeeF32(-104), GetIeeeF32(88.8));
+  //   log(F32_MAX) = 88.723...
+  //   log(2^-126) = -87.337...
+  input = vsl.Clamp(input, GetIeeeF32(-87.8), GetIeeeF32(88.8));
 
   llvm::Value* x = input;
+
+  // Calculates n = floor(input / log(2) + 0.5) = round(input / log(2))
   llvm::Value* n = vsl.Floor(vsl.MulAdd(input, cephes_LOG2EF, half));
 
   // When we eventually do the multiplication in e^a * 2^n, we need to handle
@@ -173,17 +184,38 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   // hypothesis is that the integer operations on the exponent `n` have nonlocal
   // effects on the pipeline.
   //
-  // The approach we use instead is to clamp n to [-126, 127] so 2^n doesn't
-  // over/underflow.  This causes `a` to be outside the range (-0.5, 0.5), which
-  // means that our polynomial for e^a will give a less-accurate result.  In
-  // practice this seems to work well enough; it passes our exhaustive tests,
-  // breaking only one result, and by one ulp (we return exp(88.7228394) =
-  // max-float but we should return inf).
-  n = vsl.Clamp(n, GetIeeeF32(-126), GetIeeeF32(127));
+  // The approach we use instead is to clamp n to [-127, 127]. Let n' be the
+  // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow
+  // up to as large as 88.8 - 127 * log(2) which is about 0.7703. Even though
+  // this value of `a` is outside our previously specified range, e^a will still
+  // only have a relative error of approximetely 2^-16 at worse. In practice
+  // this seems to work well enough; it passes our exhaustive tests, breaking
+  // only one result, and by one ulp (we return exp(88.7228394) = max-float but
+  // we should return inf).
+  //
+  // In the case where n' = -127, the original input value of x is so small that
+  // e^x, our final answer, is less than 2^-126. Since 2^-126 is the smallest
+  // normal floating point, and since we flush denormals, we simply return 0. We
+  // do this in a branchless way by observing that our code for constructing 2^n
+  // produces 0 if n = -127.
+  //
+  // The proof that n' = -127 implies e^x < 2^-126 is as follows:
+  //
+  //    n' = -127 implies n <= -127
+  //              implies round(x / log(2)) <= -127
+  //              implies x/log(2) < -126.5
+  //              implies x < -126.5 * log(2)
+  //              implies e^x < e^(-126.5 * log(2))
+  //              implies e^x < 2^-126.5 < 2^-126
+  //
+  //    This proves that n' = -127 implies e^x < 2^-126.
+  n = vsl.Clamp(n, GetIeeeF32(-127), GetIeeeF32(127));
 
-  // Polynomial to compute z = e^a, accurate for a in (-0.5, 0.5).
+  // Computes x = x - n' * log(2), the value for `a`
   x = vsl.Sub(x, vsl.Mul(cephes_exp_C1, n));
   x = vsl.Sub(x, vsl.Mul(cephes_exp_C2, n));
+
+  // Polynomial to compute z = e^a, accurate for a in (-0.5, 0.5).
   llvm::Value* z = vsl.MulAdd(x, cephes_exp_p0, cephes_exp_p1);
   z = vsl.MulAdd(z, x, cephes_exp_p2);
   z = vsl.MulAdd(z, x, cephes_exp_p3);
@@ -192,15 +224,15 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   z = vsl.MulAdd(z, vsl.Mul(x, x), x);
   z = vsl.Add(one, z);
 
-  // Convert n to an i32.  This is safe because we clamped it above.
+  // Convert n' to an i32.  This is safe because we clamped it above.
   llvm::Value* n_i32 =
       b->CreateFPToSI(n, llvm::VectorType::get(b->getInt32Ty(), vector_width));
 
-  // Create 2^n as an fp32.  This works because -126 <= n <= 127 means that n is
-  // within the bounds for an fp32 exponent.
   auto splat_i32 = [&](int32 v) {
     return b->CreateVectorSplat(vector_width, b->getInt32(v));
   };
+
+  // Creates the value 2^n' if -126 <= n' <= 127 and 0 if n' = -127.
   const int32 kF32SignificandBits = 23;
   llvm::Value* exp_bias = splat_i32(0x7f);
   llvm::Value* pow2 =
@@ -208,7 +240,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
                                     splat_i32(kF32SignificandBits)),
                        vsl.vector_type());
 
-  // Return z * 2^n.
+  // Return z * 2^n' if -126 <= n' <= 127 and 0 if n = -127.
   return vsl.Mul(z, pow2);
 }
 

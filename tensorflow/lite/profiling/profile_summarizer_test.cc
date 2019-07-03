@@ -102,7 +102,7 @@ TEST(ProfileSummarizerTest, Empty) {
 }
 
 TEST(ProfileSummarizerTest, Interpreter) {
-  BufferedProfiler profiler;
+  BufferedProfiler profiler(1024);
   SimpleOpModel m;
   m.Init(RegisterSimpleOp);
   auto interpreter = m.GetInterpreter();
@@ -123,7 +123,7 @@ TEST(ProfileSummarizerTest, Interpreter) {
 }
 
 TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
-  BufferedProfiler profiler;
+  BufferedProfiler profiler(1024);
   SimpleOpModel m;
   m.Init(RegisterSimpleOpWithProfilingDetails);
   auto interpreter = m.GetInterpreter();

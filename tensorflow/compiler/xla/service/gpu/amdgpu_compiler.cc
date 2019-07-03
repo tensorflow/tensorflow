@@ -41,14 +41,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -384,7 +384,13 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 
 AMDGPUCompiler::AMDGPUCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(se::rocm::kROCmPlatformId) {}
+
+AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)),
+      platform_id_(platform_id) {}
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -543,10 +549,10 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
         *profile_index_map, cost_analysis, entry_computation->name());
   }
 
-  auto* amdgpu_executable = new AMDGPUExecutable(
-        "", std::move(hsaco), isa_version, std::move(thunk_schedule),
-        std::move(module), std::move(buffer_assignment),
-        std::move(profile_printer), std::move(profile_index_map));
+  auto* amdgpu_executable = new GpuExecutable(
+      "", std::move(hsaco), isa_version, std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment),
+      std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     amdgpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -562,7 +568,7 @@ AMDGPUCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 }
 
 se::Platform::Id AMDGPUCompiler::PlatformId() const {
-  return se::rocm::kROCmPlatformId;
+  return platform_id_;
 }
 
 }  // namespace gpu
@@ -571,7 +577,7 @@ se::Platform::Id AMDGPUCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::rocm::kROCmPlatformId,
-      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(stream_executor::rocm::kROCmPlatformId); });
   return true;
 }
 static bool module_initialized = InitModule();

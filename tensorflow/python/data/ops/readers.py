@@ -249,7 +249,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         self._buffer_output_elements,
         self._prefetch_input_elements,
         f=self._map_func.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 

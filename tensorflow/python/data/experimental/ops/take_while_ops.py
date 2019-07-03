@@ -45,7 +45,7 @@ class _TakeWhileDataset(dataset_ops.UnaryUnchangedStructureDataset):
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         other_arguments=self._predicate.function.captured_inputs,
         predicate=self._predicate.function,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_TakeWhileDataset, self).__init__(input_dataset, var_tensor)
 
   def _functions(self):

@@ -40,6 +40,7 @@ namespace gpu {
 class AMDGPUCompiler : public LLVMCompiler {
  public:
   AMDGPUCompiler();
+  AMDGPUCompiler(se::Platform::Id platform_id);
   ~AMDGPUCompiler() override {}
 
   // Bring in
@@ -79,6 +80,8 @@ class AMDGPUCompiler : public LLVMCompiler {
   static const char* kDataLayout;
 
  private:
+  se::Platform::Id platform_id_;
+
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64 pointer_size_;
 

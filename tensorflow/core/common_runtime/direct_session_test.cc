@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <thread>
+#include <thread>  // NOLINT
 #include <unordered_map>
 #include <vector>
 

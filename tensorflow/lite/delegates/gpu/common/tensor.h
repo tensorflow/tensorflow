@@ -86,7 +86,6 @@ Tensor<ShapeT, Type> MakeZeroTensor(const ShapeT& shape) {
 }
 
 using TensorFloat32 = Tensor<BHWC, DataType::FLOAT32>;
-using TensorRefFloat32 = TensorRef<BHWC>;
 
 }  // namespace gpu
 }  // namespace tflite

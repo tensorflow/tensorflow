@@ -51,13 +51,20 @@ _CONTRIB_RNN_WARNING = (
 
 _CONTRIB_DIST_STRAT_WARNING = (
     ast_edits.WARNING,
-    "(Manual edit required) tf.contrib.distribute.* have been migrated to"
-    "tf.distribute.*. Please check out the new module for updates APIs.")
+    "(Manual edit required) tf.contrib.distribute.* have been migrated to "
+    "tf.distribute.*. Please check out the new module for updated APIs.")
+
+_CONTRIB_SEQ2SEQ_WARNING = (
+    ast_edits.WARNING,
+    "(Manual edit required) tf.contrib.seq2seq.* have been migrated to "
+    "`tfa.seq2seq.*` in TensorFlow Addons. Please see "
+    "https://github.com/tensorflow/addons for more info.")
 
 MODULE_DEPRECATIONS = {
     "tf.contrib": _CONTRIB_WARNING,
     "tf.contrib.cudnn_rnn": _CONTRIB_CUDNN_RNN_WARNING,
     "tf.contrib.rnn": _CONTRIB_RNN_WARNING,
     "tf.flags": _FLAGS_WARNING,
-    "tf.contrib.distribute": _CONTRIB_DIST_STRAT_WARNING
+    "tf.contrib.distribute": _CONTRIB_DIST_STRAT_WARNING,
+    "tf.contrib.seq2seq": _CONTRIB_SEQ2SEQ_WARNING
 }

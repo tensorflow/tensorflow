@@ -37,6 +37,15 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .HostMemory("handle"),
                         XRTAllocateOp<XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("handle"),
+                        XRTAllocateUninitializedOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("handle"),
+                        XRTAllocateUninitializedOp<XRTGenericDeviceAccessor>);
+
 REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
                             .Device(DEVICE_XLA_GPU)
                             .HostMemory("inputs")

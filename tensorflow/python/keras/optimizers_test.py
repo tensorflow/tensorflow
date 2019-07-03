@@ -24,7 +24,6 @@ import weakref
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -200,16 +199,6 @@ class KerasOptimizersTest(test.TestCase):
                 batch_size=5,
                 verbose=0)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 11)
-
-      if not context.executing_eagerly():
-        # TODO(kathywu): investigate why training with an array input and
-        # setting the argument steps_per_epoch does not work in eager mode.
-        model.fit(np.random.random((20, 3)),
-                  np.random.random((20, 2)),
-                  steps_per_epoch=8,
-                  verbose=0)
-        self.assertEqual(
-            keras.backend.get_value(model.optimizer.iterations), 19)
 
   def test_negative_clipvalue_or_clipnorm(self):
     with self.assertRaises(ValueError):

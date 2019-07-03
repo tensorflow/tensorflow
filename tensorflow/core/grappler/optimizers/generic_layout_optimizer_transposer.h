@@ -36,35 +36,7 @@ namespace grappler {
 
 constexpr char kAttrSrcFormat[] = "src_format";
 constexpr char kAttrDstFormat[] = "dst_format";
-
-// NodeLayoutContext holds the data formats to convert from and to for a layout
-// sensitive node.
-struct NodeLayoutContext {
-  void Initialize(absl::string_view src_format, absl::string_view dst_format,
-                  bool is_transposable);
-
-  bool operator==(const NodeLayoutContext& other) const {
-    return src == other.src && dst == other.dst;
-  }
-
-  bool operator!=(const NodeLayoutContext& other) const {
-    return !(*this == other);
-  }
-
-  string src;
-  string dst;
-  std::vector<int> src_to_dst;
-  std::vector<int> dst_to_src;
-  bool transposable = false;
-};
-
-// TransposeContext holds the data formats to convert from and to of each data
-// fanin and fanout for a layout agnostic node.
-struct LayoutAgnosticNodeFanouts {
-  std::vector<NodeLayoutContext> fanout_layouts;
-  std::vector<NodeLayoutContext> fanin_layouts;
-  bool transposable = false;
-};
+constexpr char kAttrOutputShape[] = "_output_shapes";
 
 // TransposeContext owns all data members. Must initialize GraphProperties,
 // FrameView, GraphDef and MutableGraphView with the same graph. NodeDef
@@ -76,8 +48,10 @@ struct TransposeContext {
   // TransposeContext outside constructor.
   static Status InitializeTransposeContext(const GrapplerItem& item,
                                            const Cluster* cluster,
+                                           absl::string_view src_format,
+                                           absl::string_view dst_format,
+                                           absl::string_view target_device,
                                            TransposeContext* context);
-
   FrameView frames;
   GraphDef graph;
   // Number of nodes in the original graph. As new nodes are appended to the end
@@ -88,12 +62,12 @@ struct TransposeContext {
   std::unique_ptr<GraphProperties> graph_properties;
   std::unique_ptr<utils::MutableGraphView> graph_view;
   std::unique_ptr<const VirtualPlacer> virtual_placer;
-  // Mapping of node index to data layout conversion of layout sensitive nodes.
-  absl::flat_hash_map<int, NodeLayoutContext> sensitive_node_layouts;
-  // Mapping of node index to data layout conversion of layout agnostic nodes.
-  absl::flat_hash_map<int, LayoutAgnosticNodeFanouts> agnostic_node_layouts;
-  NodeLayoutContext unknown_node_layout;
-  LayoutAgnosticNodeFanouts unknown_agnostic_node_layout;
+
+  string src_format;
+  string dst_format;
+  string target_device;
+  std::vector<int> src_to_dst;
+  std::vector<int> dst_to_src;
 };
 
 class Transposer {
@@ -104,6 +78,16 @@ class Transposer {
   Transposer& operator=(const Transposer&) = delete;
 
   virtual ~Transposer() {}
+
+  // Returns true iff the node should be processed by this transposer.
+  // NodeProcessors may perform additional oprand specific checks before
+  // processing if necessary.
+  // Following common conditions are checked:
+  // * node's device matches target device
+  // * node's source format matches config's source format
+  // * node has output
+  bool ShouldProcess(const TransposeContext& context,
+                     const utils::MutableNodeView& node) const;
 
   // Transposes given node from src format to dst format. Also perform other
   // necessary operations to guarantee the graph produce the same result.
@@ -117,6 +101,7 @@ class Transposer {
                              absl::string_view node_name,
                              absl::string_view device,
                              absl::Span<const int> permutation,
+                             absl::string_view control_node_name,
                              utils::MutationNewNode* added_node);
 
   // Creates a TransposeNode with given properties. If node with node_name
@@ -133,7 +118,6 @@ class Transposer {
   // Update all edges between dst_node->fanin[dst_ports] and dst_node by
   // inserting an op node.
   Status UpdateFaninEdgesWithOp(TransposeContext* context,
-                                const NodeLayoutContext& layout,
                                 absl::Span<const int> dst_ports,
                                 utils::MutableNodeView* dst_node,
                                 absl::string_view op);
@@ -141,7 +125,6 @@ class Transposer {
   // Update all edges between src_node:src_ports and nodes take
   // src_node:src_ports as fanin. Also update attr _output_shape of src_node.
   Status UpdateFanoutEdgesWithOp(TransposeContext* context,
-                                 const NodeLayoutContext& layout,
                                  absl::Span<const int> src_ports,
                                  utils::MutableNodeView* src_node,
                                  absl::string_view op);
@@ -149,7 +132,6 @@ class Transposer {
   // Creates a DataFromat node with given properties.
   // DataFromat op is either DataFormatVecPermute or DataFormatDimMap.
   Status CreateDataFormatNode(TransposeContext* context,
-                              const NodeLayoutContext& layout,
                               absl::string_view node_name, absl::string_view op,
                               absl::string_view device,
                               const DataType& data_type, bool is_fanin_on_host,
@@ -167,16 +149,14 @@ class Transposer {
                       const utils::MutableNodeView& node) const;
   string GetDeviceName(const VirtualPlacer* virtual_placer,
                        const NodeDef& node) const;
-  virtual string GetDstDataFormatForDevice(
-      const DeviceProperties& device) const;
   // Update all edges between dst_node->fanin[dst_ports] and dst_node.
-  // A node with op is created and insereted between all edges.
+  // A node with op is created and inserted between all edges.
   // op is one of Transpose, DataFormatVecPermute or DataFormatDimMap.
-  Status UpdateEdge(TransposeContext* context, const NodeLayoutContext& layout,
-                    absl::string_view name_format, absl::string_view op,
-                    const AttrValue* input_shape,
-                    bool is_src_format_to_dst_format, const int src_port,
-                    const int dst_port, utils::MutableNodeView* src_node,
+  Status UpdateEdge(TransposeContext* context, absl::string_view name_format,
+                    absl::string_view op, const AttrValue* input_shape,
+                    bool is_in_frame, bool is_src_format_to_dst_format,
+                    const int src_port, const int dst_port,
+                    utils::MutableNodeView* src_node,
                     utils::MutableNodeView* dst_node);
   string GetFaninNameFormat(absl::string_view node_name, int port,
                             absl::string_view src_format,
@@ -197,18 +177,10 @@ class LayoutSensitiveOpTransposer : public Transposer {
 
   // Updates attrs data_format, ksize, strides of the given node to dst_format.
   // _output_shape is updated during UpdateOutputEdges.
-  Status UpdateNode(TransposeContext* context, const NodeLayoutContext& layout,
-                    utils::MutableNodeView* node);
+  Status UpdateNode(TransposeContext* context, utils::MutableNodeView* node);
 
  protected:
-  // Check if a node is transposable, and return what data format to transpose
-  // from and to.
-  const NodeLayoutContext& CheckNodeTransposable(
-      TransposeContext* context, const utils::MutableNodeView& node) const;
-
-  // Apply mutation. If mutation fails, reset layout being transpose to
-  // associated with the node.
-  Status CommitMutation(TransposeContext* context,
+  bool ShouldNotProcess(const TransposeContext& context,
                         const utils::MutableNodeView& node);
 };
 
@@ -289,23 +261,12 @@ class LayoutAgnosticOpTransposer : public Transposer {
   explicit LayoutAgnosticOpTransposer() : Transposer() {}
 
  protected:
-  void ProcessFanoutDataLayouts(TransposeContext* context,
-                                const utils::MutableNodeView& node);
+  bool IsAfterDstToSrcTransform(const TransposeContext& context,
+                                const utils::MutableNodeView& node) const;
 
-  void FetchNodeDataLayouts(TransposeContext* context,
-                            const utils::MutableNodeView& node);
-
-  // Check if a node is transposable, and return what data format to transpose
-  // from and to.
-  const LayoutAgnosticNodeFanouts& CheckNodeTransposable(
-      TransposeContext* context, const utils::MutableNodeView& node);
-
-  // Validate node and get data format layout to transpose from and to for a
-  // given fanout port of a node.
-  const NodeLayoutContext& GetDataFormatLayoutForNode(
-      TransposeContext* context, const utils::MutableNodeView& node,
-      int fanout_port,
-      std::function<bool(const utils::MutableNodeView& node)> node_check);
+  std::vector<int> GetVariadic4DFaninPorts(
+      const TransposeContext& context,
+      const utils::MutableNodeView& node) const;
 };
 
 class DefaultLayoutAgnosticOpTransposer : public LayoutAgnosticOpTransposer {
@@ -345,7 +306,6 @@ class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
                         absl::string_view shape_const_node_name,
                         const DataType& data_type);
   Status MaybeReshapeVectorFanin(TransposeContext* context,
-                                 const NodeLayoutContext& layout,
                                  utils::MutableNodeView* node);
 };
 
@@ -381,7 +341,9 @@ class MergeTransposer : public LayoutAgnosticOpTransposer {
                        utils::MutableNodeView* node) override;
 
  private:
-  std::vector<int> GetFaninPorts(const utils::MutableNodeView& node);
+  bool IsEveryFaninAfterDstToSrcTransform(
+      const TransposeContext& context,
+      const utils::MutableNodeView& node) const;
 };
 
 class PadTransposer : public LayoutAgnosticOpTransposer {
@@ -403,7 +365,7 @@ class ReduceTransposer : public LayoutAgnosticOpTransposer {
   bool KeepDims(const utils::MutableNodeView& node);
   bool IsAlongAxis(const utils::MutableNodeView& axis_node,
                    absl::Span<const int> axis);
-  bool IsReduceAxisSupported(const NodeLayoutContext& layout,
+  bool IsReduceAxisSupported(const TransposeContext& context,
                              const utils::MutableNodeView& node);
 };
 
@@ -495,8 +457,8 @@ class StridedSliceTransposer : public LayoutAgnosticOpTransposer {
  private:
   bool IsMaskZero(const utils::MutableNodeView& node, absl::string_view mask);
   bool HasOnlyBeginEndMask(const utils::MutableNodeView& node);
-  Status PermuteMask(TransposeContext* context, const NodeLayoutContext& layout,
-                     utils::MutableNodeView* node, absl::string_view mask);
+  Status PermuteMask(TransposeContext* context, utils::MutableNodeView* node,
+                     absl::string_view mask);
 };
 
 class SwitchTransposer : public LayoutAgnosticOpTransposer {
@@ -534,14 +496,14 @@ class UnaryGradTransposer : public LayoutAgnosticOpTransposer {
 // Utils.
 
 // Permutes elements according to permutation and replaces the original values.
-// permutation and values must have same size.
+// Permutation and values must have same size.
 template <typename T>
-Status Permute(absl::Span<const int> permutation, T* values) {
+Status PermuteSingle(absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size()) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
-                               " does not match size of permuation ",
+                               " does not match size of permutation ",
                                permutation.size(), "."));
   }
   typedef typename T::value_type V;
@@ -549,6 +511,27 @@ Status Permute(absl::Span<const int> permutation, T* values) {
   int index = 0;
   for (V& element : *values) {
     element = elements[permutation[index++]];
+  }
+  return Status::OK();
+}
+
+// Permutes two elements at a time according to permutation and replaces the
+// original values. Values must be twice the size of permutation.
+template <typename T>
+Status PermuteDouble(absl::Span<const int> permutation, T* values) {
+  DCHECK(values != nullptr);
+  if (values->size() != permutation.size() * 2) {
+    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+                  absl::StrCat("Size of values ", values->size(),
+                               " does not match twice the size of permutation ",
+                               permutation.size(), "."));
+  }
+  typedef typename T::value_type V;
+  std::vector<V> elements(values->begin(), values->end());
+  for (int i = 0; i < values->size(); i = i + 2) {
+    const int permutation_index = permutation[i / 2];
+    (*values)[i] = elements[permutation_index * 2];
+    (*values)[i + 1] = elements[permutation_index * 2 + 1];
   }
   return Status::OK();
 }
@@ -580,18 +563,7 @@ std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node);
 bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
                                           Tensor* tensor);
 
-// Returns true if the given node is a transpose op performing given const
-// permutation.
-bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
-                                   absl::Span<const int> permutation);
-
 bool IsDataFormatOp(const utils::MutableNodeView& node);
-
-// Returns true if the given node is DataformatDimMap or DataformatVecPermute
-// performing given permutation from scr_format to dst_format.
-bool IsValidDataFormatNode(const utils::MutableNodeView& node,
-                           absl::string_view src_format,
-                           absl::string_view dst_format);
 
 std::vector<int> GetPermutation(absl::string_view src_format,
                                 absl::string_view dst_format);

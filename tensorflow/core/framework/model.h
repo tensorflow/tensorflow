@@ -36,7 +36,11 @@ namespace data {
 namespace model {
 
 // A constant that can be used to enable auto-tuning.
-constexpr int kAutoTune = -1;
+constexpr int64 kAutotune = -1;
+
+enum class AutotuneAlgorithm {
+  HILL_CLIMB = 0,
+};
 
 // Represents thread-safe state that can be shared between an input pipeline and
 // the performance model.
@@ -47,18 +51,18 @@ struct SharedState {
       : value(value),
         mu(std::move(mu)),
         cond_var(std::move(cond_var)),
-        tunable(value == kAutoTune) {}
+        tunable(value == kAutotune) {}
 
-  int64 value;
-  std::shared_ptr<mutex> mu;
-  std::shared_ptr<condition_variable> cond_var;
+  double value;
+  const std::shared_ptr<mutex> mu;
+  const std::shared_ptr<condition_variable> cond_var;
   const bool tunable;
 };
 
 // Represents a parameter.
 struct Parameter {
-  Parameter(const string& name, std::shared_ptr<SharedState> state, int64 min,
-            int64 max)
+  Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
+            double max)
       : name(name),
         value(state->value),
         min(min),
@@ -66,17 +70,17 @@ struct Parameter {
         state(std::move(state)) {}
 
   // Human-readable name of the parameter.
-  string name;
+  const string name;
 
   // Identifies the model value of the parameter. This can be different from
   // the actual value (e.g. during optimization search).
-  int64 value;
+  double value;
 
   // Identifies the minimum value of the parameter.
-  int64 min;
+  const double min;
 
   // Identifies the maximum value of the parameter.
-  int64 max;
+  const double max;
 
   // Shared state of the parameter.
   std::shared_ptr<SharedState> state;
@@ -84,7 +88,7 @@ struct Parameter {
 
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max);
+                                         double min, double max);
 
 // Abstract representation of a TensorFlow input pipeline node. It collects
 // information about inputs to this node, processing time spent executing the
@@ -349,7 +353,7 @@ class Node {
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
-  double ProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
     // If the number of elements produced by a node is smaller than this
     // constant, then the processing time history is used as a prior for the
     // processing time computation.
@@ -362,7 +366,7 @@ class Node {
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        processing_time = input->SelfProcessingTime();
+        processing_time = input->TotalProcessingTime();
         num_elements = input->num_elements();
         // The fewer elements the input has produced so far, the more weight
         // is assigned to the prior to reduce volatility.
@@ -486,8 +490,9 @@ class Model {
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
 
-  // Runs optimization.
-  void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
+  // Uses the given algorithm to perform the autotuning optimization.
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget)
+      LOCKS_EXCLUDED(mu_);
 
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
@@ -511,6 +516,14 @@ class Model {
   // a mapping from a (unique) node name to a tunable parameter.
   std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to 1. It then repeatedly identifies the parameter whose increase
+  // in parallelism decreases the output time the most. This process is repeated
+  // until all parameters reach their maximum values or the projected output
+  // time is less than or equal to the processing time needed to produce an
+  // element divided by CPU budget.
+  void OptimizeHillClimb(int64 cpu_budget);
 
   // Collects the output time for the given node.
   double OutputTime(std::shared_ptr<Node> node);

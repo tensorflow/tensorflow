@@ -81,6 +81,33 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Tensor) {
   ASSERT_EQ(3, graph.values().size());
 }
 
+TEST(RemoveSingleInputAdd, DoNotTrigger_Scalar) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  auto first_node = graph.NewNode();
+  ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
+
+  auto add_node = graph.NewNode();
+  Value<TensorRef<BHWC>>* output;
+  ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
+  add_node->operation.type = ToString(OperationType::ADD);
+  AddAttributes attr;
+  attr.param = 0.5f;
+  add_node->operation.attributes = attr;
+
+  Value<TensorRef<BHWC>>* temp;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+
+  auto transformation = NewRemoveSingleInputAdd();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("noop", transformation.get());
+
+  EXPECT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+}
+
 TEST(RemoveSingleInputAdd, DoNotTrigger_Multiple) {
   GraphFloat32 graph;
   auto input = graph.NewValue();

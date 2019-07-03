@@ -129,21 +129,6 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
 };
 
 template <typename Device, typename T>
-struct SpatialConvolutionBackwardInput {
-  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
-                  typename TTypes<T, 4>::ConstTensor kernel,
-                  typename TTypes<T, 4>::ConstTensor output_backward,
-                  int row_stride, int col_stride, int row_dilation,
-                  int col_dilation) {
-    // Need to swap row/col when calling Eigen.
-    input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_backward.dimension(2),
-        input_backward.dimension(1), col_stride, row_stride, col_dilation,
-        row_dilation);
-  }
-};
-
-template <typename Device, typename T>
 struct SpatialConvolutionBackwardFilter {
   void operator()(const Device& d,
                   typename TTypes<T, 4>::Tensor kernel_backward,

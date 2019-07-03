@@ -125,6 +125,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )
 
@@ -274,7 +275,12 @@ py_library(
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
-        "saving/saved_model.py",
+        "saving/saved_model/constants.py",
+        "saving/saved_model/load.py",
+        "saving/saved_model/save.py",
+        "saving/saved_model/serialized_attributes.py",
+        "saving/saved_model/utils.py",
+        "saving/saved_model_experimental.py",
         "saving/saving_utils.py",
     ],
     srcs_version = "PY2AND3",
@@ -708,11 +714,11 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = [
-	"no_cuda",
-	"no_rocm",
-    ],
     shard_count = 4,
+    tags = [
+	    "no_rocm",
+	    "no_cuda",
+    ],
 )
 
 cuda_py_test(
@@ -885,11 +891,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan",
-            # Test temporarily disabled due to test application failure (reshape failure)
-            # on both Cuda and ROCm. Should re-enable once get fixed
-            "no_rocm",
-            "no_cuda",
+    tags = [
+        # Test temporarily disabled due to test application failure (reshape failure)
+        # on both Cuda and ROCm. Should re-enable once get fixed
+        "no_cuda",
+        "no_rocm",
+        "notsan",
     ],
 )
 
@@ -1157,7 +1164,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -1167,6 +1173,8 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
+    shard_count = 4,
+    tags = ["no_windows"],  # b/135752236
 )
 
 tf_py_test(
@@ -1362,9 +1370,9 @@ tf_py_test(
     ],
     shard_count = 20,
     tags = [
-            "notsan",
-            "no_rocm",
-           ],
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1393,9 +1401,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = [
-	"no_rocm",
-    ],
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1441,10 +1447,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-            "notsan",
-            "no_rocm",
-            "no_cuda",
-           ],
+        "no_cuda",
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1519,8 +1525,8 @@ tf_py_test(
     ],
     shard_count = 8,
     tags = [
-            "no_rocm",
-            "no_cuda",
+        "no_rocm",
+        "no_cuda",
     ],
 )
 
@@ -1631,9 +1637,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "saved_model_test",
+    name = "saved_model_experimental_test",
     size = "medium",
-    srcs = ["saving/saved_model_test.py"],
+    srcs = ["saving/saved_model_experimental_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1643,6 +1649,22 @@ tf_py_test(
     shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/119349471): Re-enable
+        "no_windows",
+    ],
+)
+
+tf_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saving/saved_model/saved_model_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
         "no_windows",
     ],
 )
@@ -1667,11 +1689,13 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )

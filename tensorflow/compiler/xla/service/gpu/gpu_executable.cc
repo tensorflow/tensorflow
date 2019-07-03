@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -51,25 +52,74 @@ using tensorflow::tracing::ScopedAnnotation;
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
     const string& text, const std::vector<uint8>& binary,
-    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    GpuVersion gpu_version, std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      text_(text), binary_(binary),
+      text_(text),
+      binary_(binary),
+      gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
+  ComputeThunkAnnotations();
 }
 
 GpuExecutable::~GpuExecutable() {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
                                                assignment_);
+}
+
+void GpuExecutable::ComputeThunkAnnotations() {
+  CanonicalNameMap canonical_name_map;
+  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    const HloInstruction* hlo = thunk->hlo_instruction();
+    CHECK(hlo);
+    thunk_annotations_[thunk] = absl::StrFormat(
+        "%s:#tf_op=%s,hlo_op=%s,hlo_module=%s#",
+        hlo->ToStringWithCanonicalNameMap(HloPrintOptions::Canonical(),
+                                          &canonical_name_map),
+        hlo->metadata().op_name(), hlo->name(), hlo->GetModule()->name());
+  }
+}
+
+Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
+    const ServiceExecutableRunOptions* run_options) {
+  se::Stream* main_stream = run_options->stream();
+
+  stream_executor::PlatformKind platform_kind =
+      main_stream->parent()->platform_kind();
+  if (platform_kind == stream_executor::PlatformKind::kROCm) {
+    int stream_isa_version;
+    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
+        &stream_isa_version);
+    GpuVersion amd_isa_version = stream_isa_version;
+    TF_RET_CHECK(amd_isa_version == gpu_version_)
+        << "AMDGPU GCN ISA version mismatch; expected {"
+        << absl::get<int>(gpu_version_) << ", but was " << stream_isa_version;
+  } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
+    std::pair<int, int> stream_compute_compatibility;
+    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+        &stream_compute_compatibility.first,
+        &stream_compute_compatibility.second);
+    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+        << "Compute capability mismatch; expected {"
+        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
+        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
+        << stream_compute_compatibility.first << ", "
+        << stream_compute_compatibility.second << "}";
+  } else {
+    return InternalError("Unknown platform: %d", platform_kind);
+  }
+
+  return Status::OK();
 }
 
 Status GpuExecutable::ExecuteThunks(
@@ -112,18 +162,10 @@ Status GpuExecutable::ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    //
-    // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
-    // since we expect it to be an expensive call?
     absl::optional<ScopedAnnotation> op_annotation;
     CHECK(thunk->hlo_instruction());
     if (scoped_annotation_enabled) {
-      auto hlo = thunk->hlo_instruction();
-      op_annotation.emplace(
-          thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
-          absl::StrCat("#tf_op=", hlo->metadata().op_name(),
-                       ",hlo_op=", hlo->name(),
-                       ",hlo_module=", hlo->GetModule()->name(), "#"));
+      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
@@ -192,7 +234,9 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  module_spec.AddCudaCubinInMemory(binary());
+  if (!binary().empty()) {
+    module_spec.AddCudaCubinInMemory(binary());
+  }
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
@@ -243,38 +287,54 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   BufferAllocations::Builder buffer_allocations_builder;
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  TF_ASSIGN_OR_RETURN(auto* const globals, ResolveConstantGlobals(executor));
+  const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] { return std::string("Resolve constant globals"); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
 
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      se::DeviceMemoryBase buffer =
-          arguments[param_no]->buffer(allocation.param_shape_index());
-
-      // All top-level buffers and sub-buffers must have an explicit, non-null
-      // pointer, except for zero-sized buffers, which may be null.
-      if (buffer.is_null() && buffer.size() > 0) {
-        return FailedPrecondition(
-            "Cannot run XLA computation because pointer to (sub-)buffer at "
-            "index %s of parameter %d was null.  All pointers to (sub-)buffers "
-            "must not be null, unless the (sub-)buffer has zero elements.",
-            allocation.param_shape_index().ToString(), param_no);
-      }
-
-      buffer_allocations_builder.RegisterBuffer(i, buffer);
-    }
-
-    if (allocation.is_constant()) {
-      buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
-    }
+    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(executor));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto buffer_allocations,
-      buffer_allocations_builder.Build(
-          assignment_.get(), executor->device_ordinal(), memory_allocator));
+  std::unique_ptr<BufferAllocations> buffer_allocations;
+
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] { return std::string("Build buffer allocations"); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+         ++i) {
+      const BufferAllocation& allocation = assignment_->GetAllocation(i);
+      if (allocation.is_entry_computation_parameter()) {
+        auto param_no = allocation.parameter_number();
+        se::DeviceMemoryBase buffer =
+            arguments[param_no]->buffer(allocation.param_shape_index());
+
+        // All top-level buffers and sub-buffers must have an explicit, non-null
+        // pointer, except for zero-sized buffers, which may be null.
+        if (buffer.is_null() && buffer.size() > 0) {
+          return FailedPrecondition(
+              "Cannot run XLA computation because pointer to (sub-)buffer at "
+              "index %s of parameter %d was null.  All pointers to "
+              "(sub-)buffers must not be null, unless the (sub-)buffer has "
+              "zero elements.",
+              allocation.param_shape_index().ToString(), param_no);
+        }
+
+        buffer_allocations_builder.RegisterBuffer(i, buffer);
+      }
+
+      if (allocation.is_constant()) {
+        buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        buffer_allocations,
+        buffer_allocations_builder.Build(
+            assignment_.get(), executor->device_ordinal(), memory_allocator));
+  }
 
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
                                    block_host_until_done,

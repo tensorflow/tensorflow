@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving import saved_model_experimental as saved_model
 
 
 class KerasExperimentalSaveLoadTest(test_base.TestSavedModelBase):

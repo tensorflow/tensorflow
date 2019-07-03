@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -54,6 +55,17 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 // There is currently no guarantee that the hash of a subgraph will stay the
 // same between TensorFlow builds.
 uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
+
+// Returns a stable hash of the function `f`.
+//
+// This function computes the hash by hashing the metadata of the
+// function (disregarding the auto-generated names and descriptions) and also
+// hashing the subgraph rooted at each of the output nodes.
+//
+// There is currently no guarantee that the hash of a function will stay the
+// same between TensorFlow builds.
+uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
+                            const FunctionDef* f);
 
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
