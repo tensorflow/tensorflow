@@ -286,7 +286,7 @@ class MapDefunTest(test_base.DatasetTestBase):
         values=[1, 2, 1, 2],
         dense_shape=[2, 3, 4])
     actual = self.evaluate(deserialized)
-    self.assertSparseValuesEqual(expected, actual)
+    self.assertValuesEqual(expected, actual)
 
   def testMapDefunWithVariantTensorAsCaptured(self):
 
@@ -307,7 +307,7 @@ class MapDefunTest(test_base.DatasetTestBase):
         values=[1, 2, 1, 2],
         dense_shape=[2, 3, 4])
     actual = self.evaluate(deserialized)
-    self.assertSparseValuesEqual(expected, actual)
+    self.assertValuesEqual(expected, actual)
 
   def testMapDefunWithStrTensor(self):
 
@@ -328,7 +328,7 @@ class MapDefunTest(test_base.DatasetTestBase):
         values=[1, 2, 1, 2],
         dense_shape=[2, 3, 4])
     actual = self.evaluate(deserialized)
-    self.assertSparseValuesEqual(expected, actual)
+    self.assertValuesEqual(expected, actual)
 
 
 if __name__ == "__main__":
