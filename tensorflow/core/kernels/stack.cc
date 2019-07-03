@@ -86,12 +86,9 @@ class Stack : public ResourceBase {
       index = stack_.size() - 1;
     }
     *value = stack_.back().first;
-    auto iter = stack_.back().second;
-    for (auto i = unswapped_lru_.begin(); i != unswapped_lru_.end(); i++) {
-      if (i == iter) {
-        unswapped_lru_.erase(iter);
-        break;
-      }
+    absl::optional<std::list<int>::iterator> iter = stack_.back().second;
+    if (iter) {
+      unswapped_lru_.erase(*iter);
     }
     stack_.pop_back();
     return Status::OK();
@@ -127,6 +124,9 @@ class Stack : public ResourceBase {
       }
       int index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
+      if (index < stack_.size()) {
+        stack_[index].second.reset();
+      }
       if (!cond(stack_[index].first)) {
         continue;
       }
@@ -197,8 +197,9 @@ class Stack : public ResourceBase {
   Tensor handle_;
   int max_size_;
   bool closed_ GUARDED_BY(mu_);
-  std::vector<std::pair<TensorAndAllocation, std::list<int>::iterator>> stack_
-      GUARDED_BY(mu_);
+  std::vector<
+      std::pair<TensorAndAllocation, absl::optional<std::list<int>::iterator>>>
+      stack_ GUARDED_BY(mu_);
 
   std::list<int> unswapped_lru_ GUARDED_BY(mu_);  // holds indices into stack_
   std::list<int> swapped_mru_ GUARDED_BY(mu_);    // holds indices into stack_
