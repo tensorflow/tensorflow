@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -54,6 +55,7 @@ constexpr char kSizeSuffix[] = ".size";
 constexpr char kCacheCompleted[] = "cache_completed";
 constexpr char kIndex[] = "index";
 constexpr char kImpl[] = "Impl";
+constexpr char kCacheFilename[] = "CacheFilename";
 
 class CacheDatasetOp::FileDataset : public DatasetBase {
  public:
@@ -124,9 +126,9 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
   class FileIterator : public DatasetIterator<FileDataset> {
    public:
     explicit FileIterator(const Params& params)
-        : DatasetIterator<FileDataset>(params) {
-      if (params.dataset->env_
-              ->FileExists(MetaFilename(params.dataset->filename_))
+        : DatasetIterator<FileDataset>(params),
+          cache_filename_(GenerateCacheFilename(params)) {
+      if (params.dataset->env_->FileExists(MetaFilename(cache_filename_))
               .ok()) {
         mode_ = Mode::read;
       } else {
@@ -157,6 +159,8 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kMode), mode_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kCacheFilename), cache_filename_));
       return SaveInput(writer, iterator_);
     }
     Status RestoreInternal(IteratorContext* ctx,
@@ -166,16 +170,16 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         int64 temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
         mode_ = static_cast<Mode>(temp);
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kCacheFilename), &cache_filename_));
       }
       if (mode_ == Mode::write &&
-          dataset()
-              ->env_->FileExists(MetaFilename(dataset()->filename_))
-              .ok()) {
+          dataset()->env_->FileExists(MetaFilename(cache_filename_)).ok()) {
         // This could happen if the cache was completely written after the
         // checkpoint was saved.
         LOG(WARNING)
             << "It looks like the cache was already completely written("
-            << MetaFilename(dataset()->filename_)
+            << MetaFilename(cache_filename_)
             << ") after the last checkpoint was saved. Attempting to read "
             << "the cache instead of continuing to write. If this is a "
             << "mistake, please remove the above file and try running again.";
@@ -205,13 +209,14 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
     // When all elements have been produced, these shards get coalesced.
     class FileWriterIterator : public DatasetIterator<FileDataset> {
      public:
-      explicit FileWriterIterator(const Params& params)
+      explicit FileWriterIterator(const Params& params,
+                                  const string& cache_filename)
           : DatasetIterator<FileDataset>(params),
             cur_index_(0),
             shard_id_(0),
-            filename_(
-                strings::StrCat(params.dataset->filename_, "_", shard_id_)),
-            lockfile_(strings::StrCat(filename_, kLockFileSuffix)),
+            cache_filename_(cache_filename),
+            lockfile_(
+                strings::StrCat(cache_filename_, "_", 0, kLockFileSuffix)),
             lockfile_created_(false),
             iteration_completed_(false) {}
 
@@ -296,8 +301,8 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
           // Start caching to a new shard.
           shard_id_++;
-          filename_ = strings::StrCat(dataset()->filename_, "_", shard_id_);
-          lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
+          lockfile_ =
+              strings::StrCat(cache_filename_, "_", shard_id_, kLockFileSuffix);
           lockfile_created_ = false;
         }
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -335,9 +340,10 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
             return errors::Internal("Invalid value for shard_id ", temp);
           }
         }
-        filename_ = strings::StrCat(dataset()->filename_, "_", shard_id_);
-        lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
-        writer_ = absl::make_unique<BundleWriter>(dataset()->env_, filename_);
+        lockfile_ =
+            strings::StrCat(cache_filename_, "_", shard_id_, kLockFileSuffix);
+        writer_ =
+            absl::make_unique<BundleWriter>(dataset()->env_, cache_filename_);
         return Status::OK();
       }
 
@@ -355,11 +361,11 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
         // 1. Check that a checkpoint for the shard has not already been
         // written.
-        if (dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
-          return errors::AlreadyExists("Existing cache files found: \n",
-                                       MetaFilename(filename_), "\n",
-                                       DataFilename(filename_, 0, 1), "\n",
-                                       "To continue delete the above files.");
+        if (dataset()->env_->FileExists(MetaFilename(cache_filename_)).ok()) {
+          return errors::AlreadyExists(
+              "Existing cache files found: \n", MetaFilename(cache_filename_),
+              "\n", DataFilename(cache_filename_, 0, 1), "\n",
+              "To continue delete the above files.");
         }
 
         // 2. Check that there isn't a concurrent iterator that is writing
@@ -397,7 +403,8 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         // conditions are not met since BundleWriter's constructor creates
         // new temp files which can delete the temp files created by a
         // BundleWriter in another Session.
-        writer_ = absl::make_unique<BundleWriter>(dataset()->env_, filename_);
+        writer_ = absl::make_unique<BundleWriter>(
+            dataset()->env_, strings::StrCat(cache_filename_, "_", 0));
         lockfile_created_ = true;
         return Status::OK();
       }
@@ -417,16 +424,15 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           std::vector<string> prefixes;
           prefixes.reserve(shard_id_ + 1);
           for (size_t i = 0; i <= shard_id_; ++i) {
-            prefixes.emplace_back(
-                strings::StrCat(dataset()->filename_, "_", i));
+            prefixes.emplace_back(strings::StrCat(cache_filename_, "_", i));
           }
           TF_RETURN_IF_ERROR(
-              MergeBundles(dataset()->env_, prefixes, dataset()->filename_));
+              MergeBundles(dataset()->env_, prefixes, cache_filename_));
         }
         // Delete all lockfiles.
         for (size_t i = 0; i <= shard_id_; ++i) {
           TF_RETURN_IF_ERROR(dataset()->env_->DeleteFile(
-              strings::StrCat(dataset()->filename_, "_", i, kLockFileSuffix)));
+              strings::StrCat(cache_filename_, "_", i, kLockFileSuffix)));
         }
         return Status::OK();
       }
@@ -439,7 +445,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       // The current prefix for the cache file. This is equal to
       // `StrCat(dataset()->filename_, "_", shard_id_)`.
-      string filename_;
+      string cache_filename_;
       std::unique_ptr<BundleWriter> writer_ GUARDED_BY(mu_);
       string lockfile_ GUARDED_BY(mu_);
       bool lockfile_created_ GUARDED_BY(mu_);
@@ -448,10 +454,11 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
     class FileReaderIterator : public DatasetIterator<FileDataset> {
      public:
-      explicit FileReaderIterator(const Params& params)
+      explicit FileReaderIterator(const Params& params,
+                                  const string& cache_filename)
           : DatasetIterator<FileDataset>(params),
             cur_index_(0),
-            reader_(dataset()->env_, dataset()->filename_),
+            reader_(dataset()->env_, cache_filename),
             iterator_restored_(false) {}
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -534,6 +541,15 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       bool iterator_restored_ GUARDED_BY(mu_);
     };  // FileReaderIterator
 
+    // Generate a file name for the cache file. It combines the input filename,
+    // dataset node name, and the iterator prefix.
+    inline string GenerateCacheFilename(const Params& params) {
+      return absl::StrCat(
+          params.dataset->filename_, "_",
+          absl::StrReplaceAll(params.dataset->node_name(), {{"/", "_"}}), "_",
+          absl::StrReplaceAll(params.prefix, {{"::", "_"}}));
+    }
+
     void InitializeIterator() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // We intentionally use the same prefix for both `FileReaderIterator`
       // and `FileWriterIterator`. Since at any time there will be at most
@@ -545,20 +561,23 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       // `FileReaderIterator` and seek to the `cur_index`.
       switch (mode_) {
         case Mode::read:
-          iterator_ =
-              absl::make_unique<FileReaderIterator>(FileReaderIterator::Params{
-                  dataset(), strings::StrCat(prefix(), kImpl)});
+          iterator_ = absl::make_unique<FileReaderIterator>(
+              FileReaderIterator::Params{dataset(),
+                                         strings::StrCat(prefix(), kImpl)},
+              cache_filename_);
           break;
         case Mode::write:
-          iterator_ =
-              absl::make_unique<FileWriterIterator>(FileWriterIterator::Params{
-                  dataset(), strings::StrCat(prefix(), kImpl)});
+          iterator_ = absl::make_unique<FileWriterIterator>(
+              FileWriterIterator::Params{dataset(),
+                                         strings::StrCat(prefix(), kImpl)},
+              cache_filename_);
       }
     }
 
     mutex mu_;
     enum Mode { read, write };
     Mode mode_ GUARDED_BY(mu_);
+    string cache_filename_ GUARDED_BY(mu_) = "";
     std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
   };  // FileIterator
 

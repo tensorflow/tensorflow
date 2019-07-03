@@ -170,6 +170,15 @@ class FileCacheTest(test_base.DatasetTestBase):
     expected_output = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]] * 2
     self.assertDatasetProduces(dataset, expected_output)
 
+  def testCacheZipPipeline(self):
+    dataset = dataset_ops.Dataset.range(3).cache(self.cache_prefix)
+    x_dataset = dataset.map(lambda x: x + 4)
+    y_dataset = dataset.map(lambda x: x * 2)
+    dataset = dataset_ops.Dataset.zip((x_dataset, y_dataset)).map(
+        lambda x, y: x + y)
+    expected_output = [4, 7, 10]
+    self.assertDatasetProduces(dataset, expected_output)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MemoryCacheTest(test_base.DatasetTestBase):
@@ -253,6 +262,15 @@ class MemoryCacheTest(test_base.DatasetTestBase):
 
     expected_output = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  def testCacheZipPipeline(self):
+    dataset = dataset_ops.Dataset.range(3).cache()
+    x_dataset = dataset.map(lambda x: x + 4)
+    y_dataset = dataset.map(lambda x: x * 2)
+    dataset = dataset_ops.Dataset.zip((x_dataset, y_dataset)).map(
+        lambda x, y: x + y)
+    expected_output = [4, 7, 10]
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":
