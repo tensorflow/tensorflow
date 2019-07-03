@@ -137,9 +137,6 @@ py_library(
         "keras_lstm_model_correctness_test.py",
         "keras_stateful_lstm_model_correctness_test.py",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
@@ -223,6 +220,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # b/136660639
         "no_windows_gpu",
         "notap",  # b/131937016
         "notsan",
