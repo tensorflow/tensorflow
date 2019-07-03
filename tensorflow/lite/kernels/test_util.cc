@@ -115,6 +115,7 @@ void SingleOpModel::SetCustomOp(
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     int num_threads,
                                      bool allow_fp32_relax_to_fp16) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
@@ -141,7 +142,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_) == kTfLiteOk);
+  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_, num_threads) ==
+        kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 
@@ -173,6 +175,23 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
 
 TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
+
+void SingleOpModel::BuildInterpreter(
+    std::vector<std::vector<int>> input_shapes) {
+  BuildInterpreter(input_shapes, /*num_threads=*/-1,
+                   /*allow_fp32_relax_to_fp16=*/false);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     int num_threads) {
+  BuildInterpreter(input_shapes, num_threads,
+                   /*allow_fp32_relax_to_fp16=*/false);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool allow_fp32_relax_to_fp16) {
+  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16);
+}
 
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
