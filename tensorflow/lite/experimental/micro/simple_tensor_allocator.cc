@@ -82,6 +82,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &result->type, error_reporter));
   result->is_variable = flatbuffer_tensor.is_variable();
+
   result->data.raw = nullptr;
   result->bytes = 0;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {

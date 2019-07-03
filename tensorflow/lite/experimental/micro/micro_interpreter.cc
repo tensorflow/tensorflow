@@ -78,6 +78,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   subgraph_ = (*subgraphs)[0];
   tensors_ = subgraph_->tensors();
   operators_ = subgraph_->operators();
+  
   context_.tensors_size = tensors_->size();
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
@@ -85,14 +86,17 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
+
   initialization_status_ = AllocateInputAndActTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
   }
+
   initialization_status_ = AllocateTemporaryTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
   }
+
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during
   // inference.
