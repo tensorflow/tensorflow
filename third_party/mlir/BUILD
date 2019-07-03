@@ -611,15 +611,14 @@ gentbl(
     tbl_outs = [
         (
             "-gen-rewriters",
-            "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
+            "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.td",
+    td_file = "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/StandardOps/Ops.td",
+        ":StdOpsTdFiles",
     ],
 )
 
@@ -668,13 +667,16 @@ cc_library(
 cc_library(
     name = "SPIRVConversions",
     srcs = [
-        "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
-        "lib/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
     ],
     hdrs = [
         "include/mlir/SPIRV/Passes.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "lib/Conversion/StandardToSPIRV",
+    ],
     deps = [
         ":IR",
         ":Pass",
