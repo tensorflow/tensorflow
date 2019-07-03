@@ -21,7 +21,7 @@ limitations under the License.
 #include "third_party/nccl/nccl.h"
 #endif
 #if TENSORFLOW_USE_ROCM
-#include "rccl.h"
+#include "rocm/include/rccl/rccl.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
