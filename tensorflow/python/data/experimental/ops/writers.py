@@ -28,7 +28,33 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.TFRecordWriter")
 class TFRecordWriter(object):
-  """Writes data to a TFRecord file."""
+  """Writes data to a TFRecord file.
+
+  To write a `dataset` to a single TFRecord file:
+
+  ```python
+  dataset = ... # dataset to be written
+  writer = tf.data.experimental.TFRecordWriter(PATH)
+  writer.write(dataset)
+  ```
+
+  To shard a `dataset` across multiple TFRecord files:
+
+  ```python
+  dataset = ... # dataset to be written
+
+  def reduce_func(key, dataset):
+    filename = tf.strings.join([PATH_PREFIX, tf.strings.as_string(key)])
+    writer = tf.data.experimental.TFRecordWriter(filename)
+    writer.write(dataset.map(lambda _, x: x))
+    return tf.data.Dataset.from_tensors(filename)
+
+  dataset = dataset.enumerate()
+  dataset = dataset.apply(tf.data.experimental.group_by_window(
+    lambda i, _: i % NUM_SHARDS, reduce_func, tf.int64.max
+  ))
+  ```
+  """
 
   def __init__(self, filename, compression_type=None):
     self._filename = ops.convert_to_tensor(
