@@ -68,7 +68,7 @@ class Stack : public ResourceBase {
     }
     int index = stack_.size();
     unswapped_lru_.push_back(index);
-    auto iter = std::next(unswapped_lru_.rbegin()).base();
+    auto iter = std::prev(unswapped_lru_.end());
     stack_.push_back({value, iter});
     return Status::OK();
   }
@@ -117,9 +117,8 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
-  bool GetTensorToSwapOut(
-      TensorAndAllocation** value,
-      std::function<bool(const TensorAndAllocation&)> cond) {
+  bool GetTensorToSwapOut(std::function<bool(const TensorAndAllocation&)> cond,
+                          TensorAndAllocation** value) {
     mutex_lock l(mu_);
     bool can_swap = false;
     while (!can_swap) {
@@ -353,13 +352,13 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   }
 
   // Obtain the oldest unswapped TensorAndAllocation.
-  Stack::TensorAndAllocation* to_swap_out;
+  Stack::TensorAndAllocation* to_swap_out = nullptr;
   if (!stack->GetTensorToSwapOut(
-          &to_swap_out,
           [stack](const Stack::TensorAndAllocation& value) -> bool {
             return value.tensor.TotalBytes() > kCopyThreshold &&
                    stack->IsUsefulToSwap(value.tensor);
-          })) {
+          },
+          &to_swap_out)) {
     done();
     return;
   }
@@ -439,7 +438,7 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   }
 
   // Obtain the most recent swapped TensorAndAllocation.
-  Stack::TensorAndAllocation* to_swap_in;
+  Stack::TensorAndAllocation* to_swap_in = nullptr;
   int to_swap_in_index;
   if (!stack->GetTensorToSwapIn(&to_swap_in, &to_swap_in_index)) {
     return;
