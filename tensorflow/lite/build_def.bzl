@@ -353,11 +353,7 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return [
-            # TODO(b/135758082): L2Norm is broken in future forward
-            # compatibility horizon
-            "l2norm",
-        ]
+        return []
     return []
 
 def generated_test_conversion_modes():
