@@ -106,21 +106,21 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
 // Each element is mapped from input to output by a combination of its
 // 'segment_ids' mapping and 'inner_dim_size'.
 template <typename T, typename Index, typename KernelReductionFunctor>
-__global__ void UnsortedSegmentCustomKernel(const Index input_outer_dim_size,
-                                            const Index inner_dim_size,
-                                            const Index output_outer_dim_size,
+__global__ void UnsortedSegmentCustomKernel(const int64 input_outer_dim_size,
+                                            const int64 inner_dim_size,
+                                            const int64 output_outer_dim_size,
                                             const Index* segment_ids,
                                             const T* input, T* output) {
-  const Index input_total_size = input_outer_dim_size * inner_dim_size;
-  const Index output_total_size = output_outer_dim_size * inner_dim_size;
-  for (int input_index : GpuGridRangeX(input_total_size)) {
-    const Index input_segment_index = input_index / inner_dim_size;
-    const Index segment_offset = input_index % inner_dim_size;
+  const int64 input_total_size = input_outer_dim_size * inner_dim_size;
+  for (int64 input_index : GpuGridRangeX(input_total_size)) {
+    const int64 input_segment_index = input_index / inner_dim_size;
+    const int64 segment_offset = input_index % inner_dim_size;
     const Index output_segment_index = segment_ids[input_segment_index];
-    if (output_segment_index < 0 || output_segment_index >= output_total_size) {
+    if (output_segment_index < 0 ||
+        output_segment_index >= output_outer_dim_size) {
       continue;
     }
-    const Index output_index =
+    const int64 output_index =
         output_segment_index * inner_dim_size + segment_offset;
     KernelReductionFunctor()(output + output_index, ldg(input + input_index));
   }
@@ -174,10 +174,9 @@ void SegmentSumFunctor<T, Index>::operator()(
 template <typename T, typename Index, typename InitialValueF,
           typename ReductionF>
 struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
-  void operator()(OpKernelContext* ctx, const Index num_segments,
-                  const TensorShape& segment_ids_shape,
+  void operator()(OpKernelContext* ctx, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output) {
     if (output.size() == 0) {
       return;
@@ -188,6 +187,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     TF_CHECK_OK(GpuLaunchKernel(
         SetToValue<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), output.size(), output.data(), InitialValueF()()));
+    const int64 data_size = data.size();
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -196,15 +196,16 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // *) 'data_size' is the total number of elements to process.
     // *) 'segment_ids.shape' is a prefix of data's shape.
     // *) 'input_outer_dim_size' is the total number of segments to process.
-    const Index input_outer_dim_size = segment_ids.dimension(0);
-    const Index input_inner_dim_size = data_size / input_outer_dim_size;
+    const int64 input_outer_dim_size = segment_ids.dimension(0);
+    const int64 input_inner_dim_size = data.dimension(1);
+    const int64 output_outer_dim_size = output.dimension(0);
     config = GetGpuLaunchConfig(data_size, d);
 
-    TF_CHECK_OK(
-        GpuLaunchKernel(UnsortedSegmentCustomKernel<T, Index, ReductionF>,
-                        config.block_count, config.thread_per_block, 0,
-                        d.stream(), input_outer_dim_size, input_inner_dim_size,
-                        num_segments, segment_ids.data(), data, output.data()));
+    TF_CHECK_OK(GpuLaunchKernel(
+        UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,
+        config.thread_per_block, 0, d.stream(), input_outer_dim_size,
+        input_inner_dim_size, output_outer_dim_size, segment_ids.data(),
+        data.data(), output.data()));
   }
 };
 
