@@ -23,6 +23,8 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+class AffineExpr;
+class AffineMap;
 class OperationFolder;
 namespace edsc {
 
@@ -37,6 +39,7 @@ public:
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
   LoopRangeBuilder(ValueHandle *iv, Value *range);
+  LoopRangeBuilder(ValueHandle *iv, linalg::SubViewOp::Range range);
 
   LoopRangeBuilder(const LoopRangeBuilder &) = delete;
   LoopRangeBuilder(LoopRangeBuilder &&) = default;
@@ -59,6 +62,8 @@ public:
                        llvm::ArrayRef<edsc::ValueHandle> ranges);
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<Value *> ranges);
+  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
+                       llvm::ArrayRef<linalg::SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:

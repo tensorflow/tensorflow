@@ -53,12 +53,30 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
   enter(body, /*prev=*/1);
 }
 
+mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
+                                               SubViewOp::Range range) {
+  auto forOp = OperationHandle::createOp<linalg::ForOp>(range.min, range.max,
+                                                        range.step);
+  *iv = ValueHandle(forOp.getInductionVar());
+  auto *body = forOp.getBody();
+  enter(body, /*prev=*/1);
+}
+
 ValueHandle
 mlir::edsc::LoopRangeBuilder::operator()(std::function<void(void)> fun) {
   if (fun)
     fun();
   exit();
   return ValueHandle::null();
+}
+
+mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
+    ArrayRef<ValueHandle *> ivs, ArrayRef<SubViewOp::Range> ranges) {
+  loops.reserve(ranges.size());
+  for (unsigned i = 0, e = ranges.size(); i < e; ++i) {
+    loops.emplace_back(ivs[i], ranges[i]);
+  }
+  assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
 }
 
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
@@ -101,6 +119,7 @@ static Value *emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
                                             OperationFolder &state) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
+  canonicalizeMapAndOperands(&map, &operands);
   return state.create<AffineApplyOp>(b, loc, map, operands);
 }
 

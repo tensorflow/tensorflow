@@ -202,7 +202,6 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
   // TODO(ntv) padding.
   // Following the TF source of truth above, strides and dilations are integer
   // attributes of the same rank as the number of window dimensions.
-  // This convention
   let arguments = (ins View:$filter, View:$input, View:$output,
                    OptionalAttr<I64ArrayAttr>:$strides,
                    OptionalAttr<I64ArrayAttr>:$dilations);

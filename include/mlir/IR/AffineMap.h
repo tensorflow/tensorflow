@@ -134,6 +134,9 @@ public:
   /// Returns true if the AffineMap represents a symbol-less permutation map.
   bool isPermutation();
 
+  /// Returns the map consisting of the `resultPos` subset.
+  AffineMap getSubMap(ArrayRef<unsigned> resultPos);
+
   friend ::llvm::hash_code hash_value(AffineMap arg);
 
 private:

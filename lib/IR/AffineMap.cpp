@@ -259,6 +259,15 @@ bool AffineMap::isPermutation() {
   return isProjectedPermutation();
 }
 
+AffineMap AffineMap::getSubMap(ArrayRef<unsigned> resultPos) {
+  SmallVector<AffineExpr, 4> exprs;
+  exprs.reserve(resultPos.size());
+  for (auto idx : resultPos) {
+    exprs.push_back(getResult(idx));
+  }
+  return AffineMap::get(getNumDims(), getNumSymbols(), exprs);
+}
+
 AffineMap mlir::simplifyAffineMap(AffineMap map) {
   SmallVector<AffineExpr, 8> exprs;
   for (auto e : map.getResults()) {
