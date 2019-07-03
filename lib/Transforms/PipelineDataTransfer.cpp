@@ -57,10 +57,9 @@ FunctionPassBase *mlir::createPipelineDataTransferPass() {
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
 static unsigned getTagMemRefPos(Operation &dmaInst) {
-  assert(isa<DmaStartOp>(dmaInst) || isa<DmaWaitOp>(dmaInst));
-  if (isa<DmaStartOp>(dmaInst)) {
-    // Second to last operand.
-    return dmaInst.getNumOperands() - 2;
+  assert(isa<AffineDmaStartOp>(dmaInst) || isa<AffineDmaWaitOp>(dmaInst));
+  if (auto dmaStartOp = dyn_cast<AffineDmaStartOp>(dmaInst)) {
+    return dmaStartOp.getTagMemRefOperandIndex();
   }
   // First operand for a dma finish operation.
   return 0;
@@ -151,7 +150,7 @@ void PipelineDataTransfer::runOnFunction() {
 }
 
 // Check if tags of the dma start op and dma wait op match.
-static bool checkTagMatch(DmaStartOp startOp, DmaWaitOp waitOp) {
+static bool checkTagMatch(AffineDmaStartOp startOp, AffineDmaWaitOp waitOp) {
   if (startOp.getTagMemRef() != waitOp.getTagMemRef())
     return false;
   auto startIndices = startOp.getTagIndices();
@@ -179,9 +178,9 @@ static void findMatchingStartFinishInsts(
     SmallVectorImpl<std::pair<Operation *, Operation *>> &startWaitPairs) {
 
   // Collect outgoing DMA operations - needed to check for dependences below.
-  SmallVector<DmaStartOp, 4> outgoingDmaOps;
+  SmallVector<AffineDmaStartOp, 4> outgoingDmaOps;
   for (auto &op : *forOp.getBody()) {
-    auto dmaStartOp = dyn_cast<DmaStartOp>(op);
+    auto dmaStartOp = dyn_cast<AffineDmaStartOp>(op);
     if (dmaStartOp && dmaStartOp.isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
@@ -189,11 +188,11 @@ static void findMatchingStartFinishInsts(
   SmallVector<Operation *, 4> dmaStartInsts, dmaFinishInsts;
   for (auto &op : *forOp.getBody()) {
     // Collect DMA finish operations.
-    if (isa<DmaWaitOp>(op)) {
+    if (isa<AffineDmaWaitOp>(op)) {
       dmaFinishInsts.push_back(&op);
       continue;
     }
-    auto dmaStartOp = dyn_cast<DmaStartOp>(op);
+    auto dmaStartOp = dyn_cast<AffineDmaStartOp>(op);
     if (!dmaStartOp)
       continue;
 
@@ -234,8 +233,8 @@ static void findMatchingStartFinishInsts(
   // For each start operation, we look for a matching finish operation.
   for (auto *dmaStartInst : dmaStartInsts) {
     for (auto *dmaFinishInst : dmaFinishInsts) {
-      if (checkTagMatch(cast<DmaStartOp>(dmaStartInst),
-                        cast<DmaWaitOp>(dmaFinishInst))) {
+      if (checkTagMatch(cast<AffineDmaStartOp>(dmaStartInst),
+                        cast<AffineDmaWaitOp>(dmaFinishInst))) {
         startWaitPairs.push_back({dmaStartInst, dmaFinishInst});
         break;
       }
@@ -273,7 +272,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
     Value *oldMemRef = dmaStartInst->getOperand(
-        cast<DmaStartOp>(dmaStartInst).getFasterMemPos());
+        cast<AffineDmaStartOp>(dmaStartInst).getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.
@@ -324,7 +323,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   DenseMap<Operation *, unsigned> instShiftMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
-    assert(isa<DmaStartOp>(dmaStartInst));
+    assert(isa<AffineDmaStartOp>(dmaStartInst));
     instShiftMap[dmaStartInst] = 0;
     // Set shifts for DMA start op's affine operand computation slices to 0.
     SmallVector<AffineApplyOp, 4> sliceOps;

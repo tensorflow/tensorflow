@@ -173,7 +173,8 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
                                     ComputationSliceState *sliceState,
                                     bool addMemRefDimBounds) {
-  assert((isa<LoadOp>(op) || isa<StoreOp>(op)) && "load/store op expected");
+  assert((isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op)) &&
+         "affine load/store op expected");
 
   MemRefAccess access(op);
   memref = access.memref;
@@ -381,12 +382,11 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
 template <typename LoadOrStoreOpPointer>
 LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                                             bool emitError) {
-  static_assert(std::is_same<LoadOrStoreOpPointer, LoadOp>::value ||
-                    std::is_same<LoadOrStoreOpPointer, StoreOp>::value,
-                "argument should be either a LoadOp or a StoreOp");
+  static_assert(std::is_same<LoadOrStoreOpPointer, AffineLoadOp>::value ||
+                    std::is_same<LoadOrStoreOpPointer, AffineStoreOp>::value,
+                "argument should be either a AffineLoadOp or a AffineStoreOp");
 
   Operation *opInst = loadOrStoreOp.getOperation();
-
   MemRefRegion region(opInst->getLoc());
   if (failed(region.compute(opInst, /*loopDepth=*/0, /*sliceState=*/nullptr,
                             /*addMemRefDimBounds=*/false)))
@@ -434,9 +434,9 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 }
 
 // Explicitly instantiate the template so that the compiler knows we need them!
-template LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOp loadOp,
+template LogicalResult mlir::boundCheckLoadOrStoreOp(AffineLoadOp loadOp,
                                                      bool emitError);
-template LogicalResult mlir::boundCheckLoadOrStoreOp(StoreOp storeOp,
+template LogicalResult mlir::boundCheckLoadOrStoreOp(AffineStoreOp storeOp,
                                                      bool emitError);
 
 // Returns in 'positions' the Block positions of 'op' in each ancestor
@@ -484,9 +484,9 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
 
 // Returns the MemRef accessed by load or store 'op'.
 static Value *getLoadOrStoreMemRef(Operation *op) {
-  if (auto loadOp = dyn_cast<LoadOp>(op))
+  if (auto loadOp = dyn_cast<AffineLoadOp>(op))
     return loadOp.getMemRef();
-  return cast<StoreOp>(op).getMemRef();
+  return cast<AffineStoreOp>(op).getMemRef();
 }
 
 // Adds loop IV bounds to 'cst' for loop IVs not found in 'ivs'.
@@ -560,8 +560,8 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
         return failure();
       }
 
-      bool readReadAccesses =
-          isa<LoadOp>(srcAccess.opInst) && isa<LoadOp>(dstAccess.opInst);
+      bool readReadAccesses = isa<AffineLoadOp>(srcAccess.opInst) &&
+                              isa<AffineLoadOp>(dstAccess.opInst);
       FlatAffineConstraints dependenceConstraints;
       // Check dependence between 'srcAccess' and 'dstAccess'.
       DependenceResult result = checkMemrefAccessDependence(
@@ -752,7 +752,7 @@ void mlir::getComputationSliceState(
                       : std::prev(srcLoopIVs[loopDepth - 1].getBody()->end());
 
   llvm::SmallDenseSet<Value *, 8> sequentialLoops;
-  if (isa<LoadOp>(depSourceOp) && isa<LoadOp>(depSinkOp)) {
+  if (isa<AffineLoadOp>(depSourceOp) && isa<AffineLoadOp>(depSinkOp)) {
     // For read-read access pairs, clear any slice bounds on sequential loops.
     // Get sequential loops in loop nest rooted at 'srcLoopIVs[0]'.
     getSequentialLoops(isBackwardSlice ? srcLoopIVs[0] : dstLoopIVs[0],
@@ -849,7 +849,7 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
 // Constructs  MemRefAccess populating it with the memref, its indices and
 // opinst from 'loadOrStoreOpInst'.
 MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
-  if (auto loadOp = dyn_cast<LoadOp>(loadOrStoreOpInst)) {
+  if (auto loadOp = dyn_cast<AffineLoadOp>(loadOrStoreOpInst)) {
     memref = loadOp.getMemRef();
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
@@ -858,8 +858,8 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
       indices.push_back(index);
     }
   } else {
-    assert(isa<StoreOp>(loadOrStoreOpInst) && "load/store op expected");
-    auto storeOp = dyn_cast<StoreOp>(loadOrStoreOpInst);
+    assert(isa<AffineStoreOp>(loadOrStoreOpInst) && "load/store op expected");
+    auto storeOp = dyn_cast<AffineStoreOp>(loadOrStoreOpInst);
     opInst = loadOrStoreOpInst;
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
@@ -874,7 +874,7 @@ unsigned MemRefAccess::getRank() const {
   return memref->getType().cast<MemRefType>().getRank();
 }
 
-bool MemRefAccess::isStore() const { return isa<StoreOp>(opInst); }
+bool MemRefAccess::isStore() const { return isa<AffineStoreOp>(opInst); }
 
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
@@ -914,7 +914,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
   // Walk this 'affine.for' operation to gather all memory regions.
   bool error = false;
   block.walk(start, end, [&](Operation *opInst) {
-    if (!isa<LoadOp>(opInst) && !isa<StoreOp>(opInst)) {
+    if (!isa<AffineLoadOp>(opInst) && !isa<AffineStoreOp>(opInst)) {
       // Neither load nor a store op.
       return;
     }
@@ -977,7 +977,7 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   forOp.getOperation()->walk([&](Operation *opInst) {
-    if (isa<LoadOp>(opInst) || isa<StoreOp>(opInst))
+    if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
   });
 

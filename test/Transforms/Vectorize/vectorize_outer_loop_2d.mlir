@@ -14,7 +14,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    affine.for %i0 = 0 to %M {
      affine.for %i1 = 0 to %N {
        affine.for %i2 = 0 to %P {
-         %a2 = load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
+         %a2 = affine.load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
        }
      }
    }
@@ -26,7 +26,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    affine.for %i3 = 0 to %M {
      affine.for %i4 = 0 to %N {
        affine.for %i5 = 0 to %P {
-         %a5 = load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
+         %a5 = affine.load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
        }
      }
    }

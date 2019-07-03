@@ -27,7 +27,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   affine.for %i0 = 0 to %M {
     affine.for %i1 = 0 to %N {
       // non-scoped %f1
-      store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
+      affine.store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
     }
   }
   // 2x unroll (jammed by construction).
@@ -45,7 +45,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   affine.for %i2 = 0 to %M {
     affine.for %i3 = 0 to %N {
       // non-scoped %f2
-      store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
+      affine.store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
     }
   }
   // 2x unroll (jammed by construction).
@@ -74,14 +74,14 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   //
   affine.for %i4 = 0 to %M {
     affine.for %i5 = 0 to %N {
-      %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
-      %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
+      %a5 = affine.load %A[%i4, %i5] : memref<?x?xf32, 0>
+      %b5 = affine.load %B[%i4, %i5] : memref<?x?xf32, 0>
       %s5 = addf %a5, %b5 : f32
-      store %s5, %C[%i4, %i5] : memref<?x?xf32, 0>
+      affine.store %s5, %C[%i4, %i5] : memref<?x?xf32, 0>
     }
   }
   %c7 = constant 7 : index
   %c42 = constant 42 : index
-  %res = load %C[%c7, %c42] : memref<?x?xf32, 0>
+  %res = affine.load %C[%c7, %c42] : memref<?x?xf32, 0>
   return %res : f32
 }

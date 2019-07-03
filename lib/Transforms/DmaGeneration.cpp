@@ -75,16 +75,17 @@ namespace {
 struct DmaGeneration : public FunctionPass<DmaGeneration> {
   explicit DmaGeneration(
       unsigned slowMemorySpace = 0,
-      unsigned fastMemorySpace = clFastMemorySpace,
+      unsigned fastMemorySpace = clFastMemorySpace, unsigned tagMemorySpace = 0,
       int minDmaTransferSize = 1024,
       uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max())
       : slowMemorySpace(slowMemorySpace), fastMemorySpace(fastMemorySpace),
-        minDmaTransferSize(minDmaTransferSize),
+        tagMemorySpace(tagMemorySpace), minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
   explicit DmaGeneration(const DmaGeneration &other)
       : slowMemorySpace(other.slowMemorySpace),
         fastMemorySpace(other.fastMemorySpace),
+        tagMemorySpace(other.tagMemorySpace),
         minDmaTransferSize(other.minDmaTransferSize),
         fastMemCapacityBytes(other.fastMemCapacityBytes) {}
 
@@ -111,6 +112,8 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
   const unsigned slowMemorySpace;
   // Fast memory space associated with DMAs.
   unsigned fastMemorySpace;
+  // Tag memory space associated with DMAs.
+  unsigned tagMemorySpace;
   // Minimum DMA transfer size supported by the target in bytes.
   const int minDmaTransferSize;
   // Capacity of the faster memory space.
@@ -128,10 +131,11 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
 /// TODO(bondhugula): extend this to store op's.
 FunctionPassBase *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
                                                 unsigned fastMemorySpace,
+                                                unsigned tagMemorySpace,
                                                 int minDmaTransferSize,
                                                 uint64_t fastMemCapacityBytes) {
-  return new DmaGeneration(slowMemorySpace, fastMemorySpace, minDmaTransferSize,
-                           fastMemCapacityBytes);
+  return new DmaGeneration(slowMemorySpace, fastMemorySpace, tagMemorySpace,
+                           minDmaTransferSize, fastMemCapacityBytes);
 }
 
 // Info comprising stride and number of elements transferred every stride.
@@ -173,11 +177,11 @@ static void getMultiLevelStrides(const MemRefRegion &region,
 static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
                                   MemRefRegion *region) {
   unsigned rank;
-  if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
+  if (auto loadOp = dyn_cast<AffineLoadOp>(opInst)) {
     rank = loadOp.getMemRefType().getRank();
     region->memref = loadOp.getMemRef();
     region->setWrite(false);
-  } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
+  } else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst)) {
     rank = storeOp.getMemRefType().getRank();
     region->memref = storeOp.getMemRef();
     region->setWrite(true);
@@ -363,7 +367,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     *sizeInBytes = 0;
   }
   // Create a tag (single element 1-d memref) for the DMA.
-  auto tagMemRefType = top.getMemRefType({1}, top.getIntegerType(32));
+  auto tagMemRefType =
+      top.getMemRefType({1}, top.getIntegerType(32), {}, tagMemorySpace);
   auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
 
   auto numElementsSSA =
@@ -393,23 +398,34 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   // don't get replaced.
   auto postDomFilter = std::prev(end);
 
+  // Create fully composed affine maps for each memref.
+  auto memAffineMap = b.getMultiDimIdentityMap(memIndices.size());
+  fullyComposeAffineMapAndOperands(&memAffineMap, &memIndices);
+  auto bufAffineMap = b.getMultiDimIdentityMap(bufIndices.size());
+  fullyComposeAffineMapAndOperands(&bufAffineMap, &bufIndices);
+  SmallVector<Value *, 4> tagIndices({zeroIndex});
+  auto tagAffineMap = b.getMultiDimIdentityMap(tagIndices.size());
+  fullyComposeAffineMapAndOperands(&tagAffineMap, &tagIndices);
   if (!region.isWrite()) {
     // DMA non-blocking read from original buffer to fast buffer.
-    b.create<DmaStartOp>(loc, memref, memIndices, fastMemRef, bufIndices,
-                         numElementsSSA, tagMemRef, zeroIndex, stride,
-                         numEltPerStride);
+    b.create<AffineDmaStartOp>(loc, memref, memAffineMap, memIndices,
+                               fastMemRef, bufAffineMap, bufIndices, tagMemRef,
+                               tagAffineMap, tagIndices, numElementsSSA, stride,
+                               numEltPerStride);
   } else {
     // DMA non-blocking write from fast buffer to the original memref.
-    auto op = b.create<DmaStartOp>(loc, fastMemRef, bufIndices, memref,
-                                   memIndices, numElementsSSA, tagMemRef,
-                                   zeroIndex, stride, numEltPerStride);
+    auto op = b.create<AffineDmaStartOp>(
+        loc, fastMemRef, bufAffineMap, bufIndices, memref, memAffineMap,
+        memIndices, tagMemRef, tagAffineMap, tagIndices, numElementsSSA, stride,
+        numEltPerStride);
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
     *nEnd = Block::iterator(op.getOperation());
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.
-  b.create<DmaWaitOp>(loc, tagMemRef, zeroIndex, numElementsSSA);
+  b.create<AffineDmaWaitOp>(loc, tagMemRef, tagAffineMap, zeroIndex,
+                            numElementsSSA);
 
   // Generate dealloc for the tag.
   auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
@@ -479,7 +495,8 @@ bool DmaGeneration::runOnBlock(Block *block) {
   // Get to the first load, store, or for op.
   auto curBegin =
       std::find_if(block->begin(), block->end(), [&](Operation &op) {
-        return isa<LoadOp>(op) || isa<StoreOp>(op) || isa<AffineForOp>(op);
+        return isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
+               isa<AffineForOp>(op);
       });
 
   for (auto it = curBegin; it != block->end(); ++it) {
@@ -522,7 +539,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
         runOnBlock(/*begin=*/it, /*end=*/std::next(it));
         curBegin = std::next(it);
       }
-    } else if (!isa<LoadOp>(&*it) && !isa<StoreOp>(&*it)) {
+    } else if (!isa<AffineLoadOp>(&*it) && !isa<AffineStoreOp>(&*it)) {
       runOnBlock(/*begin=*/curBegin, /*end=*/it);
       curBegin = std::next(it);
     }
@@ -607,10 +624,10 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // Walk this range of operations  to gather all memory regions.
   block->walk(begin, end, [&](Operation *opInst) {
     // Gather regions to allocate to buffers in faster memory space.
-    if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
+    if (auto loadOp = dyn_cast<AffineLoadOp>(opInst)) {
       if (loadOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
-    } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
+    } else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst)) {
       if (storeOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
     } else {

@@ -15,7 +15,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
   affine.for %i0 = 0 to %M {
      affine.for %i1 = 0 to %N {
        affine.for %i2 = 0 to %P {
-         %a2 = load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
+         %a2 = affine.load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
        }
      }
    }
@@ -26,7 +26,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    affine.for %i3 = 0 to %M {
      affine.for %i4 = 0 to %N {
        affine.for %i5 = 0 to %P {
-         %a5 = load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
+         %a5 = affine.load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
        }
      }
    }
@@ -49,15 +49,15 @@ func @vec2d_imperfectly_nested(%A : memref<?x?x?xf32>) {
    affine.for %i0 = 0 to %0 {
      affine.for %i1 = 0 to %1 {
        affine.for %i2 = 0 to %2 {
-         %a2 = load %A[%i2, %i1, %i0] : memref<?x?x?xf32>
+         %a2 = affine.load %A[%i2, %i1, %i0] : memref<?x?x?xf32>
        }
      }
      affine.for %i3 = 0 to %1 {
        affine.for %i4 = 0 to %2 {
-         %a4 = load %A[%i3, %i4, %i0] : memref<?x?x?xf32>
+         %a4 = affine.load %A[%i3, %i4, %i0] : memref<?x?x?xf32>
        }
        affine.for %i5 = 0 to %2 {
-         %a5 = load %A[%i3, %i5, %i0] : memref<?x?x?xf32>
+         %a5 = affine.load %A[%i3, %i5, %i0] : memref<?x?x?xf32>
        }
      }
    }

@@ -668,10 +668,12 @@ static void computeDirectionVector(
 // Populates 'accessMap' with composition of AffineApplyOps reachable from
 // indices of MemRefAccess.
 void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
-  auto memrefType = memref->getType().cast<MemRefType>();
-  // Create identity map with same number of dimensions as 'memrefType' rank.
-  auto map = AffineMap::getMultiDimIdentityMap(memrefType.getRank(),
-                                               memref->getType().getContext());
+  // Get affine map from AffineLoad/Store.
+  AffineMap map;
+  if (auto loadOp = dyn_cast<AffineLoadOp>(opInst))
+    map = loadOp.getAffineMap();
+  else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst))
+    map = storeOp.getAffineMap();
   SmallVector<Value *, 8> operands(indices.begin(), indices.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
   map = simplifyAffineMap(map);
@@ -780,9 +782,9 @@ DependenceResult mlir::checkMemrefAccessDependence(
   if (srcAccess.memref != dstAccess.memref)
     return DependenceResult::NoDependence;
 
-  // Return 'NoDependence' if one of these accesses is not a StoreOp.
-  if (!allowRAR && !isa<StoreOp>(srcAccess.opInst) &&
-      !isa<StoreOp>(dstAccess.opInst))
+  // Return 'NoDependence' if one of these accesses is not an AffineStoreOp.
+  if (!allowRAR && !isa<AffineStoreOp>(srcAccess.opInst) &&
+      !isa<AffineStoreOp>(dstAccess.opInst))
     return DependenceResult::NoDependence;
 
   // Get composed access function for 'srcAccess'.
@@ -866,7 +868,7 @@ void mlir::getDependenceComponents(
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   forOp.getOperation()->walk([&](Operation *opInst) {
-    if (isa<LoadOp>(opInst) || isa<StoreOp>(opInst))
+    if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
   });
 

@@ -46,10 +46,10 @@ using namespace mlir;
 static void getLoadAndStoreMemRefAccesses(Operation *opA,
                                           DenseMap<Value *, bool> &values) {
   opA->walk([&](Operation *op) {
-    if (auto loadOp = dyn_cast<LoadOp>(op)) {
+    if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
       if (values.count(loadOp.getMemRef()) == 0)
         values[loadOp.getMemRef()] = false;
-    } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
+    } else if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
       values[storeOp.getMemRef()] = true;
     }
   });
@@ -60,10 +60,10 @@ static void getLoadAndStoreMemRefAccesses(Operation *opA,
 // Returns false otherwise.
 static bool isDependentLoadOrStoreOp(Operation *op,
                                      DenseMap<Value *, bool> &values) {
-  if (auto loadOp = dyn_cast<LoadOp>(op)) {
+  if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
     return values.count(loadOp.getMemRef()) > 0 &&
            values[loadOp.getMemRef()] == true;
-  } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
+  } else if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
     return values.count(storeOp.getMemRef()) > 0;
   }
   return false;
@@ -115,7 +115,7 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
     opX->walk([&](Operation *op) {
       if (lastDepOp)
         return;
-      if (isa<LoadOp>(op) || isa<StoreOp>(op)) {
+      if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op)) {
         if (isDependentLoadOrStoreOp(op, values))
           lastDepOp = opX;
         return;
@@ -185,7 +185,7 @@ gatherLoadsAndStores(AffineForOp forOp,
                      SmallVectorImpl<Operation *> &loadAndStoreOps) {
   bool hasIfOp = false;
   forOp.getOperation()->walk([&](Operation *op) {
-    if (isa<LoadOp>(op) || isa<StoreOp>(op))
+    if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op))
       loadAndStoreOps.push_back(op);
     else if (isa<AffineIfOp>(op))
       hasIfOp = true;
@@ -442,7 +442,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     unsigned storeCount = 0;
     llvm::SmallDenseSet<Value *, 4> storeMemrefs;
     srcForOp.getOperation()->walk([&](Operation *op) {
-      if (auto storeOp = dyn_cast<StoreOp>(op)) {
+      if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
         storeMemrefs.insert(storeOp.getMemRef());
         ++storeCount;
       }
@@ -454,7 +454,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     // 'insertPointParent'.
     for (auto *value : storeMemrefs) {
       for (auto *user : value->getUsers()) {
-        if (auto loadOp = dyn_cast<LoadOp>(user)) {
+        if (auto loadOp = dyn_cast<AffineLoadOp>(user)) {
           SmallVector<AffineForOp, 4> loops;
           // Check if any loop in loop nest surrounding 'user' is
           // 'insertPointParent'.

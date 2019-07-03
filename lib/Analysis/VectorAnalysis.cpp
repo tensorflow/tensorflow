@@ -19,6 +19,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/StandardOps/Ops.h"
@@ -108,7 +109,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// Examples can be found in the documentation of `makePermutationMap`, in the
 /// header file.
 static AffineMap makePermutationMap(
-    Operation::operand_range operands,
+    ArrayRef<Value *> indices,
     const DenseMap<Operation *, unsigned> &enclosingLoopToVectorDim) {
   if (enclosingLoopToVectorDim.empty())
     return AffineMap();
@@ -116,7 +117,6 @@ static AffineMap makePermutationMap(
       enclosingLoopToVectorDim.begin()->getFirst()->getContext();
   using functional::makePtrDynCaster;
   using functional::map;
-  SmallVector<Value *, 8> indices(operands);
   SmallVector<AffineExpr, 4> perm(enclosingLoopToVectorDim.size(),
                                   getAffineConstantExpr(0, context));
 
@@ -167,7 +167,8 @@ static SetVector<Operation *> getEnclosingforOps(Operation *op) {
 }
 
 AffineMap mlir::makePermutationMap(
-    Operation *op, const DenseMap<Operation *, unsigned> &loopToVectorDim) {
+    Operation *op, ArrayRef<Value *> indices,
+    const DenseMap<Operation *, unsigned> &loopToVectorDim) {
   DenseMap<Operation *, unsigned> enclosingLoopToVectorDim;
   auto enclosingLoops = getEnclosingforOps(op);
   for (auto *forInst : enclosingLoops) {
@@ -176,13 +177,7 @@ AffineMap mlir::makePermutationMap(
       enclosingLoopToVectorDim.insert(*it);
     }
   }
-
-  if (auto load = dyn_cast<LoadOp>(op)) {
-    return ::makePermutationMap(load.getIndices(), enclosingLoopToVectorDim);
-  }
-
-  auto store = cast<StoreOp>(op);
-  return ::makePermutationMap(store.getIndices(), enclosingLoopToVectorDim);
+  return ::makePermutationMap(indices, enclosingLoopToVectorDim);
 }
 
 bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,

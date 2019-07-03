@@ -697,6 +697,38 @@ void AffineApplyOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// Common canonicalization pattern support logic
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This is a common class used for patterns of the form
+/// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
+/// into the root operation directly.
+struct MemRefCastFolder : public RewritePattern {
+  /// The rootOpName is the name of the root operation to match against.
+  MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
+      : RewritePattern(rootOpName, 1, context) {}
+
+  PatternMatchResult match(Operation *op) const override {
+    for (auto *operand : op->getOperands())
+      if (matchPattern(operand, m_Op<MemRefCastOp>()))
+        return matchSuccess();
+
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
+      if (auto *memref = op->getOperand(i)->getDefiningOp())
+        if (auto cast = dyn_cast<MemRefCastOp>(memref))
+          op->setOperand(i, cast.getOperand());
+    rewriter.updatedRootInPlace(op);
+  }
+};
+
+} // end anonymous namespace.
+
+//===----------------------------------------------------------------------===//
 // AffineDmaStartOp
 //===----------------------------------------------------------------------===//
 
@@ -770,19 +802,16 @@ ParseResult AffineDmaStartOp::parse(OpAsmParser *parser,
   // *) src memref followed by its affine map operands (in square brackets).
   // *) tag memref followed by its affine map operands (in square brackets).
   // *) number of elements transferred by DMA operation.
-  if (parser->parseOperand(srcMemRefInfo) || parser->parseLSquare() ||
+  if (parser->parseOperand(srcMemRefInfo) ||
       parser->parseAffineMapOfSSAIds(srcMapOperands, srcMapAttr,
                                      getSrcMapAttrName(), result->attributes) ||
-      parser->parseRSquare() || parser->parseComma() ||
-      parser->parseOperand(dstMemRefInfo) || parser->parseLSquare() ||
+      parser->parseComma() || parser->parseOperand(dstMemRefInfo) ||
       parser->parseAffineMapOfSSAIds(dstMapOperands, dstMapAttr,
                                      getDstMapAttrName(), result->attributes) ||
-      parser->parseRSquare() || parser->parseComma() ||
-      parser->parseOperand(tagMemRefInfo) || parser->parseLSquare() ||
+      parser->parseComma() || parser->parseOperand(tagMemRefInfo) ||
       parser->parseAffineMapOfSSAIds(tagMapOperands, tagMapAttr,
                                      getTagMapAttrName(), result->attributes) ||
-      parser->parseRSquare() || parser->parseComma() ||
-      parser->parseOperand(numElementsInfo))
+      parser->parseComma() || parser->parseOperand(numElementsInfo))
     return failure();
 
   // Parse optional stride and elements per stride.
@@ -846,6 +875,13 @@ LogicalResult AffineDmaStartOp::verify() {
   return success();
 }
 
+void AffineDmaStartOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  /// dma_start(memrefcast) -> dma_start
+  results.push_back(
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+}
+
 //===----------------------------------------------------------------------===//
 // AffineDmaWaitOp
 //===----------------------------------------------------------------------===//
@@ -884,11 +920,11 @@ ParseResult AffineDmaWaitOp::parse(OpAsmParser *parser,
   OpAsmParser::OperandType numElementsInfo;
 
   // Parse tag memref, its map operands, and dma size.
-  if (parser->parseOperand(tagMemRefInfo) || parser->parseLSquare() ||
+  if (parser->parseOperand(tagMemRefInfo) ||
       parser->parseAffineMapOfSSAIds(tagMapOperands, tagMapAttr,
                                      getTagMapAttrName(), result->attributes) ||
-      parser->parseRSquare() || parser->parseComma() ||
-      parser->parseOperand(numElementsInfo) || parser->parseColonType(type) ||
+      parser->parseComma() || parser->parseOperand(numElementsInfo) ||
+      parser->parseColonType(type) ||
       parser->resolveOperand(tagMemRefInfo, type, result->operands) ||
       parser->resolveOperands(tagMapOperands, indexType, result->operands) ||
       parser->resolveOperand(numElementsInfo, indexType, result->operands))
@@ -908,6 +944,13 @@ LogicalResult AffineDmaWaitOp::verify() {
   if (!getOperand(0)->getType().isa<MemRefType>())
     return emitOpError("expected DMA tag to be of memref type");
   return success();
+}
+
+void AffineDmaWaitOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  /// dma_wait(memrefcast) -> dma_wait
+  results.push_back(
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1556,7 +1599,20 @@ void AffineLoadOp::build(Builder *builder, OperationState *result,
                          AffineMap map, ArrayRef<Value *> operands) {
   // TODO(b/133776335) Check that map operands are loop IVs or symbols.
   result->addOperands(operands);
-  result->addAttribute("map", builder->getAffineMapAttr(map));
+  if (map)
+    result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  auto memrefType = operands[0]->getType().cast<MemRefType>();
+  result->types.push_back(memrefType.getElementType());
+}
+
+void AffineLoadOp::build(Builder *builder, OperationState *result,
+                         Value *memref, ArrayRef<Value *> indices) {
+  result->addOperands(memref);
+  result->addOperands(indices);
+  auto memrefType = memref->getType().cast<MemRefType>();
+  auto map = builder->getMultiDimIdentityMap(memrefType.getRank());
+  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  result->types.push_back(memrefType.getElementType());
 }
 
 ParseResult AffineLoadOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -1568,10 +1624,11 @@ ParseResult AffineLoadOp::parse(OpAsmParser *parser, OperationState *result) {
   AffineMapAttr mapAttr;
   SmallVector<OpAsmParser::OperandType, 1> mapOperands;
   return failure(
-      parser->parseOperand(memrefInfo) || parser->parseLSquare() ||
-      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, "map",
+      parser->parseOperand(memrefInfo) ||
+      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, getMapAttrName(),
                                      result->attributes) ||
-      parser->parseRSquare() || parser->parseColonType(type) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
       parser->resolveOperand(memrefInfo, type, result->operands) ||
       parser->resolveOperands(mapOperands, affineIntTy, result->operands) ||
       parser->addTypeToList(type.getElementType(), result->types));
@@ -1579,26 +1636,40 @@ ParseResult AffineLoadOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void AffineLoadOp::print(OpAsmPrinter *p) {
   *p << "affine.load " << *getMemRef() << '[';
-  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>("map");
-  SmallVector<Value *, 2> operands(getIndices());
-  p->printAffineMapOfSSAIds(mapAttr, operands);
-  *p << "] : " << getMemRefType();
+  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
+  if (mapAttr) {
+    SmallVector<Value *, 2> operands(getIndices());
+    p->printAffineMapOfSSAIds(mapAttr, operands);
+  }
+  *p << ']';
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
+  *p << " : " << getMemRefType();
 }
 
 LogicalResult AffineLoadOp::verify() {
   if (getType() != getMemRefType().getElementType())
     return emitOpError("result type must match element type of memref");
 
-  AffineMap map = getAttrOfType<AffineMapAttr>("map").getValue();
-  if (map.getNumResults() != getMemRefType().getRank())
-    return emitOpError("affine.load affine map num results must equal memref "
-                       "rank");
+  auto mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
+  if (mapAttr) {
+    AffineMap map = getAttrOfType<AffineMapAttr>(getMapAttrName()).getValue();
+    if (map.getNumResults() != getMemRefType().getRank())
+      return emitOpError("affine.load affine map num results must equal"
+                         " memref rank");
+  }
 
   for (auto *idx : getIndices())
     if (!idx->getType().isIndex())
       return emitOpError("index to load must have 'index' type");
   // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
   return success();
+}
+
+void AffineLoadOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  /// load(memrefcast) -> load
+  results.push_back(
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1611,7 +1682,19 @@ void AffineStoreOp::build(Builder *builder, OperationState *result,
   // TODO(b/133776335) Check that map operands are loop IVs or symbols.
   result->addOperands(valueToStore);
   result->addOperands(operands);
-  result->addAttribute("map", builder->getAffineMapAttr(map));
+  if (map)
+    result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+}
+
+void AffineStoreOp::build(Builder *builder, OperationState *result,
+                          Value *valueToStore, Value *memref,
+                          ArrayRef<Value *> operands) {
+  result->addOperands(valueToStore);
+  result->addOperands(memref);
+  result->addOperands(operands);
+  auto memrefType = memref->getType().cast<MemRefType>();
+  auto map = builder->getMultiDimIdentityMap(memrefType.getRank());
+  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
 }
 
 ParseResult AffineStoreOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -1624,10 +1707,11 @@ ParseResult AffineStoreOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 1> mapOperands;
   return failure(
       parser->parseOperand(storeValueInfo) || parser->parseComma() ||
-      parser->parseOperand(memrefInfo) || parser->parseLSquare() ||
-      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, "map",
+      parser->parseOperand(memrefInfo) ||
+      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, getMapAttrName(),
                                      result->attributes) ||
-      parser->parseRSquare() || parser->parseColonType(type) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
       parser->resolveOperand(storeValueInfo, type.getElementType(),
                              result->operands) ||
       parser->resolveOperand(memrefInfo, type, result->operands) ||
@@ -1637,10 +1721,14 @@ ParseResult AffineStoreOp::parse(OpAsmParser *parser, OperationState *result) {
 void AffineStoreOp::print(OpAsmPrinter *p) {
   *p << "affine.store " << *getValueToStore();
   *p << ", " << *getMemRef() << '[';
-  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>("map");
-  SmallVector<Value *, 2> operands(getIndices());
-  p->printAffineMapOfSSAIds(mapAttr, operands);
-  *p << "] : " << getMemRefType();
+  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
+  if (mapAttr) {
+    SmallVector<Value *, 2> operands(getIndices());
+    p->printAffineMapOfSSAIds(mapAttr, operands);
+  }
+  *p << ']';
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
+  *p << " : " << getMemRefType();
 }
 
 LogicalResult AffineStoreOp::verify() {
@@ -1648,14 +1736,23 @@ LogicalResult AffineStoreOp::verify() {
   if (getValueToStore()->getType() != getMemRefType().getElementType())
     return emitOpError("first operand must have same type memref element type");
 
-  AffineMap map = getAttrOfType<AffineMapAttr>("map").getValue();
-  if (map.getNumResults() != getMemRefType().getRank())
-    return emitOpError("affine.store affine map num results must equal memref "
-                       "rank");
-
+  auto mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
+  if (mapAttr) {
+    AffineMap map = mapAttr.getValue();
+    if (map.getNumResults() != getMemRefType().getRank())
+      return emitOpError("affine.store affine map num results must equal"
+                         " memref rank");
+  }
   for (auto *idx : getIndices())
     if (!idx->getType().isIndex())
       return emitOpError("index to load must have 'index' type");
   // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
   return success();
+}
+
+void AffineStoreOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  /// load(memrefcast) -> load
+  results.push_back(
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }

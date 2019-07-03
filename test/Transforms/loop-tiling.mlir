@@ -87,12 +87,12 @@ func @simple_matmul(%arg0: memref<256x256xvector<64xf32>>, %arg1: memref<256x256
   affine.for %i = 0 to 256 {
     affine.for %j = 0 to 256 {
       affine.for %k = 0 to 250 {
-        %l = load %arg0[%i, %k] : memref<256x256xvector<64xf32>>
-        %r = load %arg1[%k, %j] : memref<256x256xvector<64xf32>>
-        %o = load %arg2[%i, %j] : memref<256x256xvector<64xf32>>
+        %l = affine.load %arg0[%i, %k] : memref<256x256xvector<64xf32>>
+        %r = affine.load %arg1[%k, %j] : memref<256x256xvector<64xf32>>
+        %o = affine.load %arg2[%i, %j] : memref<256x256xvector<64xf32>>
         %m = mulf %l, %r : vector<64xf32>
         %a = addf %o, %m : vector<64xf32>
-        store %a, %arg2[%i, %j] : memref<256x256xvector<64xf32>>
+        affine.store %a, %arg2[%i, %j] : memref<256x256xvector<64xf32>>
       }
     }
   }
@@ -112,14 +112,14 @@ func @tile_with_symbolic_loop_upper_bounds(%arg0: memref<?x?xf32>, %arg1: memref
   %0 = dim %arg0, 0 : memref<?x?xf32>
   affine.for %i0 = 0 to %0 {
     affine.for %i1 = 0 to %0 {
-      store %cst, %arg2[%i0, %i1] : memref<?x?xf32>
+      affine.store %cst, %arg2[%i0, %i1] : memref<?x?xf32>
       affine.for %i2 = 0 to %0 {
-        %1 = load %arg0[%i0, %i2] : memref<?x?xf32>
-        %2 = load %arg1[%i2, %i1] : memref<?x?xf32>
+        %1 = affine.load %arg0[%i0, %i2] : memref<?x?xf32>
+        %2 = affine.load %arg1[%i2, %i1] : memref<?x?xf32>
         %3 = mulf %1, %2 : f32
-        %4 = load %arg2[%i0, %i1] : memref<?x?xf32>
+        %4 = affine.load %arg2[%i0, %i1] : memref<?x?xf32>
         %5 = addf %4, %3 : f32
-        store %5, %arg2[%i0, %i1] : memref<?x?xf32>
+        affine.store %5, %arg2[%i0, %i1] : memref<?x?xf32>
       }
     }
   }
@@ -129,16 +129,16 @@ func @tile_with_symbolic_loop_upper_bounds(%arg0: memref<?x?xf32>, %arg1: memref
 // CHECK:       %0 = dim %arg0, 0 : memref<?x?xf32>
 // CHECK-NEXT:  affine.for %i0 = 0 to %0 step 32 {
 // CHECK-NEXT:    affine.for %i1 = 0 to %0 step 32 {
-// CHECK-NEXT:      affine.for %i2 = #map2(%i0) to min [[UBMAP]](%i0)[%0] {
-// CHECK-NEXT:        affine.for %i3 = #map2(%i1) to min [[UBMAP]](%i1)[%0] {
-// CHECK-NEXT:          store %cst, %arg2[%i2, %i3] : memref<?x?xf32>
+// CHECK-NEXT:      affine.for %i2 = #map3(%i0) to min [[UBMAP]](%i0)[%0] {
+// CHECK-NEXT:        affine.for %i3 = #map3(%i1) to min [[UBMAP]](%i1)[%0] {
+// CHECK-NEXT:          affine.store %cst, %arg2[%i2, %i3] : memref<?x?xf32>
 // CHECK-NEXT:          affine.for %i4 = 0 to %0 {
-// CHECK-NEXT:            %1 = load %arg0[%i2, %i4] : memref<?x?xf32>
-// CHECK-NEXT:            %2 = load %arg1[%i4, %i3] : memref<?x?xf32>
+// CHECK-NEXT:            %1 = affine.load %arg0[%i2, %i4] : memref<?x?xf32>
+// CHECK-NEXT:            %2 = affine.load %arg1[%i4, %i3] : memref<?x?xf32>
 // CHECK-NEXT:            %3 = mulf %1, %2 : f32
-// CHECK-NEXT:            %4 = load %arg2[%i2, %i3] : memref<?x?xf32>
+// CHECK-NEXT:            %4 = affine.load %arg2[%i2, %i3] : memref<?x?xf32>
 // CHECK-NEXT:            %5 = addf %4, %3 : f32
-// CHECK-NEXT:            store %5, %arg2[%i2, %i3] : memref<?x?xf32>
+// CHECK-NEXT:            affine.store %5, %arg2[%i2, %i3] : memref<?x?xf32>
 // CHECK-NEXT:          }
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
@@ -155,7 +155,7 @@ func @tile_with_symbolic_loop_upper_bounds(%arg0: memref<?x?xf32>, %arg1: memref
 func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: index) {
   %dim0 = dim %arg0, 0 : memref<?xf32>
   affine.for %i0 = 0 to ()[s0, s1] -> (s0 + s1) ()[%dim0, %limit] {
-    %v0 = load %arg0[%i0] : memref<?xf32>
+    %v0 = affine.load %arg0[%i0] : memref<?xf32>
   }
   return
 }
@@ -163,7 +163,7 @@ func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: i
 // CHECK:       %0 = dim %arg0, 0 : memref<?xf32>
 // CHECK-NEXT:  affine.for %i0 = 0 to [[MAP1]]()[%0, %arg1] step 32 {
 // CHECK-NEXT:    affine.for %i1 = [[MAP0]](%i0) to min [[UBMAP]](%i0)[%0, %arg1] {
-// CHECK-NEXT:      %1 = load %arg0[%i1] : memref<?xf32>
+// CHECK-NEXT:      %1 = affine.load %arg0[%i1] : memref<?xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 
@@ -173,12 +173,12 @@ func @trip_count_1(%arg0: memref<196608x1xf32>, %arg1: memref<196608x1xf32>)
     -> memref<196608x1xf32> {
   affine.for %i1 = 0 to 196608 {
     affine.for %i3 = 0 to 1 {
-      %4 = load %arg0[%i1, %i3] : memref<196608x1xf32>
-      store %4, %arg1[%i1, %i3] : memref<196608x1xf32>
+      %4 = affine.load %arg0[%i1, %i3] : memref<196608x1xf32>
+      affine.store %4, %arg1[%i1, %i3] : memref<196608x1xf32>
     }
   }
   return %arg1 : memref<196608x1xf32>
 }
 
-// CHECK: %0 = load %arg0[%i2, %i3] : memref<196608x1xf32>
+// CHECK: %0 = affine.load %arg0[%i2, %i3] : memref<196608x1xf32>
 

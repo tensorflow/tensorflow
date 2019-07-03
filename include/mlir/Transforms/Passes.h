@@ -103,7 +103,7 @@ FunctionPassBase *createLoopTilingPass(uint64_t cacheSizeBytes);
 /// while generating DMAs to move data.
 FunctionPassBase *createDmaGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace,
-    int minDmaTransferSize = 1024,
+    unsigned tagMemorySpace = 0, int minDmaTransferSize = 1024,
     uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());
 
 /// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.

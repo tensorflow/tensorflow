@@ -44,7 +44,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -717,7 +716,8 @@ struct VectorizationState {
   // do not necessarily belong to use-def chains starting from loads (e.g
   // storing a constant), we need to handle them in a post-pass.
   DenseSet<Operation *> terminals;
-  // Checks that the type of `op` is StoreOp and adds it to the terminals set.
+  // Checks that the type of `op` is AffineStoreOp and adds it to the terminals
+  // set.
   void registerTerminal(Operation *op);
 
 private:
@@ -739,14 +739,14 @@ void VectorizationState::registerReplacement(Operation *key, Operation *value) {
   vectorizedSet.insert(value);
   vectorizationMap.insert(std::make_pair(key, value));
   registerReplacement(key->getResult(0), value->getResult(0));
-  if (isa<LoadOp>(key)) {
+  if (isa<AffineLoadOp>(key)) {
     assert(roots.count(key) == 0 && "root was already inserted previously");
     roots.insert(key);
   }
 }
 
 void VectorizationState::registerTerminal(Operation *op) {
-  assert(isa<StoreOp>(op) && "terminal must be a StoreOp");
+  assert(isa<AffineStoreOp>(op) && "terminal must be a AffineStoreOp");
   assert(terminals.count(op) == 0 &&
          "terminal was already inserted previously");
   terminals.insert(op);
@@ -766,16 +766,31 @@ void VectorizationState::registerReplacement(Value *key, Value *value) {
   replacementMap.insert(std::make_pair(key, value));
 }
 
+// Apply 'map' with 'mapOperands' returning resulting values in 'results'.
+static void computeMemoryOpIndices(Operation *op, AffineMap map,
+                                   ArrayRef<Value *> mapOperands,
+                                   SmallVectorImpl<Value *> &results) {
+  OpBuilder builder(op);
+  for (auto resultExpr : map.getResults()) {
+    auto singleResMap =
+        builder.getAffineMap(map.getNumDims(), map.getNumSymbols(), resultExpr);
+    auto afOp =
+        builder.create<AffineApplyOp>(op->getLoc(), singleResMap, mapOperands);
+    results.push_back(afOp);
+  }
+}
+
 ////// TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ////
 
 /// Handles the vectorization of load and store MLIR operations.
 ///
-/// LoadOp operations are the roots of the vectorizeNonTerminals call. They are
-/// vectorized immediately. The resulting vector.transfer_read is immediately
-/// registered to replace all uses of the LoadOp in this pattern's scope.
+/// AffineLoadOp operations are the roots of the vectorizeNonTerminals call.
+/// They are vectorized immediately. The resulting vector.transfer_read is
+/// immediately registered to replace all uses of the AffineLoadOp in this
+/// pattern's scope.
 ///
-/// StoreOp are the terminals of the vectorizeNonTerminals call. They need to be
-/// vectorized late once all the use-def chains have been traversed.
+/// AffineStoreOp are the terminals of the vectorizeNonTerminals call. They
+/// need to be vectorized late once all the use-def chains have been traversed.
 /// Additionally, they may have ssa-values operands which come from outside the
 /// scope of the current pattern.
 /// Such special cases force us to delay the vectorization of the stores until
@@ -798,17 +813,26 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector.transfer operations
   // as needed by various targets.
-  if (isa<LoadOp>(opInst)) {
+  if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
+    OpBuilder b(opInst);
+    SmallVector<Value *, 4> mapOperands(load.getIndices());
+    SmallVector<Value *, 8> indices;
+    indices.reserve(load.getMemRefType().getRank());
+    if (load.getAffineMap() !=
+        b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
+      computeMemoryOpIndices(opInst, load.getAffineMap(), mapOperands, indices);
+    } else {
+      indices.append(load.getIndices().begin(), load.getIndices().end());
+    }
     auto permutationMap =
-        makePermutationMap(opInst, state->strategy->loopToVectorDim);
+        makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
     if (!permutationMap)
       return LogicalResult::Failure;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    OpBuilder b(opInst);
     auto transfer = b.create<VectorTransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
-        map(makePtrDynCaster<Value>(), memoryOp.getIndices()), permutationMap);
+        map(makePtrDynCaster<Value>(), indices), permutationMap);
     state->registerReplacement(opInst, transfer.getOperation());
   } else {
     state->registerTerminal(opInst);
@@ -837,8 +861,8 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   loadAndStores.match(loop.getOperation(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
     auto *opInst = ls.getMatchedOperation();
-    auto load = dyn_cast<LoadOp>(opInst);
-    auto store = dyn_cast<StoreOp>(opInst);
+    auto load = dyn_cast<AffineLoadOp>(opInst);
+    auto store = dyn_cast<AffineStoreOp>(opInst);
     LLVM_DEBUG(opInst->print(dbgs()));
     LogicalResult result =
         load ? vectorizeRootOrTerminal(loop.getInductionVar(), load, state)
@@ -1002,21 +1026,32 @@ static Value *vectorizeOperand(Value *operand, Operation *op,
 static Operation *vectorizeOneOperation(Operation *opInst,
                                         VectorizationState *state) {
   // Sanity checks.
-  assert(!isa<LoadOp>(opInst) &&
+  assert(!isa<AffineLoadOp>(opInst) &&
          "all loads must have already been fully vectorized independently");
   assert(!isa<VectorTransferReadOp>(opInst) &&
          "vector.transfer_read cannot be further vectorized");
   assert(!isa<VectorTransferWriteOp>(opInst) &&
          "vector.transfer_write cannot be further vectorized");
 
-  if (auto store = dyn_cast<StoreOp>(opInst)) {
+  if (auto store = dyn_cast<AffineStoreOp>(opInst)) {
+    OpBuilder b(opInst);
     auto *memRef = store.getMemRef();
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
-    auto indices = map(makePtrDynCaster<Value>(), store.getIndices());
-    OpBuilder b(opInst);
+
+    SmallVector<Value *, 4> mapOperands(store.getIndices());
+    SmallVector<Value *, 8> indices;
+    indices.reserve(store.getMemRefType().getRank());
+    if (store.getAffineMap() !=
+        b.getMultiDimIdentityMap(store.getMemRefType().getRank())) {
+      computeMemoryOpIndices(opInst, store.getAffineMap(), mapOperands,
+                             indices);
+    } else {
+      indices.append(store.getIndices().begin(), store.getIndices().end());
+    }
+
     auto permutationMap =
-        makePermutationMap(opInst, state->strategy->loopToVectorDim);
+        makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
     if (!permutationMap)
       return nullptr;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
@@ -1025,7 +1060,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
         opInst->getLoc(), vectorValue, memRef, indices, permutationMap);
     auto *res = transfer.getOperation();
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
-    // "Terminals" (i.e. StoreOps) are erased on the spot.
+    // "Terminals" (i.e. AffineStoreOps) are erased on the spot.
     opInst->erase();
     return res;
   }
@@ -1156,9 +1191,9 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   // From now on, any error triggers the scope guard above.
   //////////////////////////////////////////////////////////////////////////////
   // 1. Vectorize all the loops matched by the pattern, recursively.
-  // This also vectorizes the roots (LoadOp) as well as registers the terminals
-  // (StoreOp) for post-processing vectorization (we need to wait for all
-  // use-def chains into them to be vectorized first).
+  // This also vectorizes the roots (AffineLoadOp) as well as registers the
+  // terminals (AffineStoreOp) for post-processing vectorization (we need to
+  // wait for all use-def chains into them to be vectorized first).
   if (failed(vectorizeLoopsAndLoadsRecursively(m, &state))) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed root vectorizeLoop");
     return guard.failure();

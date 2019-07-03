@@ -232,8 +232,8 @@ mlir::getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices) {
 template <typename LoadOrStoreOp>
 static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
                                int *memRefDim) {
-  static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
-                    std::is_same<LoadOrStoreOp, StoreOp>::value,
+  static_assert(std::is_same<LoadOrStoreOp, AffineLoadOp>::value ||
+                    std::is_same<LoadOrStoreOp, AffineStoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
   assert(memRefDim && "memRefDim == nullptr");
   auto memRefType = memoryOp.getMemRefType();
@@ -250,25 +250,35 @@ static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
   }
 
   int uniqueVaryingIndexAlongIv = -1;
-  auto indices = memoryOp.getIndices();
-  unsigned numIndices = llvm::size(indices);
-  unsigned dim = 0;
-  for (auto *index : indices) {
-    if (!isAccessInvariant(iv, index)) {
-      if (uniqueVaryingIndexAlongIv != -1) {
-        // 2+ varying indices -> do not vectorize along iv.
-        return false;
+  auto accessMap = memoryOp.getAffineMap();
+  SmallVector<Value *, 4> mapOperands(memoryOp.getIndices());
+  unsigned numDims = accessMap.getNumDims();
+  for (unsigned i = 0, e = memRefType.getRank(); i < e; ++i) {
+    // Gather map operands used result expr 'i' in 'exprOperands'.
+    SmallVector<Value *, 4> exprOperands;
+    auto resultExpr = accessMap.getResult(i);
+    resultExpr.walk([&](AffineExpr expr) {
+      if (auto dimExpr = expr.dyn_cast<AffineDimExpr>())
+        exprOperands.push_back(mapOperands[dimExpr.getPosition()]);
+      else if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>())
+        exprOperands.push_back(mapOperands[numDims + symExpr.getPosition()]);
+    });
+    // Check access invariance of each operand in 'exprOperands'.
+    for (auto *exprOperand : exprOperands) {
+      if (!isAccessInvariant(iv, exprOperand)) {
+        if (uniqueVaryingIndexAlongIv != -1) {
+          // 2+ varying indices -> do not vectorize along iv.
+          return false;
+        }
+        uniqueVaryingIndexAlongIv = i;
       }
-      uniqueVaryingIndexAlongIv = dim;
     }
-    ++dim;
   }
 
   if (uniqueVaryingIndexAlongIv == -1)
     *memRefDim = -1;
   else
-    *memRefDim = numIndices - (uniqueVaryingIndexAlongIv + 1);
-
+    *memRefDim = memRefType.getRank() - (uniqueVaryingIndexAlongIv + 1);
   return true;
 }
 
@@ -320,8 +330,8 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
   loadAndStores.match(forOp, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
     auto *op = ls.getMatchedOperation();
-    auto load = dyn_cast<LoadOp>(op);
-    auto store = dyn_cast<StoreOp>(op);
+    auto load = dyn_cast<AffineLoadOp>(op);
+    auto store = dyn_cast<AffineStoreOp>(op);
     // Only scalar types are considered vectorizable, all load/store must be
     // vectorizable for a loop to qualify as vectorizable.
     // TODO(ntv): ponder whether we want to be more general here.
@@ -338,8 +348,8 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
 
 bool mlir::isVectorizableLoopBody(AffineForOp loop, int *memRefDim) {
   VectorizableOpFun fun([memRefDim](AffineForOp loop, Operation &op) {
-    auto load = dyn_cast<LoadOp>(op);
-    auto store = dyn_cast<StoreOp>(op);
+    auto load = dyn_cast<AffineLoadOp>(op);
+    auto store = dyn_cast<AffineStoreOp>(op);
     return load ? isContiguousAccess(loop.getInductionVar(), load, memRefDim)
                 : isContiguousAccess(loop.getInductionVar(), store, memRefDim);
   });

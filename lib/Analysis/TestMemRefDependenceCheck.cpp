@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
@@ -116,7 +117,7 @@ void TestMemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
   getFunction().walk([&](Operation *op) {
-    if (isa<LoadOp>(op) || isa<StoreOp>(op))
+    if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op))
       loadsAndStores.push_back(op);
   });
 

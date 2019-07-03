@@ -18,17 +18,17 @@ func @cannot_fuse_would_create_cycle() {
   // Fusing loop nest '%i0' and loop nest '%i2' would create a cycle.
   affine.for %i0 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 2 at depth 0}}
-    %v0 = load %a[%i0] : memref<10xf32>
-    store %cf7, %b[%i0] : memref<10xf32>
+    %v0 = affine.load %a[%i0] : memref<10xf32>
+    affine.store %cf7, %b[%i0] : memref<10xf32>
   }
   affine.for %i1 = 0 to 10 {
-    store %cf7, %a[%i1] : memref<10xf32>
-    %v1 = load %c[%i1] : memref<10xf32>
+    affine.store %cf7, %a[%i1] : memref<10xf32>
+    %v1 = affine.load %c[%i1] : memref<10xf32>
   }
   affine.for %i2 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 2 into loop nest 0 at depth 0}}
-    %v2 = load %b[%i2] : memref<10xf32>
-    store %cf7, %c[%i2] : memref<10xf32>
+    %v2 = affine.load %b[%i2] : memref<10xf32>
+    affine.store %cf7, %c[%i2] : memref<10xf32>
   }
   return
 }
@@ -51,16 +51,16 @@ func @can_fuse_rar_dependence() {
 
   // Should fuse: no fusion preventing remarks should be emitted for this test.
   affine.for %i0 = 0 to 10 {
-    %v0 = load %a[%i0] : memref<10xf32>
-    store %cf7, %b[%i0] : memref<10xf32>
+    %v0 = affine.load %a[%i0] : memref<10xf32>
+    affine.store %cf7, %b[%i0] : memref<10xf32>
   }
   affine.for %i1 = 0 to 10 {
-    %v1 = load %a[%i1] : memref<10xf32>
-    %v2 = load %c[%i1] : memref<10xf32>
+    %v1 = affine.load %a[%i1] : memref<10xf32>
+    %v2 = affine.load %c[%i1] : memref<10xf32>
   }
   affine.for %i2 = 0 to 10 {
-    %v3 = load %b[%i2] : memref<10xf32>
-    store %cf7, %c[%i2] : memref<10xf32>
+    %v3 = affine.load %b[%i2] : memref<10xf32>
+    affine.store %cf7, %c[%i2] : memref<10xf32>
   }
   return
 }
@@ -84,16 +84,16 @@ func @can_fuse_different_memrefs() {
 
   // Should fuse: no fusion preventing remarks should be emitted for this test.
   affine.for %i0 = 0 to 10 {
-    %v0 = load %a[%i0] : memref<10xf32>
-    store %cf7, %b[%i0] : memref<10xf32>
+    %v0 = affine.load %a[%i0] : memref<10xf32>
+    affine.store %cf7, %b[%i0] : memref<10xf32>
   }
   affine.for %i1 = 0 to 10 {
-    store %cf7, %d[%i1] : memref<10xf32>
-    %v1 = load %c[%i1] : memref<10xf32>
+    affine.store %cf7, %d[%i1] : memref<10xf32>
+    %v1 = affine.load %c[%i1] : memref<10xf32>
   }
   affine.for %i2 = 0 to 10 {
-    %v2 = load %b[%i2] : memref<10xf32>
-    store %cf7, %c[%i2] : memref<10xf32>
+    %v2 = affine.load %b[%i2] : memref<10xf32>
+    affine.store %cf7, %c[%i2] : memref<10xf32>
   }
   return
 }
@@ -108,16 +108,16 @@ func @should_not_fuse_across_intermediate_store() {
 
   affine.for %i0 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 0}}
-    %v0 = load %0[%i0] : memref<10xf32>
+    %v0 = affine.load %0[%i0] : memref<10xf32>
     "op0"(%v0) : (f32) -> ()
   }
 
   // Should not fuse loop nests '%i0' and '%i1' across top-level store.
-  store %cf7, %0[%c0] : memref<10xf32>
+  affine.store %cf7, %0[%c0] : memref<10xf32>
 
   affine.for %i1 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 0}}
-    %v1 = load %0[%i1] : memref<10xf32>
+    %v1 = affine.load %0[%i1] : memref<10xf32>
     "op1"(%v1) : (f32) -> ()
   }
   return
@@ -133,16 +133,16 @@ func @should_not_fuse_across_intermediate_load() {
 
   affine.for %i0 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 0}}
-    store %cf7, %0[%i0] : memref<10xf32>
+    affine.store %cf7, %0[%i0] : memref<10xf32>
   }
 
   // Should not fuse loop nests '%i0' and '%i1' across top-level load.
-  %v0 = load %0[%c0] : memref<10xf32>
+  %v0 = affine.load %0[%c0] : memref<10xf32>
   "op0"(%v0) : (f32) -> ()
 
   affine.for %i1 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 0}}
-    store %cf7, %0[%i1] : memref<10xf32>
+    affine.store %cf7, %0[%i1] : memref<10xf32>
   }
 
   return
@@ -159,12 +159,12 @@ func @should_not_fuse_across_ssa_value_def() {
 
   affine.for %i0 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 0}}
-    %v0 = load %0[%i0] : memref<10xf32>
-    store %v0, %1[%i0] : memref<10xf32>
+    %v0 = affine.load %0[%i0] : memref<10xf32>
+    affine.store %v0, %1[%i0] : memref<10xf32>
   }
 
   // Loop nest '%i0" cannot be fused past load from '%1' due to RAW dependence.
-  %v1 = load %1[%c0] : memref<10xf32>
+  %v1 = affine.load %1[%c0] : memref<10xf32>
   "op0"(%v1) : (f32) -> ()
 
   // Loop nest '%i1' cannot be fused past SSA value def '%c2' which it uses.
@@ -172,7 +172,7 @@ func @should_not_fuse_across_ssa_value_def() {
 
   affine.for %i1 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 0}}
-    store %cf7, %0[%c2] : memref<10xf32>
+    affine.store %cf7, %0[%c2] : memref<10xf32>
   }
 
   return
@@ -188,18 +188,18 @@ func @should_not_fuse_store_before_load() {
 
   affine.for %i0 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 2 at depth 0}}
-    store %cf7, %0[%i0] : memref<10xf32>
-    %v0 = load %0[%i0] : memref<10xf32>
+    affine.store %cf7, %0[%i0] : memref<10xf32>
+    %v0 = affine.load %0[%i0] : memref<10xf32>
   }
 
   affine.for %i1 = 0 to 10 {
-    %v1 = load %0[%i1] : memref<10xf32>
+    %v1 = affine.load %0[%i1] : memref<10xf32>
   }
 
   affine.for %i2 = 0 to 10 {
     // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 2 into loop nest 0 at depth 0}}
-    store %cf7, %0[%i2] : memref<10xf32>
-    %v2 = load %0[%i2] : memref<10xf32>
+    affine.store %cf7, %0[%i2] : memref<10xf32>
+    %v2 = affine.load %0[%i2] : memref<10xf32>
   }
   return
 }
@@ -215,14 +215,14 @@ func @should_not_fuse_across_load_at_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 1}}
-      store %cf7, %0[%i0, %i1] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %i1] : memref<10x10xf32>
     }
 
-    %v1 = load %0[%i0, %c0] : memref<10x10xf32>
+    %v1 = affine.load %0[%i0, %c0] : memref<10x10xf32>
 
     affine.for %i3 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 1}}
-      store %cf7, %0[%i0, %i3] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %i3] : memref<10x10xf32>
     }
   }
   return
@@ -239,16 +239,16 @@ func @should_not_fuse_across_load_in_loop_at_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 2 at depth 1}}
-      store %cf7, %0[%i0, %i1] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %i1] : memref<10x10xf32>
     }
 
     affine.for %i2 = 0 to 10 {
-      %v1 = load %0[%i0, %i2] : memref<10x10xf32>
+      %v1 = affine.load %0[%i0, %i2] : memref<10x10xf32>
     }
 
     affine.for %i3 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 2 into loop nest 0 at depth 1}}
-      store %cf7, %0[%i0, %i3] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %i3] : memref<10x10xf32>
     }
   }
   return
@@ -265,14 +265,14 @@ func @should_not_fuse_across_store_at_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 1}}
-      %v0 = load %0[%i0, %i1] : memref<10x10xf32>
+      %v0 = affine.load %0[%i0, %i1] : memref<10x10xf32>
     }
 
-    store %cf7, %0[%i0, %c0] : memref<10x10xf32>
+    affine.store %cf7, %0[%i0, %c0] : memref<10x10xf32>
 
     affine.for %i3 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 1}}
-      %v1 = load %0[%i0, %i3] : memref<10x10xf32>
+      %v1 = affine.load %0[%i0, %i3] : memref<10x10xf32>
     }
   }
   return
@@ -289,16 +289,16 @@ func @should_not_fuse_across_store_in_loop_at_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 2 at depth 1}}
-      %v0 = load %0[%i0, %i1] : memref<10x10xf32>
+      %v0 = affine.load %0[%i0, %i1] : memref<10x10xf32>
     }
 
     affine.for %i2 = 0 to 10 {
-      store %cf7, %0[%i0, %i2] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %i2] : memref<10x10xf32>
     }
 
     affine.for %i3 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 2 into loop nest 0 at depth 1}}
-      %v1 = load %0[%i0, %i3] : memref<10x10xf32>
+      %v1 = affine.load %0[%i0, %i3] : memref<10x10xf32>
     }
   }
   return
@@ -316,13 +316,13 @@ func @should_not_fuse_across_ssa_value_def_at_depth1() {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 0 into loop nest 1 at depth 1}}
-      %v0 = load %0[%i0, %i1] : memref<10x10xf32>
-      store %v0, %1[%i0, %i1] : memref<10x10xf32>
+      %v0 = affine.load %0[%i0, %i1] : memref<10x10xf32>
+      affine.store %v0, %1[%i0, %i1] : memref<10x10xf32>
     }
 
     // RAW dependence from store in loop nest '%i1' to 'load %1' prevents
     // fusion loop nest '%i1' into loops after load.
-    %v1 = load %1[%i0, %c0] : memref<10x10xf32>
+    %v1 = affine.load %1[%i0, %c0] : memref<10x10xf32>
     "op0"(%v1) : (f32) -> ()
 
     // Loop nest '%i2' cannot be fused past SSA value def '%c2' which it uses.
@@ -330,7 +330,7 @@ func @should_not_fuse_across_ssa_value_def_at_depth1() {
 
     affine.for %i2 = 0 to 10 {
       // expected-remark@-1 {{block-level dependence preventing fusion of loop nest 1 into loop nest 0 at depth 1}}
-      store %cf7, %0[%i0, %c2] : memref<10x10xf32>
+      affine.store %cf7, %0[%i0, %c2] : memref<10x10xf32>
     }
   }
   return

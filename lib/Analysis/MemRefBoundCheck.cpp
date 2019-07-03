@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
@@ -48,9 +49,9 @@ FunctionPassBase *mlir::createMemRefBoundCheckPass() {
 
 void MemRefBoundCheck::runOnFunction() {
   getFunction().walk([](Operation *opInst) {
-    if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
+    if (auto loadOp = dyn_cast<AffineLoadOp>(opInst)) {
       boundCheckLoadOrStoreOp(loadOp);
-    } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
+    } else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst)) {
       boundCheckLoadOrStoreOp(storeOp);
     }
     // TODO(bondhugula): do this for DMA ops as well.

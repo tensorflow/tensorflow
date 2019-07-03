@@ -1035,7 +1035,6 @@ Attribute Parser::parseAttribute(Type type) {
   case Token::string: {
     auto val = getToken().getStringValue();
     consumeToken(Token::string);
-
     // Parse the optional trailing colon type if one wasn't explicitly provided.
     if (!type && consumeIf(Token::colon) && !(type = parseType()))
       return Attribute();
@@ -2326,6 +2325,9 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
 
 /// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
 ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
+  if (!consumeIf(Token::l_square))
+    return failure();
+
   SmallVector<AffineExpr, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseAffineExpr();
@@ -2336,11 +2338,15 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
   // Parse a multi-dimensional affine expression (a comma-separated list of
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-  if (parseCommaSeparatedList(parseElt))
+  if (parseCommaSeparatedListUntil(Token::r_square, parseElt,
+                                   /*allowEmptyList=*/true))
     return failure();
   // Parsed a valid affine map.
-  map = builder.getAffineMap(numDimOperands,
-                             dimsAndSymbols.size() - numDimOperands, exprs);
+  if (exprs.empty())
+    map = AffineMap();
+  else
+    map = builder.getAffineMap(numDimOperands,
+                               dimsAndSymbols.size() - numDimOperands, exprs);
   return success();
 }
 
@@ -3452,8 +3458,10 @@ public:
     if (parser.parseAffineMapOfSSAIds(map, parseElement))
       return failure();
     // Add AffineMap attribute.
-    mapAttr = parser.builder.getAffineMapAttr(map);
-    attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
+    if (map) {
+      mapAttr = parser.builder.getAffineMapAttr(map);
+      attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
+    }
 
     // Add dim operands before symbol operands in 'operands'.
     operands.assign(dimOperands.begin(), dimOperands.end());

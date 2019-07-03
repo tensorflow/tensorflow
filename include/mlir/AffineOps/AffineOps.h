@@ -284,6 +284,8 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
 
   /// Returns true if this DMA operation is strided, returns false otherwise.
   bool isStrided() {
@@ -367,6 +369,8 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
 };
 
 /// The "affine.for" operation represents an affine loop nest, defining an SSA
@@ -649,10 +653,16 @@ public:
   /// Builds an affine load op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
                     ArrayRef<Value *> operands);
+  /// Builds an affine load op an identify map and operands.
+  static void build(Builder *builder, OperationState *result, Value *memref,
+                    ArrayRef<Value *> indices = {});
+
+  /// Returns the operand index of the memref.
+  unsigned getMemRefOperandIndex() { return 0; }
 
   /// Get memref operand.
-  Value *getMemRef() { return getOperand(0); }
-  void setMemRef(Value *value) { setOperand(0, value); }
+  Value *getMemRef() { return getOperand(getMemRefOperandIndex()); }
+  void setMemRef(Value *value) { setOperand(getMemRefOperandIndex(), value); }
   MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
@@ -680,6 +690,8 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
 };
 
 /// The "affine.store" op writes an element to a memref, where the index
@@ -707,13 +719,20 @@ public:
   static void build(Builder *builder, OperationState *result,
                     Value *valueToStore, AffineMap map,
                     ArrayRef<Value *> operands);
+  /// Builds an affine store operation with an identity map and operands.
+  static void build(Builder *builder, OperationState *result,
+                    Value *valueToStore, Value *memref,
+                    ArrayRef<Value *> operands);
 
   /// Get value to be stored by store operation.
   Value *getValueToStore() { return getOperand(0); }
 
+  /// Returns the operand index of the memref.
+  unsigned getMemRefOperandIndex() { return 1; }
+
   /// Get memref operand.
-  Value *getMemRef() { return getOperand(1); }
-  void setMemRef(Value *value) { setOperand(1, value); }
+  Value *getMemRef() { return getOperand(getMemRefOperandIndex()); }
+  void setMemRef(Value *value) { setOperand(getMemRefOperandIndex(), value); }
 
   MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
@@ -742,6 +761,8 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
 };
 
 /// Returns true if the given Value can be used as a dimension id.

@@ -26,7 +26,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    affine.for %i0 = 0 to %M {
      affine.for %i1 = 0 to %N {
        affine.for %i2 = 0 to %P {
-         %a2 = load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
+         %a2 = affine.load %A[%i0, %i1, %i2] : memref<?x?x?xf32>
        }
      }
    }
@@ -38,7 +38,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    affine.for %i3 = 0 to %M {
      affine.for %i4 = 0 to %N {
        affine.for %i5 = 0 to %P {
-         %a5 = load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
+         %a5 = affine.load %A[%i4, %i5, %i3] : memref<?x?x?xf32>
        }
      }
    }
@@ -56,7 +56,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
       // CHECK: [[C1:%.*]] = constant dense<1.000000e+00> : vector<32x256xf32>
       // CHECK: vector.transfer_write [[C1]], {{.*}} {permutation_map = #[[map_id2]]} : vector<32x256xf32>, memref<?x?xf32>
       // non-scoped %f1
-      store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
+      affine.store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
     }
   }
   affine.for %i2 = 0 to %M {
@@ -64,7 +64,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
       // CHECK: [[C3:%.*]] = constant dense<2.000000e+00> : vector<32x256xf32>
       // CHECK: vector.transfer_write [[C3]], {{.*}} {permutation_map = #[[map_id2]]}  : vector<32x256xf32>, memref<?x?xf32>
       // non-scoped %f2
-      store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
+      affine.store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
     }
   }
   affine.for %i4 = 0 to %M {
@@ -79,8 +79,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
       // CHECK: [[S8:%.*]] = addf [[S7]], [[S6]] : vector<32x256xf32>
       // CHECK: vector.transfer_write [[S8]], {{.*}} {permutation_map = #[[map_id2]]} : vector<32x256xf32>, memref<?x?xf32>
       //
-      %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
-      %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
+      %a5 = affine.load %A[%i4, %i5] : memref<?x?xf32, 0>
+      %b5 = affine.load %B[%i4, %i5] : memref<?x?xf32, 0>
       %s5 = addf %a5, %b5 : f32
       // non-scoped %f1
       %s6 = addf %s5, %f1 : f32
@@ -88,12 +88,12 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
       %s7 = addf %s5, %f2 : f32
       // diamond dependency.
       %s8 = addf %s7, %s6 : f32
-      store %s8, %C[%i4, %i5] : memref<?x?xf32, 0>
+      affine.store %s8, %C[%i4, %i5] : memref<?x?xf32, 0>
     }
   }
   %c7 = constant 7 : index
   %c42 = constant 42 : index
-  %res = load %C[%c7, %c42] : memref<?x?xf32, 0>
+  %res = affine.load %C[%c7, %c42] : memref<?x?xf32, 0>
   return %res : f32
 }
 
@@ -114,7 +114,7 @@ func @vectorize_matmul(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: me
   affine.for %i0 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
     affine.for %i1 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
       %cst = constant 0.000000e+00 : f32
-      store %cst, %arg2[%i0, %i1] : memref<?x?xf32>
+      affine.store %cst, %arg2[%i0, %i1] : memref<?x?xf32>
     }
   }
   //      VECT:  affine.for %[[I2:.*]] = #[[map_id1]](%[[C0]]) to #[[map_id1]](%[[M]]) step 4 {
@@ -129,12 +129,12 @@ func @vectorize_matmul(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: me
   affine.for %i2 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
     affine.for %i3 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
       affine.for %i4 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%K) {
-        %6 = load %arg1[%i4, %i3] : memref<?x?xf32>
-        %7 = load %arg0[%i2, %i4] : memref<?x?xf32>
+        %6 = affine.load %arg1[%i4, %i3] : memref<?x?xf32>
+        %7 = affine.load %arg0[%i2, %i4] : memref<?x?xf32>
         %8 = mulf %7, %6 : f32
-        %9 = load %arg2[%i2, %i3] : memref<?x?xf32>
+        %9 = affine.load %arg2[%i2, %i3] : memref<?x?xf32>
         %10 = addf %9, %8 : f32
-        store %10, %arg2[%i2, %i3] : memref<?x?xf32>
+        affine.store %10, %arg2[%i2, %i3] : memref<?x?xf32>
       }
     }
   }

@@ -103,29 +103,29 @@ struct ComputationSliceState {
 //  Backward slice example:
 //
 //    affine.for %i0 = 0 to 10 {
-//      store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
+//      affine.store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
 //    }
 //    affine.for %i1 = 0 to 10 {
-//      %v = load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
+//      %v = affine.load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
 //    }
 //
 //    // Backward computation slice of loop nest '%i0'.
 //    affine.for %i0 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 1)(%i1) {
-//      store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
+//      affine.store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
 //    }
 //
 //  Forward slice example:
 //
 //    affine.for %i0 = 0 to 10 {
-//      store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
+//      affine.store %cst, %0[%i0] : memref<100xf32>  // 'depSourceAccess'
 //    }
 //    affine.for %i1 = 0 to 10 {
-//      %v = load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
+//      %v = affine.load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
 //    }
 //
 //    // Forward computation slice of loop nest '%i1'.
 //    affine.for %i1 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 1)(%i0) {
-//      %v = load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
+//      %v = affine.load %0[%i1] : memref<100xf32>    // 'depSinkAccess'
 //    }
 //
 void getComputationSliceState(Operation *depSourceOp, Operation *depSinkOp,
@@ -172,7 +172,7 @@ AffineForOp insertBackwardComputationSlice(Operation *srcOpInst,
 //
 //    affine.for %i = 0 to 32 {
 //      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
-//        load %A[%ii]
+//        affine.load %A[%ii]
 //      }
 //    }
 //
