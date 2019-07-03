@@ -196,9 +196,8 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < ((strides_.size() == 4) ? 3 : 5); i++) {
-      OP_REQUIRES(context_,
-                  FastBoundsCheck(filter_shape.dim_size(i),
-                                  std::numeric_limits<int>::max()),
+      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
+                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
     }
 
@@ -413,14 +412,16 @@ class MklDnnConvUtil {
     } else {
       OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
                                    input_planes, filter_planes, dilation_planes,
-                                   stride_planes, padding_, &out_planes, &pad_D1,
-                                   &pad_D2));
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
-                                   input_rows, filter_rows, dilation_rows, stride_rows,
-                                   padding_, &out_rows, &pad_top, &pad_bottom));
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
-                                   input_cols, filter_cols, dilation_cols, stride_cols,
-                                   padding_, &out_cols, &pad_left, &pad_right));
+                                   stride_planes, padding_, &out_planes,
+                                   &pad_D1, &pad_D2));
+      OP_REQUIRES_OK(context_,
+                     GetWindowedOutputSizeVerboseV2(
+                         input_rows, filter_rows, dilation_rows, stride_rows,
+                         padding_, &out_rows, &pad_top, &pad_bottom));
+      OP_REQUIRES_OK(context_,
+                     GetWindowedOutputSizeVerboseV2(
+                         input_cols, filter_cols, dilation_cols, stride_cols,
+                         padding_, &out_cols, &pad_left, &pad_right));
     }
 
     if (is_conv2d) {
