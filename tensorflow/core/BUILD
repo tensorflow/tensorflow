@@ -4336,7 +4336,9 @@ tf_cc_tests_gpu(
         "common_runtime/ring_reducer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_oss",  # TODO(b/136665883): re-enable after fixing OSS failure
+    ],
     deps = [
         ":all_kernels",
         ":core",
@@ -4365,7 +4367,9 @@ tf_cc_tests_gpu(
         "common_runtime/ring_gatherer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_oss",  # TODO(b/136665883): re-enable after fixing OSS failure
+    ],
     deps = [
         ":all_kernels",
         ":core",
