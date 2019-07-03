@@ -137,6 +137,9 @@ py_library(
         "keras_lstm_model_correctness_test.py",
         "keras_stateful_lstm_model_correctness_test.py",
     ],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
