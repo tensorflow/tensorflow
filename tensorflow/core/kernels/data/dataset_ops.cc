@@ -56,6 +56,8 @@ class DatasetCardinalityOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
+REGISTER_KERNEL_BUILDER(Name("DatasetCardinality").Device(DEVICE_CPU),
+                        DatasetCardinalityOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDatasetCardinality").Device(DEVICE_CPU),
     DatasetCardinalityOp);

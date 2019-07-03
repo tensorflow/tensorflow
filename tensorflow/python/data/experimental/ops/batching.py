@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
@@ -272,11 +273,18 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
         dataset_ops.get_legacy_output_types(input_dataset),
         tensor_shape.vector(None).concatenate(self._row_shape))
 
-    variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._batch_size,
-        row_shape=convert.partial_shape_to_tensor(self._row_shape),
-        **dataset_ops.flat_structure(self))
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.dense_to_sparse_batch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._batch_size,
+          row_shape=convert.partial_shape_to_tensor(self._row_shape),
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._batch_size,
+          row_shape=convert.partial_shape_to_tensor(self._row_shape),
+          **self._flat_structure)
     super(_DenseToSparseBatchDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -313,15 +321,27 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
           tensor_util.constant_value(self._batch_size_t))
     else:
       self._structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
-    variant_tensor = ged_ops.experimental_map_and_batch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        f=self._map_func.function,
-        batch_size=self._batch_size_t,
-        num_parallel_calls=self._num_parallel_calls_t,
-        drop_remainder=self._drop_remainder_t,
-        preserve_cardinality=True,
-        **dataset_ops.flat_structure(self))
+    # pylint: enable=protected-access
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.map_and_batch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          f=self._map_func.function,
+          batch_size=self._batch_size_t,
+          num_parallel_calls=self._num_parallel_calls_t,
+          drop_remainder=self._drop_remainder_t,
+          preserve_cardinality=True,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_map_and_batch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          f=self._map_func.function,
+          batch_size=self._batch_size_t,
+          num_parallel_calls=self._num_parallel_calls_t,
+          drop_remainder=self._drop_remainder_t,
+          preserve_cardinality=True,
+          **self._flat_structure)
     super(_MapAndBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
