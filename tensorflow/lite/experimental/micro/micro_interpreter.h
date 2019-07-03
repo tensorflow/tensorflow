@@ -56,10 +56,10 @@ class MicroInterpreter {
   TfLiteStatus AllocateInputAndActTensors();
   TfLiteStatus AllocateTemporaryTensors();
 
-  void CorrectTensorEndianness(TfLiteTensor *tensorCorr);
+  void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
 
   template <class T>
-  void CorrectTensorDataEndianness(T *data, int32_t size);
+  void CorrectTensorDataEndianness(T* data, int32_t size);
 
   const Model* model_;
   const OpResolver& op_resolver_;
