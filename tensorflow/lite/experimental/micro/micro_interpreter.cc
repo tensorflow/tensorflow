@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
 
+#include <stdio.h> // ############### temp debugging
+
 namespace tflite {
 namespace {
 const int kStackDataAllocatorSize = 128;
@@ -78,7 +80,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   subgraph_ = (*subgraphs)[0];
   tensors_ = subgraph_->tensors();
   operators_ = subgraph_->operators();
-
   context_.tensors_size = tensors_->size();
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
@@ -86,15 +87,44 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
-
   initialization_status_ = AllocateInputAndActTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
   }
-
   initialization_status_ = AllocateTemporaryTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
+  }
+  // If the system is big endian then convert weights from the flatbuffer from little to big endian
+  // on startup so that it does not need to be done during inference.
+  if (!FLATBUFFERS_LITTLEENDIAN) {
+    for (int t=0; t<tensors_size(); ++t) {
+      TfLiteTensor *thisTensor =  &context_.tensors[t];
+      if (thisTensor->allocation_type == kTfLiteMmapRo)
+        CorrectTensorEndianness(thisTensor);
+    }
+  }
+}
+
+void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor *tensorCorr) {
+  int32_t tensorSize = 1;
+  for (int d=0; d<tensorCorr->dims->size; ++d)
+    tensorSize *= ((const int32_t*)tensorCorr->dims->data)[d];
+
+  switch(tensorCorr->type) {
+    case TfLiteType::kTfLiteFloat32: CorrectTensorDataEndianness(tensorCorr->data.f, tensorSize); break;
+    case TfLiteType::kTfLiteFloat16: CorrectTensorDataEndianness(tensorCorr->data.f16, tensorSize); break;
+    case TfLiteType::kTfLiteInt64: CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize); break;
+    case TfLiteType::kTfLiteInt32: CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize); break;
+    case TfLiteType::kTfLiteInt16: CorrectTensorDataEndianness(tensorCorr->data.i16, tensorSize); break;
+    case TfLiteType::kTfLiteComplex64: CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize); break;
+  }
+}
+
+template <class T>
+void MicroInterpreter::CorrectTensorDataEndianness(T *data, int32_t size) {
+  for (int32_t i=0; i<size; ++i) {
+    data[i] = flatbuffers::EndianScalar(data[i]);
   }
 }
 
@@ -243,6 +273,14 @@ TfLiteStatus MicroInterpreter::Invoke() {
         reinterpret_cast<TfLiteIntArray*>(temporaries_data);
     temporaries_array->size = 0;
 
+    const int kWeights = 1;
+
+    //printf("Index of Weights input of this operation is [%d]", flatbuffers::EndianScalar(inputs_array->data[kWeights]));
+
+    //TfLiteTensor *t_test =  &context_.tensors[flatbuffers::EndianScalar(inputs_array->data[kWeights])];
+
+    //printf("Testing a weights tensor instance. is variable? %d\n", (int)(t_test->is_variable));
+
     TfLiteNode node;
     node.inputs = inputs_array;
     node.outputs = outputs_array;
@@ -299,6 +337,16 @@ TfLiteTensor* MicroInterpreter::output(int index) {
     return nullptr;
   }
   return &(context_.tensors[outputs->Get(index)]);
+}
+
+TfLiteTensor* MicroInterpreter::tensor(int index) {
+  const size_t length = tensors_size();
+  if ((index < 0) || (index >= tensors_size())) {
+    error_reporter_->Report("Tensor index %d out of range (length is %d)",
+                            index, length);
+    return nullptr;
+  }
+  return &context_.tensors[index];
 }
 
 }  // namespace tflite

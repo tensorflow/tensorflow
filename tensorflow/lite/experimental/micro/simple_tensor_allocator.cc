@@ -79,10 +79,12 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     int destroy_after,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result) {
+  //printf("Alloc 1\n"); fflush(stdout);
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &result->type, error_reporter));
   result->is_variable = flatbuffer_tensor.is_variable();
 
+  //printf("Alloc 2\n"); fflush(stdout);
   result->data.raw = nullptr;
   result->bytes = 0;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {
@@ -97,8 +99,11 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       }
     }
   }
+
+  //printf("Alloc 3\n"); fflush(stdout);
   if (result->data.raw) {
     result->allocation_type = kTfLiteMmapRo;
+    //printf("Alloc mapped to RO memory area.\n"); fflush(stdout);
   } else {
     int data_size = 1;
     for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
@@ -108,6 +113,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     TF_LITE_ENSURE_STATUS(BytesRequired(flatbuffer_tensor, data_size,
                                         &result->bytes, &type_size,
                                         error_reporter));
+    //printf("Allocating [%d] bytes for tensor.", (data_size * type_size)); fflush(stdout);
     result->data.raw =
         reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
     if (result->data.raw == nullptr) {
@@ -115,6 +121,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       if (tensor_name == nullptr) {
         tensor_name = "<None>";
       }
+      //printf("tensor name without implicit bool conversion is \"%s\".zn", tensor_name); fflush(stdout);
       error_reporter->Report(
           "Couldn't allocate memory for tensor '%s', wanted %d bytes but only "
           "%d were available",
@@ -123,26 +130,55 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     }
     result->allocation_type = kTfLiteArenaRw;
   }
+
+  //printf("Alloc 4\n"); fflush(stdout);
   result->dims = reinterpret_cast<TfLiteIntArray*>(AllocateMemory(
       sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1), sizeof(int)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
+
+  //printf("Alloc 5\n"); fflush(stdout);
   for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
+
+  //printf("Alloc 6\n"); fflush(stdout);
   const auto* src_quantization = flatbuffer_tensor.quantization();
+  //printf("Alloc 7, bump\n"); fflush(stdout);
   if (src_quantization && src_quantization->scale() &&
       (src_quantization->scale()->size() > 0) &&
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
+    //printf("Made it into if body.\n"); fflush(stdout);
     result->params.scale = src_quantization->scale()->Get(0);
-    result->params.zero_point = src_quantization->zero_point()->Get(0);
+    //printf("Scale is %f", result->params.scale); fflush(stdout);
+
+    //result->params.zero_point = src_quantization->zero_point()->Get(0);
+
+    //const uint8_t * 	Data ()
+
+    memcpy(&result->params.zero_point, (int64_t*)src_quantization->zero_point()->Data(), sizeof(int64_t));
+
+    //printf("int64_t sanity check size is %d", sizeof(int64_t));
+
+    //printf("Zero point bytes [ ");
+    //for (int b=0; b<8; ++b)
+    //  printf("0x%02X ", *(((unsigned char*)&result->params.zero_point)+b)  );
+    //printf("]\n");
+
+    result->params.zero_point = flatbuffers::EndianScalar(result->params.zero_point);
+
+    //printf("zero point is %ld", result->params.zero_point); fflush(stdout);
   }
+  //printf("Alloc 8\n"); fflush(stdout);
   result->allocation = nullptr;
-  if (flatbuffer_tensor.name()) {
+  const char *test = flatbuffer_tensor.name()->c_str();
+  //printf("name->c_str() is [%d]", (long int)test); fflush(stdout);
+  if (flatbuffer_tensor.name()->c_str() != nullptr) {   // <----- leon fix ??? maybe not :-(
     result->name = flatbuffer_tensor.name()->c_str();
   } else {
     result->name = "<No name>";
   }
+  //printf("Alloc 9, name=\"%s\"\n", result->name); fflush(stdout);
   result->delegate = nullptr;
   result->buffer_handle = 0;
   result->data_is_stale = false;
