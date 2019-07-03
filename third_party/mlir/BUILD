@@ -1255,7 +1255,7 @@ cc_binary(
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     includes = ["include"],
-    linkopts = ["-lpthread"],
+    linkopts = ["-lpthread", "-lm"],
     deps = [
         ":Support",
         ":TableGen",
