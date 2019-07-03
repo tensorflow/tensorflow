@@ -255,7 +255,7 @@ public:
   ///   trailing-location     ::= location?
   ///
   template <typename Owner>
-  ParseResult parseOptionalTrailingLocation(Owner &owner) {
+  ParseResult parseOptionalTrailingLocation(Owner *owner) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
       return success();
@@ -264,7 +264,7 @@ public:
     LocationAttr directLoc;
     if (parseLocation(directLoc))
       return failure();
-    owner.setLoc(directLoc);
+    owner->setLoc(directLoc);
     return success();
   }
 
@@ -2479,14 +2479,15 @@ namespace {
 /// operations.
 class OperationParser : public Parser {
 public:
-  OperationParser(ParserState &state, Function function)
-      : Parser(state), function(function), opBuilder(function.getBody()) {}
+  OperationParser(ParserState &state, ModuleOp moduleOp)
+      : Parser(state), opBuilder(moduleOp.getBodyRegion()), moduleOp(moduleOp) {
+  }
 
   ~OperationParser();
 
   /// After parsing is finished, this function must be called to see if there
   /// are any remaining issues.
-  ParseResult finalize(SMLoc loc);
+  ParseResult finalize();
 
   //===--------------------------------------------------------------------===//
   // SSA Value Handling
@@ -2595,8 +2596,6 @@ public:
   Block *defineBlockNamed(StringRef name, SMLoc loc, Block *existing);
 
 private:
-  Function function;
-
   /// Returns the info for a block at the current scope for the given name.
   std::pair<Block *, SMLoc> &getBlockInfoByName(StringRef name) {
     return blocksByName.back()[name];
@@ -2643,6 +2642,9 @@ private:
 
   /// The builder used when creating parsed operation instances.
   OpBuilder opBuilder;
+
+  /// The top level module operation.
+  ModuleOp moduleOp;
 };
 } // end anonymous namespace
 
@@ -2657,7 +2659,7 @@ OperationParser::~OperationParser() {
 
 /// After parsing is finished, this function must be called to see if there are
 /// any remaining issues.
-ParseResult OperationParser::finalize(SMLoc loc) {
+ParseResult OperationParser::finalize() {
   // Check for any forward references that are left.  If we find any, error
   // out.
   if (!forwardRefPlaceholders.empty()) {
@@ -2697,7 +2699,7 @@ ParseResult OperationParser::popSSANameScope() {
     for (auto entry : forwardRefInCurrentScope) {
       errors.push_back({entry.second.getPointer(), entry.first});
       // Add this block to the top-level region to allow for automatic cleanup.
-      function.push_back(entry.first);
+      moduleOp.getOperation()->getRegion(0).push_back(entry.first);
     }
     llvm::array_pod_sort(errors.begin(), errors.end());
 
@@ -2991,7 +2993,7 @@ ParseResult OperationParser::parseOperation() {
   }
 
   // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(*op))
+  if (parseOptionalTrailingLocation(op))
     return failure();
 
   return success();
@@ -3105,9 +3107,8 @@ Operation *OperationParser::parseGenericOperation() {
   if (consumeIf(Token::l_paren)) {
     do {
       // Create temporary regions with the top level region as parent.
-      result.regions.emplace_back(new Region(function));
-      if (parseRegion(*result.regions.back(),
-                      /*entryArguments*/ {}))
+      result.regions.emplace_back(new Region(moduleOp));
+      if (parseRegion(*result.regions.back(), /*entryArguments=*/{}))
         return nullptr;
     } while (consumeIf(Token::comma));
     if (parseToken(Token::r_paren, "expected ')' to end region list"))
@@ -3504,13 +3505,8 @@ public:
   ParseResult parseOptionalRegion(Region &region,
                                   ArrayRef<OperandType> arguments,
                                   ArrayRef<Type> argTypes) override {
-    if (parser.getToken().isNot(Token::l_brace)) {
-      if (!arguments.empty())
-        return emitError(
-            parser.getToken().getLoc(),
-            "optional region with explicit entry arguments must be defined");
+    if (parser.getToken().isNot(Token::l_brace))
       return success();
-    }
     return parseRegion(region, arguments, argTypes);
   }
 
@@ -3866,7 +3862,7 @@ class ModuleParser : public Parser {
 public:
   explicit ModuleParser(ParserState &state) : Parser(state) {}
 
-  ParseResult parseModule(Module module);
+  ParseResult parseModule(ModuleOp module);
 
 private:
   /// Parse an attribute alias declaration.
@@ -3874,17 +3870,6 @@ private:
 
   /// Parse an attribute alias declaration.
   ParseResult parseTypeAliasDef();
-
-  // Functions.
-  ParseResult
-  parseArgumentList(SmallVectorImpl<Type> &argTypes,
-                    SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
-                    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
-  ParseResult parseFunctionSignature(
-      StringRef &name, FunctionType &type,
-      SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
-      SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
-  ParseResult parseFunc(Module module);
 };
 } // end anonymous namespace
 
@@ -3954,168 +3939,20 @@ ParseResult ModuleParser::parseTypeAliasDef() {
   return success();
 }
 
-/// Parse a (possibly empty) list of Function arguments with types.
-///
-///   named-argument ::= ssa-id `:` type attribute-dict?
-///   argument-list  ::= named-argument (`,` named-argument)* | /*empty*/
-///   argument-list ::= type attribute-dict? (`,` type attribute-dict?)*
-///                     | /*empty*/
-///
-ParseResult ModuleParser::parseArgumentList(
-    SmallVectorImpl<Type> &argTypes,
-    SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
-    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
-  consumeToken(Token::l_paren);
-
-  // The argument list either has to consistently have ssa-id's followed by
-  // types, or just be a type list.  It isn't ok to sometimes have SSA ID's and
-  // sometimes not.
-  auto parseElt = [&]() -> ParseResult {
-    // Parse argument name if present.
-    auto loc = getToken().getLoc();
-    StringRef name = getTokenSpelling();
-    if (consumeIf(Token::percent_identifier)) {
-      // Reject this if the preceding argument was missing a name.
-      if (argNames.empty() && !argTypes.empty())
-        return emitError(loc, "expected type instead of SSA identifier");
-
-      argNames.emplace_back(loc, name);
-
-      if (parseToken(Token::colon, "expected ':'"))
-        return failure();
-    } else {
-      // Reject this if the preceding argument had a name.
-      if (!argNames.empty())
-        return emitError("expected SSA identifier");
-    }
-
-    // Parse argument type
-    auto elt = parseType();
-    if (!elt)
-      return failure();
-    argTypes.push_back(elt);
-
-    // Parse the attribute dict.
-    SmallVector<NamedAttribute, 2> attrs;
-    if (getToken().is(Token::l_brace))
-      if (parseAttributeDict(attrs))
-        return failure();
-
-    argAttrs.push_back(attrs);
-    return success();
-  };
-
-  return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
-}
-
-/// Parse a function signature, starting with a name and including the
-/// parameter list.
-///
-///   function-signature ::=
-///      function-id `(` argument-list `)` (`->` type-list)?
-///
-ParseResult ModuleParser::parseFunctionSignature(
-    StringRef &name, FunctionType &type,
-    SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
-    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
-  if (getToken().isNot(Token::at_identifier))
-    return emitError("expected a function identifier like '@foo'");
-
-  name = getTokenSpelling().drop_front();
-  consumeToken(Token::at_identifier);
-
-  if (getToken().isNot(Token::l_paren))
-    return emitError("expected '(' in function signature");
-
-  SmallVector<Type, 4> argTypes;
-  if (parseArgumentList(argTypes, argNames, argAttrs))
-    return failure();
-
-  // Parse the return type if present.
-  SmallVector<Type, 4> results;
-  if (consumeIf(Token::arrow)) {
-    if (parseFunctionResultTypes(results))
-      return failure();
-  }
-  type = builder.getFunctionType(argTypes, results);
-  return success();
-}
-
-/// Function declarations.
-///
-///   function ::= `func` function-signature function-attributes?
-///                                          trailing-location? function-body?
-///   function-body ::= `{` block+ `}`
-///   function-attributes ::= `attributes` attribute-dict
-///
-ParseResult ModuleParser::parseFunc(Module module) {
-  consumeToken();
-
-  StringRef name;
-  FunctionType type;
-  SmallVector<std::pair<SMLoc, StringRef>, 4> argNames;
-  SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
-
-  auto loc = getToken().getLoc();
-  if (parseFunctionSignature(name, type, argNames, argAttrs))
-    return failure();
-
-  // If function attributes are present, parse them.
-  SmallVector<NamedAttribute, 8> attrs;
-  if (consumeIf(Token::kw_attributes)) {
-    if (parseAttributeDict(attrs))
-      return failure();
-  }
-
-  // Okay, the function signature was parsed correctly, create the function now.
-  auto function =
-      Function::create(getEncodedSourceLocation(loc), name, type, attrs);
-  module.push_back(function);
-
-  // Parse an optional trailing location.
-  if (parseOptionalTrailingLocation(function))
-    return failure();
-
-  // Add the attributes to the function arguments.
-  for (unsigned i = 0, e = function.getNumArguments(); i != e; ++i)
-    function.setArgAttrs(i, argAttrs[i]);
-
-  // External functions have no body.
-  if (getToken().isNot(Token::l_brace))
-    return success();
-  auto braceLoc = getToken().getLoc();
-
-  // Prepare the named function arguments.
-  SmallVector<std::pair<OperationParser::SSAUseInfo, Type>, 4> entryArgs;
-  for (unsigned i = 0, e = argNames.size(); i != e; ++i) {
-    entryArgs.emplace_back(
-        OperationParser::SSAUseInfo{argNames[i].second, 0, argNames[i].first},
-        type.getInput(i));
-  }
-
-  // Parse the function body.
-  auto parser = OperationParser(getState(), function);
-  if (parser.parseRegion(function.getBody(), entryArgs))
-    return failure();
-
-  // Verify that a valid function body was parsed.
-  if (function.empty())
-    return emitError(braceLoc, "function must have a body");
-
-  return parser.finalize(braceLoc);
-}
-
 /// This is the top-level module parser.
-ParseResult ModuleParser::parseModule(Module module) {
+ParseResult ModuleParser::parseModule(ModuleOp module) {
+  OperationParser opParser(getState(), module);
   while (1) {
     switch (getToken().getKind()) {
     default:
-      emitError("expected a top level entity");
-      return failure();
+      // Parse a top-level operation.
+      if (opParser.parseOperation())
+        return failure();
+      break;
 
     // If we got to the end of the file, then we're done.
     case Token::eof:
-      return success();
+      return opParser.finalize();
 
     // If we got an error token, then the lexer already emitted an error, just
     // stop.  Someday we could introduce error recovery if there was demand
@@ -4132,11 +3969,6 @@ ParseResult ModuleParser::parseModule(Module module) {
     // Parse a type alias.
     case Token::exclamation_identifier:
       if (parseTypeAliasDef())
-        return failure();
-      break;
-
-    case Token::kw_func:
-      if (parseFunc(module))
         return failure();
       break;
     }

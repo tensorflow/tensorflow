@@ -21,7 +21,7 @@
 using namespace mlir;
 
 /// Build a symbol table with the symbols within the given module.
-SymbolTable::SymbolTable(Module module) : context(module.getContext()) {
+SymbolTable::SymbolTable(ModuleOp module) : context(module.getContext()) {
   for (auto func : module) {
     auto inserted = symbolTable.insert({func.getName(), func});
     (void)inserted;
@@ -33,13 +33,13 @@ SymbolTable::SymbolTable(Module module) : context(module.getContext()) {
 /// Look up a symbol with the specified name, returning null if no such name
 /// exists. Names never include the @ on them.
 Function SymbolTable::lookup(StringRef name) const {
-  return lookup(Identifier::get(name, context));
+  return symbolTable.lookup(name);
 }
 
 /// Look up a symbol with the specified name, returning null if no such name
 /// exists. Names never include the @ on them.
 Function SymbolTable::lookup(Identifier name) const {
-  return symbolTable.lookup(name);
+  return lookup(name.strref());
 }
 
 /// Erase the given symbol from the table.
@@ -68,6 +68,6 @@ void SymbolTable::insert(Function symbol) {
     nameBuffer.resize(originalLength);
     nameBuffer += '_';
     nameBuffer += std::to_string(uniquingCounter++);
-    symbol.setName(Identifier::get(nameBuffer, context));
-  } while (!symbolTable.insert({symbol.getName(), symbol}).second);
+  } while (!symbolTable.insert({nameBuffer, symbol}).second);
+  symbol.setName(nameBuffer);
 }

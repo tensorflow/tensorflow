@@ -30,7 +30,8 @@ class Module;
 } // namespace llvm
 
 namespace mlir {
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 
 /// Convert the given MLIR module into NVVM IR. This conversion requires the
 /// registration of the LLVM IR dialect and will extract the LLVM context

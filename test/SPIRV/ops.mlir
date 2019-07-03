@@ -166,10 +166,10 @@ func @aligned_load_incorrect_attributes() -> () {
 // spv.Return
 //===----------------------------------------------------------------------===//
 
-func @return_not_in_func() -> () {
+"foo.function"() ({
   // expected-error @+1 {{must appear in a 'func' op}}
   spv.Return
-}
+})  : () -> ()
 
 // -----
 

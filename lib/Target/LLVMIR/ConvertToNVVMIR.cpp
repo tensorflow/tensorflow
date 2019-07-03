@@ -72,7 +72,7 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module m) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 
-    auto *llvmFunc = llvmModule->getFunction(func.getName().strref());
+    auto *llvmFunc = llvmModule->getFunction(func.getName());
 
     llvm::Metadata *llvmMetadata[] = {
         llvm::ValueAsMetadata::get(llvmFunc),

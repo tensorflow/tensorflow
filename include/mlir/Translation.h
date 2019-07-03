@@ -26,7 +26,8 @@
 
 namespace mlir {
 class MLIRContext;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class OwningModuleRef;
 
 /// Interface of the function that translates a file to MLIR.  The

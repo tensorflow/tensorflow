@@ -41,3 +41,11 @@ func @module_op() {
   // expected-error@+1 {{is expected to terminate a 'module' operation}}
   "module_terminator"() : () -> ()
 }
+
+// -----
+
+module {
+// expected-error@-1 {{may not contain operations that produce results}}
+// expected-note@+1 {{see offending operation defined here}}
+  %result = "foo.op"() : () -> (i32)
+}

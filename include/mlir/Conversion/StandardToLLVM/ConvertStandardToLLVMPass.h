@@ -28,7 +28,8 @@ class Module;
 namespace mlir {
 class DialectConversion;
 class LLVMTypeConverter;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class ModulePassBase;
 class RewritePattern;
 class Type;

@@ -31,7 +31,8 @@ template <typename T> class Expected;
 
 namespace mlir {
 
-class Function;
+class FuncOp;
+using Function = FuncOp;
 
 /// Simple memref descriptor class compatible with the ABI of functions emitted
 /// by MLIR to LLVM IR conversion for statically-shaped memrefs of float type.

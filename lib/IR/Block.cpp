@@ -51,15 +51,8 @@ Operation *Block::getContainingOp() {
 }
 
 Function Block::getFunction() {
-  Block *block = this;
-  while (auto *op = block->getContainingOp()) {
-    block = op->getBlock();
-    if (!block)
-      return nullptr;
-  }
-  if (auto *list = block->getParent())
-    return list->getContainingFunction();
-  return nullptr;
+  auto *parent = getParent();
+  return parent ? parent->getParentOfType<FuncOp>() : nullptr;
 }
 
 /// Insert this block (which must not already be in a function) right before
@@ -70,7 +63,7 @@ void Block::insertBefore(Block *block) {
   block->getParent()->getBlocks().insert(Region::iterator(block), this);
 }
 
-/// Unlink this Block from its Function and delete it.
+/// Unlink this Block from its parent Region and delete it.
 void Block::erase() {
   assert(getParent() && "Block has no parent");
   getParent()->getBlocks().erase(this);

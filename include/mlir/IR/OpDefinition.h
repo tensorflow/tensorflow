@@ -850,8 +850,15 @@ public:
 
   /// This is a public constructor to enable access via the llvm::cast family of
   /// methods. This should not be used directly.
-  explicit Op(Operation *state) : OpState(state) {
-    assert(!state || isa<ConcreteOpType>(state));
+  explicit Op(Operation *state) : OpState(state) {}
+
+  /// Methods for supporting PointerLikeTypeTraits.
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>((Operation *)*this);
+  }
+  static ConcreteOpType getFromOpaquePointer(const void *pointer) {
+    return ConcreteOpType(
+        reinterpret_cast<Operation *>(const_cast<void *>(pointer)));
   }
 
 private:

@@ -93,16 +93,14 @@ InFlightDiagnostic emit(Location loc, DiagnosticSeverity severity);
 ```
 
 Using the `DiagnosticEngine`, though, is generally not the preferred way to emit
-diagnostics in MLIR. [`function`](LangRef.md#functions), and
-[`operation`](LangRef.md#operations) both provide utility methods for emitting
-diagnostics:
+diagnostics in MLIR. [`operation`](LangRef.md#operations) provides utility
+methods for emitting diagnostics:
 
 ```c++
 // `emit` methods available in the mlir namespace.
 InFlightDiagnostic emitError/Remark/Warning(Location);
 
-// These methods use the location attached to the function/operation.
-InFlightDiagnostic Function::emitError/Remark/Warning();
+// These methods use the location attached to the operation.
 InFlightDiagnostic Operation::emitError/Remark/Warning();
 
 // This method creates a diagnostic prefixed with "'op-name' op ".

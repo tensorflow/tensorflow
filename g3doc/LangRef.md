@@ -27,9 +27,10 @@ document describes the human-readable textual form.
 
 ## High-Level Structure
 
-The top-level unit of code in MLIR is a [Module](#module). A module contains a
-list of [Functions](#functions). Functions are represented as a composition of
-[Operations](#operations) and contain a Control Flow Graph (CFG) of
+The unit of code in MLIR is an [Operation](#operation). Operations allow for
+representing many different concepts, including the high-level [Module](#module)
+and [Function](#functions) operations. Operations may contain
+[Regions](#regions) that contain a Control Flow Graph (CFG) of
 [Blocks](#blocks), which contain operations and end with
 [terminator operations](#terminator-operations) (like branches).
 
@@ -656,9 +657,9 @@ Attributes are the mechanism for specifying constant data in MLIR in places
 where a variable is never allowed - e.g. the index of a
 [`dim` operation](#dim-operation), or the stride of a convolution. They consist
 of a name and a [concrete attribute value](#attribute-values). It is possible to
-attach attributes to operations, functions, and function arguments. The set of
-expected attributes, their structure, and their interpretation are all
-contextually dependent on what they are attached to.
+attach attributes to operations. The set of expected attributes, their
+structure, and their interpretation are all contextually dependent on what they
+are attached to.
 
 There are two main classes of attributes; dependent and dialect. Dependent
 attributes derive their structure and meaning from what they are attached to,
@@ -668,15 +669,6 @@ meaning from a specific dialect. An example of a dialect attribute may be a
 `swift.self` function argument attribute that indicates an argument is the
 self/context parameter. The context of this attribute is defined by the `swift`
 dialect and not the function argument.
-
-### Function and Argument Attributes
-
-Functions and function arguments in MLIR may have optional attributes attached
-to them. The sole constraint for these attributes is that they must be dialect
-specific attributes. This is because functions, and function arguments, are a
-generic entities and thus cannot apply any meaningful context necessary for
-dependent attributes. This has the added benefit of avoiding collisions between
-common attribute names, such as `noalias`.
 
 ### Operation Attributes
 
@@ -913,22 +905,21 @@ func @simple_form(i1 {unitAttr})
 ## Module
 
 ``` {.ebnf}
-module ::= module-header-def* function*
+module ::= `module` (`attributes` attribute-dict)? region
 ```
 
-An MLIR module may optionally have a list of header definitions (e.g. affine
-mappings) at the top of the file, but is principally made up of a list of
-functions.
-
-TODO: We should allow specifying a "dialect" in the module header. This will
-prepopulate a symbol table with known named types and mappings (e.g. for TPU)
-and will define the set of operations that are allowed (allowing the verifier to
-detect common errors).
+An MLIR module represents an opaque top-level container operation. It contains a
+single region containing a single block that is comprised of any operations.
+Operations within this region must not implicitly capture values defined above
+it.
 
 ## Functions
 
-MLIR functions have a signature (including argument and result types) and
-associated attributes according to the following grammar:
+An MLIR Function is an operation with a name containing one [region](#regions)
+that forms a CFG(Control Flow Graph). The region of a function is not allowed to
+implicitly capture global values, and all external references must use Function
+arguments or attributes that establish a symbolic connection(e.g. symbols
+referenced by name via a string attribute):
 
 ``` {.ebnf}
 function ::= `func` function-signature function-attributes? function-body?
@@ -943,11 +934,9 @@ function-body ::= region
 ```
 
 An external function declaration (used when referring to a function declared in
-some other module) has no body. A function definition contains a
-[region](#regions) made up of one or more blocks forming the function body.
-While the MLIR textual form provides a nice inline syntax for function
-arguments, they are internally represented as "block arguments" to the first
-block in the region.
+some other module) has no body. While the MLIR textual form provides a nice
+inline syntax for function arguments, they are internally represented as "block
+arguments" to the first block in the region.
 
 Examples:
 
@@ -969,10 +958,10 @@ func @count(%x: i64) -> (i64, i64)
 
 A region is a CFG of MLIR [Blocks](#blocks). Regions serve to group semantically
 connected blocks, where the semantics is not imposed by the IR. Instead, the
-containing entity (operation or function) defines the semantics of the regions
-it contains. Regions do not have a name or an address, only the blocks contained
-in a region do. Regions are meaningless outside of the containing entity and
-have no type or attributes.
+containing operation defines the semantics of the regions it contains. Regions
+do not have a name or an address, only the blocks contained in a region do.
+Regions are meaningless outside of the containing entity and have no type or
+attributes.
 
 The first block in the region cannot be a successor of any other block. The
 syntax for the region is as follows:
@@ -1062,27 +1051,22 @@ operation.
 Regions allow to define an operation that creates a closure, for example by
 “boxing” the body of the region into a value they produce. It remains up to the
 operation to define its semantics. In this situation, the value “containing” the
-region may be passed to or returned from a function/region, at which point the
-values defined in dominating blocks are no longer accessible. If this region
-directly uses such values, passing a value “containing” it across function
-boundaries or using it in operations leads to undefined behavior. This is
-similar to returning a lambda capturing a reference to a local variable in C++.
-Note that if an operation triggers asynchronous execution of the region, it is
-under the responsibility of the operation caller to wait for the region to be
-executed guaranteeing that any directly used values remain live.
+region may be passed to or returned from a region, at which point the values
+defined in dominating blocks are no longer accessible. If this region directly
+uses such values, passing a value “containing” it across function boundaries or
+using it in operations leads to undefined behavior. This is similar to returning
+a lambda capturing a reference to a local variable in C++. Note that if an
+operation triggers asynchronous execution of the region, it is under the
+responsibility of the operation caller to wait for the region to be executed
+guaranteeing that any directly used values remain live.
 
 ### Arguments and Results
 
 The arguments of the first block of a region are treated as arguments of the
-region. The source of these arguments is defined by the parent entity of the
-region. If a region is a function body, its arguments are the function
-arguments. If a region is used in an operation, the operation semantics
-specified how these values are produced. They may correspond to some of the
-values the operation itself uses.
+region. The source of these arguments is defined by the semantics of the parent
+operation. They may correspond to some of the values the operation itself uses.
 
-Regions produce a (possibly empty) list of values. For function body regions,
-`return` is the standard region-exiting terminator, but dialects can provide
-their own. For regions that belong to an operation, the operation semantics
+Regions produce a (possibly empty) list of values. The operation semantics
 defines the relation between the region results and the operation results.
 
 ## Blocks
@@ -1157,9 +1141,10 @@ successor-list ::= successor (`,` successor)*
 region-list    ::= region (`,` region)*
 ```
 
-MLIR represents computations within functions with a uniform concept called
-_operations_. Operations in MLIR are fully extensible (there is no fixed list of
-operations), and have application-specific semantics. For example, MLIR supports
+MLIR introduces a uniform concept called _operations_ to enable describing many
+different levels of abstractions and computations. Operations in MLIR are fully
+extensible (there is no fixed list of operations), and have application-specific
+semantics. For example, MLIR supports
 [target-independent operations](#memory-operations),
 [affine operations](Dialects/Affine.md), and
 [target-specific machine operations](#target-specific-operations).
@@ -1238,8 +1223,7 @@ The `br` terminator operation represents an unconditional jump to a target
 block. The count and types of operands to the branch must align with the
 arguments in the target block.
 
-The MLIR branch operation is not allowed to target the entry block for a
-function.
+The MLIR branch operation is not allowed to target the entry block for a region.
 
 ##### 'cond_br' terminator operation
 
@@ -1256,7 +1240,7 @@ to; if it is false, the second destination is chosen. The count and types of
 operands must align with the arguments in the corresponding target blocks.
 
 The MLIR conditional branch operation is not allowed to target the entry block
-for a function. The two destinations of the conditional branch operation are
+for a region. The two destinations of the conditional branch operation are
 allowed to be the same.
 
 The following example illustrates a function with a conditional branch operation

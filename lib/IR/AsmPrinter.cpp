@@ -83,7 +83,6 @@ namespace {
 static constexpr int kNonAttrKindAlias = -1;
 
 class ModuleState {
-
 public:
   /// This is the current context if it is knowable, otherwise this is null.
   MLIRContext *const context;
@@ -91,7 +90,7 @@ public:
   explicit ModuleState(MLIRContext *context) : context(context) {}
 
   // Initializes module state, populating affine map state.
-  void initialize(Module module);
+  void initialize(Operation *op);
 
   Twine getAttributeAlias(Attribute attr) const {
     auto alias = attrToAlias.find(attr);
@@ -211,9 +210,12 @@ void ModuleState::visitType(Type type) {
 
 void ModuleState::visitAttribute(Attribute attr) {
   recordAttributeReference(attr);
-  if (auto arrayAttr = attr.dyn_cast<ArrayAttr>())
+  if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
     for (auto elt : arrayAttr.getValue())
       visitAttribute(elt);
+  } else if (auto typeAttr = attr.dyn_cast<TypeAttr>()) {
+    visitType(typeAttr.getValue());
+  }
 }
 
 void ModuleState::visitOperation(Operation *op) {
@@ -222,6 +224,10 @@ void ModuleState::visitOperation(Operation *op) {
     visitType(type);
   for (auto type : op->getResultTypes())
     visitType(type);
+  for (auto &region : op->getRegions())
+    for (auto &block : region)
+      for (auto *arg : block.getArguments())
+        visitType(arg->getType());
 
   // Visit each of the attributes.
   for (auto elt : op->getAttrs())
@@ -301,18 +307,12 @@ void ModuleState::initializeSymbolAliases() {
 }
 
 // Initializes module state, populating affine map and integer set state.
-void ModuleState::initialize(Module module) {
+void ModuleState::initialize(Operation *op) {
   // Initialize the symbol aliases.
   initializeSymbolAliases();
 
-  // Walk the module and visit each operation.
-  for (auto fn : module) {
-    visitType(fn.getType());
-    for (auto attr : fn.getAttrs())
-      ModuleState::visitAttribute(attr.second);
-
-    fn.walk([&](Operation *op) { ModuleState::visitOperation(op); });
-  }
+  // Visit each of the nested operations.
+  op->walk([&](Operation *op) { visitOperation(op); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -331,7 +331,7 @@ public:
     interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
   }
 
-  void print(Module module);
+  void print(ModuleOp module);
 
   /// Print the given attribute. If 'mayElideType' is true, some attributes are
   /// printed without the type when the type matches the default used in the
@@ -339,7 +339,6 @@ public:
   void printAttribute(Attribute attr, bool mayElideType = false);
 
   void printType(Type type);
-  void print(Function fn);
   void printLocation(LocationAttr loc);
 
   void printAffineMap(AffineMap map);
@@ -449,16 +448,6 @@ void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
     break;
   }
   }
-}
-
-void ModulePrinter::print(Module module) {
-  // Output the aliases at the top level.
-  state.printAttributeAliases(os);
-  state.printTypeAliases(os);
-
-  // Print the module.
-  for (auto fn : module)
-    print(fn);
 }
 
 /// Print a floating point value in a way that the parser will be able to
@@ -1179,17 +1168,11 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
 
 namespace {
 
-// FunctionPrinter contains common functionality for printing
-// CFG and ML functions.
-class FunctionPrinter : public ModulePrinter, private OpAsmPrinter {
+// OperationPrinter contains common functionality for printing operations.
+class OperationPrinter : public ModulePrinter, private OpAsmPrinter {
 public:
-  FunctionPrinter(Function function, ModulePrinter &other);
-
-  // Prints the function as a whole.
-  void print();
-
-  // Print the function signature.
-  void printFunctionSignature();
+  OperationPrinter(Operation *op, ModulePrinter &other);
+  OperationPrinter(Region *region, ModulePrinter &other);
 
   // Methods to print operations.
   void print(Operation *op);
@@ -1272,8 +1255,6 @@ protected:
   void printValueID(Value *value, bool printResultNo = true) const;
 
 private:
-  Function function;
-
   /// This is the value ID for each SSA value in the current function.  If this
   /// returns ~0, then the valueID has an entry in valueNames.
   DenseMap<Value *, unsigned> valueIDs;
@@ -1302,17 +1283,25 @@ private:
 };
 } // end anonymous namespace
 
-FunctionPrinter::FunctionPrinter(Function function, ModulePrinter &other)
-    : ModulePrinter(other), function(function) {
+OperationPrinter::OperationPrinter(Operation *op, ModulePrinter &other)
+    : ModulePrinter(other) {
+  for (auto *result : op->getResults())
+    numberValueID(result);
+  for (auto &region : op->getRegions())
+    for (auto &block : region)
+      numberValuesInBlock(block);
+}
 
-  for (auto &block : function)
+OperationPrinter::OperationPrinter(Region *region, ModulePrinter &other)
+    : ModulePrinter(other) {
+  for (auto &block : *region)
     numberValuesInBlock(block);
 }
 
 /// Number all of the SSA values in the specified block.  Values get numbered
 /// continuously throughout regions.  In particular, we traverse the regions
 /// held by operations and number values in depth-first pre-order.
-void FunctionPrinter::numberValuesInBlock(Block &block) {
+void OperationPrinter::numberValuesInBlock(Block &block) {
   // Each block gets a unique ID, and all of the operations within it get
   // numbered as well.
   blockIDs[&block] = nextBlockID++;
@@ -1331,7 +1320,7 @@ void FunctionPrinter::numberValuesInBlock(Block &block) {
   }
 }
 
-void FunctionPrinter::numberValueID(Value *value) {
+void OperationPrinter::numberValueID(Value *value) {
   assert(!valueIDs.count(value) && "Value numbered multiple times");
 
   SmallString<32> specialNameBuffer;
@@ -1412,74 +1401,8 @@ void FunctionPrinter::numberValueID(Value *value) {
   }
 }
 
-void FunctionPrinter::print() {
-  printFunctionSignature();
-
-  // Print out function attributes, if present.
-  auto attrs = function.getAttrs();
-  if (!attrs.empty()) {
-    os << "\n  attributes ";
-    printOptionalAttrDict(attrs);
-  }
-
-  // Print the trailing location.
-  printTrailingLocation(function.getLoc());
-
-  if (!function.empty()) {
-    printRegion(function.getBody(), /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/true);
-    os << "\n";
-  }
-  os << '\n';
-}
-
-void FunctionPrinter::printFunctionSignature() {
-  os << "func @" << function.getName() << '(';
-
-  auto fnType = function.getType();
-  bool isExternal = function.isExternal();
-  for (unsigned i = 0, e = function.getNumArguments(); i != e; ++i) {
-    if (i > 0)
-      os << ", ";
-
-    // If this is an external function, don't print argument labels.
-    if (!isExternal) {
-      printOperand(function.getArgument(i));
-      os << ": ";
-    }
-
-    printType(fnType.getInput(i));
-
-    // Print the attributes for this argument.
-    printOptionalAttrDict(function.getArgAttrs(i));
-  }
-  os << ')';
-
-  switch (fnType.getResults().size()) {
-  case 0:
-    break;
-  case 1: {
-    os << " -> ";
-    auto resultType = fnType.getResults()[0];
-    bool resultIsFunc = resultType.isa<FunctionType>();
-    if (resultIsFunc)
-      os << '(';
-    printType(resultType);
-    if (resultIsFunc)
-      os << ')';
-    break;
-  }
-  default:
-    os << " -> (";
-    interleaveComma(fnType.getResults(),
-                    [&](Type eltType) { printType(eltType); });
-    os << ')';
-    break;
-  }
-}
-
-void FunctionPrinter::print(Block *block, bool printBlockArgs,
-                            bool printBlockTerminator) {
+void OperationPrinter::print(Block *block, bool printBlockArgs,
+                             bool printBlockTerminator) {
   // Print the block label and argument list if requested.
   if (printBlockArgs) {
     os.indent(currentIndent);
@@ -1533,13 +1456,13 @@ void FunctionPrinter::print(Block *block, bool printBlockArgs,
   currentIndent -= indentWidth;
 }
 
-void FunctionPrinter::print(Operation *op) {
+void OperationPrinter::print(Operation *op) {
   os.indent(currentIndent);
   printOperation(op);
   printTrailingLocation(op->getLoc());
 }
 
-void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
+void OperationPrinter::printValueID(Value *value, bool printResultNo) const {
   int resultNo = -1;
   auto lookupValue = value;
 
@@ -1572,7 +1495,7 @@ void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
     os << '#' << resultNo;
 }
 
-void FunctionPrinter::printOperation(Operation *op) {
+void OperationPrinter::printOperation(Operation *op) {
   if (size_t numResults = op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     if (numResults > 1)
@@ -1580,7 +1503,9 @@ void FunctionPrinter::printOperation(Operation *op) {
     os << " = ";
   }
 
-  if (printGenericOpForm)
+  // TODO(riverriddle): FuncOp cannot be round-tripped currently, as
+  // FunctionType cannot be used in a TypeAttr.
+  if (printGenericOpForm && !isa<FuncOp>(op))
     return printGenericOp(op);
 
   // Check to see if this is a known operation.  If so, use the registered
@@ -1594,7 +1519,7 @@ void FunctionPrinter::printOperation(Operation *op) {
   printGenericOp(op);
 }
 
-void FunctionPrinter::printGenericOp(Operation *op) {
+void OperationPrinter::printGenericOp(Operation *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1641,8 +1566,8 @@ void FunctionPrinter::printGenericOp(Operation *op) {
   printFunctionalType(op);
 }
 
-void FunctionPrinter::printSuccessorAndUseList(Operation *term,
-                                               unsigned index) {
+void OperationPrinter::printSuccessorAndUseList(Operation *term,
+                                                unsigned index) {
   printBlockName(term->getSuccessor(index));
 
   auto succOperands = term->getSuccessorOperands(index);
@@ -1658,8 +1583,17 @@ void FunctionPrinter::printSuccessorAndUseList(Operation *term,
   os << ')';
 }
 
-// Prints function with initialized module state.
-void ModulePrinter::print(Function fn) { FunctionPrinter(fn, *this).print(); }
+void ModulePrinter::print(ModuleOp module) {
+  // Output the aliases at the top level.
+  state.printAttributeAliases(os);
+  state.printTypeAliases(os);
+
+  // Print the module body without the terminator. The terminator is not printed
+  // as part of the custom syntax for modules.
+  auto *moduleBody = module.getBody();
+  for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end()))
+    OperationPrinter(&op, *this).print(&op);
+}
 
 //===----------------------------------------------------------------------===//
 // print and dump methods
@@ -1734,15 +1668,27 @@ void Value::print(raw_ostream &os) {
 void Value::dump() { print(llvm::errs()); }
 
 void Operation::print(raw_ostream &os) {
-  auto function = getFunction();
-  if (!function) {
+  // Handle top-level operations.
+  if (!getParent()) {
+    ModuleState state(getContext());
+    ModulePrinter modulePrinter(os, state);
+    OperationPrinter(this, modulePrinter).print(this);
+    return;
+  }
+
+  auto region = getContainingRegion();
+  if (!region) {
     os << "<<UNLINKED INSTRUCTION>>\n";
     return;
   }
 
-  ModuleState state(function.getContext());
+  // Get the top-level region.
+  while (auto *nextRegion = region->getContainingRegion())
+    region = nextRegion;
+
+  ModuleState state(getContext());
   ModulePrinter modulePrinter(os, state);
-  FunctionPrinter(function, modulePrinter).print(this);
+  OperationPrinter(region, modulePrinter).print(this);
 }
 
 void Operation::dump() {
@@ -1751,41 +1697,44 @@ void Operation::dump() {
 }
 
 void Block::print(raw_ostream &os) {
-  auto function = getFunction();
-  if (!function) {
+  auto region = getParent();
+  if (!region) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
 
-  ModuleState state(function.getContext());
+  // Get the top-level region.
+  while (auto *nextRegion = region->getContainingRegion())
+    region = nextRegion;
+
+  ModuleState state(region->getContext());
   ModulePrinter modulePrinter(os, state);
-  FunctionPrinter(function, modulePrinter).print(this);
+  OperationPrinter(region, modulePrinter).print(this);
 }
 
 void Block::dump() { print(llvm::errs()); }
 
 /// Print out the name of the block without printing its body.
 void Block::printAsOperand(raw_ostream &os, bool printType) {
-  if (!getFunction()) {
+  auto region = getParent();
+  if (!region) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
-  ModuleState state(getFunction().getContext());
+
+  // Get the top-level region.
+  while (auto *nextRegion = region->getContainingRegion())
+    region = nextRegion;
+
+  ModuleState state(region->getContext());
   ModulePrinter modulePrinter(os, state);
-  FunctionPrinter(getFunction(), modulePrinter).printBlockName(this);
+  OperationPrinter(region, modulePrinter).printBlockName(this);
 }
 
-void Function::print(raw_ostream &os) {
-  ModuleState state(getContext());
-  ModulePrinter(os, state).print(*this);
-}
-
-void Function::dump() { print(llvm::errs()); }
-
-void Module::print(raw_ostream &os) {
+void ModuleOp::print(raw_ostream &os) {
   ModuleState state(getContext());
   state.initialize(*this);
   ModulePrinter(os, state).print(*this);
 }
 
-void Module::dump() { print(llvm::errs()); }
+void ModuleOp::dump() { print(llvm::errs()); }

@@ -35,7 +35,8 @@ namespace mlir {
 class AffineApplyOp;
 class AffineForOp;
 class Location;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class OpBuilder;
 
 /// Replaces all "deferencing" uses of oldMemRef with newMemRef while optionally

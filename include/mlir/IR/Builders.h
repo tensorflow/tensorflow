@@ -25,7 +25,8 @@ namespace mlir {
 
 class AffineExpr;
 class BlockAndValueMapping;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class UnknownLoc;
 class FileLineColLoc;
 class Type;

@@ -27,7 +27,8 @@ namespace mlir {
 class ConversionPattern;
 class DialectConversion;
 class MLIRContext;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class RewritePattern;
 class Type;
 using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;

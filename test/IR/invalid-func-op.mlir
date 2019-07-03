@@ -31,14 +31,6 @@ func @func_op() {
 // -----
 
 func @func_op() {
-  // expected-error@+2 {{optional region with explicit entry arguments must be defined}}
-  func @mixed_named_arguments(%a : i32)
-  return
-}
-
-// -----
-
-func @func_op() {
   // expected-error@+1 {{entry block must have 1 arguments to match function signature}}
   func @mixed_named_arguments(f32) {
   ^entry:

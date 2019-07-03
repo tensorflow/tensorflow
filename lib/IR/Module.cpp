@@ -37,6 +37,14 @@ void ModuleOp::build(Builder *builder, OperationState *result) {
   ensureModuleTerminator(*result->addRegion(), *builder, result->location);
 }
 
+/// Construct a module from the given context.
+ModuleOp ModuleOp::create(MLIRContext *context) {
+  OperationState state(UnknownLoc::get(context), "module");
+  Builder builder(context);
+  ModuleOp::build(&builder, &state);
+  return llvm::cast<ModuleOp>(Operation::create(state));
+}
+
 ParseResult ModuleOp::parse(OpAsmParser *parser, OperationState *result) {
   // If module attributes are present, parse them.
   if (succeeded(parser->parseOptionalKeyword("attributes")))
@@ -81,16 +89,43 @@ LogicalResult ModuleOp::verify() {
     return emitOpError("expected body to have no arguments");
 
   if (body->empty() || !isa<ModuleTerminatorOp>(body->back())) {
-    emitOpError("expects region to end with '" +
-                ModuleTerminatorOp::getOperationName() + "'")
-            .attachNote()
-        << "in custom textual format, the absence of terminator implies '"
-        << ModuleTerminatorOp::getOperationName() << "'";
-    return failure();
+    return emitOpError("expects region to end with '" +
+                       ModuleTerminatorOp::getOperationName() + "'")
+               .attachNote()
+           << "in custom textual format, the absence of terminator implies '"
+           << ModuleTerminatorOp::getOperationName() << "'";
+  }
+
+  for (auto &op : *body) {
+    if (op.getNumResults() != 0) {
+      return emitOpError()
+          .append("may not contain operations that produce results")
+          .attachNote(op.getLoc())
+          .append("see offending operation defined here");
+    }
+  }
+
+  // Check that all functions are uniquely named.
+  llvm::StringMap<Location> nameToOrigLoc;
+  for (auto fn : getFunctions()) {
+    auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
+    if (!it.second)
+      return fn.emitError()
+          .append("redefinition of symbol named '", fn.getName(), "'")
+          .attachNote(it.first->second)
+          .append("see existing symbol definition here");
   }
 
   return success();
 }
+
+/// Return body of this module.
+Region &ModuleOp::getBodyRegion() { return getOperation()->getRegion(0); }
+Block *ModuleOp::getBody() { return &getBodyRegion().front(); }
+
+//===----------------------------------------------------------------------===//
+// Module Terminator Operation.
+//===----------------------------------------------------------------------===//
 
 LogicalResult ModuleTerminatorOp::verify() {
   if (!isa_and_nonnull<ModuleOp>(getOperation()->getParentOp()))

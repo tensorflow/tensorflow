@@ -3,9 +3,8 @@
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: inline_notation
-// CHECK () -> i32 loc("mysource.cc":10:8)
-func @inline_notation() -> i32 loc("mysource.cc":10:8) {
+// CHECK-LABEL: func @inline_notation
+func @inline_notation() -> i32 {
   // CHECK: -> i32 loc("foo")
   %1 = "foo"() : () -> i32 loc("foo")
 

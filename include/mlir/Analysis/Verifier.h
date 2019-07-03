@@ -19,21 +19,13 @@
 #define MLIR_ANALYSIS_VERIFIER_H
 
 namespace mlir {
-class Function;
 class LogicalResult;
-class Module;
 class Operation;
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs, on this operation and any nested operations. On error, this
 /// reports the error through the MLIRContext and returns failure.
 LogicalResult verify(Operation *op);
-
-/// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs, on this IR unit and any nested below. On error, this
-/// reports the error through the MLIRContext and returns failure.
-LogicalResult verify(Function fn);
-LogicalResult verify(Module module);
 } //  end namespace mlir
 
 #endif

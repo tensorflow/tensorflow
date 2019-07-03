@@ -27,16 +27,11 @@
 namespace mlir {
 class BlockAndValueMapping;
 
-namespace detail {
-class FunctionStorage;
-}
-
-/// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - a Function or an Operation.
+/// This class contains a list of basic blocks and a link to the parent
+/// operation it is attached to.
 class Region {
 public:
   Region() = default;
-  explicit Region(Function container);
   explicit Region(Operation *container);
   ~Region();
 
@@ -76,9 +71,19 @@ public:
   /// region, i.e. a function body region.
   Region *getContainingRegion();
 
-  /// A Region is either a function body or a part of an operation.  If it is
-  /// part of an operation, then return the operation, otherwise return null.
+  /// Return the parent operation this region is attached to.
   Operation *getContainingOp();
+
+  /// Find the first parent operation of the given type, or nullptr if there is
+  /// no ancestor operation.
+  template <typename ParentT> ParentT getParentOfType() {
+    auto *region = this;
+    do {
+      if (auto parent = dyn_cast_or_null<ParentT>(region->container))
+        return parent;
+    } while ((region = region->getContainingRegion()));
+    return ParentT();
+  }
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
@@ -130,7 +135,7 @@ private:
   RegionType blocks;
 
   /// This is the object we are part of.
-  llvm::PointerUnion<detail::FunctionStorage *, Operation *> container;
+  Operation *container;
 };
 
 } // end namespace mlir

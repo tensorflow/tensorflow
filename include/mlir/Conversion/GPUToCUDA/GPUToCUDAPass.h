@@ -25,7 +25,8 @@
 namespace mlir {
 
 class ModulePassBase;
-class Function;
+class FuncOp;
+using Function = FuncOp;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 using CubinGenerator =

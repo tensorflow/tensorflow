@@ -26,7 +26,8 @@
 namespace mlir {
 class AffineForOp;
 class AffineMap;
-class Function;
+class FuncOp;
+using Function = FuncOp;
 class FunctionPassBase;
 class Operation;
 class Value;

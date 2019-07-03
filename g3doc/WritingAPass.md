@@ -143,7 +143,7 @@ above, let's see some examples:
 /// An interesting function analysis.
 struct MyFunctionAnalysis {
   // Compute this analysis with the provided function.
-  MyFunctionAnalysis(Function *function);
+  MyFunctionAnalysis(Function function);
 };
 
 /// An interesting module analysis.

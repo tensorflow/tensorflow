@@ -52,7 +52,9 @@ These transformation are applied to all levels of IR:
 
 These transformations are applied to builtin ops:
 
-*   `constant` ops are uniqued and hoisted into the entry block of a function.
+*   `constant` ops are uniqued and hoisted into the entry block of the first
+    parent region that is isolated from above, e.g. the entry block of a
+    function.
 *   (TODO) Merge `affine.apply` operations that directly feed each other.
 
 ## Standard Ops Canonicalizations

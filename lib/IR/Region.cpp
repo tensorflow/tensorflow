@@ -21,8 +21,6 @@
 #include "mlir/IR/Operation.h"
 using namespace mlir;
 
-Region::Region(Function container) : container(container.impl) {}
-
 Region::Region(Operation *container) : container(container) {}
 
 Region::~Region() {
@@ -35,33 +33,32 @@ Region::~Region() {
 /// Return the context this region is inserted in. The region must have a valid
 /// parent container.
 MLIRContext *Region::getContext() {
-  assert(!container.isNull() && "region is not attached to a container");
-  if (auto *inst = getContainingOp())
-    return inst->getContext();
-  return getContainingFunction().getContext();
+  assert(container && "region is not attached to a container");
+  return container->getContext();
 }
 
 /// Return a location for this region. This is the location attached to the
 /// parent container. The region must have a valid parent container.
 Location Region::getLoc() {
-  assert(!container.isNull() && "region is not attached to a container");
-  if (auto *inst = getContainingOp())
-    return inst->getLoc();
-  return getContainingFunction().getLoc();
+  assert(container && "region is not attached to a container");
+  return container->getLoc();
 }
 
 Region *Region::getContainingRegion() {
-  if (auto *inst = getContainingOp())
-    return inst->getContainingRegion();
-  return nullptr;
+  assert(container && "region is not attached to a container");
+  return container->getContainingRegion();
 }
 
 Operation *Region::getContainingOp() {
-  return container.dyn_cast<Operation *>();
+  // TODO: Several usages of getContainingOp need to be updated to handle
+  // functions operations.
+  return getContainingFunction() ? nullptr : container;
 }
 
 Function Region::getContainingFunction() {
-  return container.dyn_cast<detail::FunctionStorage *>();
+  if (auto func = llvm::dyn_cast<FuncOp>(container))
+    return func;
+  return FuncOp();
 }
 
 bool Region::isProperAncestor(Region *other) {

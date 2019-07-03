@@ -423,8 +423,10 @@ void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
 /// Remove this operation (and its descendants) from its Block and delete
 /// all of them.
 void Operation::erase() {
-  assert(getBlock() && "Operation has no block");
-  getBlock()->getOperations().erase(this);
+  if (auto *parent = getBlock())
+    parent->getOperations().erase(this);
+  else
+    destroy();
 }
 
 /// Unlink this operation from its current block and insert it right before

@@ -27,7 +27,8 @@ class Any;
 
 namespace mlir {
 class FunctionPassBase;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class ModulePassBase;
 class Pass;
 class PassInstrumentation;

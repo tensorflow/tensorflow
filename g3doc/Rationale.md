@@ -168,7 +168,7 @@ change.
 
 ### Block Arguments vs PHI nodes
 
-MLIR Functions represent SSA using "[block arguments](LangRef.md#blocks)" rather
+MLIR Regions represent SSA using "[block arguments](LangRef.md#blocks)" rather
 than [PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in LLVM.
 This choice is representationally identical (the same constructs can be
 represented in either form) but block arguments have several advantages:

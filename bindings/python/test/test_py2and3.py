@@ -43,9 +43,9 @@ class EdscTest:
         b.arg(0) + b.arg(1)
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBlockArguments
-    #       CHECK: %c42 = constant 42 : index
-    #       CHECK: ^bb1(%0: f32, %1: f32):
-    #       CHECK:   %2 = addf %0, %1 : f32
+    #       CHECK: %{{.*}} = constant 42 : index
+    #       CHECK: ^bb{{.*}}(%{{.*}}: f32, %{{.*}}: f32):
+    #       CHECK:   %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 
   def testBlockContext(self):
     self.setUp()
@@ -55,9 +55,9 @@ class EdscTest:
         cst + cst
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBlockContext
-    #       CHECK: %c42 = constant 42 : index
-    #       CHECK: ^bb1:
-    #       CHECK: %0 = "affine.apply"() {map = () -> (84)} : () -> index
+    #       CHECK: %{{.*}} = constant 42 : index
+    #       CHECK: ^bb
+    #       CHECK: %{{.*}} = "affine.apply"() {map = () -> (84)} : () -> index
 
   def testBlockContextAppend(self):
     self.setUp()
@@ -71,11 +71,11 @@ class EdscTest:
         E.constant_index(1)
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBlockContextAppend
-    #       CHECK: %c41 = constant 41 : index
-    #       CHECK: %c42 = constant 42 : index
-    #       CHECK: ^bb1:
-    #       CHECK: %c0 = constant 0 : index
-    #       CHECK: %c1 = constant 1 : index
+    #       CHECK: %{{.*}} = constant 41 : index
+    #       CHECK: %{{.*}} = constant 42 : index
+    #       CHECK: ^bb
+    #       CHECK: %{{.*}} = constant 0 : index
+    #       CHECK: %{{.*}} = constant 1 : index
 
   def testBlockContextStandalone(self):
     self.setUp()
@@ -93,14 +93,14 @@ class EdscTest:
       E.constant_index(42)
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBlockContextStandalone
-    #       CHECK: %c41 = constant 41 : index
-    #       CHECK: %c42 = constant 42 : index
-    #       CHECK: ^bb1:
-    #       CHECK: %c0 = constant 0 : index
-    #       CHECK: %c1 = constant 1 : index
-    #       CHECK: ^bb2:
-    #       CHECK: %c56 = constant 56 : index
-    #       CHECK: %c57 = constant 57 : index
+    #       CHECK: %{{.*}} = constant 41 : index
+    #       CHECK: %{{.*}} = constant 42 : index
+    #       CHECK: ^bb
+    #       CHECK: %{{.*}} = constant 0 : index
+    #       CHECK: %{{.*}} = constant 1 : index
+    #       CHECK: ^bb
+    #       CHECK: %{{.*}} = constant 56 : index
+    #       CHECK: %{{.*}} = constant 57 : index
 
   def testBooleanOps(self):
     self.setUp()
@@ -111,19 +111,19 @@ class EdscTest:
       stmt2 = ~(stmt1 | (k == l))
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBooleanOps
-    #       CHECK: %0 = cmpi "slt", %arg0, %arg1 : i1
-    #       CHECK: %1 = cmpi "sge", %arg1, %arg2 : i1
-    #       CHECK: %2 = muli %0, %1 : i1
-    #       CHECK: %3 = cmpi "eq", %arg2, %arg3 : i1
-    #       CHECK: %true = constant 1 : i1
-    #       CHECK: %4 = subi %true, %2 : i1
-    #       CHECK: %true_0 = constant 1 : i1
-    #       CHECK: %5 = subi %true_0, %3 : i1
-    #       CHECK: %6 = muli %4, %5 : i1
-    #       CHECK: %true_1 = constant 1 : i1
-    #       CHECK: %7 = subi %true_1, %6 : i1
-    #       CHECK: %true_2 = constant 1 : i1
-    #       CHECK: %8 = subi %true_2, %7 : i1
+    #       CHECK: %{{.*}} = cmpi "slt", %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = cmpi "sge", %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = muli %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = constant 1 : i1
+    #       CHECK: %{{.*}} = subi %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = constant 1 : i1
+    #       CHECK: %{{.*}} = subi %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = muli %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = constant 1 : i1
+    #       CHECK: %{{.*}} = subi %{{.*}}, %{{.*}} : i1
+    #       CHECK: %{{.*}} = constant 1 : i1
+    #       CHECK: %{{.*}} = subi %{{.*}}, %{{.*}} : i1
 
   def testBr(self):
     self.setUp()
@@ -134,8 +134,8 @@ class EdscTest:
       E.br(blk)
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBr
-    #       CHECK:   br ^bb1
-    #       CHECK: ^bb1:
+    #       CHECK:   br ^bb
+    #       CHECK: ^bb
     #       CHECK:   return
 
   def testBrArgs(self):
@@ -147,11 +147,11 @@ class EdscTest:
       E.br(b, [E.constant_index(0), E.constant_index(1)])
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBrArgs
-    #       CHECK:   %c0 = constant 0 : index
-    #       CHECK:   %c1 = constant 1 : index
-    #       CHECK:   br ^bb1(%c0, %c1 : index, index)
-    #       CHECK: ^bb1(%0: index, %1: index):
-    #       CHECK:   br ^bb1(%1, %0 : index, index)
+    #       CHECK:   %{{.*}} = constant 0 : index
+    #       CHECK:   %{{.*}} = constant 1 : index
+    #       CHECK:   br ^bb{{.*}}(%{{.*}}, %{{.*}} : index, index)
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index, %{{.*}}: index):
+    #       CHECK:   br ^bb{{.*}}(%{{.*}}, %{{.*}} : index, index)
 
   def testBrDeclaration(self):
     self.setUp()
@@ -162,8 +162,8 @@ class EdscTest:
         E.ret()
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testBrDeclaration
-    #       CHECK:   br ^bb1
-    #       CHECK: ^bb1:
+    #       CHECK:   br ^bb
+    #       CHECK: ^bb
     #       CHECK:   return
 
   def testCallOp(self):
@@ -176,8 +176,8 @@ class EdscTest:
       printWithCurrentFunctionName(str(self.module))
     # CHECK-LABEL: testCallOp
     #       CHECK: func @sqrtf(f32) -> f32
-    #       CHECK:   %f = constant @sqrtf : (f32) -> f32
-    #       CHECK:   %0 = call_indirect %f(%arg0) : (f32) -> f32
+    #       CHECK:   %{{.*}} = constant @sqrtf : (f32) -> f32
+    #       CHECK:   %{{.*}} = call_indirect %{{.*}}(%{{.*}}) : (f32) -> f32
 
   def testCondBr(self):
     self.setUp()
@@ -190,7 +190,7 @@ class EdscTest:
       E.cond_br(fun.arg(0), blk1, [], blk2, [cst])
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testCondBr
-    #       CHECK:   cond_br %arg0, ^bb1, ^bb2(%c0 : index)
+    #       CHECK:   cond_br %{{.*}}, ^bb{{.*}}, ^bb{{.*}}(%{{.*}} : index)
 
   def testConstants(self):
     self.setUp()
@@ -226,8 +226,8 @@ class EdscTest:
       E.op("foo", [fun.arg(0)], [self.f32Type]) + fun.arg(1)
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testCustom
-    #       CHECK: %0 = "foo"(%arg0) : (index) -> f32
-    #       CHECK:  %1 = addf %0, %arg1 : f32
+    #       CHECK: %{{.*}} = "foo"(%{{.*}}) : (index) -> f32
+    #       CHECK:  %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 
   # Create 'addi' using the generic Op interface.  We need an operation known
   # to the execution engine so that the engine can compile it.
@@ -255,7 +255,7 @@ class EdscTest:
       printWithCurrentFunctionName(str(self.module))
     # CHECK-LABEL: testDivisions
     #       CHECK:  floordiv 42
-    #       CHECK:  divis %arg1, %arg2 : i32
+    #       CHECK:  divis %{{.*}}, %{{.*}} : i32
 
   def testFunctionArgs(self):
     self.setUp()
@@ -264,7 +264,7 @@ class EdscTest:
       pass
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testFunctionArgs
-    #       CHECK: func @foo(%arg0: f32, %arg1: f32) -> index
+    #       CHECK: func @foo(%{{.*}}: f32, %{{.*}}: f32) -> index
 
   def testFunctionContext(self):
     self.setUp()
@@ -295,7 +295,7 @@ class EdscTest:
     # CHECK-LABEL: testFunctionMultiple
     #       CHECK: func @foo()
     #       CHECK: func @foo_0()
-    #       CHECK: %c0 = constant 0 : index
+    #       CHECK: %{{.*}} = constant 0 : index
 
   def testIndexedValue(self):
     self.setUp()
@@ -313,9 +313,9 @@ class EdscTest:
     # CHECK-LABEL: testIndexedValue
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
-    #       CHECK:  %0 = load %arg0[%i0, %i1] : memref<10x42xf32>
-    #       CHECK:  %1 = addf %0, %cst : f32
-    #       CHECK:  store %1, %arg0[%i0, %i1] : memref<10x42xf32>
+    #       CHECK:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x42xf32>
+    #       CHECK:  %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+    #       CHECK:  store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x42xf32>
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (42)}
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (10)}
 
@@ -331,10 +331,10 @@ class EdscTest:
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testLoopContext
     #       CHECK: "affine.for"() (
-    #       CHECK:   ^bb1(%i0: index):
-    #       CHECK: "affine.for"(%c42, %2) (
-    #       CHECK: ^bb2(%i1: index):
-    #       CHECK: "affine.apply"(%i0, %i1) {map = (d0, d1) -> (d0 + d1)} : (index, index) -> index
+    #       CHECK:   ^bb{{.*}}(%{{.*}}: index):
+    #       CHECK: "affine.for"(%{{.*}}, %{{.*}}) (
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index):
+    #       CHECK: "affine.apply"(%{{.*}}, %{{.*}}) {map = (d0, d1) -> (d0 + d1)} : (index, index) -> index
     #       CHECK: {lower_bound = (d0) -> (d0), step = 2 : index, upper_bound = (d0) -> (d0)} : (index, index) -> ()
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (42)}
 
@@ -348,14 +348,14 @@ class EdscTest:
     printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testLoopNestContext
     #       CHECK: "affine.for"() (
-    #       CHECK: ^bb1(%i0: index):
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index):
     #       CHECK: "affine.for"() (
-    #       CHECK: ^bb2(%i1: index):
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index):
     #       CHECK: "affine.for"() (
-    #       CHECK: ^bb3(%i2: index):
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index):
     #       CHECK: "affine.for"() (
-    #       CHECK: ^bb4(%i3: index):
-    #       CHECK: %2 = "affine.apply"(%i0, %i1, %i2, %i3) {map = (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index
+    #       CHECK: ^bb{{.*}}(%{{.*}}: index):
+    #       CHECK: %{{.*}} = "affine.apply"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {map = (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index
 
   def testMLIRBooleanCompilation(self):
     self.setUp()
@@ -388,8 +388,8 @@ class EdscTest:
     # CHECK-LABEL: testMLIRFunctionCreation
     #       CHECK:  f32
     #       CHECK:  memref<3x4x?x5xf32>
-    #       CHECK: func @copy(%arg0: memref<3x4x?x5xf32>, %arg1: memref<3x4x?x5xf32>) {
-    #       CHECK:  func @sqrtf(%arg0: f32) -> f32
+    #       CHECK: func @copy(%{{.*}}: memref<3x4x?x5xf32>, %{{.*}}: memref<3x4x?x5xf32>) {
+    #       CHECK:  func @sqrtf(%{{.*}}: f32) -> f32
 
   def testMLIRScalarTypes(self):
     self.setUp()
@@ -433,10 +433,10 @@ class EdscTest:
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
-    #   CHECK-DAG:  %0 = load %arg0[%i0, %i2] : memref<32x32xf32>
-    #   CHECK-DAG:  %1 = load %arg1[%i2, %i1] : memref<32x32xf32>
-    #       CHECK:  %2 = mulf %0, %1 : f32
-    #       CHECK:  store %2, %arg2[%i0, %i1] : memref<32x32xf32>
+    #   CHECK-DAG:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
+    #   CHECK-DAG:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
+    #       CHECK:  %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+    #       CHECK:  store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
@@ -450,9 +450,9 @@ class EdscTest:
       E.ret([c42, c0])
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testRet
-    #       CHECK:    %c42 = constant 42 : index
-    #       CHECK:    %c0 = constant 0 : index
-    #       CHECK:    return %c42, %c0 : index, index
+    #       CHECK:    %{{.*}} = constant 42 : index
+    #       CHECK:    %{{.*}} = constant 0 : index
+    #       CHECK:    return %{{.*}}, %{{.*}} : index, index
 
   def testSelectOp(self):
     self.setUp()
@@ -463,7 +463,8 @@ class EdscTest:
       E.ret([E.select(fun.arg(0), a, b)])
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testSelectOp
-    #       CHECK:  %0 = select %arg0, %c42_i32, %c0_i32 : i32
+    #       CHECK:  %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : i32
+
 
 # Until python 3.6 this cannot be used because the order in the dict is not the
 # order of method declaration.

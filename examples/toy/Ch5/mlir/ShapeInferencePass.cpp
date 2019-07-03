@@ -172,8 +172,9 @@ public:
       auto type = mlir::FunctionType::get(functionToSpecialize.argumentsType,
                                           {ToyArrayType::get(&getContext())},
                                           &getContext());
-      auto newFunction = mlir::Function::create(
-          f.getLoc(), functionToSpecialize.mangledName, type, f.getAttrs());
+      auto newFunction =
+          mlir::Function::create(f.getLoc(), functionToSpecialize.mangledName,
+                                 type, f.getDialectAttrs());
       moduleManager.insert(newFunction);
 
       // Clone the function body

@@ -35,7 +35,8 @@
 namespace mlir {
 class Attribute;
 class Location;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class Operation;
 
 namespace LLVM {

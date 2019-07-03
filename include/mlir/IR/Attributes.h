@@ -24,7 +24,8 @@
 namespace mlir {
 class AffineMap;
 class Dialect;
-class Function;
+class FuncOp;
+using Function = FuncOp;
 class FunctionType;
 class Identifier;
 class IntegerSet;

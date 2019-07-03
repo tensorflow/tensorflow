@@ -36,7 +36,8 @@ class Module;
 
 namespace mlir {
 
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 
 namespace impl {
 class OrcJIT;

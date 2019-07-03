@@ -19,7 +19,8 @@
 #define LINALG3_CONVERTTOLLVMDIALECT_H_
 
 namespace mlir {
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 } // end namespace mlir
 
 namespace linalg {

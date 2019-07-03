@@ -23,7 +23,8 @@
 namespace mlir {
 class AffineExpr;
 class AffineForOp;
-class Function;
+class FuncOp;
+using Function = FuncOp;
 class Location;
 struct LogicalResult;
 class OpBuilder;

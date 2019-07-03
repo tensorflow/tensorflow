@@ -73,11 +73,6 @@ func @memrefs(memref<42x42xi8, #map0, #map1>) // expected-error {{memref affine 
 
 // -----
 
-func missingsigil() -> (i1, index, f32) // expected-error {{expected a function identifier like}}
-
-
-// -----
-
 func @bad_branch() {
 ^bb12:
   br ^missing  // expected-error {{reference to an undefined block}}
@@ -139,11 +134,6 @@ func @block_first_has_predecessor() {
   br ^bb43
 ^bb43:
   br ^bb42
-}
-
-// -----
-
-func @empty() { // expected-error {{function must have a body}}
 }
 
 // -----
@@ -337,14 +327,6 @@ func @argError() {
 
 // -----
 
-func @bbargMismatch(i32, f32) {
-// expected-error @-1 {{first block of function must have 2 arguments to match function signature}}
-^bb42(%0: f32):
-  return
-}
-
-// -----
-
 func @br_mismatch() {
 ^bb0:
   %0:2 = "foo"() : () -> (i1, i17)
@@ -479,10 +461,6 @@ func @undefined_function() {
   %x = constant @bar : (i32) -> ()  // expected-error {{reference to undefined function 'bar'}}
   return
 }
-
-// -----
-
-func @invalid_result_type() -> () -> ()  // expected-error {{expected a top level entity}}
 
 // -----
 
@@ -893,7 +871,7 @@ func @$invalid_function_name()
 
 // -----
 
-// expected-error @+1 {{function arguments may only have dialect attributes}}
+// expected-error @+1 {{arguments may only have dialect attributes}}
 func @invalid_func_arg_attr(i1 {non_dialect_attr = 10})
 
 // -----

@@ -22,8 +22,9 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
-class Function;
-class Module;
+class FuncOp;
+using Function = FuncOp;
+class ModuleOp;
 class MLIRContext;
 
 /// This class represents the symbol table used by a module for function
@@ -31,7 +32,7 @@ class MLIRContext;
 class SymbolTable {
 public:
   /// Build a symbol table with the symbols within the given module.
-  SymbolTable(Module module);
+  SymbolTable(ModuleOp module);
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names never include the @ on them.
@@ -55,7 +56,7 @@ private:
   MLIRContext *context;
 
   /// This is a mapping from a name to the function with that name.
-  llvm::DenseMap<Identifier, Function> symbolTable;
+  llvm::StringMap<Function> symbolTable;
 
   /// This is used when name conflicts are detected.
   unsigned uniquingCounter = 0;

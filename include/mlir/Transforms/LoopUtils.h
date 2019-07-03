@@ -30,7 +30,8 @@
 namespace mlir {
 class AffineMap;
 class AffineForOp;
-class Function;
+class FuncOp;
+using Function = FuncOp;
 class OpBuilder;
 class Value;
 

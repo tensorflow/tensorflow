@@ -37,13 +37,10 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/Function.h"
-#include "mlir/IR/Module.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
-#include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
 namespace {
@@ -52,9 +49,6 @@ class OperationVerifier {
 public:
   explicit OperationVerifier(MLIRContext *ctx)
       : ctx(ctx), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
-
-  /// Verify the body of the given function.
-  LogicalResult verify(Function fn);
 
   /// Verify the given operation.
   LogicalResult verify(Operation &op);
@@ -92,7 +86,7 @@ private:
   /// The current context for the verifier.
   MLIRContext *ctx;
 
-  /// Dominance information for this function, when checking dominance.
+  /// Dominance information for this operation, when checking dominance.
   DominanceInfo *domInfo = nullptr;
 
   /// Regex checker for attribute names.
@@ -103,25 +97,6 @@ private:
   llvm::StringMap<bool> dialectAllowsUnknownOps;
 };
 } // end anonymous namespace
-
-/// Verify the body of the given function.
-LogicalResult OperationVerifier::verify(Function fn) {
-  // Verify the body first.
-  if (failed(verifyRegion(fn.getBody())))
-    return failure();
-
-  // Since everything looks structurally ok to this point, we do a dominance
-  // check.  We do this as a second pass since malformed CFG's can cause
-  // dominator analysis constructure to crash and we want the verifier to be
-  // resilient to malformed code.
-  DominanceInfo theDomInfo(fn);
-  domInfo = &theDomInfo;
-  if (failed(verifyDominance(fn.getBody())))
-    return failure();
-
-  domInfo = nullptr;
-  return success();
-}
 
 /// Verify the given operation.
 LogicalResult OperationVerifier::verify(Operation &op) {
@@ -287,7 +262,7 @@ LogicalResult OperationVerifier::verifyDominance(Operation &op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Entrypoints
+// Entrypoint
 //===----------------------------------------------------------------------===//
 
 /// Perform (potentially expensive) checks of invariants, used to detect
@@ -295,95 +270,4 @@ LogicalResult OperationVerifier::verifyDominance(Operation &op) {
 /// returns failure.
 LogicalResult mlir::verify(Operation *op) {
   return OperationVerifier(op->getContext()).verify(*op);
-}
-
-/// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  On error, this reports the error through the MLIRContext and
-/// returns failure.
-LogicalResult mlir::verify(Function fn) {
-  OperationVerifier opVerifier(fn.getContext());
-  llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
-                                   fn.getName().c_str());
-
-  // Check that the function name is valid.
-  if (!opVerifier.isValidName(fn.getName().strref()))
-    return fn.emitError("invalid function name '") << fn.getName() << "'";
-
-  /// Verify that all of the attributes are okay.
-  for (auto attr : fn.getAttrs()) {
-    if (!opVerifier.isValidName(attr.first))
-      return fn.emitError("invalid attribute name '") << attr.first << "'";
-
-    /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
-    /// the namespace.
-    if (!attr.first.strref().contains('.'))
-      return fn.emitError("functions may only have dialect attributes");
-
-    // Verify this attribute with the defining dialect.
-    if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-      if (failed(dialect->verifyFunctionAttribute(fn, attr)))
-        return failure();
-  }
-
-  /// Verify that all of the argument attributes are okay.
-  for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
-    for (auto attr : fn.getArgAttrs(i)) {
-      if (!opVerifier.isValidName(attr.first))
-        return fn.emitError("invalid attribute name '")
-               << attr.first << "' on argument " << i;
-
-      /// Check that the attribute is a dialect attribute, i.e. contains a '.'
-      /// for the namespace.
-      if (!attr.first.strref().contains('.'))
-        return fn.emitError(
-            "function arguments may only have dialect attributes");
-
-      // Verify this attribute with the defining dialect.
-      if (auto *dialect = opVerifier.getDialectForAttribute(attr))
-        if (failed(dialect->verifyFunctionArgAttribute(fn, i, attr)))
-          return failure();
-    }
-  }
-
-  // External functions have nothing more to check.
-  if (fn.isExternal())
-    return success();
-
-  // Verify that the argument list of the function and the arg list of the first
-  // block line up.
-  auto *firstBB = &fn.front();
-  auto fnInputTypes = fn.getType().getInputs();
-  if (fnInputTypes.size() != firstBB->getNumArguments())
-    return fn.emitError("first block of function must have ")
-           << fnInputTypes.size() << " arguments to match function signature";
-  for (unsigned i = 0, e = firstBB->getNumArguments(); i != e; ++i)
-    if (fnInputTypes[i] != firstBB->getArgument(i)->getType())
-      return fn.emitError("type of argument #")
-             << i << " must match corresponding argument in function signature";
-
-  // Finally, verify the body of the function.
-  return opVerifier.verify(fn);
-}
-
-/// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  On error, this reports the error through the MLIRContext and
-/// returns failure.
-LogicalResult mlir::verify(Module module) {
-  // Check that all functions are uniquely named.
-  llvm::StringMap<Location> nameToOrigLoc;
-  for (auto fn : module) {
-    auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
-    if (!it.second)
-      return fn.emitError()
-          .append("redefinition of symbol named '", fn.getName(), "'")
-          .attachNote(it.first->second)
-          .append("see existing symbol definition here");
-  }
-
-  // Check that each function is correct.
-  for (auto fn : module)
-    if (failed(verify(fn)))
-      return failure();
-
-  return success();
 }

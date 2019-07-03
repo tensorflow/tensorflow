@@ -30,7 +30,8 @@ class StringRef;
 
 namespace mlir {
 class Location;
-class Module;
+class ModuleOp;
+using Module = ModuleOp;
 class MLIRContext;
 class Type;
 
