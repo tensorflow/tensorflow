@@ -362,7 +362,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> lhs_typed(lhs);
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
-#if 0
+#if !TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
                       se::cuda::CompilePtxOrGetCached(
                           executor->device_ordinal(), buffer_compare_ptx,
