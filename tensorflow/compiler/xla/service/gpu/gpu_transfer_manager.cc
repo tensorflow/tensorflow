@@ -185,9 +185,18 @@ static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
           .getPointerSize(0 /* default address space */));
 }
 
+static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
+          .getPointerSize(0 /* default address space */));
+}
+
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
