@@ -27,7 +27,7 @@
 #include "mlir/SPIRV/SPIRVOps.h"
 
 namespace mlir {
-#include "mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc"
+#include "StdOpsToSPIRVConversion.cpp.inc"
 } // namespace mlir
 
 using namespace mlir;

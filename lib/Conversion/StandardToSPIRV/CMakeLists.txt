@@ -1,3 +1,7 @@
+set(LLVM_TARGET_DEFINITIONS StdOpsToSPIRVConversion.td)
+mlir_tablegen(StdOpsToSPIRVConversion.cpp.inc -gen-rewriters)
+add_public_tablegen_target(MLIRStdOpsToSPIRVConversionIncGen)
+
 add_llvm_library(MLIRSPIRVConversion
   StdOpsToSPIRVConversion.cpp
 
@@ -12,4 +16,5 @@ target_link_libraries(MLIRSPIRVConversion
   MLIRIR
   MLIRPass
   MLIRSPIRV
-  MLIRSupport)
+  MLIRSupport
+  MLIRTransformUtils)
