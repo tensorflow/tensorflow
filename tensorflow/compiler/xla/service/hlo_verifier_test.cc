@@ -728,6 +728,22 @@ TEST_F(HloVerifierTest, IotaNegativeDimension) {
   EXPECT_THAT(status.error_message(), HasSubstr("negative"));
 }
 
+TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule IotaPredResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = pred[128] iota(), iota_dimension=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("got PRED"));
+}
+
 static const char* const kMapOperandComputationMismatchHlo = R"(
   HloModule MapOperandComputationMismatch
 
