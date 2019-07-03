@@ -94,10 +94,15 @@ public:
   iterator end() { return impl->functions.end(); }
   Function front() { return &impl->functions.front(); }
   Function back() { return &impl->functions.back(); }
+  void clear() { impl->functions.clear(); }
 
   void push_back(Function fn) { impl->functions.push_back(fn.impl); }
   void insert(iterator insertPt, Function fn) {
     impl->functions.insert(insertPt.getCurrent(), fn.impl);
+  }
+  /// Splice all of the functions from 'other' into this module.
+  void splice(iterator insertPt, Module other) {
+    impl->functions.splice(insertPt.getCurrent(), other.impl->functions);
   }
 
   // Interfaces for working with the symbol table.
