@@ -362,10 +362,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> lhs_typed(lhs);
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
-  // Disable this routine for now because we do not yet know
-  // how to enable the of the definition + calls to PtxOptsFromConfig
-  // in both ROCm and CUDA modes
-#if DISABLED_CODE_IN_UPSTREAM_SYNC_150920
+#if 0
   TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
                       se::cuda::CompilePtxOrGetCached(
                           executor->device_ordinal(), buffer_compare_ptx,
@@ -390,8 +387,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   stream->ThenMemcpy(&result, *out_param, sizeof(result));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result == 0;
-#endif // DISABLED_CODE_IN_UPSTREAM_SYNC_150920
-  return true;
+#endif 
 }
 
 // Host side comparison code that does the same thing, but reports some of the

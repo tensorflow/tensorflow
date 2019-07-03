@@ -297,10 +297,6 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
 port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
     Stream* stream) const {
-  // Disable this routine for now because we do not yet know
-  // how to enable the of the definition + calls to PtxOptsFromConfig
-  // in both ROCm and CUDA modes
-#if DISABLED_CODE_IN_UPSTREAM_SYNC_150920
   StreamExecutor* executor = stream->parent();
 
   absl::Span<const uint8> compiled_ptx = {};
@@ -338,7 +334,6 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
       return redzone_status;
     }
   }
-#endif // DISABLED_CODE_IN_UPSTREAM_SYNC_150920
 
   return RedzoneCheckStatus::OK();
 }
