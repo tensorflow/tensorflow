@@ -346,6 +346,57 @@ ENTRY ReduceR3ToR2.v3 {
   }
 }
 
+TEST_F(HloModuleTest, VerifyReplaceComptationsWithSortOp) {
+  const string text = R"(
+  HloModule sort
+
+  compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  ENTRY top {
+    p.0 = f32[32] parameter(0)
+    p.1 = s32[32] parameter(1)
+    ROOT %sort.148.1589 = (f32[32], s32[32]) sort(p.0, p.1), dimensions={0}, to_apply=compare
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,ParseHloString(text));
+
+  // Create a replacement computation
+  HloComputation* new_comp;
+  {
+    auto b = HloComputation::Builder("Fused");
+    auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
+    auto p1 = b.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
+    auto p2 = b.AddInstruction(HloInstruction::CreateParameter(2, r0f32_, "p2"));
+    auto p3 = b.AddInstruction(HloInstruction::CreateParameter(3, r0f32_, "p3"));
+    b.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), p0, p1,
+                                      ComparisonDirection::kGt));
+    new_comp = module->AddEmbeddedComputation(b.Build());
+  }
+
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* root = entry->root_instruction();
+  EXPECT_EQ(root->to_apply()->root_instruction()->opcode(),
+    HloOpcode::kCompare);
+  EXPECT_EQ(root->to_apply()->root_instruction()->comparison_direction(),
+    ComparisonDirection::kLt);
+
+  std::unordered_map<HloComputation*, HloComputation*> replacement;
+  replacement[root->to_apply()] = new_comp;
+  module->ReplaceComputations(replacement);
+
+  EXPECT_EQ(root->to_apply(), new_comp);
+}
+
+
 }  // namespace
 
 }  // namespace xla
