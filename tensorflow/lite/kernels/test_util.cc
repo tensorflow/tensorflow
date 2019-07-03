@@ -209,7 +209,7 @@ int32_t SingleOpModel::GetTensorSize(int index) const {
 }
 
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index) {
+std::vector<string> SingleOpModel::ExtractVector(int index) const {
   TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
   CHECK(tensor_ptr != nullptr);
   const int num_strings = GetStringCount(tensor_ptr);

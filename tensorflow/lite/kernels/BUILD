@@ -585,6 +585,7 @@ cc_test(
     name = "arg_min_max_test",
     size = "small",
     srcs = ["arg_min_max_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

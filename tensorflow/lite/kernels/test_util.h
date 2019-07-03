@@ -323,8 +323,8 @@ class SingleOpModel {
 
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
-  std::vector<T> ExtractVector(int index) {
-    T* v = interpreter_->typed_tensor<T>(index);
+  std::vector<T> ExtractVector(int index) const {
+    const T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v);
     return std::vector<T>(v, v + GetTensorSize(index));
   }
@@ -594,7 +594,7 @@ TensorType GetTensorType() {
 
 // Strings have a special implementation that is in test_util.cc
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index);
+std::vector<string> SingleOpModel::ExtractVector(int index) const;
 
 // The TypeUnion struct specializations hold a collection of related types.
 // Each struct holds: 1. a primitive type (e.g. float), 2. a TensorType (e.g.
