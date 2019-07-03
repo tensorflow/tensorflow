@@ -133,6 +133,8 @@ TEST(CAPI, MultipleProfilerSession) {
   TFE_DeleteProfiler(profiler1);
   TFE_DeleteProfiler(profiler2);
   TFE_DeleteProfilerContext(profiler_context);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
 }
 
 TEST(CAPI, MonitoringCounter0) {
@@ -207,6 +209,7 @@ TEST(CAPI, MonitoringGauge0) {
   metrics = collection_registry->CollectMetrics(options);
   EXPECT_EQ(5,
             metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+  TFE_MonitoringDeleteIntGauge0(gauge);
   TF_DeleteStatus(status);
 }
 
@@ -218,6 +221,7 @@ TEST(CAPI, MonitoringMultipleGauge) {
   auto* cell1 = TFE_MonitoringGetCellBoolGauge1(gauge1, "foo");
   TFE_MonitoringBoolGaugeCellSet(cell1, true);
   EXPECT_TRUE(TFE_MonitoringBoolGaugeCellValue(cell1));
+  TFE_MonitoringDeleteBoolGauge1(gauge1);
 
   auto* gauge2 = TFE_MonitoringNewStringGauge2("test/gauge2", status, "test",
                                                "label1", "label2");
@@ -227,8 +231,9 @@ TEST(CAPI, MonitoringMultipleGauge) {
   auto* buf = new TF_Buffer;
   TFE_MonitoringStringGaugeCellValue(cell2, buf);
   string data(static_cast<const char*>(buf->data), buf->length);
-  delete buf;
+  TF_DeleteBuffer(buf);
   EXPECT_EQ(data, "str");
+  TFE_MonitoringDeleteStringGauge2(gauge2);
   TF_DeleteStatus(status);
 }
 
@@ -257,6 +262,7 @@ TEST(CAPI, MonitoringSampler0) {
                      ->points.at(0)
                      ->histogram_value.sum());
   TFE_MonitoringDeleteBuckets(buckets);
+  TFE_MonitoringDeleteSampler0(sampler);
   TF_DeleteStatus(status);
 }
 
@@ -275,7 +281,8 @@ TEST(CAPI, MonitoringMultipleSampler) {
   EXPECT_TRUE(histogram1.ParseFromString(
       {reinterpret_cast<const char*>(result1->data), result1->length}));
   EXPECT_EQ(histogram1.sum(), 3.0);
-  delete result1;
+  TF_DeleteBuffer(result1);
+  TFE_MonitoringDeleteSampler1(sampler1);
 
   auto* sampler2 = TFE_MonitoringNewSampler2("test/sampler2", buckets, status,
                                              "test", "label1", "label2");
@@ -289,7 +296,8 @@ TEST(CAPI, MonitoringMultipleSampler) {
   EXPECT_TRUE(histogram2.ParseFromString(
       {reinterpret_cast<const char*>(result2->data), result2->length}));
   EXPECT_EQ(histogram2.sum(), 5.0);
-  delete result2;
+  TF_DeleteBuffer(result2);
+  TFE_MonitoringDeleteSampler2(sampler2);
 
   TFE_MonitoringDeleteBuckets(buckets);
   TF_DeleteStatus(status);
