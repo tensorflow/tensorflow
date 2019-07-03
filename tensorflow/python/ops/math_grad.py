@@ -274,7 +274,7 @@ def _SegmentMinOrMaxGrad(op, grad):
   # divided evenly among the selected elements in that segment.
   weighted_grads = math_ops.divide(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
-  return array_ops.where(is_selected, gathered_grads, zeros), None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None
 
 
 @ops.RegisterGradient("SegmentMin")
@@ -315,7 +315,7 @@ def _GatherDropNegatives(params,
         is_positive & array_ops.ones_like(gathered, dtype=dtypes.bool))
   # replace gathered params of negative indices with 0
   zero_slice = array_ops.zeros_like(gathered)
-  return (array_ops.where(is_positive, gathered, zero_slice),
+  return (array_ops.where_v2(is_positive, gathered, zero_slice),
           zero_clipped_indices, is_positive)
 
 
@@ -334,7 +334,7 @@ def _UnsortedSegmentMinOrMaxGrad(op, grad):
   gathered_grads, _, _ = _GatherDropNegatives(weighted_grads, None,
                                               zero_clipped_indices, is_positive)
   zeros = array_ops.zeros_like(gathered_grads)
-  return array_ops.where(is_selected, gathered_grads, zeros), None, None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None, None
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
@@ -379,10 +379,10 @@ def _UnsortedSegmentProdGrad(op, grad):
       math_ops.cast(is_zero, dtype=dtypes.int32), op.inputs[1], op.inputs[2])
   # handle case 3 and set the gradient to 0 for segments with more than one
   # 0 as input
-  grad = array_ops.where(
+  grad = array_ops.where_v2(
       math_ops.greater(num_zeros, 1), array_ops.zeros_like(grad), grad)
   # replace all zeros with ones and compute the unsorted_segment_prod
-  non_zero_data = array_ops.where(is_zero, array_ops.ones_like(op.inputs[0]),
+  non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(op.inputs[0]),
                                   op.inputs[0])
   non_zero_prod = gen_math_ops.unsorted_segment_prod(non_zero_data,
                                                      op.inputs[1], op.inputs[2])
@@ -396,7 +396,7 @@ def _UnsortedSegmentProdGrad(op, grad):
   # don't. is_zero will also fetch results for entries with negative index
   # but the following gather_drop_negatives sets the corresponding entry in
   # grad to 0 for these
-  partial_derivative = array_ops.where(is_zero, gathered_non_zero_prod,
+  partial_derivative = array_ops.where_v2(is_zero, gathered_non_zero_prod,
                                        prod_divided_by_el)
   gathered_grad = _GatherDropNegatives(grad, op.inputs[1],
                                        zero_clipped_indices)[0]
@@ -722,10 +722,10 @@ def _BesselI1eGrad(op, grad):
     eps = np.finfo(x.dtype.as_numpy_dtype).eps
     zeros = array_ops.zeros_like(x)
     x_is_not_tiny = math_ops.abs(x) > eps
-    safe_x = array_ops.where(x_is_not_tiny, x, eps + zeros)
+    safe_x = array_ops.where_v2(x_is_not_tiny, x, eps + zeros)
     dy_dx = math_ops.bessel_i0e(safe_x) - y * (
         math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
-    dy_dx = array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
+    dy_dx = array_ops.where_v2(x_is_not_tiny, dy_dx, 0.5 + zeros)
     if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(dy_dx, grad)
     else:
@@ -1203,8 +1203,8 @@ def _PowGrad(op, grad):
   else:
     # There's no sensible real value to return if x < 0, so return 0
     mask = x > 0
-  safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
-  log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
+  safe_x = array_ops.where_v2(mask, x, array_ops.ones_like(x))
+  log_x = array_ops.where_v2(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
   if compat.forward_compatible(2019, 9, 14):
     gy = array_ops.reshape(
         math_ops.reduce_sum(gen_math_ops.mul_no_nan(z * log_x, grad), ry), sy)
@@ -1218,7 +1218,7 @@ def _MaximumMinimumGradInputOnly(op, grad, selector_op):
   y = op.inputs[1]
   zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
-  xgrad = array_ops.where(xmask, grad, zeros)
+  xgrad = array_ops.where_v2(xmask, grad, zeros)
   ygrad = None  # Return None for ygrad since the config allows that.
   return (xgrad, ygrad)
 
@@ -1248,13 +1248,13 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   if skip_input_indices is not None and 0 in skip_input_indices:
     gx = None
   else:
-    xgrad = array_ops.where(xmask, grad, zeros)
+    xgrad = array_ops.where_v2(xmask, grad, zeros)
     gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
 
   if skip_input_indices is not None and 1 in skip_input_indices:
     gy = None
   else:
-    ygrad = array_ops.where(xmask, zeros, grad)
+    ygrad = array_ops.where_v2(xmask, zeros, grad)
     gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
 
   return (gx, gy)
@@ -1306,7 +1306,7 @@ def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
   zeros = array_ops.zeros_like(x)
-  return (None, array_ops.where(c, grad, zeros), array_ops.where(
+  return (None, array_ops.where_v2(c, grad, zeros), array_ops.where_v2(
       c, zeros, grad))
 
 
