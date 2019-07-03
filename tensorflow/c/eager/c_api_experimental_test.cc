@@ -295,5 +295,13 @@ TEST(CAPI, MonitoringMultipleSampler) {
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI, CancellationManager) {
+  TFE_CancellationManager* c_mgr = TFE_NewCancellationManager();
+  EXPECT_FALSE(TFE_CancellationManagerIsCancelled(c_mgr));
+  TFE_CancellationManagerStartCancel(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerIsCancelled(c_mgr));
+  TFE_DeleteCancellationManager(c_mgr);
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -541,3 +541,22 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
   return static_cast<TFE_MonitoringSamplerCell*>(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
+
+TFE_CancellationManager* TFE_NewCancellationManager() {
+  return new TFE_CancellationManager;
+}
+
+void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager* cancellation_manager) {
+  cancellation_manager->cancellation_manager.StartCancel();
+}
+
+bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager* cancellation_manager) {
+  return cancellation_manager->cancellation_manager.IsCancelled();
+}
+
+void TFE_DeleteCancellationManager(
+    TFE_CancellationManager* cancellation_manager) {
+  delete cancellation_manager;
+}

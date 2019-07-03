@@ -85,6 +85,27 @@ py_library(
 )
 
 py_library(
+    name = "cancellation",
+    srcs = ["cancellation.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "cancellation_test",
+    size = "small",
+    srcs = ["cancellation_test.py"],
+    additional_deps = [
+        ":cancellation",
+        ":test",
+    ],
+    tags = ["no_pip"],
+)
+
+py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",

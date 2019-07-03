@@ -343,6 +343,19 @@ TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
 // thread.
 TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
     TFE_Context*);
+
+// -----------------------------------------------------------------------------
+// Cancellation APIs.
+
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
+    TFE_CancellationManager*);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
