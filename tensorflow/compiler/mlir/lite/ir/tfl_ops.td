@@ -1135,6 +1135,25 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [NoSideEffect]> {
   let customOption = "ReducerOptions";
 }
 
+def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
+  let summary = "Prod-reduction operator";
+
+  let description = [{
+    Computes the product along the specified axes
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I32, I64]>:$input,
+    TFL_I32OrI64Tensor:$axes,
+    BoolAttr:$keep_dims
+  );
+
+  let results = (outs AnyTensor);
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
 def TFL_MinimumOp : TFL_Op<"minimum", [Broadcastable, NoSideEffect, Commutative]> {
   let summary = "Min operator";
   let description = [{
