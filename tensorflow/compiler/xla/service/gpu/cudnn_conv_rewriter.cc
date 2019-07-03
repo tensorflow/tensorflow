@@ -89,13 +89,11 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
 
 // Try to match a backward filter pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
-    HloInstruction* conv) {
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardFilter(HloInstruction* conv) {
   const auto no_match_result =
-      std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
-  if (conv->feature_group_count() > 1) {
-    return no_match_result;
-  }
+      std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
+
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
   // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
@@ -248,7 +246,29 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     backward_conv_dnums.add_kernel_spatial_dimensions(output_spatial_dims[i]);
   }
 
-  return std::make_tuple(true, backward_conv_window, backward_conv_dnums);
+  HloInstruction* lhs = conv->mutable_operand(0);
+  if (conv->feature_group_count() == 1) {
+    return std::make_tuple(true, backward_conv_window, backward_conv_dnums,
+                           lhs);
+  }
+  Shape new_shape = lhs->shape();
+
+  int64 input_batch_dimension = backward_conv_dnums.input_batch_dimension();
+  int64 input_feature_dimension = backward_conv_dnums.input_feature_dimension();
+
+  int64 input_batch = new_shape.dimensions(input_batch_dimension);
+  int64 input_feature = new_shape.dimensions(input_feature_dimension);
+
+  // Ensure that input_batch is exact multiple of conv->feature_group_count()
+  CHECK_EQ(input_batch % conv->feature_group_count(), 0);
+  new_shape.set_dimensions(input_batch_dimension,
+                           input_batch / conv->feature_group_count());
+  new_shape.set_dimensions(input_feature_dimension,
+                           input_feature * conv->feature_group_count());
+
+  HloComputation* c = conv->parent();
+  lhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, lhs));
+  return std::make_tuple(true, backward_conv_window, backward_conv_dnums, lhs);
 }
 
 // Try to match a backward input pattern that contains "conv".
@@ -257,15 +277,6 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
 MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
-
-  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
-  // for the backward input convolution, but at least for now with version 7.1.4
-  // it is slower. This needs to be re-evaluated for future cuDNN versions.
-  // Note that we already have the necessary code down below, the only thing to
-  // enable it is to remove the following early return.
-  if (conv->feature_group_count() > 1) {
-    return no_match_result;
-  }
 
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
@@ -503,13 +514,13 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     Window window;
     ConvolutionDimensionNumbers dnums;
     HloInstruction* rhs;
+    HloInstruction* lhs;
 
-    std::tie(match, window, dnums) = MatchBackwardFilter(conv);
+    std::tie(match, window, dnums, lhs) = MatchBackwardFilter(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
-                             conv->mutable_operand(0), conv->mutable_operand(1),
-                             window, dnums, conv->feature_group_count(),
-                             conv->metadata());
+                             lhs, conv->mutable_operand(1), window, dnums,
+                             conv->feature_group_count(), conv->metadata());
     }
 
     std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
