@@ -328,5 +328,11 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
           instr.IsElementwise());
 }
 
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
+                                            const HloInstruction& consumer) {
+  return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
+                                  : HloInstruction::FusionKind::kLoop;
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -121,6 +121,8 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     for (HloInstruction* consumer : producer->users()) {
       VLOG(3) << "Looking at producer " << producer->name()
               << " and its consumer " << consumer->name();
+      // TODO(b/136623068): Use IsFusibleAsMultiOutputFusionRoot(...) to lift
+      // the restriction to input-fusible reductions.
       if (!IsInputFusibleReduction(*consumer)) {
         VLOG(3) << "Consumer " << consumer->name()
                 << " is not an input-fusible reduction.";
@@ -164,10 +166,9 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         continue;
       }
       if (consumer->opcode() != HloOpcode::kFusion) {
-        // Fusing with a reduce (fusion) always results in an input fusion.
         HloInstruction* input_fusion =
             computation()->AddInstruction(HloInstruction::CreateFusion(
-                consumer->shape(), HloInstruction::FusionKind::kInput,
+                consumer->shape(), ChooseFusionKind(*producer, *consumer),
                 consumer));
         VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
                 << consumer->name() << " into " << input_fusion->name();
@@ -177,9 +178,12 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
           input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
         } else {
           input_fusion->FuseInstructionIntoMultiOutput(producer);
+          CHECK_EQ(0, producer->user_count());
           TF_CHECK_OK(computation()->RemoveInstruction(producer));
         }
       } else {
+        VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
+                << consumer->name();
         if (producer->opcode() == HloOpcode::kFusion) {
           consumer->MergeFusionInstructionIntoMultiOutput(producer);
         } else {

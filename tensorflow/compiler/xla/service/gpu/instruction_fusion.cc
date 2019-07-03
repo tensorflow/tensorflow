@@ -105,19 +105,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
-      consumer->opcode() == HloOpcode::kScatter) {
-    return HloInstruction::FusionKind::kInput;
-  }
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
-    return HloInstruction::FusionKind::kOutput;
-  }
-  if (HloOpcode::kFusion == consumer->opcode()) {
-    return consumer->fusion_kind();
-  }
-  return InstructionFusion::ChooseKind(producer, consumer);
+  return ChooseFusionKind(*producer, *consumer);
 }
 
 }  // namespace gpu
