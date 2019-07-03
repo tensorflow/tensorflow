@@ -569,11 +569,21 @@ class Strategy(object):
           input_fn, replication_mode=replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a `tf.data.Dataset` for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
+
+    Note that you will likely need to use `experimental_distribute_dataset`
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
 
     Args:
       numpy_input: A nest of NumPy input arrays that will be distributed evenly
@@ -595,6 +605,28 @@ class Strategy(object):
 
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
+
+    The returned distributed dataset can be iterated over similar to how
+    regular datasets can.
+    NOTE: Currently, the user cannot add any more transformations to a
+    distributed dataset.
+
+    The following is an example:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
 
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
@@ -618,23 +650,6 @@ class Strategy(object):
     Within each host, we will also split the data among all the worker devices
     (if more than one a present), and this will happen even if multi-worker
     sharding is disabled using the method above.
-
-    The following is an example:
-
-    ```python
-    strategy = tf.distribute.MirroredStrategy()
-
-    # Create a dataset
-    dataset = dataset_ops.Dataset.TFRecordDataset([
-      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
-
-    # Distribute that dataset
-    dist_dataset = strategy.experimental_distribute_dataset(dataset)
-    # Iterate over the distributed dataset
-    for x in dist_dataset:
-      # process dataset elements
-      strategy.experimental_run_v2(train_step, args=(x,))
-    ```
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -699,7 +714,7 @@ class Strategy(object):
                        "only supported when eager execution is enabled.")
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
-    """Runs ops in `fn` on each replica, with the given arguments.
+    """Run `fn` on each replica, with the given arguments.
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
@@ -999,11 +1014,22 @@ class StrategyV1(Strategy):
         input_fn, replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input, session=None):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a tf.data.Dataset for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
+
+    Note that you will likely need to use
+    tf.distribute.Strategy.experimental_distribute_dataset
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
 
     Args:
       numpy_input: A nest of NumPy input arrays that will be distributed evenly
