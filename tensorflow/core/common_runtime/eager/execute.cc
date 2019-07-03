@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -33,12 +34,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
@@ -63,6 +66,16 @@ namespace {
 // Copied here because we don't currently compile XLA on windows. So, can't
 // depend on it directly.
 const char* const kXlaCompileAttr = "_XlaCompile";
+
+// Using absl::StrJoin with lambda does not work in tf-lite builds.
+std::vector<string> DevicesToString(const std::vector<Device*> devices) {
+  std::vector<string> v;
+  v.reserve(devices.size());
+  for (Device* d : devices) {
+    v.push_back(d->name());
+  }
+  return v;
+}
 
 // Initializes the step stats if needed.
 void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
@@ -92,6 +105,12 @@ const char* kUnspecifiedDeviceName = "<unspecified>";
 
 const char* DeviceNameOrUnspecified(Device* device) {
   return (device == nullptr) ? kUnspecifiedDeviceName : device->name().c_str();
+}
+
+const string DeviceNameOrUnspecified(const DeviceNameUtils::ParsedName& name) {
+  return DeviceNameUtils::HasSomeDetails(name)
+             ? DeviceNameUtils::ParsedNameToString(name)
+             : kUnspecifiedDeviceName;
 }
 
 // This function expects *handle to point to an existing tensor handle. The
@@ -216,24 +235,67 @@ Status ValidateInputTypeAndPlacement(
   return Status::OK();
 }
 
-Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  PrioritizedDeviceTypeVector final_devices;
+Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
+                    Device** device) {
+  std::vector<Device*> final_devices;
+  PrioritizedDeviceTypeVector supported_devs;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
-      ctx->prioritized_device_type_list(), ndef, &final_devices));
-  if (final_devices.empty()) {
-    return errors::Internal("Could not find valid device for node.\nNode: ",
+      ctx->prioritized_device_type_list(), ndef, &supported_devs));
+  if (supported_devs.empty()) {
+    return errors::Internal("Could not find valid device for node.\nNode:",
                             FormatNodeDefForError(ndef),
                             "\nAll kernels registered for op ", ndef.op(),
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
-  for (Device* d : *ctx->devices()) {
-    if (d->device_type() == final_devices[0].first.type_string()) {
-      *device = d;
-      return Status::OK();
+
+  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
+    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceName(),
+                                                   &final_devices);
+
+    if (!final_devices.empty()) {
+      final_devices = ColocationGraph::FilterSupportedDevices(
+          final_devices, supported_devs, /*default_device=*/nullptr);
+    }
+
+    if (final_devices.empty() && ctx->AllowSoftPlacement()) {
+      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceName();
+      soft_device_name.type.clear();
+      soft_device_name.has_type = false;
+      soft_device_name.has_id = false;
+      // TODO(fishx): Soft placement logic picks up another task if the
+      // requested does not exist.
+      ctx->pflr()->device_set()->FindMatchingDevices(soft_device_name,
+                                                     &final_devices);
+      if (!final_devices.empty()) {
+        final_devices = ColocationGraph::FilterSupportedDevices(
+            final_devices, supported_devs, /*default_device=*/nullptr);
+      }
+    }
+    if (final_devices.empty()) {
+      return errors::InvalidArgument(
+          "Could not satisfy device specification '", op->GetDeviceName(),
+          "'. All available devices [",
+          absl::StrJoin(DevicesToString(ctx->pflr()->device_set()->devices()),
+                        ", "),
+          "]. Eager operation: ", op->DebugString());
+    }
+  } else {
+    // TODO(fishx): Allow setting default device in eager context.
+    final_devices = ColocationGraph::FilterSupportedDevices(
+        ctx->pflr()->device_set()->devices(), supported_devs,
+        /*default_device=*/nullptr);
+    if (final_devices.empty()) {
+      return errors::InvalidArgument(
+          "No OpKernel registered to suppport this eager operation:",
+          op->DebugString());
     }
   }
-  return errors::Unknown("Could not find a device for node ",
-                         FormatNodeDefForError(ndef));
+
+  VLOG(1) << "Placer place op [" << op->Name()
+          << "] on device: " << final_devices[0]->name();
+  op->SetDevice(final_devices[0]);
+  *device = final_devices[0];
+  return Status::OK();
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -339,9 +401,10 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
-Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
-                            const EagerContext* ctx, bool* compile_with_xla) {
-  if (!op->is_function() || device == nullptr) {
+Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
+                            bool* compile_with_xla) {
+  if (!op->is_function() ||
+      !DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
     *compile_with_xla = false;
     return Status::OK();
   }
@@ -357,7 +420,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
 
   // Does FunctionDef have an explicit request to compile or not?
   const FunctionDef* function_def =
-      ctx->func_lib(device)->GetFunctionLibraryDefinition()->Find(op->Name());
+      ctx->pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
@@ -371,11 +434,12 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
-      device->device_type() == "XLA_CPU") {
+  if (op->GetDeviceName().type == "TPU" ||
+      op->GetDeviceName().type == "XLA_GPU" ||
+      op->GetDeviceName().type == "XLA_CPU") {
     VLOG(2) << "Compiling " << op->Name()
             << " with XLA because it is running on an XLA device "
-            << device->device_type();
+            << op->GetDeviceName().type;
     *compile_with_xla = true;
   } else {
     *compile_with_xla = false;
@@ -408,8 +472,8 @@ Status EagerLocalExecute(EagerOperation* op,
   TF_RETURN_IF_ERROR(ctx->GetStatus());
   Device* device = op->Device();
 
-  Fprint128 cache_key =
-      op->MutableAttrs()->CacheKey(DeviceNameOrUnspecified(device));
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(
+      DeviceNameOrUnspecified(op->GetDeviceName()));
 
   bool is_multi_device_function =
       IsMultiDevice(ctx->FindFunctionDef(op->Name()));
@@ -492,8 +556,7 @@ Status EagerLocalExecute(EagerOperation* op,
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(op->Device());
     bool compile_with_xla;
-    TF_RETURN_IF_ERROR(
-        ShouldCompileWithXLA(op, device, ctx, &compile_with_xla));
+    TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
     if (compile_with_xla) {
       // Note that it is not ideal, but currently correct, to set this
       // attribute after computing the kernel cache key above.
@@ -506,8 +569,8 @@ Status EagerLocalExecute(EagerOperation* op,
     bool run_function_with_flr = is_multi_device_function && !compile_with_xla;
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-    if (!run_function_with_flr && device == nullptr) {
-      TF_RETURN_IF_ERROR(SelectDevice(ndef, ctx, &device));
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SelectDevice(op, ndef, ctx, &device));
     }
     if (ctx->LogDevicePlacement() || VLOG_IS_ON(1)) {
       string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
@@ -740,9 +803,18 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                           int* num_retvals) {
   EagerContext* ctx = op->EagerContext();
 
-  eager::EagerClient* eager_client;
+  // TODO(fishx): Remove following code when lazy tensor copy is ready.
+  if (op->Device() == nullptr) {
+    tensorflow::Device* device = nullptr;
+    string device_name =
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceName());
+    TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
+    op->SetDevice(device);
+  }
+
+  eager::EagerClient* eager_client = nullptr;
   uint64 context_id = ctx->GetContextId();
-  TF_RETURN_IF_ERROR(ctx->GetClient(op->Device(), &eager_client));
+  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceName(), &eager_client));
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   eager::EnqueueResponse response;
@@ -837,7 +909,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           &retvals[i]));
     }
   }
-
   return Status::OK();
 }
 #endif  // IS_MOBILE_PLATFORM
@@ -960,15 +1031,16 @@ Status EagerExecute(EagerOperation* op,
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
-  bool op_is_local = op->EagerContext()->IsLocal(op->Device());
+  bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
 
   if (op_is_local) {
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
-                                 op->Device()->name());
+    string msg = strings::StrCat(
+        "Executing op ", op->Name(), " on task ",
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceName()));
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }

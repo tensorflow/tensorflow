@@ -630,7 +630,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
-  status->status = op->operation.SetDevice(device_name);
+  status->status = op->operation.SetDeviceName(device_name);
 }
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {

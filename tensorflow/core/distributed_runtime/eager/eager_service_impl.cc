@@ -202,7 +202,7 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   op.reset(new tensorflow::EagerOperation(server_context->Context(), name,
                                           is_function, types));
 
-  TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
+  TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",

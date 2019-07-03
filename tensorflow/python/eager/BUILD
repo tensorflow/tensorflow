@@ -723,3 +723,16 @@ cuda_py_test(
         "optonly",  # times out
     ],
 )
+
+cuda_py_test(
+    name = "device_placement_test",
+    size = "small",
+    srcs = ["device_placement_test.py"],
+    additional_deps = [
+        ":context",
+        ":def_function",
+        ":test",
+        ":remote",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)

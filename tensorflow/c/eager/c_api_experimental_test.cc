@@ -60,8 +60,6 @@ void ExecuteWithProfiling(bool async) {
   if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
     TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-    const char* device_name = TFE_OpGetDevice(matmul, status);
-    ASSERT_TRUE(strstr(device_name, "GPU:0") != nullptr);
   }
 
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);

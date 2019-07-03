@@ -86,6 +86,7 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":tensor_handle",
+        "//tensorflow/core:framework",
     ],
 )
 

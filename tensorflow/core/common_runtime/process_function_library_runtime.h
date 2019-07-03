@@ -139,6 +139,12 @@ class ProcessFunctionLibraryRuntime {
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
+  const DeviceSet* device_set() { return &device_set_; }
+
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition() const {
+    return lib_def_;
+  }
+
  private:
   friend class FunctionLibraryRuntimeImpl;
 
