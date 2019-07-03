@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -309,7 +310,7 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
 
 Status SetArgShape(
     const std::unordered_map<int, TensorShape>& input_tensor_shapes,
-    const std::unordered_map<int, std::pair<DataType, TensorShape>>&
+    const std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_dtypes_and_shapes,
     const std::vector<Node*>& arg_nodes) {
   for (Node* n : arg_nodes) {
@@ -331,10 +332,10 @@ Status SetArgShape(
       if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
         AttrValue dtype_attr_value;
         dtype_attr_value.mutable_list()->add_type(
-            dtype_and_shape_iter->second.first);
+            dtype_and_shape_iter->second.dtype);
         n->AddAttr("_handle_dtypes", dtype_attr_value);
         TensorShapeProto shape_proto;
-        dtype_and_shape_iter->second.second.AsProto(&shape_proto);
+        dtype_and_shape_iter->second.shape.AsProto(&shape_proto);
         AttrValue shape_attr_value;
         *shape_attr_value.mutable_list()->add_shape() = shape_proto;
         n->AddAttr("_handle_shapes", shape_attr_value);
@@ -706,7 +707,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     if (VLOG_IS_ON(1)) {
       DumpGraphDefToFile(
           strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph)),
+                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
+                          pair.first),
           optimized_subgraph->ToGraphDefDebug());
     }
   }
@@ -737,7 +739,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   int i = 0;
-  FunctionNameGenerator name_generator(&data->lib_def_, function_name);
+  // Generate a random function_name to avoid one function reuse the partition
+  // function instantiated by another function.
+  FunctionNameGenerator name_generator(
+      &data->lib_def_, absl::StrCat(function_name, "_", random::New64()));
   for (const auto& pair : subgraphs) {
     i += 1;
     const string& target = pair.first;
@@ -830,6 +835,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets,
+    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done) const {
   if (opts.create_rendezvous) {
     // FLR->Run() is the default entry point. It checks for cancellation,
@@ -916,7 +922,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(1) << "Running component function on device " << target
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
-      Run(opts_copy, handle, comp_args, comp_rets,
+      RunInternal(
+          opts_copy, handle, comp_args, comp_rets, cleanup_items,
           [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
             if (!status.ok()) {
               VLOG(2) << "Component function execution failed: " << status;
@@ -1053,15 +1060,34 @@ void ProcessFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
+  auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
+  done = [this, cleanup_items, done](const Status& status) {
+    auto* local_status = new Status(status);
+    CleanUp(cleanup_items, [local_status, done](const Status& cleanup_status) {
+      local_status->Update(cleanup_status);
+      done(*local_status);
+      delete local_status;
+    });
+    delete cleanup_items;
+  };
   bool multi_device;
   {
     tf_shared_lock l(mu_);
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    return RunMultiDevice(opts, handle, args, rets, std::move(done));
+    return RunMultiDevice(opts, handle, args, rets, cleanup_items,
+                          std::move(done));
   }
+  RunInternal(opts, handle, args, rets, cleanup_items, std::move(done));
+}
 
+void ProcessFunctionLibraryRuntime::RunInternal(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    std::vector<Tensor>* rets,
+    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+    FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime* flr = nullptr;
   string target_device;
   FunctionLibraryRuntime::LocalHandle local_handle;
@@ -1136,6 +1162,11 @@ void ProcessFunctionLibraryRuntime::Run(
     return;
   }
   if (parent_ != nullptr) {
+    auto cleanup_item = absl::make_unique<CleanUpItem>();
+    cleanup_item->device = target_device;
+    cleanup_item->step_id = opts.step_id;
+    cleanup_item->local_handle = local_handle;
+    cleanup_items->emplace_back(std::move(cleanup_item));
     parent_->Run(opts, local_handle, args, rets, std::move(done));
     return;
   }
@@ -1189,6 +1220,36 @@ void ProcessFunctionLibraryRuntime::Run(
             done(Status::OK());
           },
           std::move(done), std::placeholders::_1));
+}
+
+void ProcessFunctionLibraryRuntime::CleanUp(
+    std::vector<std::unique_ptr<CleanUpItem>>* items,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  auto* refcounted_done = new ReffedStatusCallback(std::move(done));
+  for (auto& item : *items) {
+    refcounted_done->Ref();
+    auto* flr = GetFLR(item->device);
+    if (flr != nullptr) {
+      // TODO(fishx): cleanup state for local execution.
+      refcounted_done->UpdateStatus(
+          errors::Internal("Cleanup items shouldn't contain local item."));
+      refcounted_done->Unref();
+    } else if (parent_ != nullptr) {
+      parent_->CleanUp(item->step_id, item->local_handle,
+                       [refcounted_done](const Status& status) {
+                         if (!status.ok()) {
+                           refcounted_done->UpdateStatus(status);
+                         }
+                         // refcounted_done is thread-safe
+                         refcounted_done->Unref();
+                       });
+    } else {
+      refcounted_done->UpdateStatus(
+          errors::Internal("Could not find device in cleanup."));
+      refcounted_done->Unref();
+    }
+  }
+  refcounted_done->Unref();
 }
 
 Status ProcessFunctionLibraryRuntime::Clone(

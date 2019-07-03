@@ -25,6 +25,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -33,6 +34,7 @@ from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -326,6 +328,20 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     inp = keras.layers.Input(shape=(4, 4))
     with self.assertRaisesRegexp(ValueError, '4D input tensors'):
       norm(inp)
+
+  def test_updates_in_wrap_function(self):
+    with context.eager_mode():
+      layer = keras.layers.BatchNormalization()
+
+      def my_func():
+        x = array_ops.ones((10, 1))
+        return layer(x, training=True)
+
+      wrapped_fn = wrap_function.wrap_function(my_func, [])
+      wrapped_fn()
+
+      # Updates should be tracked in a `wrap_function`.
+      self.assertLen(layer.updates, 2)
 
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):

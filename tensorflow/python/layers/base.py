@@ -358,7 +358,7 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
@@ -541,34 +541,8 @@ class Layer(base_layer.Layer):
       _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def add_update(self, updates, inputs=None):
-    if callable(updates):
-      updates = updates()
-
-    if context.executing_eagerly():
-      return  # Updates already applied when in eager mode.
-
-    def process_update(x):
-      if isinstance(x, ops.Operation):
-        return x
-      elif hasattr(x, 'op'):
-        return x.op
-      else:
-        return ops.convert_to_tensor(x)
-
-    if not isinstance(updates, list):
-      updates = [updates]
-    updates = [process_update(x) for x in updates]
-    self._updates += updates
-    if inputs is None:
-      for u in updates:
-        u._unconditional_update = True  # pylint: disable=protected-access
-    else:
-      for u in updates:
-        u._unconditional_update = False  # pylint: disable=protected-access
-
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph'])
+    no_copy = set(['_graph', '_thread_local'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)

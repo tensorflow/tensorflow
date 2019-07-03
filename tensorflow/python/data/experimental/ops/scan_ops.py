@@ -33,14 +33,12 @@ class _ScanDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, initial_state, scan_func):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
-
-    with ops.name_scope("initial_state"):
-      self._initial_state = structure.normalize_tensors(initial_state)
+    self._initial_state = structure.normalize_element(initial_state)
 
     # Compute initial values for the state classes, shapes and types based on
     # the initial state. The shapes may be refined by running `tf_scan_func` one
     # or more times below.
-    self._state_structure = structure.Structure.from_value(self._initial_state)
+    self._state_structure = structure.type_spec_from_value(self._initial_state)
 
     # Iteratively rerun the scan function until reaching a fixed point on
     # `self._state_shapes`.
@@ -50,8 +48,8 @@ class _ScanDataset(dataset_ops.UnaryDataset):
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           scan_func,
           self._transformation_name(),
-          input_structure=structure.NestedStructure(
-              (self._state_structure, input_dataset._element_structure)),  # pylint: disable=protected-access
+          input_structure=(self._state_structure,
+                           input_dataset.element_spec),
           add_to_graph=False)
       if not (
           isinstance(wrapped_func.output_types, collections.Sequence) and
@@ -63,7 +61,9 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
       # Extract and validate class information from the returned values.
       new_state_classes, output_classes = wrapped_func.output_classes
-      old_state_classes = self._state_structure._to_legacy_output_classes()  # pylint: disable=protected-access
+      old_state_classes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
+          self._state_structure)
       for new_state_class, old_state_class in zip(
           nest.flatten(new_state_classes),
           nest.flatten(old_state_classes)):
@@ -75,7 +75,9 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
       # Extract and validate type information from the returned values.
       new_state_types, output_types = wrapped_func.output_types
-      old_state_types = self._state_structure._to_legacy_output_types()  # pylint: disable=protected-access
+      old_state_types = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
+          self._state_structure)
       for new_state_type, old_state_type in zip(
           nest.flatten(new_state_types), nest.flatten(old_state_types)):
         if new_state_type != old_state_type:
@@ -86,8 +88,10 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
       # Extract shape information from the returned values.
       new_state_shapes, output_shapes = wrapped_func.output_shapes
-      old_state_shapes = self._state_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-      self._structure = structure.convert_legacy_structure(
+      old_state_shapes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
+          self._state_structure)
+      self._element_spec = structure.convert_legacy_structure(
           output_types, output_shapes, output_classes)
 
       flat_state_shapes = nest.flatten(old_state_shapes)
@@ -120,19 +124,19 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     # pylint: disable=protected-access
     variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
         self._input_dataset._variant_tensor,
-        self._state_structure._to_tensor_list(self._initial_state),
+        structure.to_tensor_list(self._state_structure, self._initial_state),
         self._scan_func.function.captured_inputs,
         f=self._scan_func.function,
         preserve_cardinality=True,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._scan_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _transformation_name(self):
     return "tf.data.experimental.scan()"

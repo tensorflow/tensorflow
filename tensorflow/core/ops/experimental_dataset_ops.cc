@@ -373,6 +373,8 @@ REGISTER_OP("SnapshotDataset")
     .Attr("compression: string = ''")
     .Attr("reader_path_prefix: string = ''")
     .Attr("writer_path_prefix: string = ''")
+    .Attr("shard_size_bytes: int = 10737418240")           // 10 GiB default
+    .Attr("pending_snapshot_expiry_seconds: int = 86400")  // 1 day default
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

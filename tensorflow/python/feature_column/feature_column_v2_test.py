@@ -462,10 +462,10 @@ class NumericColumnTest(test.TestCase):
         'normalizer_fn': '_increment_two'
     }, config)
 
-    self.assertEqual(
-        price,
-        fc.NumericColumn._from_config(
-            config, custom_objects={'_increment_two': _increment_two}))
+    new_col = fc.NumericColumn._from_config(
+        config, custom_objects={'_increment_two': _increment_two})
+    self.assertEqual(price, new_col)
+    self.assertEqual(new_col.shape, (1,))
 
 
 class BucketizedColumnTest(test.TestCase):
@@ -8345,108 +8345,6 @@ class WeightedCategoricalColumnTest(test.TestCase):
         config, columns_by_name={categorical_column.name: categorical_column})
     self.assertEqual(column, new_column)
     self.assertIs(categorical_column, new_column.categorical_column)
-
-
-class FeatureColumnForSerializationTest(BaseFeatureColumnForTests):
-
-  @property
-  def _is_v2_column(self):
-    return True
-
-  @property
-  def name(self):
-    return 'BadParentsFeatureColumn'
-
-  def transform_feature(self, transformation_cache, state_manager):
-    return 'Output'
-
-  @property
-  def parse_example_spec(self):
-    pass
-
-
-class SerializationTest(test.TestCase):
-  """Tests for serialization, deserialization helpers."""
-
-  def test_serialize_non_feature_column(self):
-
-    class NotAFeatureColumn(object):
-      pass
-
-    with self.assertRaisesRegexp(ValueError, 'is not a FeatureColumn'):
-      fc.serialize_feature_column(NotAFeatureColumn())
-
-  def test_deserialize_invalid_config(self):
-    with self.assertRaisesRegexp(ValueError, 'Improper config format: {}'):
-      fc.deserialize_feature_column({})
-
-  def test_deserialize_config_missing_key(self):
-    config_missing_key = {
-        'config': {
-            # Dtype is missing and should cause a failure.
-            # 'dtype': 'int32',
-            'default_value': None,
-            'key': 'a',
-            'normalizer_fn': None,
-            'shape': (2,)
-        },
-        'class_name': 'NumericColumn'
-    }
-    with self.assertRaisesRegexp(ValueError, 'Invalid config:'):
-      fc.deserialize_feature_column(config_missing_key)
-
-  def test_deserialize_invalid_class(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Unknown feature_column_v2: NotExistingFeatureColumnClass'):
-      fc.deserialize_feature_column({
-          'class_name': 'NotExistingFeatureColumnClass',
-          'config': {}
-      })
-
-  def test_deserialization_deduping(self):
-    price = fc.numeric_column('price')
-    bucketized_price = fc.bucketized_column(price, boundaries=[0, 1])
-
-    configs = fc.serialize_feature_columns([price, bucketized_price])
-
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
-    self.assertEqual(2, len(deserialized_feature_columns))
-    new_price = deserialized_feature_columns[0]
-    new_bucketized_price = deserialized_feature_columns[1]
-
-    # Ensure these are not the original objects:
-    self.assertIsNot(price, new_price)
-    self.assertIsNot(bucketized_price, new_bucketized_price)
-    # But they are equivalent:
-    self.assertEquals(price, new_price)
-    self.assertEquals(bucketized_price, new_bucketized_price)
-
-    # Check that deduping worked:
-    self.assertIs(new_bucketized_price.source_column, new_price)
-
-  def deserialization_custom_objects(self):
-    # Note that custom_objects is also tested extensively above per class, this
-    # test ensures that the public wrappers also handle it correctly.
-    def _custom_fn(input_tensor):
-      return input_tensor + 42.
-
-    price = fc.numeric_column('price', normalizer_fn=_custom_fn)
-
-    configs = fc.serialize_feature_columns([price])
-
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
-
-    self.assertEqual(1, len(deserialized_feature_columns))
-    new_price = deserialized_feature_columns[0]
-
-    # Ensure these are not the original objects:
-    self.assertIsNot(price, new_price)
-    # But they are equivalent:
-    self.assertEquals(price, new_price)
-
-    # Check that normalizer_fn points to the correct function.
-    self.assertIs(new_price.normalizer_fn, _custom_fn)
-
 
 if __name__ == '__main__':
   test.main()

@@ -73,13 +73,6 @@ class NVPTXCompiler : public LLVMCompiler {
     };
   }
 
-  // The triple that represents our target.
-  static const char* kTargetTriple;
-
-  // The data layout of the emitted module. Copied from computeDataLayout in
-  // NVPTXTargetMachine.cpp.
-  static const char* kDataLayout;
-
  private:
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64 pointer_size_;

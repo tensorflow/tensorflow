@@ -35,19 +35,28 @@ namespace {
 // Nil value for paddingMode/offset.
 const int kUnsetOffset = -1;
 
+const int kTensorNotAllocated = -1;
+
+// Holds computed value (memoized value) of an internal fill state of a
+// subarray.
+// State is (Dimension to fill, index in tensor as flattened array)
+// The value is start and end in the output array which has the padded result.
+struct CacheElement {
+  int start;
+  int end;
+};
+static_assert(sizeof(CacheElement) == sizeof(int64_t),
+              "CacheElement must be 8 bytes.");
+
 // Wrapper for data used by the op.
 struct OpData {
-  // Holds computed value (memoized value) of an internal fill state of a
-  // subarray.
-  // State is (Dimension to fill, index in tensor as flattened array)
-  // The value is start and end in the output array which has the padded result.
-  std::vector<std::pair<int, int>> cache;
+  int cache_tensor_index = kTensorNotAllocated;
 };
 
 // Wrapper for params passed to the Eval<T> function.
 template <typename T>
 struct EvalData {
-  OpData* op_data = nullptr;
+  CacheElement* cache;
   const TfLiteTensor* padding_matrix = nullptr;
   const TfLiteIntArray* input_dims = nullptr;
   // Holds number of elements at the nth dimension.
@@ -97,16 +106,16 @@ int Eval(EvalData<T>* eval_data, int current_dim, int flat_index,
   }
   // Check if the value is computed already.
   const int cache_index = current_dim * eval_data->input_size + flat_index;
-  auto& cache_entry = eval_data->op_data->cache[cache_index];
-  if (cache_entry.first != -1) {
+  auto& cache_entry = eval_data->cache[cache_index];
+  if (cache_entry.start != -1) {
     // Cache value is (start, end) interval. We can just copy the interval
     // directly.
-    const int count = cache_entry.second - cache_entry.first;
+    const int count = cache_entry.end - cache_entry.start;
     memcpy(eval_data->output_data + output_index,
-           eval_data->output_data + cache_entry.first, count * sizeof(T));
+           eval_data->output_data + cache_entry.start, count * sizeof(T));
     return output_index + count;
   }
-  cache_entry.first = output_index;
+  cache_entry.start = output_index;
   int64_t left_pad = 0, right_pad = 0;
   const int multiplier = (*eval_data->dimension_num_elements)[current_dim];
   const TfLiteTensor* padding_matrix = eval_data->padding_matrix;
@@ -131,7 +140,7 @@ int Eval(EvalData<T>* eval_data, int current_dim, int flat_index,
     output_index = Eval(eval_data, current_dim + 1, flat_index + i * multiplier,
                         output_index);
   }
-  cache_entry.second = output_index;
+  cache_entry.end = output_index;
   return output_index;
 }
 
@@ -157,7 +166,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* padding_matrix = GetInput(context, node, 1);
   auto* params =
       reinterpret_cast<TfLiteMirrorPaddingParams*>(node->builtin_data);
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   if (params == nullptr) {
     return kTfLiteError;
@@ -187,8 +195,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteStatus status = kTfLiteOk;
   int output_index = 0;
   // Reset cache array.
-  std::fill(op_data->cache.begin(), op_data->cache.end(),
-            std::make_pair(-1, -1));
+  TfLiteTensor* cache = GetTemporary(context, node, /*index=*/0);
+  CacheElement* cache_data = reinterpret_cast<CacheElement*>(cache->data.raw);
+  std::fill(cache_data, cache_data + cache->dims->data[0],
+            CacheElement{-1, -1});
 #define TF_LITE_MIRROR_PAD(type)                              \
   EvalData<type> eval_data;                                   \
   eval_data.input_data = GetTensorData<type>(input_tensor);   \
@@ -197,7 +207,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   eval_data.dimension_num_elements = &dimension_num_elements; \
   eval_data.num_dims = input_dims;                            \
   eval_data.offset = offset;                                  \
-  eval_data.op_data = op_data;                                \
+  eval_data.cache = cache_data;                               \
   eval_data.output_data = GetTensorData<type>(output_tensor); \
   eval_data.output_size = NumElements(output_tensor);         \
   eval_data.padding_matrix = padding_matrix;                  \
@@ -229,7 +239,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return new OpData;
+  auto* op_data = new OpData;
+  context->AddTensors(context, 1, &op_data->cache_tensor_index);
+  return op_data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
@@ -246,8 +258,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(padding_matrix, 0),
                     NumDimensions(input_tensor));
 
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(1);
+  node->temporaries->data[0] = op_data->cache_tensor_index;
+
   int num_elements = NumElements(input_tensor) * NumDimensions(input_tensor);
-  op_data->cache.resize(num_elements + 1);
+  TfLiteIntArray* cache_dims = TfLiteIntArrayCreate(1);
+  cache_dims->data[0] = (num_elements + 1);
+
+  TfLiteTensor* cache = &context->tensors[op_data->cache_tensor_index];
+  cache->type = kTfLiteInt64;
+  cache->allocation_type = kTfLiteArenaRw;
+  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, cache, cache_dims));
 
   if (!IsConstantTensor(padding_matrix)) {
     SetTensorToDynamic(output_tensor);

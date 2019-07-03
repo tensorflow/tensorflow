@@ -323,8 +323,8 @@ class MeanSquaredErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mse_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -416,8 +416,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mae_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):

@@ -210,7 +210,7 @@ cc_binary(
     deps = [
         ":config",
         ":support",
-        ":table_gen",
+        ":tablegen",
     ],
 )
 
@@ -396,6 +396,26 @@ filegroup(
         "utils/docker/build_docker_image.sh",
     ]),
     visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "lit",
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/*.py"]),
+)
+
+cc_binary(
+    name = "count",
+    srcs = ["utils/count/count.c"],
+)
+
+cc_binary(
+    name = "not",
+    srcs = ["utils/not/not.cpp"],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
+    deps = [
+        ":support",
+    ],
 )
 
 cc_library(
@@ -2001,6 +2021,7 @@ cc_library(
         ":objc_arc",
         ":object",
         ":passes",
+        ":remarks",
         ":scalar",
         ":support",
         ":target",
@@ -2146,6 +2167,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",
@@ -2987,6 +3009,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
     deps = [
+        ":analysis",
         ":asm_printer",
         ":code_gen",
         ":config",
@@ -3486,7 +3509,7 @@ cc_library(
 )
 
 cc_library(
-    name = "table_gen",
+    name = "tablegen",
     srcs = glob([
         "lib/TableGen/*.c",
         "lib/TableGen/*.cpp",

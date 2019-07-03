@@ -124,39 +124,7 @@ REGISTER_OP("BatchMatMul")
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle a_shape;
-      ShapeHandle b_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
-
-      // Determine output rows and cols.
-      bool adj_x;
-      bool adj_y;
-      TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
-      TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
-      DimensionHandle output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
-      DimensionHandle output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
-
-      // Batch dims match between inputs.
-      ShapeHandle a_batch_dims;
-      ShapeHandle b_batch_dims;
-      ShapeHandle batch_dims;
-      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
-      TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
-      TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
-
-      // Assert inner dims match.
-      DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
-                                  c->Dim(b_shape, adj_y ? -1 : -2), &unused));
-
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->Concatenate(
-          batch_dims, c->Matrix(output_rows, output_cols), &out));
-      c->set_output(0, out);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::BatchMatMulShape);
 
 REGISTER_OP("BatchMatMulV2")
     .Input("x: T")
@@ -168,6 +136,17 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+
+#ifdef INTEL_MKL
+REGISTER_OP("_MklBatchMatMul")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double, int32, complex64, complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulShape);
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 // Casting Ops
@@ -892,6 +871,17 @@ REGISTER_OP("MatMul")
         "complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 
+#ifdef INTEL_MKL
+REGISTER_OP("_MklMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::MatMulShape);
+#endif  // INTEL_MKL
+
 REGISTER_OP("SparseMatMul")
     .Input("a: Ta")
     .Input("b: Tb")
@@ -1176,37 +1166,6 @@ Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   c->set_output(0, out);
   return Status::OK();
 }
-
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
-  ShapeHandle s_data = c->input(0);
-  ShapeHandle s_segment_ids = c->input(1);
-  ShapeHandle s_num_segments = c->input(2);
-  TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
-
-  ShapeHandle out;
-
-  // Leading dimensions of data must be compatible with dimensions of
-  // <s_segment_ids>.
-  if (c->RankKnown(s_segment_ids)) {
-    TF_RETURN_IF_ERROR(
-        c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
-
-    // Get the value of the num_segments input tensor.
-    DimensionHandle num_segments_dim;
-    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_segments_dim));
-
-    // Output is {segment_id_rank} + s_data[segment_id_rank:].
-    ShapeHandle s_data_suffix;
-    TF_RETURN_IF_ERROR(
-        c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
-    TF_RETURN_IF_ERROR(
-        c->Concatenate(c->Vector(num_segments_dim), s_data_suffix, &out));
-  } else {
-    out = c->UnknownShape();
-  }
-  c->set_output(0, out);
-  return Status::OK();
-}
 }  // namespace
 
 REGISTER_OP("SegmentSum")
@@ -1257,7 +1216,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1267,7 +1226,7 @@ REGISTER_OP("UnsortedSegmentMax")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentMin")
     .Input("data: T")
@@ -1277,7 +1236,7 @@ REGISTER_OP("UnsortedSegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentProd")
     .Input("data: T")
@@ -1287,7 +1246,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")

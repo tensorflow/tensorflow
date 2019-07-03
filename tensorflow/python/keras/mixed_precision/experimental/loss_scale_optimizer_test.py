@@ -25,9 +25,11 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -108,6 +110,20 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
     self.evaluate(run_op)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGetScaledLoss(self):
+    opt = gradient_descent.SGD(2.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
+    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(5.)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetUnscaledGradients(self):
+    opt = gradient_descent.SGD(2.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
+    grads = opt.get_unscaled_gradients([3., None, -4.])
+    grads = [self.evaluate(g) if g is not None else g for g in grads]
+    self.assertEqual([1.5, None, -2.], grads)
+
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScale(self, strategy_fn):
@@ -161,7 +177,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # Gradient is 2, so variable will have 2 subtracted from it
       self.assertAllClose([-1.0, 0.0], self.evaluate(var))
       # Loss scale has doubled from 2 to 4
-      self.assertEqual(4., self.evaluate(opt._loss_scale()))
+      self.assertEqual(4., self.evaluate(opt.loss_scale()))
 
       # Test optimizer with NaN gradients
       loss = lambda: var * float('NaN')
@@ -171,7 +187,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # Variable should not change from before, due to NaN gradients.
       self.assertAllClose(self.evaluate(var), [-1.0, 0.0])
       # Loss scale should half due to NaN gradients.
-      self.assertEqual(2., self.evaluate(opt._loss_scale()))
+      self.assertEqual(2., self.evaluate(opt.loss_scale()))
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -195,7 +211,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # variable is subtracted by the accumulator, so the variable is subtracted
       # by 1.
       self.assertAllClose([0.0, 1.0], self.evaluate(var))
-      self.assertEqual(self.evaluate(opt._loss_scale()), initial_loss_scale * 4)
+      self.assertEqual(self.evaluate(opt.loss_scale()), initial_loss_scale * 4)
 
       run_op = strategy.experimental_run(run_fn)
       self._run_if_in_graph_mode(run_op)
@@ -204,8 +220,80 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # variable is subtracted by the accumulator, so the variable is subtracted
       # by 2.
       self.assertAllClose([-2., -1.], self.evaluate(var))
-      self.assertEqual(self.evaluate(opt._loss_scale()),
+      self.assertEqual(self.evaluate(opt.loss_scale()),
                        initial_loss_scale * 16)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIterations(self):
+    opt = gradient_descent.SGD(2.0)
+    lso = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
+    lso.iterations = 7
+    self.assertEqual(lso.iterations, 7)
+    self.assertEqual(opt.iterations, 7)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def testGettingAndSettingLearningRate(self, strategy_fn):
+    with strategy_fn().scope() as strategy:
+      var = variables.Variable([5.0])
+      opt = adam.Adam(learning_rate=1.0)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      run_op = strategy.experimental_run(run_fn)
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
+
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(1.0, lr)
+
+      opt.lr = 2.0
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(2.0, lr)
+
+      self.evaluate(opt.lr.assign(3.0))
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(3.0, lr)
+
+      with self.assertRaises(AttributeError):
+        opt.not_an_attr += 3
+
+  @test_util.run_in_graph_and_eager_modes
+  def testArbitraryAttributesNotExposed(self):
+    opt = adam.Adam(learning_rate=1.0)
+    # Test that Adam has attributes 'epsilon' and 'beta1'
+    opt.epsilon  # pylint: disable=pointless-statement
+    opt.beta_1  # pylint: disable=pointless-statement
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
+    # Test that attributes defined by OptimizerV2 subclasses are not exposed in
+    # LossScaleOptimizer.
+    with self.assertRaises(AttributeError):
+      opt.epsilon  # pylint: disable=pointless-statement
+    with self.assertRaises(AttributeError):
+      opt.beta_1  # pylint: disable=pointless-statement
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyGradientsGetsUnwrappedTensors(self):
+    # Tests that gradients passed to apply_gradients are not wrapped in a
+    # DistributionStrategy wrapper, such as PerReplica, but instead are raw
+    # Tensors. Optimizer subclasses that override apply_gradients() expect raw
+    # Tensors, even though the base Optimizer can handle PerReplica gradients.
+
+    outer_self = self
+
+    class MyOptimizer(gradient_descent.SGD):
+
+      def apply_gradients(self, grads_and_vars, name=None):
+        for grad, _ in grads_and_vars:
+          outer_self.assertIsInstance(grad, ops.Tensor)
+        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+
+    with create_mirrored_strategy().scope() as strategy:
+      var = variables.Variable([5.0])
+      opt = MyOptimizer(learning_rate=1.0)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=1)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      strategy.experimental_run(run_fn)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes

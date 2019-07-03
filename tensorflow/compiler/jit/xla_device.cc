@@ -382,11 +382,6 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  profiler::TraceMe activity(
-      [&] {
-        return absl::StrCat(op_kernel->name(), ":", op_kernel->type_string());
-      },
-      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   op_kernel->ComputeAsync(context, done);
 }
 

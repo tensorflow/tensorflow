@@ -1060,7 +1060,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       # are the same within some limits of tolerance.
       for key in results_with_ds:
         if (key.startswith('training_history') and
-            isinstance(distribution, tpu_strategy.TPUStrategy) and
+            isinstance(distribution, tpu_strategy.TPUStrategyV1) and
             distribution.extended.steps_per_run > 1):
           # TODO(b/119894254): Enable this test for all cases once the
           # underlying bug is fixed.

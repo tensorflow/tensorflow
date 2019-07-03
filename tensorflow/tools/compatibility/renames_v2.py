@@ -359,6 +359,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimator',
     'tf.estimator.tpu.TPUEstimatorSpec':
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
+    'tf.estimator.tpu.experimental.EmbeddingSpec':
+        'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -388,11 +390,11 @@ renames = {
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
     'tf.floor_div':
+        'tf.compat.v1.floor_div',
+    'tf.floordiv':
         'tf.math.floordiv',
     'tf.floormod':
         'tf.math.floormod',
-    'tf.floordiv':
-        'tf.math.floordiv',
     'tf.get_collection':
         'tf.compat.v1.get_collection',
     'tf.get_collection_ref':
@@ -505,6 +507,8 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
+    'tf.keras.backend.set_session':
+        'tf.compat.v1.keras.backend.set_session',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -1317,6 +1321,16 @@ renames = {
         'tf.compat.v1.tpu.core',
     'tf.tpu.cross_replica_sum':
         'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.experimental.AdagradParameters':
+        'tf.compat.v1.tpu.experimental.AdagradParameters',
+    'tf.tpu.experimental.AdamParameters':
+        'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.StochasticGradientDescentParameters':
+        'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
+    'tf.tpu.experimental.embedding_column':
+        'tf.compat.v1.tpu.experimental.embedding_column',
+    'tf.tpu.experimental.shared_embedding_columns':
+        'tf.compat.v1.tpu.experimental.shared_embedding_columns',
     'tf.tpu.initialize_system':
         'tf.compat.v1.tpu.initialize_system',
     'tf.tpu.outside_compilation':
@@ -1551,10 +1565,8 @@ renames = {
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
-    'tf.where':
-        'tf.compat.v1.where',
     'tf.where_v2':
-        'tf.compat.v2.where',
+        'tf.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

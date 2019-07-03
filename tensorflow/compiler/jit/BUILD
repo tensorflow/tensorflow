@@ -1,3 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+
 package(
     default_visibility = [
         ":internal",
@@ -21,10 +26,6 @@ package_group(
         "//tensorflow/compiler/tf2xla:friends",
     ],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -50,7 +51,6 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -191,21 +191,12 @@ cc_library(
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
-        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:fifo_queue",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:host_constant_op",
-        "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:logging_ops",
-        "//tensorflow/core/kernels:no_op",
-        "//tensorflow/core/kernels:queue_op",
         "//tensorflow/core/kernels:resource_variable_ops",
-        "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:shape_ops",
-        "//tensorflow/core/kernels:stack",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",
@@ -288,6 +279,7 @@ cc_library(
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
     deps = [
+        ":xla_activity_listener",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -324,9 +316,10 @@ cc_library(
     srcs = ["jit_compilation_pass_registration.cc"],
     deps = [
         ":compilation_passes",
+        ":xla_activity_logging_listener",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu_internal",
-    ],
+    ] + tf_jit_compilation_passes_extra_deps(),
     alwayslink = 1,
 )
 
@@ -338,6 +331,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":compilability_check_util",
         ":compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -346,6 +340,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )
@@ -454,6 +450,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
@@ -510,6 +507,7 @@ cc_library(
         "mark_for_compilation_pass.cc",
         "mark_for_compilation_pass_test_helper.cc",
         "partially_decluster_pass.cc",
+        "report_clustering_info_pass.cc",
     ],
     hdrs = [
         "build_xla_ops_pass.h",
@@ -523,6 +521,7 @@ cc_library(
         "mark_for_compilation_pass.h",
         "mark_for_compilation_pass_test_helper.h",
         "partially_decluster_pass.h",
+        "report_clustering_info_pass.h",
     ],
     deps = [
         "compilability_check_util",
@@ -533,6 +532,7 @@ cc_library(
         ":resource_operation_safety_analysis",
         ":shape_inference_helpers",
         ":union_find",
+        ":xla_activity_listener",
         ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:functional_ops",
@@ -575,6 +575,7 @@ cc_library(
     hdrs = ["xla_cluster_util.h"],
     deps = [
         ":flags",
+        ":xla_activity_proto_cc",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -813,6 +814,52 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "compilability_check_util_test",
+    srcs = ["compilability_check_util_test.cc"],
+    deps = [
+        ":compilability_check_util",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/tf2xla:test_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
+        "//tensorflow/compiler/tf2xla/cc:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_activity_listener_test",
+    srcs = ["xla_activity_listener_test.cc"],
+    deps = [
+        ":flags",
+        ":xla_activity_listener",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:partitioned_function_ops",
     ],
 )
 
@@ -826,6 +873,37 @@ tf_custom_op_py_library(
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
         "//tensorflow/compiler/jit/ops:xla_ops_wrapper_py",
     ],
+)
+
+cc_library(
+    name = "xla_activity_listener",
+    srcs = ["xla_activity_listener.cc"],
+    hdrs = ["xla_activity_listener.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_activity_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_proto_library(
+    name = "xla_activity_proto",
+    srcs = ["xla_activity.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos(),
+    provide_cc_alias = True,
+)
+
+cc_library(
+    name = "xla_activity_logging_listener",
+    srcs = ["xla_activity_logging_listener.cc"],
+    deps = [
+        ":xla_activity_listener",
+        "//tensorflow/core:logger",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

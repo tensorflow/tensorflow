@@ -26,12 +26,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_transitional.h"
@@ -70,7 +71,7 @@ enum class CoverageExtension {
 // The TestParam structure below is the preferred parameterization of tests. A
 // tuple version is defined in order to support value-parameterized tests.
 typedef std::tuple<DepthwiseConvImplementation, int, bool, bool, bool,
-                   DepthwiseConvOutputRounding, bool>
+                   DepthwiseConvOutputRounding, int, bool>
     TestParamTuple;
 
 struct TestParam {
@@ -83,7 +84,8 @@ struct TestParam {
         test_pad(::testing::get<3>(param_tuple)),
         test_depth_multiplier(::testing::get<4>(param_tuple)),
         output_rounding(::testing::get<5>(param_tuple)),
-        loose_tolerance(::testing::get<6>(param_tuple)) {}
+        num_threads(::testing::get<6>(param_tuple)),
+        loose_tolerance(::testing::get<7>(param_tuple)) {}
 
   static std::string TestNameSuffix(
       const ::testing::TestParamInfo<TestParamTuple>& info) {
@@ -102,6 +104,7 @@ struct TestParam {
   bool test_depth_multiplier = false;
   DepthwiseConvOutputRounding output_rounding =
       DepthwiseConvOutputRounding::kNone;
+  int num_threads = 1;
   bool loose_tolerance = false;
 };
 
@@ -167,7 +170,8 @@ inline void DispatchDepthwiseConv(
       // This is compiled-in even if dot-product instructions are unavailable.
       // However, tests should skip dot-product testing in that case and not
       // call this code.
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -178,7 +182,8 @@ inline void DispatchDepthwiseConv(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
 #endif
       break;
@@ -212,7 +217,8 @@ inline void DispatchDepthwiseConv(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseCModel3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     }
     case DepthwiseConvImplementation::kUseUnwound3x3DotProduct: {
@@ -229,7 +235,8 @@ inline void DispatchDepthwiseConv(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseUnwound3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     }
     case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct: {
@@ -248,7 +255,8 @@ inline void DispatchDepthwiseConv(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
 #else
       break;
@@ -282,27 +290,12 @@ inline void DispatchDepthwiseConv(
       << " depth = " << input_shape.Dims(3)
       << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
       << " input_offset = " << params.input_offset;
+
   CpuBackendContext backend_context;
-  switch (test_param.output_rounding) {
-    case DepthwiseConvOutputRounding::kAwayFromZero:
-      optimized_ops::DepthwiseConvWithRounding<
-          DepthwiseConvOutputRounding::kAwayFromZero>(
-          params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, &backend_context,
-          /*thread_start=*/0,
-          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
-      return;
-    case DepthwiseConvOutputRounding::kUpward:
-      optimized_ops::DepthwiseConvWithRounding<
-          DepthwiseConvOutputRounding::kUpward>(
-          params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, &backend_context,
-          /*thread_start=*/0,
-          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
-      return;
-    default:
-      break;
-  }
+  backend_context.set_max_num_threads(test_param.num_threads);
+  optimized_ops::DepthwiseConv<uint8, int32>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, &backend_context);
 }
 
 // Runs the DepthwiseConv and compares against the reference implementation.
@@ -691,7 +684,8 @@ void TestOneDepthwiseConv3x3Filter(
 }
 
 void TestOneNeonDot3x3(const TestParam& test_param) {
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
   CpuBackendContext backend_context;
   ruy::Context* ruy_context = backend_context.ruy_context();
   const auto ruy_paths = ruy_context != nullptr
@@ -775,6 +769,7 @@ INSTANTIATE_TEST_SUITE_P(
         Values(false),                                     // test_pad
         Values(false),  // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kAwayFromZero),  // output_rounding
+        Values(1),                                           // num_threads
         Values(false)                                        // loose_tolerance
         ),
     TestParam::TestNameSuffix);
@@ -788,6 +783,7 @@ INSTANTIATE_TEST_SUITE_P(
         Values(false),                                     // test_pad
         Values(false),                                 // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
@@ -805,6 +801,7 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                         // test_pad
         Bool(),                         // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kAwayFromZero),  // output_rounding
+        Values(1),                                           // num_threads
         Values(false)                                        // loose_tolerance
         ),
     TestParam::TestNameSuffix);
@@ -819,6 +816,7 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
@@ -833,6 +831,7 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
@@ -851,12 +850,14 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
         Values(kLooseIntrinsicsTolerance)              // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 #endif
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
 INSTANTIATE_TEST_SUITE_P(
     NeonAsm, DepthwiseConvTest,
     testing::Combine(
@@ -867,11 +868,13 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 
 // Apply the 3x3 tests through the dispatch.
+// Also test multi-threading. This assumes upward rounding.
 INSTANTIATE_TEST_SUITE_P(
     Dispatch3x3, DepthwiseConvTest,
     testing::Combine(
@@ -881,6 +884,7 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(4),                                     // num_threads
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);

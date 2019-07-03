@@ -40,6 +40,27 @@ def model_to_estimator(
   [Creating estimators from Keras
   Models](https://tensorflow.org/guide/estimators#model_to_estimator).
 
+  __Sample Weights__
+  Estimators returned by `model_to_estimator` are configured to handle sample
+  weights (similar to `keras_model.fit(x, y, sample_weights)`). To pass sample
+  weights when training or evaluating the Estimator, the first item returned by
+  the input function should be a dictionary with keys `features` and
+  `sample_weights`. Example below:
+
+  ```
+  keras_model = tf.keras.Model(...)
+  keras_model.compile(...)
+
+  estimator = tf.keras.estimator.model_to_estimator(keras_model)
+
+  def input_fn():
+    return dataset_ops.Dataset.from_tensors(
+        ({'features': features, 'sample_weights': sample_weights},
+         targets))
+
+  estimator.train(input_fn, steps=1)
+  ```
+
   Args:
     keras_model: A compiled Keras model object. This argument is mutually
       exclusive with `keras_model_path`.

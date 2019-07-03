@@ -30,11 +30,14 @@ import types
 import numpy as np
 
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -43,10 +46,11 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
-
 
 global_n = 2
 
@@ -108,7 +112,7 @@ class ApiTest(test.TestCase):
 
     class TestClass(object):
 
-      @api.do_not_convert(api.RunMode.GRAPH)
+      @api.do_not_convert(run_as=api.RunMode.GRAPH)
       def called_member(self, a):
         return tf.negative(a)
 
@@ -130,7 +134,7 @@ class ApiTest(test.TestCase):
     class TestClass(object):
 
       @api.do_not_convert(
-          api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
+          run_as=api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
       def called_member(self, a):
         return np.negative(a)
 
@@ -178,17 +182,44 @@ class ApiTest(test.TestCase):
 
     class TestClass(object):
 
-      def called_member(self, a):
+      def test_method(self, a):
         if a < 0:
           a = -a
         return a
 
-      called_member_converted = api.convert()(called_member)
+      test_method_converted = api.convert()(test_method)
 
     tc = TestClass()
     self.assertListEqual(
-        list(tf_inspect.getfullargspec(tc.called_member)),
-        list(tf_inspect.getfullargspec(tc.called_member_converted)))
+        list(tf_inspect.getfullargspec(tc.test_method)),
+        list(tf_inspect.getfullargspec(tc.test_method_converted)))
+
+  def test_do_not_convert_argspec(self):
+
+    class TestClass(object):
+
+      def test_method(self, x, y):
+        z = x + y
+        return z
+
+      test_method_whitelisted = api.do_not_convert(test_method)
+
+    tc = TestClass()
+    self.assertTrue(tf_inspect.ismethod(tc.test_method_whitelisted))
+    # Because the wrapped function is not generated, we can't preserve its
+    # arg spec.
+    self.assertEqual((),
+                     tuple(function_utils.fn_args(tc.test_method_whitelisted)))
+
+  def test_do_not_convert_callable_object(self):
+
+    class TestClass(object):
+
+      def __call__(self):
+        return 1
+
+    tc = TestClass()
+    self.assertEqual(1, api.do_not_convert(tc)())
 
   @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):
@@ -203,7 +234,7 @@ class ApiTest(test.TestCase):
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
-          x //= api.converted_call(self.called_member, None,
+          x //= api.converted_call(self.called_member,
                                    converter.ConversionOptions(recursive=True),
                                    (a,), {})
         return x
@@ -215,12 +246,11 @@ class ApiTest(test.TestCase):
     self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_converted_call_builtin(self):
-    x = api.converted_call(range, None,
-                           converter.ConversionOptions(recursive=True), (3,),
-                           {})
+    x = api.converted_call(range, converter.ConversionOptions(recursive=True),
+                           (3,), {})
     self.assertEqual((0, 1, 2), tuple(x))
 
-    x = api.converted_call('compile', re,
+    x = api.converted_call(re.compile,
                            converter.ConversionOptions(recursive=True),
                            ('mnas_v4_a.*\\/.*(weights|kernel):0$',), {})
     self.assertIsNotNone(x.match('mnas_v4_a/weights:0'))
@@ -232,8 +262,7 @@ class ApiTest(test.TestCase):
         return -x
       return x
 
-    x = api.converted_call(test_fn, None,
-                           converter.ConversionOptions(recursive=True),
+    x = api.converted_call(test_fn, converter.ConversionOptions(recursive=True),
                            (constant_op.constant(-1),), {})
     self.assertEqual(1, self.evaluate(x))
 
@@ -246,25 +275,17 @@ class ApiTest(test.TestCase):
       return x, y, z
 
     x = api.converted_call(
-        functools.partial(test_fn, constant_op.constant(-1), z=-3), None,
+        functools.partial(test_fn, constant_op.constant(-1), z=-3),
         converter.ConversionOptions(recursive=True),
         (constant_op.constant(-2),), {})
     self.assertEqual((1, 2, 3), self.evaluate(x))
 
     x = api.converted_call(
         functools.partial(
-            functools.partial(test_fn, constant_op.constant(-1)), z=-3), None,
+            functools.partial(test_fn, constant_op.constant(-1)), z=-3),
         converter.ConversionOptions(recursive=True),
         (constant_op.constant(-2),), {})
     self.assertEqual((1, 2, 3), self.evaluate(x))
-
-  def test_converted_call_method_explicit_owner(self):
-    # TODO(mdan): Implement.
-    pass
-
-  def test_converted_call_method_explicit_super_owner(self):
-    # TODO(mdan): Implement.
-    pass
 
   def test_converted_call_method(self):
 
@@ -279,7 +300,7 @@ class ApiTest(test.TestCase):
         return self.x
 
     tc = TestClass(constant_op.constant(-1))
-    x = api.converted_call(tc.test_method, None,
+    x = api.converted_call(tc.test_method,
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
@@ -298,7 +319,7 @@ class ApiTest(test.TestCase):
     tc = TestClass(constant_op.constant(-1))
     test_method = types.MethodType(test_function, tc)
 
-    x = api.converted_call(test_method, None,
+    x = api.converted_call(test_method,
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
@@ -312,7 +333,7 @@ class ApiTest(test.TestCase):
     tc = TestClass()
 
     # `method.__get__()` returns a so-called method-wrapper.
-    wrapper = api.converted_call('__get__', tc.foo,
+    wrapper = api.converted_call(tc.foo.__get__,
                                  converter.ConversionOptions(recursive=True),
                                  (tc,), {})
     self.assertEqual(wrapper, tc.foo)
@@ -337,7 +358,7 @@ class ApiTest(test.TestCase):
     obj = AnotherClass()
     tc = TestClass(obj.method)
 
-    x = api.converted_call('another_obj_method', tc,
+    x = api.converted_call(tc.another_obj_method,
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(self.evaluate(x), 2)
 
@@ -357,7 +378,7 @@ class ApiTest(test.TestCase):
         return self.other_method()
 
     tc = TestClass(constant_op.constant(-1))
-    x = api.converted_call(tc.test_method, None,
+    x = api.converted_call(tc.test_method,
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
@@ -374,7 +395,7 @@ class ApiTest(test.TestCase):
         return self.x
 
     tc = TestClass(constant_op.constant(-1))
-    x = api.converted_call(TestClass.test_method, None,
+    x = api.converted_call(TestClass.test_method,
                            converter.ConversionOptions(recursive=True), (tc,),
                            {})
     self.assertEqual(1, self.evaluate(x))
@@ -392,9 +413,29 @@ class ApiTest(test.TestCase):
         return self.x
 
     tc = TestClass(constant_op.constant(-1))
-    x = api.converted_call(tc, None,
-                           converter.ConversionOptions(recursive=True), (), {})
+    x = api.converted_call(tc, converter.ConversionOptions(recursive=True), (),
+                           {})
     self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_callable_metaclass(self):
+
+    class TestMetaclass(type):
+
+      x = constant_op.constant(-1)
+
+      def __call__(cls):
+        if cls.x < 0:
+          cls.x = -cls.x
+        return cls
+
+    tc = TestMetaclass('TestClass', (), {})
+    # This functools.partial will hide the class form the constructor
+    # check. Not ideal. See b/120224672.
+    tc = functools.partial(tc)
+    converted_tc = api.converted_call(
+        tc, converter.ConversionOptions(recursive=True), (), {})
+    self.assertIsInstance(converted_tc, TestMetaclass)
+    self.assertEqual(1, self.evaluate(converted_tc.x))
 
   @test_util.run_deprecated_v1
   def test_converted_call_constructor(self):
@@ -409,14 +450,33 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    tc = api.converted_call(TestClass, None,
+    tc = api.converted_call(TestClass,
                             converter.ConversionOptions(recursive=True),
                             (constant_op.constant(-1),), {})
     # tc is still a TestClass - constructors are whitelisted.
     # TODO(b/124016764): Support this use case.
     # The error below is specific to the `if` statement not being converted.
-    with self.assertRaisesRegex(
-        TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
+    with self.assertRaisesRegex(TypeError,
+                                'Using a `tf.Tensor` as a Python `bool`'):
+      tc.test_method()
+
+  def test_converted_call_mangled_properties(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.__private = x
+
+      def test_method(self):
+        if self.__private < 0:
+          return self.__private
+        return self.__private
+
+    tc = TestClass(constant_op.constant(-1))
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(NotImplementedError, 'Mangled names'):
+      api.converted_call(tc.test_method,
+                         converter.ConversionOptions(recursive=True), (), {})
       tc.test_method()
 
   def test_converted_call_already_converted(self):
@@ -424,13 +484,13 @@ class ApiTest(test.TestCase):
     def f(x):
       return x == 0
 
-    x = api.converted_call(f, None, converter.ConversionOptions(recursive=True),
+    x = api.converted_call(f, converter.ConversionOptions(recursive=True),
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
 
     converted_f = api.to_graph(
         f, experimental_optional_features=converter.Feature.ALL)
-    x = api.converted_call(converted_f, None,
+    x = api.converted_call(converted_f,
                            converter.ConversionOptions(recursive=True),
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
@@ -447,7 +507,7 @@ class ApiTest(test.TestCase):
     def f(g, x):
       return g(x)
 
-    x = api.converted_call(f, None, converter.ConversionOptions(recursive=True),
+    x = api.converted_call(f, converter.ConversionOptions(recursive=True),
                            (g, constant_op.constant(1)), {})
     self.assertEqual(self.evaluate(x), 1)
 
@@ -458,14 +518,13 @@ class ApiTest(test.TestCase):
       return x + 1
 
     x = api.converted_call(
-        f, None,
-        converter.ConversionOptions(recursive=True, force_conversion=True),
+        f, converter.ConversionOptions(recursive=True, force_conversion=True),
         (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
 
     converted_f = api.to_graph(
         f, experimental_optional_features=converter.Feature.ALL)
-    x = api.converted_call(converted_f, None,
+    x = api.converted_call(converted_f,
                            converter.ConversionOptions(recursive=True), (0,),
                            {})
     self.assertEqual(x, 1)
@@ -481,10 +540,10 @@ class ApiTest(test.TestCase):
     # f should not be converted, causing len to error out.
     with self.assertRaisesRegexp(Exception,
                                  'object of type \'Tensor\' has no len()'):
-      api.converted_call(f, None, opts, (constant_op.constant([0]),), {})
+      api.converted_call(f, opts, (constant_op.constant([0]),), {})
 
     # len on the other hand should work fine.
-    x = api.converted_call(len, None, opts, (constant_op.constant([0]),), {})
+    x = api.converted_call(len, opts, (constant_op.constant([0]),), {})
     # The constant has static shape so the result is a primitive not a Tensor.
     self.assertEqual(x, 1)
 
@@ -496,18 +555,16 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions(internal_convert_user_code=False)
 
-    self.assertIsNotNone(api.converted_call(f, None, opts, (1, 2, 3, 4), None))
+    self.assertIsNotNone(api.converted_call(f, opts, (1, 2, 3, 4), None))
 
   def test_converted_call_whitelisted_method(self):
 
     opts = converter.ConversionOptions(recursive=True)
 
-    model = sequential.Sequential([
-        core.Dense(2)
-    ])
+    model = sequential.Sequential([core.Dense(2)])
 
-    x = api.converted_call(model.call, None, opts,
-                           (constant_op.constant([[0.0]]),), {'training': True})
+    x = api.converted_call(model.call, opts, (constant_op.constant([[0.0]]),),
+                           {'training': True})
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
@@ -516,12 +573,10 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions(recursive=True)
 
-    model = sequential.Sequential([
-        core.Dense(2)
-    ])
+    model = sequential.Sequential([core.Dense(2)])
 
-    x = api.converted_call('call', model, opts,
-                           (constant_op.constant([[0.0]]),), {'training': True})
+    x = api.converted_call(model.call, opts, (constant_op.constant([[0.0]]),),
+                           {'training': True})
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
@@ -530,7 +585,7 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions(recursive=True)
 
-    x = api.converted_call(np.arange, None, opts, (5,), {})
+    x = api.converted_call(np.arange, opts, (5,), {})
 
     self.assertAllEqual(x, list(range(5)))
 
@@ -540,21 +595,21 @@ class ApiTest(test.TestCase):
     opts = converter.ConversionOptions(
         force_conversion=True, optional_features=None)
 
-    x = api.converted_call(gen_math_ops.add, None, opts, (1, 1), {})
+    x = api.converted_call(gen_math_ops.add, opts, (1, 1), {})
 
     self.assertAllEqual(self.evaluate(x), 2)
 
   def test_converted_call_exec_generated_code(self):
 
     temp_mod = imp.new_module('test_module')
-    dynamic_code = '''
+    dynamic_code = """
       def foo(x):
         return x + 1
-    '''
+    """
     exec(textwrap.dedent(dynamic_code), temp_mod.__dict__)  # pylint:disable=exec-used
     opts = converter.ConversionOptions(optional_features=None)
 
-    x = api.converted_call(temp_mod.foo, None, opts, (1,), {})
+    x = api.converted_call(temp_mod.foo, opts, (1,), {})
 
     self.assertAllEqual(x, 2)
 
@@ -562,7 +617,7 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions(recursive=True)
 
-    x = api.converted_call(collections.namedtuple, None, opts,
+    x = api.converted_call(collections.namedtuple, opts,
                            ('TestNamedtuple', ('a', 'b')), {})
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
@@ -571,8 +626,8 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions(recursive=True)
 
-    x = api.converted_call('namedtuple', collections, opts, ('TestNamedtuple',
-                                                             ('a', 'b')), {})
+    x = api.converted_call(collections.namedtuple, opts,
+                           ('TestNamedtuple', ('a', 'b')), {})
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
 
@@ -582,7 +637,7 @@ class ApiTest(test.TestCase):
 
     l = lambda x: x == 0
 
-    x = api.converted_call(l, None, opts, (constant_op.constant(0),), {})
+    x = api.converted_call(l, opts, (constant_op.constant(0),), {})
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
@@ -599,14 +654,35 @@ class ApiTest(test.TestCase):
 
       def prepare(self):
         self.method = function.defun(self.method)
+
     # pylint:enable=method-hidden
 
     tc = TestClass()
     tc.prepare()
 
-    x = api.converted_call(tc.method, None, opts, (), {})
+    x = api.converted_call(tc.method, opts, (), {})
 
     self.assertAllEqual(1, self.evaluate(x))
+
+  def test_converted_call_through_tf_dataset(self):
+
+    def other_fn(x):
+      if x > 0:
+        return x
+      return -x
+
+    def f():
+      return dataset_ops.Dataset.range(-3, 3).map(other_fn)
+
+    # Dataset iteration only works inside tf.function.
+    @def_function.function
+    def graph_fn():
+      opts = converter.ConversionOptions(recursive=True)
+      ds = api.converted_call(f, opts, (), {})
+      itr = iter(ds)
+      return next(itr), next(itr), next(itr)
+
+    self.assertAllEqual(self.evaluate(graph_fn()), (3, 2, 1))
 
   def assertNoMemoryLeaks(self, f):
     object_ids_before = {id(o) for o in gc.get_objects()}
@@ -626,7 +702,7 @@ class ApiTest(test.TestCase):
         return res.x + y
 
       opts = converter.ConversionOptions(recursive=True)
-      api.converted_call(f, None, opts, (1,), {})
+      api.converted_call(f, opts, (1,), {})
 
     self.assertNoMemoryLeaks(test_fn)
 
@@ -643,9 +719,37 @@ class ApiTest(test.TestCase):
         return inner_f
 
       opts = converter.ConversionOptions(recursive=True)
-      api.converted_call(f, None, opts, (1,), {})()
+      api.converted_call(f, opts, (1,), {})()
 
     self.assertNoMemoryLeaks(test_fn)
+
+  def test_context_tracking_direct_calls(self):
+
+    @api.do_not_convert()
+    def unconverted_fn():
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.DISABLED)
+
+    @api.convert()
+    def converted_fn():
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.ENABLED)
+      unconverted_fn()
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.ENABLED)
+
+    self.assertEqual(ag_ctx.control_status_ctx().status,
+                     ag_ctx.Status.UNSPECIFIED)
+    converted_fn()
+    self.assertEqual(ag_ctx.control_status_ctx().status,
+                     ag_ctx.Status.UNSPECIFIED)
+
+    @api.call_with_unspecified_conversion_status
+    def unspecified_fn():
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.UNSPECIFIED)
+
+    unspecified_fn()
 
   def test_to_graph_basic(self):
 
@@ -703,7 +807,7 @@ class ApiTest(test.TestCase):
 
   def test_to_graph_with_kwargs_clashing_unconverted_call(self):
 
-    @api.do_not_convert()
+    @api.do_not_convert
     def called_fn(**kwargs):
       return kwargs['f'] + kwargs['owner']
 
@@ -747,8 +851,7 @@ class ApiTest(test.TestCase):
 
     self.assertNotEqual(converted_recursive.ag_module,
                         converted_non_recursive.ag_module)
-    self.assertIn('internal_convert_user_code=True',
-                  tf_inspect.getsource(converted_recursive))
+    self.assertIn('ag__.STD', tf_inspect.getsource(converted_recursive))
     self.assertNotIn('internal_convert_user_code=False',
                      tf_inspect.getsource(converted_recursive))
     self.assertIn('internal_convert_user_code=False',
@@ -786,6 +889,81 @@ class ApiTest(test.TestCase):
 
     # Just check that the output is parseable Python code.
     self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+
+  def test_tf_convert_direct(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_tf_convert_unspecified_not_converted_by_default(self):
+
+    def f():
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.UNSPECIFIED)
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @def_function.function
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx, convert_by_default=False)()
+
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
+
+  def test_tf_convert_whitelisted_method(self):
+
+    model = sequential.Sequential([core.Dense(2)])
+    converted_call = api.tf_convert(
+        model.call, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    _, converted_target = tf_decorator.unwrap(converted_call)
+    self.assertIs(converted_target.__func__, model.call.__func__)
+
+  def test_tf_convert_wrapped(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+      return wrapper.__wrapped__(*args, **kwargs)
+
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(decorated_f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+
+    # tf_convert mutates the decorator, so we need to create a new one for
+    # another test.
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
 
 if __name__ == '__main__':

@@ -48,11 +48,11 @@ class FingerprintOpTest : public OpsTestBase {
     TF_RETURN_IF_ERROR(InitOp());
 
     inputs_.clear();
-    inputs_.push_back(data);
+    inputs_.push_back(TensorValue(data));
 
     method_ = Tensor(DT_STRING, TensorShape{});
     method_.scalar<string>()() = method;
-    inputs_.push_back(&method_);
+    inputs_.push_back(TensorValue(&method_));
     return Status::OK();
   }
 

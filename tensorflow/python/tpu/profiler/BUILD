@@ -25,3 +25,21 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
 )
+
+py_binary(
+    name = "capture_tpu_profile",
+    srcs = ["capture_tpu_profile.py"],
+    main = "capture_tpu_profile.py",
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:versions",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:profiler_client",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)

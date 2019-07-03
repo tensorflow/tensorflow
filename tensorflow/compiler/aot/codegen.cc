@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -465,7 +466,7 @@ namespace xla { class ExecutableRunOptions; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
-    void* result, const xla::ExecutableRunOptions* run_options,
+    void* result, const ::xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
 {{DECLS_FROM_OBJ_FILE}}
@@ -630,14 +631,14 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
   // Shape of the args and results.
-  static const xla::ProgramShapeProto* StaticProgramShape() {
-    static const xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
+  static const ::xla::ProgramShapeProto* StaticProgramShape() {
+    static const ::xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
     return kShape;
   }
 
   // Metadata that can be used to pretty-print profile counters.
-  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
       {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
     return kHloProfilePrinterData;
   }
@@ -715,11 +716,11 @@ Status GenerateMetadata(const CodegenOpts& opts,
 
   ProtobufToEmbed program_shape_protobuf{
       CreateUniqueIdentifier(opts, "ProgramShapeProto"),
-      "xla::ProgramShapeProto", program_shape.get()};
+      "::xla::ProgramShapeProto", program_shape.get()};
 
   ProtobufToEmbed hlo_profile_printer_data_protobuf{
       CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
-      "xla::HloProfilePrinterData",
+      "::xla::HloProfilePrinterData",
       compile_result.aot->hlo_profile_printer_data()};
 
   TF_ASSIGN_OR_RETURN(
@@ -745,19 +746,25 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
                      std::vector<string>* namespaces) {
   class_name->clear();
   namespaces->clear();
-  size_t begin = 0;
-  size_t end = 0;
-  while ((end = cpp_class.find("::", begin)) != string::npos) {
-    const string ns = cpp_class.substr(begin, end - begin);
-    TF_RETURN_IF_ERROR(ValidateCppIdent(
-        ns, "in namespace component of cpp_class: " + cpp_class));
-    namespaces->push_back(ns);
-    begin = end + 2;  // +2 to skip the two colons
+  if (cpp_class.empty()) {
+    return errors::InvalidArgument("empty cpp_class: " + cpp_class);
   }
-  const string name = cpp_class.substr(begin);
-  TF_RETURN_IF_ERROR(
-      ValidateCppIdent(name, "in class name of cpp_class: " + cpp_class));
-  *class_name = name;
+  std::vector<string> parts = absl::StrSplit(cpp_class, "::");
+  if (parts.front().empty()) {
+    // Allow a fully qualified name that starts with "::".
+    parts.erase(parts.begin());
+  }
+  for (int i = 0; i < parts.size(); ++i) {
+    if (i < parts.size() - 1) {
+      TF_RETURN_IF_ERROR(ValidateCppIdent(
+          parts[i], "in namespace component of cpp_class: " + cpp_class));
+      namespaces->push_back(parts[i]);
+    } else {
+      TF_RETURN_IF_ERROR(ValidateCppIdent(
+          parts[i], "in class name of cpp_class: " + cpp_class));
+      *class_name = parts[i];
+    }
+  }
   return Status::OK();
 }
 

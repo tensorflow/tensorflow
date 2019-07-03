@@ -247,6 +247,12 @@ linux_cmake_vars = {
     "HAVE_FUTIMENS": 1,
 }
 
+# CMake variables specific to the FreeBSD platform
+freebsd_cmake_vars = {
+    "HAVE_MALLOC_H": 1,
+    "HAVE_LINK_H": 1,
+}
+
 # CMake variables specific to the Darwin (Mac OS X) platform.
 darwin_cmake_vars = {
     "HAVE_MALLOC_MALLOC_H": 1,
@@ -314,6 +320,13 @@ llvm_all_cmake_vars = select({
             win32_cmake_vars,
         ),
     ),
+    "@org_tensorflow//tensorflow:freebsd": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("X86", "x86_64-unknown-freebsd"),
+            posix_cmake_vars,
+        ),
+    ),
     "//conditions:default": cmake_var_string(
         _dict_add(
             cmake_vars,
@@ -326,6 +339,7 @@ llvm_all_cmake_vars = select({
 
 llvm_linkopts = select({
     "@org_tensorflow//tensorflow:windows": [],
+    "@org_tensorflow//tensorflow:freebsd": ["-ldl", "-lm", "-lpthread", "-lexecinfo"],
     "//conditions:default": ["-ldl", "-lm", "-lpthread"],
 })
 

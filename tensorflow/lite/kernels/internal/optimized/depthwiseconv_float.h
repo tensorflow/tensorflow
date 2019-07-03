@@ -16,8 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -897,7 +896,7 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
 // For example, assume thread_start = 2, thread_end = 6, and thread_dim = 1, it
 // means that it will calculate DepthwiseConv for output_data[:, 2:5, :, :].
 //
-// The cpu_backend_context may be supplied as a nullptr by some callers. This
+// The cpu_flags is currently unused. This
 // parameter is included so that the signature matches that required by a
 // templated function. Other versions, such as quantized, need this parameter.
 inline void DepthwiseConvImpl(
@@ -905,8 +904,8 @@ inline void DepthwiseConvImpl(
     const float* input_data, const RuntimeShape& filter_shape,
     const float* filter_data, const RuntimeShape& bias_shape,
     const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, CpuBackendContext* cpu_backend_context,
-    int thread_start, int thread_end, int thread_dim) {
+    float* output_data, const CpuFlags& /* cpu_flags */, int thread_start,
+    int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/float/DepthwiseConvImpl");
 
   const int stride_width = params.stride_width;
@@ -1116,10 +1115,9 @@ inline void DepthwiseConv(
     const float* input_data, const RuntimeShape& filter_shape,
     const float* filter_data, const RuntimeShape& bias_shape,
     const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, CpuBackendContext* cpu_backend_context) {
+    float* output_data, const CpuFlags& cpu_flags) {
   DepthwiseConvImpl(params, input_shape, input_data, filter_shape, filter_data,
-                    bias_shape, bias_data, output_shape, output_data,
-                    cpu_backend_context,
+                    bias_shape, bias_data, output_shape, output_data, cpu_flags,
                     /*thread_start=*/0,
                     /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
 }

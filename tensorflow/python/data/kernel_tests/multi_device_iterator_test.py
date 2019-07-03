@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -205,7 +206,9 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     init_op = multi_device_iterator.initializer
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config) as sess:
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 2
+    with session.Session(config=config) as sess:
       for i in range(1000):
         sess.run(init_op, feed_dict={epoch: i})
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
@@ -334,45 +337,6 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-
-@test_util.run_all_in_graph_and_eager_modes
-class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
-
-  @test_util.run_v1_only("b/121264236")
-  def testPrefetchWithSlackOption(self):
-    dataset = dataset_ops.Dataset.range(10)
-    options = dataset_ops.Options()
-    options.experimental_slack = True
-    dataset = dataset.with_options(options)
-    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
-    dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
-    self.assertIn("slack", dataset.options()._static_optimizations())
-    self.assertIn("slack:slack_period:2",
-                  dataset.options()._static_optimization_configs())
-
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
-
-  def testPrefetchWithSlackOptionWithoutIterator(self):
-    dataset = dataset_ops.Dataset.range(10)
-    options = dataset_ops.Options()
-    options.experimental_slack = True
-    dataset = dataset.with_options(options)
-    self.assertIn("slack", dataset.options()._static_optimizations())
-    self.assertIn("slack:slack_period:1",
-                  dataset.options()._static_optimization_configs())
-
-    self.assertDatasetProduces(dataset, range(10))
 
 if __name__ == "__main__":
   ops.enable_eager_execution(

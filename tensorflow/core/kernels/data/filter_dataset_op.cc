@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -32,13 +33,13 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char FilterDatasetOp::kDatasetType[];
-constexpr const char FilterDatasetOp::kInputDataset[];
-constexpr const char FilterDatasetOp::kOtherArguments[];
-constexpr const char FilterDatasetOp::kPredicate[];
-constexpr const char FilterDatasetOp::kTarguments[];
-constexpr const char FilterDatasetOp::kOutputTypes[];
-constexpr const char FilterDatasetOp::kOutputShapes[];
+/* static */ constexpr const char* const FilterDatasetOp::kDatasetType;
+/* static */ constexpr const char* const FilterDatasetOp::kInputDataset;
+/* static */ constexpr const char* const FilterDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const FilterDatasetOp::kPredicate;
+/* static */ constexpr const char* const FilterDatasetOp::kTarguments;
+/* static */ constexpr const char* const FilterDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const FilterDatasetOp::kOutputShapes;
 
 constexpr char kInputImplsEmpty[] = "input_impls_empty";
 constexpr char kFilteredElements[] = "filtered_elements";
@@ -228,6 +229,17 @@ class FilterDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
 };
 
+FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(
+      ctx, FunctionMetadata::Create(ctx, kPredicate, params, &func_metadata_));
+  OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
+              errors::InvalidArgument(
+                  "predicate function has more than one return value."));
+}
+
 void FilterDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   std::unique_ptr<CapturedFunction> captured_func;
@@ -239,8 +251,11 @@ void FilterDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("FilterDataset");
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

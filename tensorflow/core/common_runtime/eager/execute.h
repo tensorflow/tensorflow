@@ -50,9 +50,13 @@ Status EagerKernelExecute(EagerContext* ctx,
                           GraphCollector* graph_collector,
                           TensorHandle** retvals, int num_retvals);
 
-// Low-level utility to copy a tensor handle from one device to another.
-Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, TensorHandle** result);
+// Low-level utility to copy a tensor handle from one device to another. If
+// successful, result TensorHandle will be populated. If the caller requests for
+// the mirror flag, EagerCopyToDevice will attempt to add a mirror to the
+// original handle and update *result to point to h. Since this is not
+// guaranteed, callers should always use the value in *result.
+Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* device,
+                         bool mirror, TensorHandle** result);
 
 }  // namespace tensorflow
 

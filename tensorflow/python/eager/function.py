@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum  # pylint: disable=g-bad-import-order
 import functools
 import itertools
 import threading
@@ -40,23 +41,34 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->autograph->->dataset->tf.function).
+# TODO(b/133251390): Use a regular import.
+ag_ctx = lazy_loader.LazyLoader(
+    "ag_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -64,8 +76,9 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
 CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions",
-    "colocation_stack"])
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "in_cross_replica_context"
+])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -164,7 +177,7 @@ def _compatible_shapes(flat_relaxed, flat_to_check):
              for relaxed, to_check in zip(flat_relaxed, flat_to_check))
 
 
-def _common_shape(x, y):
+def common_shape(x, y):
   """Find a `TensorShape` that is compatible with both `x` and `y`."""
   if x is None != y is None:
     raise RuntimeError(
@@ -381,13 +394,14 @@ class _EagerDefinedFunction(object):
     self._output_types = [o.type for o in self.signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
     self._control_captures = graph.control_captures
-    self._func_graph_outputs = outputs
+    # Shallow copy outputs since ConcreteFunction may mutate it.
+    self._func_graph_outputs = list(outputs)
     self.grad_func_name = None
     self.python_grad_func = None
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
     self.graph = graph
-    self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
+    self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
   def add_to_graph(self, g=None):
     # pylint: disable=protected-access
@@ -472,6 +486,13 @@ class _EagerDefinedFunction(object):
       return outputs
 
 
+class _PossibleTapeGradientTypes(enum.Enum):
+  """Represents the output of TFE_Py_TapeSetPossibleGradientTypes."""
+  NONE = 0
+  FIRST_ORDER = 1
+  HIGHER_ORDER = 2
+
+
 class ConcreteFunction(object):
   """Callable object encapsulating a function definition and its gradient.
 
@@ -498,6 +519,8 @@ class ConcreteFunction(object):
     self._num_positional_args = None
     self._func_graph = func_graph
     self._captured_inputs = list(self._func_graph.captures.keys())
+    self._captured_closures = [
+        x[0] for x in self._func_graph.deferred_captures.values()]
     self._num_outputs = len(self._func_graph.outputs)
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
@@ -506,7 +529,27 @@ class ConcreteFunction(object):
     self._inference_function = _EagerDefinedFunction(
         _inference_name(self._func_graph.name), self._func_graph,
         self._func_graph.inputs, self._func_graph.outputs, self._attrs)
-    self._backward_graph_function = None
+
+    # When graph building without a tape active, symbolic gradients rely on
+    # regenerating the backward function for higher-order gradients (to account
+    # for new side outputs of the rewritten forward function call). Thus there
+    # is no fixed backward function for this case. However, when a tape is
+    # active (eager or graph building), we generate fixed backward and forward
+    # functions at forward function call time.
+    #
+    # This difference between the tape and non-tape cases is to avoid building
+    # unneeded backward functions while graph building (where we may or may not
+    # eventually need gradients).
+    self._tape_forward_function_first_order = None
+    self._tape_backward_function_first_order = None
+    self._tape_forward_function_higher_order = None
+    self._tape_backward_function_higher_order = None
+
+    # A map from the number of forward function outputs with accepted gradients
+    # to backward functions, used to cache non-tape backward function
+    # generation.
+    self._cached_graph_backprop_functions = {}
+
     self._signature = signature
     self._gradient_name = None
 
@@ -539,7 +582,7 @@ class ConcreteFunction(object):
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
               "wrap_function-decorated function.")
-        return self._call_flat(args)
+        return self._call_flat(args, self.captured_inputs)
       raise AssertionError(
           "Tried to call a concrete function obtained from an internal API "
           "through the public interface. Use get_concrete_function instead.")
@@ -569,7 +612,7 @@ class ConcreteFunction(object):
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
       raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
           list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args)
+    return self._call_flat(args, self.captured_inputs)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
@@ -588,14 +631,17 @@ class ConcreteFunction(object):
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.ResourceVariable))))
+                           resource_variable_ops.BaseResourceVariable))),
+        self.captured_inputs)
 
-  def _call_flat(self, args):
+  def _call_flat(self, args, captured_inputs):
     """Executes the wrapped function.
 
     Args:
       args: a list of Tensors or Variables.  Any CompositeTensors should be
         expanded before calling this method.
+      captured_inputs: the captured inputs that are also part of the input args
+        to the actual execution. By default, it should be self._captured_inputs.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -619,7 +665,7 @@ class ConcreteFunction(object):
     tensor_inputs = []
     variables_used = set([])
     for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.ResourceVariable):
+      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
         if arg.handle in variables_used:
@@ -657,14 +703,30 @@ class ConcreteFunction(object):
         raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
-    args = tensor_inputs + self._captured_inputs
+    args = tensor_inputs + captured_inputs
 
-    if (tape.should_record(tensor_inputs) or
-        tape.should_record(self._captured_inputs)):
-      if context.executing_eagerly():
-        return self._eager_backprop_call(args)
-      else:
-        return self._backprop_call_with_delayed_rewrite(args)
+    possible_gradient_type = _PossibleTapeGradientTypes(
+        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
+    if possible_gradient_type == _PossibleTapeGradientTypes.FIRST_ORDER:
+      # There is a single non-persistent tape active, so the user can only
+      # request first-order gradients from a tape. We can spend less time graph
+      # building since we know this.
+      #
+      # We may still end up computing higher-order gradients, but that'd be
+      # through `tf.gradients`, which can re-write the forward pass and so needs
+      # no preparation here.
+      forward_function, backward_function = (
+          self._tape_functions_for_first_order())
+      return self._tape_backprop_call(args, forward_function, backward_function)
+    elif possible_gradient_type == _PossibleTapeGradientTypes.HIGHER_ORDER:
+      # Either there's a persistent tape watching, or there are multiple nested
+      # tapes. Either way, the user may request higher-order gradients. We'll
+      # spend a bit more time and make sure higher-order gradients are correct.
+      forward_function, backward_function = (
+          self._tape_functions_for_higher_order())
+      return self._tape_backprop_call(args, forward_function, backward_function)
+    # else possible_gradient_type == _PossibleTapeGradientTypes.NONE, meaning no
+    # tape is recording.
 
     # Only need to override the gradient in graph mode and when we have outputs.
     if context.executing_eagerly() or not self.outputs:
@@ -694,29 +756,39 @@ class ConcreteFunction(object):
 
   def _grad_fn(self, op, *doutputs):
     """Gradients of this function."""
-    if self._backward_graph_function is None:
-      self._construct_backprop_function()
+    backwards_function = self._graph_backprop_function(len(doutputs))
+    self._forward_function.add_to_graph(op.graph)
 
     # pylint: disable=protected-access
-    self._forward_function.add_to_graph(op.graph)
-    num_inference_outputs = self._inference_function._num_outputs
-
     # Rewrite an inference call op to be a forward call op
-    if op.get_attr("f").name.encode() == self._inference_function.name:
-      op._set_func_attr("f", self._forward_function.name)
-      op._set_type_list_attr("Tout", self._forward_function._output_types)
-      op._add_outputs(
-          self._forward_function._output_types[num_inference_outputs:],
-          self._forward_function._output_shapes[num_inference_outputs:])
-      for i in range(num_inference_outputs, len(op.outputs)):
-        func_graph_output = self._forward_function._func_graph_outputs[i]
-        custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
+    op._set_func_attr("f", self._forward_function.name)
+    op._set_type_list_attr("Tout", self._forward_function._output_types)
+    op._add_outputs(
+        self._forward_function._output_types[len(op.outputs):],
+        self._forward_function._output_shapes[len(op.outputs):])
+    for i in range(len(op.outputs)):
+      func_graph_output = self._forward_function._func_graph_outputs[i]
+      custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
+
+    capture_mapping = dict(zip(self._func_graph.outputs, op.outputs))
+    remapped_captures = []
+    for capture in backwards_function.captured_inputs:
+      remapped_captures.append(capture_mapping.get(capture, capture))
+
+    # Replace Nones with zeros since we're calling a graph function which
+    # expects numeric inputs.
+    cleaned_doutputs = []
+    for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
+      if gradients_util.IsTrainable(placeholder):
+        if doutput is not None:
+          cleaned_doutputs.append(doutput)
+        else:
+          cleaned_doutputs.append(default_gradient.zeros_like(placeholder))
+
     # Compute the gradients using the side outputs
-    side_outputs = op.outputs[num_inference_outputs:]
-    args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
-    return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-        (a for a in args if a is not None))
+    return backwards_function._call_flat(  # pylint: disable=protected-access
+        cleaned_doutputs, remapped_captures)
 
   @property
   def name(self):
@@ -754,7 +826,9 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    return self._captured_inputs
+    from_closures = nest.flatten([x() for x in self._captured_closures],
+                                 expand_composites=True)
+    return self._captured_inputs + from_closures
 
   @property
   def function_def(self):
@@ -803,16 +877,190 @@ class ConcreteFunction(object):
       # 2. Otherwise, defun will create two functions, one for forward pass,
       #   and the backward pass will be created via tape.
       #   When registering the function, we register both cases.
-      if self._backward_graph_function is None:
-        self._construct_backprop_function()
+      backward_function = self._graph_backprop_function()._inference_function
       forward_function = self._forward_function
-      backward_function = self._backward_graph_function._inference_function
       # pylint: enable=protected-access
       forward_function.add_to_graph(g)
       backward_function.add_to_graph(g)
 
-  def _construct_backprop_function(self):
-    """Constructs the backprop function object for this function."""
+  def _graph_backprop_function(self, num_doutputs=None):
+    """A possibly-cached backprop function."""
+    backward_function = self._cached_graph_backprop_functions.get(
+        num_doutputs, None)
+    if backward_function is not None:
+      return backward_function
+    backward_function = self._construct_graph_backprop_function(num_doutputs)
+    self._cached_graph_backprop_functions[num_doutputs] = backward_function
+    return backward_function
+
+  def _construct_graph_backprop_function(self, num_doutputs=None):
+    """Constructs a backprop function object for this function.
+
+    Args:
+      num_doutputs: The constructed backprop function will take output gradients
+        for the first `num_doutputs` outputs of the forward function. Defaults
+        to the number of outputs for the inference function, but when
+        higher-order gradients are computed this will increase to include side
+        outputs.
+
+    Returns:
+      A backward function taking `num_doutputs` arguments and returning
+      gradients with respect to inputs of the forward function.
+
+      self._forward_function is re-generated to account for new side outputs, if
+      any extra were required when building the backward pass.
+    """
+    if num_doutputs is None:
+      num_doutputs = len(self._inference_function.signature.output_arg)
+    trainable_outputs = [
+        output for output in self._func_graph.outputs[:num_doutputs]
+        if gradients_util.IsTrainable(output)]
+
+    signature = []
+    for t in trainable_outputs:
+      signature.append(
+          tensor_spec.TensorSpec(*default_gradient.shape_and_dtype(t)))
+
+    def _backprop_function(*grad_ys):
+      return gradients_util._GradientsHelper(  # pylint: disable=protected-access
+          trainable_outputs,
+          self._func_graph.inputs,
+          grad_ys=grad_ys,
+          src_graph=self._func_graph)
+
+    with self._func_graph.as_default():
+      backwards_graph = func_graph_module.FuncGraph(
+          _backward_name(self._func_graph.name))
+      func_graph_module.func_graph_from_py_func(
+          name=backwards_graph.name,
+          python_func=_backprop_function,
+          args=[], kwargs={},
+          signature=signature,
+          func_graph=backwards_graph)
+      backwards_graph_captures = list(backwards_graph.captures.keys())
+      captures_from_forward = [
+          c for c in backwards_graph_captures if
+          not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph]
+
+      forward_function_name = _forward_name(self._func_graph.name)
+
+      existing_outputs = set(self._func_graph.outputs)
+      for capture in captures_from_forward:
+        if capture not in existing_outputs:
+          existing_outputs.add(capture)
+          self._func_graph.outputs.append(capture)
+      backward_function_attr = _parse_func_attrs(
+          {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+      backward_function_attr.update(self._attrs)
+
+      backward_function = ConcreteFunction(
+          backwards_graph, attrs=backward_function_attr)
+      forward_function_attr = _parse_func_attrs({
+          BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+          backward_function._inference_function.name})  # pylint: disable=protected-access
+      forward_function_attr.update(self._attrs)
+
+      self._forward_function = _EagerDefinedFunction(
+          forward_function_name, self._func_graph, self._func_graph.inputs,
+          self._func_graph.outputs, forward_function_attr)
+      return backward_function
+
+  def _tape_functions_for_first_order(self):
+    """Shortcut for when only first-order gradients are required.
+
+    The returned backward function does not accept gradients with respect to
+    side output of forward_function. This is fine as long as the user can't
+    possibly request second order tape gradients, as when they've used a single
+    non-persistent GradientTape. Since we don't need the backward function to
+    take gradients with respect to side outputs, we can skip some potentially
+    slow graph building.
+
+    Returns:
+      A tuple of (forward_function, backward_function):
+        forward_function: Takes the same inputs as the inference function, but
+          returns side outputs used by backward_function in addition to the
+          inference function's outputs.
+        backward_function: Takes side outputs from forward_function and
+          gradients with respect to the "real" outputs of forward_function and
+          returns gradients with respect to the inputs.
+    """
+    if self._tape_forward_function_first_order is not None:
+      return (self._tape_forward_function_first_order,
+              self._tape_backward_function_first_order)
+    outputs = self._func_graph.outputs[
+        :len(self._inference_function.signature.output_arg)]
+    forward_function, backward_function = (
+        self._tape_forward_and_backward_functions(outputs))
+    self._tape_forward_function_first_order = forward_function
+    self._tape_backward_function_first_order = backward_function
+    return forward_function, backward_function
+
+  # TODO(b/136189779): Cond/while under a tape may need similar logic. Consider
+  # generalizing if so.
+  def _tape_functions_for_higher_order(self):
+    """Forward and backward functions suitable for higher-order gradients.
+
+    Unlike `_tape_functions_for_first_order`, the backward function built by
+    this method accepts gradients for all of the outputs of the returned forward
+    function, including side outputs.
+
+    Returns:
+      A tuple of (forward_function, backward_function):
+        forward_function: Takes the same inputs as the inference function, but
+          returns side outputs used by backward_function in addition to the
+          inference function's outputs.
+        backward_function: Takes side outputs from forward_function and
+          gradients with respect to all of its outputs, real and side. Returns
+          gradients with respect to the inputs.
+    """
+    if self._tape_forward_function_higher_order is not None:
+      return (self._tape_forward_function_higher_order,
+              self._tape_backward_function_higher_order)
+    outputs = []
+    # First we need to figure out how many side outputs from the forward pass
+    # will be required. We do this in a temporary graph to avoid actually
+    # running multiple copies of the backward pass (one per _GradientsHelper
+    # call).
+    #
+    # While computing gradients, the backward function captures Tensors from
+    # the forward function. We add these as side outputs of the original
+    # function. However, we then need to accept output gradients with respect
+    # to these side outputs for higher order gradients to work. Thus we loop
+    # until the number of outputs of the function stabilizes. Note that this
+    # is only required for tape gradients, where we need to declare in advance
+    # all of the forward op's outputs: symbolic gradients with tf.gradients
+    # instead rely on regenerating backward functions when higher-order
+    # gradients are requested.
+    while len(outputs) < len(self._func_graph.outputs):
+      new_outputs = self._func_graph.outputs[len(outputs):]
+      outputs = list(self._func_graph.outputs)
+      self._tape_forward_and_backward_functions(new_outputs)
+    forward_function, backward_function = (
+        self._tape_forward_and_backward_functions(outputs))
+    if len(self._func_graph.outputs) != len(outputs):
+      raise AssertionError(
+          ("Unexpectedly added new outputs to the forward function when "
+           "building the backward function: {}").format(
+               self._func_graph.outputs[len(outputs):]))
+    self._tape_forward_function_higher_order = forward_function
+    self._tape_backward_function_higher_order = backward_function
+    return forward_function, backward_function
+
+  def _tape_forward_and_backward_functions(self, outputs):
+    """Constructs tape forward and back functions for `outputs`."""
+    # First figure out which of `outputs` are trainable. We'll accept gradients
+    # for each of these in the backward function.
+    handles_to_variables = {self._func_graph.captures[v.handle]: v
+                            for v in self._func_graph.variables
+                            if v.handle in self._func_graph.captures}
+    trainable_outputs = []
+    for output in outputs:
+      if gradients_util.IsTrainable(output):
+        # Swap in the Variable object for resource handles if we can so
+        # sparse gradients work.
+        output = handles_to_variables.get(output, output)
+        trainable_outputs.append(output)
+
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
     # Keep track of the forward graph so that if the backwards graph
@@ -820,73 +1068,79 @@ class ConcreteFunction(object):
     # the forward graph. This is an edge case that can only happen with
     # tf.custom_gradient.
     backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
-    forward_function_name = _forward_name(self._func_graph.name)
-    outputs = [x for x in self._func_graph.outputs
-               if gradients_util.IsTrainable(x)]
     with backwards_graph.as_default():
-      gradients_wrt_outputs = [
-          graph_placeholder(x.dtype, x.shape) for x in outputs
-      ]
+      gradients_wrt_outputs = []
+      for output in trainable_outputs:
+        gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
+            output)
+        gradients_wrt_outputs.append(
+            graph_placeholder(gradient_dtype, gradient_shape))
       gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
-          outputs,
+          trainable_outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
           src_graph=self._func_graph)
 
-    backwards_graph_captures = list(backwards_graph.captures.keys())
+      captures_from_forward = [
+          c for c in backwards_graph.captures.keys() if
+          not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph]
+      existing_outputs = set(self._func_graph.outputs)
+      for capture in captures_from_forward:
+        if capture not in existing_outputs:
+          existing_outputs.add(capture)
+          self._func_graph.outputs.append(capture)
 
+    forward_function_name = _forward_name(self._func_graph.name)
     backward_function_attr = _parse_func_attrs(
         {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
     backward_function_attr.update(self._attrs)
 
     # The ordering of `backwards_graph.inputs` is important: inputs of
-    # `self._backward_graph_function` correspond to outputs of
-    # `self._forward_function`.
-    backwards_graph.inputs = gradients_wrt_outputs + list(
-        backwards_graph.captures.values())
-    # Clear captures, since we pass them in as inputs.
-    backwards_graph.captures = {}
+    # `backward_function` correspond to outputs (including
+    # side outputs) of `self._tape_forward_function`.
+    backwards_graph.inputs = (
+        gradients_wrt_outputs + list(backwards_graph.captures.values()))
     backwards_graph.outputs.extend(
         grad
         for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
         if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
-    self._backward_graph_function = ConcreteFunction(
+    backward_function = ConcreteFunction(
         backwards_graph, attrs=backward_function_attr)
 
     forward_function_attr = _parse_func_attrs({
         BACKWARD_FUNCTION_ATTRIBUTE_NAME:
-            self._backward_graph_function._inference_function.name})  # pylint: disable=protected-access
+            backward_function._inference_function.name})  # pylint: disable=protected-access
     forward_function_attr.update(self._attrs)
-    self._forward_function = _EagerDefinedFunction(
+
+    forward_function = _EagerDefinedFunction(
         forward_function_name, self._func_graph, self._func_graph.inputs,
-        self._func_graph.outputs + backwards_graph_captures,
+        self._func_graph.outputs,
         forward_function_attr)
+    return forward_function, backward_function
 
-  def _eager_backprop_call(self, args):
+  def _tape_backprop_call(self, args, forward_function, backward_function):
     """Calls the forward function and records the result on a tape.
-
-    This method fully constructs the forward and backward functions before
-    calling the function and recording them on the tape.
-
-    (Only records results on a tape if the function has outputs).
 
     Args:
       args: All inputs to the function, including resolved captured inputs
+      forward_function: The forward pass, outputting both user-specified and
+        side outputs.
+      backward_function: Computes gradients for inputs of forward_function given
+        output gradients for the first `N` of forward_function's outputs, not
+        necessarily all of them. See `_tape_functions_for_first_order` and
+        `_tape_functions_for_higher_order`.
 
     Returns:
       The call output.
     """
-    if self._backward_graph_function is None:
-      self._construct_backprop_function()
-
     ctx = context.context()
 
     self._register_gradient()
     with ops.get_default_graph().gradient_override_map(
         {"PartitionedCall": self._gradient_name,
          "StatefulPartitionedCall": self._gradient_name}):
-      outputs = self._forward_function.call(ctx, args)
+      outputs = forward_function.call(ctx, args)
 
     if isinstance(outputs, ops.Operation) or outputs is None:
       return outputs
@@ -895,18 +1149,55 @@ class ConcreteFunction(object):
     # `side_outputs` are the intermediate Tensors that were added as outputs to
     # the forward graph function so that we can compute its gradient.
     real_outputs = outputs[:self._num_outputs]
-    skip_positions = [i for i, t in enumerate(real_outputs)
-                      if not gradients_util.IsTrainable(t)]
-    side_outputs = outputs[self._num_outputs:]
 
-    def backward_function(*args):
-      args = [a for i, a in enumerate(args)
-              if a is not None and i not in skip_positions]
-      return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-          list(args) + side_outputs)
+    capture_mapping = dict(zip(self._func_graph.outputs, outputs))
+    remapped_captures = [
+        capture_mapping.get(capture, capture)
+        for capture in backward_function.captured_inputs]
+    # We may need to use zeros_like to get a zero for variant Tensors with
+    # unconnected gradients. We do that in advance so we don't have to hold on
+    # to the outputs themselves, which may not be needed otherwise.
+    variant_zeros_like = {}
+    backward_function_inputs = (
+        len(backward_function.inputs) - len(backward_function.captured_inputs))
+    recorded_outputs = []
+    trainable_recorded_outputs = 0
+    skip_positions = []
+    for output_index, output in enumerate(outputs):
+      if trainable_recorded_outputs < backward_function_inputs:
+        recorded_outputs.append(output)
+      if gradients_util.IsTrainable(output):
+        trainable_recorded_outputs += 1
+      else:
+        skip_positions.append(output_index)
+      if output.dtype == dtypes.variant:
+        variant_zeros_like[output_index] = default_gradient.zeros_like(output)
 
-    tape.record_operation(self._forward_function.signature.name, real_outputs,
-                          args, backward_function)
+    def _backward_function_wrapper(*args):
+      """Process output gradients and call the backward function."""
+      processed_args = []
+      input_index = 0
+      for output_index, arg in enumerate(args):
+        if output_index in skip_positions:
+          continue
+        if arg is None:
+          # We're calling a (non-polymorphic) ConcreteFunction, so we need to
+          # have a Tensor value for each Tensor we thought would be trainable
+          # based on its dtype, even if it ended up being unconnected.
+          input_placeholder = backward_function.inputs[
+              input_index]
+          if input_placeholder.dtype == dtypes.variant:
+            arg = variant_zeros_like[output_index]
+          else:
+            arg = array_ops.zeros(
+                *default_gradient.shape_and_dtype(input_placeholder))
+        processed_args.append(arg)
+        input_index += 1
+      return backward_function._call_flat(  # pylint: disable=protected-access
+          processed_args, remapped_captures)
+
+    tape.record_operation(forward_function.signature.name,
+                          recorded_outputs, args, _backward_function_wrapper)
     return self._build_call_outputs(real_outputs)
 
   def _backprop_call_with_delayed_rewrite(self, args):
@@ -999,18 +1290,49 @@ class FunctionSpec(object):
         new_defaults = fullargspec.defaults
         new_args = fullargspec.args
         if fullargspec.defaults:
-          num_defaults = len(fullargspec.defaults)
-          args_with_default = fullargspec.args[-num_defaults:]
+          # To be able to canonicalize the function properly, we want to ignore
+          # default values that are overridden via a partial kwarg. For example:
+          #
+          #   def func(a, b, c, d=5, e=7):
+          #     return a, b, c, d, e
+          #   p_func = functools.partial(tf.function(func, 10, e=9))
+          #
+          # Here we want to drop from the defaults the parameter `e`. If we
+          # forwarded the call to the partial function with a default for `e`
+          # we would get an error for passing two values for one parameter.
+          #
+          # Note that this has a limitation: we can only override parameters at
+          # the end of the parameter list.
+          #
+          # In this case we want to end up with 3 arguments (b, c, d) and 1
+          # default value (5). We do this by constructing a mask where 0 stands
+          # for a value that was overridden by a partial kwarg. The seemingly
+          # complicated logic below does just that - for arguments (b, c, d, e)
+          # we would get a mask (1, 1, 1, 0).
+          old_args = fullargspec.args
+          old_defaults = fullargspec.defaults
+
+          no_default = object()
+          num_args_without_defaults = len(old_args) - len(old_defaults)
+          left_padding = tuple([no_default] * num_args_without_defaults)
+
+          args_with_defaults = zip(old_args, left_padding + old_defaults)
+
+          # Create a mask where 0 stands for args that had a partial kwarg
+          # defined.
           non_keyword_defaults_mask = [
-              0 if key in unwrapped.keywords else 1 for key in args_with_default
+              0 if key in unwrapped.keywords else 1 for key in old_args
           ]
           # Keep only arguments and defaults that were not kwargs of partial.
-          new_defaults = tuple(
-              itertools.compress(fullargspec.defaults,
-                                 non_keyword_defaults_mask))
-          new_args = list(
-              itertools.compress(fullargspec.args, non_keyword_defaults_mask))
-
+          new_args_with_defaults = list(
+              itertools.compress(args_with_defaults, non_keyword_defaults_mask))
+          # Keep all args.
+          new_args = [arg for arg, _ in new_args_with_defaults]
+          # Keep only real default values.
+          new_defaults = [
+              default for _, default in new_args_with_defaults
+              if default is not no_default
+          ]
         fullargspec = tf_inspect.FullArgSpec(
             args=new_args,
             varargs=fullargspec.varargs,
@@ -1131,7 +1453,12 @@ class FunctionSpec(object):
 
     if not kwargs:
       inputs = args
-      for index in sorted(self._arg_indices_to_default_values.keys()):
+      default_keys = sorted(self._arg_indices_to_default_values.keys())
+      if default_keys:
+        assert min(default_keys) <= len(
+            args), "Not enough arguments (%s, %s, %s)" % (args, default_keys,
+                                                          self.arg_names)
+      for index in default_keys:
         if index >= len(args):
           inputs += (self._arg_indices_to_default_values[index],)
     else:
@@ -1490,8 +1817,11 @@ class Function(object):
     # TODO(b/117617952): The current distribution strategy will affect graph
     # building (e.g. accessing different variables from different devices) and
     # so requires retracing for each device.
-    uses_distribution_strategy = bool(
-        default_graph._distribution_strategy_stack)
+    strategy_stack = default_graph._distribution_strategy_stack
+    uses_distribution_strategy = (
+        strategy_stack and
+        strategy_stack[-1].strategy.extended._retrace_functions_for_each_device
+    )
     if executing_eagerly:
       colocation_stack = ()
       if uses_distribution_strategy:
@@ -1508,9 +1838,15 @@ class Function(object):
         device_functions = tuple(default_graph._device_functions_outer_to_inner)
       else:
         device_functions = ()
-    # pylint: enable=protected-access
+
+    in_cross_replica_context = False
+    try:
+      in_cross_replica_context = (strategy_stack[-1].replica_context is None)  # pylint: disable=protected-access
+    except (AttributeError, IndexError):
+      pass
+
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack)
+                    colocation_stack, in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -1577,7 +1913,7 @@ class Function(object):
                            "relaxed_arg_shapes len: %d vs. %d"
                            % (len(arg_shapes), len(relaxed_arg_shapes)))
       relaxed_arg_shapes = [
-          _common_shape(x, y) for (x, y) in zip(
+          common_shape(x, y) for (x, y) in zip(
               arg_shapes, relaxed_arg_shapes)]
     self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
         relaxed_arg_shapes)
@@ -1610,6 +1946,7 @@ class Function(object):
     if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
+
     cache_key = self._cache_key(args, kwargs)
 
     try:
@@ -1633,21 +1970,27 @@ class Function(object):
                    kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
-      # Build a function with shape relaxation retracing if:
-      # 1. shape relaxation is explicitly enabled
-      # and 2. there's no provided input signature
-      # and 3. there's been a cache miss for this calling context
-      if (self._experimental_relax_shapes
-          and self.input_signature is None
-          and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(args, kwargs)
 
-      self._function_cache.missed.add(call_context_key)
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is None:
-        graph_function = self._create_graph_function(args, kwargs)
-        self._function_cache.primary[cache_key] = graph_function
-      return graph_function, args, kwargs
+      ag_status = (
+          ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+      with ag_ctx.ControlStatusCtx(
+          status=ag_status, options=self._autograph_options):
+
+        # Build a function with shape relaxation retracing if:
+        # 1. shape relaxation is explicitly enabled
+        # and 2. there's no provided input signature
+        # and 3. there's been a cache miss for this calling context
+        if (self._experimental_relax_shapes
+            and self.input_signature is None
+            and call_context_key in self._function_cache.missed):
+          return self._define_function_with_shape_relaxation(args, kwargs)
+
+        self._function_cache.missed.add(call_context_key)
+        graph_function = self._function_cache.primary.get(cache_key, None)
+        if graph_function is None:
+          graph_function = self._create_graph_function(args, kwargs)
+          self._function_cache.primary[cache_key] = graph_function
+        return graph_function, args, kwargs
 
 
 def register(func, *args, **kwargs):
@@ -1679,8 +2022,9 @@ def register(func, *args, **kwargs):
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    raise TypeError("Invalid input_signature %s; input_signature must be "
-                    "a possibly nested sequence of TensorSpec objects.")
+    raise TypeError("Invalid input_signature {}; input_signature must be "
+                    "a possibly nested sequence of TensorSpec objects."
+                    .format(signature))
 
 
 def defun(func=None,

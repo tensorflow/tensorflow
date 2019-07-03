@@ -29,6 +29,7 @@ import re
 
 import six
 
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
@@ -212,38 +213,76 @@ def _get_defining_frame_from_op(op):
   frame_index = _find_index_of_defining_frame_for_op(op)
   return op.traceback[frame_index]
 
-def compute_useful_stack(op):
-  """Return a list of line name and lineno pairs, which form a 'useful' stack.
+
+def _compute_useful_frames(op, num):
+  """Return a list of frames, which form a 'useful' stack.
 
   Starting from the defining frame to the outermost one, this method computes
-  the contiguous portion of the 'useful' stack trace and returns each line as
-  a line name and lineno pair.
+  the contiguous portion of the 'useful' stack trace and returns the selected
+  frames.
 
   Args:
     op: op.Operation object having a _traceback member.
+    num: total number of frames to return.
 
   Returns:
-    A list of line name and lineno pairs. Below is an example of returned list:
-    [("tool_utils.py", "124", "func1", "a={}"), ("tool_utils.py", "21", "func2",
-    "for i in range(10):"), ....]
+    A list of frames.
   """
   defining_frame_index = _find_index_of_defining_frame_for_op(op)
-  stack_trace = []
-  # The stack trace is collected from the defining (included) to the outermost.
-  # Include `frame_num` frames at most.
-  # Two lines from the TensorFlow library are included to show the node
-  # definition.
-  frame_num = 10
+  # The stack trace is collected from two lines before the defining frame in the
+  # model file to the outermost with `num` frames at most. These two extra lines
+  # are included from the TensorFlow library to give the context which node is
+  # defined.
   innermost_excluded = min(defining_frame_index + 2 + 1, len(op.traceback))
-  outermost_included = max(innermost_excluded - frame_num, 0)
-  for index in reversed(range(outermost_included, innermost_excluded)):
-    frame = op.traceback[index]
-    filename = frame[tf_stack.TB_FILENAME]
-    lineno = frame[tf_stack.TB_LINENO]
-    func = frame[tf_stack.TB_FUNCNAME]
-    code = frame[tf_stack.TB_CODEDICT]
-    stack_trace.append((filename, lineno, func, code))
-  return stack_trace
+  outermost_included = max(innermost_excluded - num, 0)
+  return op.traceback[outermost_included:innermost_excluded]
+
+
+def create_graph_debug_info_def(operations):
+  """Construct and returns a `GraphDebugInfo` protocol buffer.
+
+  Args:
+    operations: An iterable of op.Operation objects having _traceback members.
+
+  Returns:
+    GraphDebugInfo protocol buffer.
+
+  Raises:
+    TypeError: If the arguments are not of the correct proto buffer type.
+  """
+  # Creates an empty GraphDebugInfoDef proto.
+  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
+
+  # Gets the file names and line numbers for the exported node names. Also
+  # collects the unique file names.
+  all_file_names = set()
+  node_to_trace = {}
+  for func, op in operations:
+    # Gets the stack trace of the operation and then the file location.
+    node_name = func + op.name
+    node_to_trace[node_name] = _compute_useful_frames(op, 10)
+    for frame in node_to_trace[node_name]:
+      all_file_names.add(frame[tf_stack.TB_FILENAME])
+
+  # Sets the `files` field in the GraphDebugInfo proto
+  graph_debug_info_def.files.extend(all_file_names)
+
+  # Builds a mapping between file names and index of the `files` field, so we
+  # only store the indexes for the nodes in the GraphDebugInfo.
+  file_to_index = dict(
+      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
+
+  # Creates the FileLineCol proto for each node and sets the value in the
+  # GraphDebugInfo proto. We only store the file name index for each node to
+  # save the storage space.
+  for node_name, frames in node_to_trace.items():
+    trace_def = graph_debug_info_def.traces[node_name]
+    for frame in reversed(frames):
+      trace_def.file_line_cols.add(
+          file_index=file_to_index[frame[tf_stack.TB_FILENAME]],
+          line=frame[tf_stack.TB_LINENO])
+
+  return graph_debug_info_def
 
 
 def compute_field_dict(op, strip_file_prefix=""):

@@ -315,6 +315,9 @@ const char kOutsideCompilationOriginalNodeAttrName[] =
 const char kOutsideCompilationSrcOutputAttrName[] = "_xla_oc_to_oc_src_output";
 const char kXlaControlDependenciesWithinXlaClusterAttrName[] =
     "_xla_control_dependencies_within_xla_cluster";
+const char kXlaIsLiftedArgAttrName[] = "_xla_is_lifted_arg";
+const char kXlaLiftedArgOutsideCompilationAttrName[] = "_xla_lifted_arg_oc";
+const char kXlaOutsideCompilationInputsAttrName[] = "_xla_oc_inputs";
 
 Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   // Perform shape inference.

@@ -153,7 +153,7 @@ class TestDistributionStrategyDnnMetricCorrectness(
   def run_metric_correctness_test(self, distribution, cloning):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(cloning, distribution=distribution)
@@ -195,7 +195,7 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
   def run_eval_metrics_correctness_test(self, distribution, cloning):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
       model = self.get_model(cloning, distribution=distribution)
 
@@ -266,11 +266,17 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data,
                            cloning):
-    if ((not cloning and context.executing_eagerly() and
-         not K.is_tpu_strategy(distribution)) or
+    if ((not cloning and context.executing_eagerly()) or
         is_default_strategy(distribution)):
       self.run_correctness_test(distribution, use_numpy, use_validation_data,
                                 cloning)
+    elif K.is_tpu_strategy(distribution) and not context.executing_eagerly():
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Expected `model` argument to be a functional `Model` instance, '
+          'but got a subclass model instead.'):
+        self.run_correctness_test(distribution, use_numpy, use_validation_data,
+                                  cloning)
     else:
       with self.assertRaisesRegexp(
           ValueError,
@@ -286,6 +292,12 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
          not K.is_tpu_strategy(distribution)) or
         is_default_strategy(distribution)):
       self.run_dynamic_lr_test(distribution, cloning)
+    elif K.is_tpu_strategy(distribution):
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Expected `model` argument to be a functional `Model` instance, '
+          'but got a subclass model instead.'):
+        self.run_dynamic_lr_test(distribution, cloning)
     else:
       with self.assertRaisesRegexp(
           ValueError,
@@ -301,9 +313,8 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
                                                         use_validation_data):
     with self.assertRaisesRegexp(
         ValueError,
-        'We currently do not support distribution strategy with a '
-        '`Sequential` model that is created without `input_shape`/'
-        '`input_dim` set in its first layer or a subclassed model.'):
+        'Expected `model` argument to be a functional `Model` instance, '
+        'but got a subclass model instead.'):
       self.run_correctness_test(
           distribution,
           use_numpy,

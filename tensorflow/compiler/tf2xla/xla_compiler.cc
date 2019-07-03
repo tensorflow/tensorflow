@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -234,11 +235,8 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
-        // Resources are pushed into elems later when processing resource
-        // arguments. This is correct as long as the input and output resources
-        // are in the same order. In the case of functionalized while body,
-        // this property is guaranteed since a corresponding output is always
-        // created for a DT_RESOURCE input in a corresponding location.
+        // Resources will be pushed into elems later when processing resource
+        // arguments below.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();
@@ -302,10 +300,27 @@ Status BuildComputation(
       handle = identity_op(handle);
 
       // Set layout of the retval to device representation layout.
-      if (resource->representation_shape().has_value()) {
-        retval_index_and_layout.emplace_back(
-            elems.size(), resource->representation_shape()->layout());
+      absl::optional<xla::Shape> representation_shape;
+      if (shape_representation_fn) {
+        TF_ASSIGN_OR_RETURN(
+            xla::Shape xla_shape,
+            shape_representation_fn(resource->shape(), resource->type()));
+        representation_shape = xla_shape;
       }
+      if (resource->representation_shape().has_value()) {
+        const xla::Shape& xla_shape = resource->representation_shape().value();
+        if (representation_shape) {
+          TF_RET_CHECK(
+              xla::ShapeUtil::Compatible(*representation_shape, xla_shape));
+        } else {
+          representation_shape = xla_shape;
+        }
+      }
+      if (representation_shape) {
+        retval_index_and_layout.emplace_back(elems.size(),
+                                             representation_shape->layout());
+      }
+
       elems.push_back(handle);
     }
   }
@@ -518,11 +533,12 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
 std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
+  auto flags = GetBuildXlaOpsPassFlags();
   OptimizerOptions opts;
   opts.set_opt_level(OptimizerOptions::L0);
   opts.set_do_common_subexpression_elimination(false);
   opts.set_do_function_inlining(true);
-  opts.set_do_constant_folding(true);
+  opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
   GraphOptimizer optimizer(opts);
   // Do not constant fold nodes that output DT_VARIANT type tensors.
   // XLA does not support Const nodes of Variant type since it needs
@@ -551,6 +567,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   GraphOptimizer::Options graph_optimizer_options;
   graph_optimizer_options.cf_consider_fn = cf_consider_fn;
   graph_optimizer_options.inline_multi_device_functions = true;
+  graph_optimizer_options.inline_impl_selection_group_functions = true;
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 

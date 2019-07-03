@@ -58,12 +58,30 @@ const char* kRecomputeHint = "_recompute_hint";
 // Ops which we wouldn't mind recomputing to save memory.
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
-  std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",       "BiasAdd",        "Cast",   "Fill",
-      "FloorDiv", "FloorMod",   "FusedBatchNorm", "Mul",    "Neg",
-      "RealDiv",  "Reciprocal", "Relu",           "Relu6",  "Reshape",
-      "Rsqrt",    "Sigmoid",    "Sqrt",           "Square", "SquaredDifference",
-      "Sub",      "Tile",       "Transpose"};
+  std::unordered_set<string> cheap_ops = {"Add",
+                                          "AddN",
+                                          "BiasAdd",
+                                          "Cast",
+                                          "Fill",
+                                          "FloorDiv",
+                                          "FloorMod",
+                                          "FusedBatchNorm",
+                                          "LeakyRelu",
+                                          "Mul",
+                                          "Neg",
+                                          "RealDiv",
+                                          "Reciprocal",
+                                          "Relu",
+                                          "Relu6",
+                                          "Reshape",
+                                          "Rsqrt",
+                                          "Sigmoid",
+                                          "Sqrt",
+                                          "Square",
+                                          "SquaredDifference",
+                                          "Sub",
+                                          "Tile",
+                                          "Transpose"};
   return cheap_ops;
 }
 
@@ -500,16 +518,6 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   // Look for AddN nodes (and equivalent) and record input names.
   MutableGraphView view(&item->graph);
 
-  // It's ok to use immutable GraphTopologyView here, because we do not destroy
-  // any of the nodes in the underlying graph, we only add new nodes.
-  GraphTopologyView graph_topology;
-  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
-  if (!initialized_topology.ok()) {
-    VLOG(1) << "Failed to initialize graph topology view: "
-            << initialized_topology.error_message();
-    return false;
-  }
-
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
     if (!IsAddN(node) && node.op() != "AccumulateNV2") {
@@ -568,9 +576,21 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     return false;
   }
   GraphProperties properties(*item);
-  s = properties.InferStatically(false);
+  s = properties.InferStatically(/*assume_valid_feeds=*/false,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    return false;
+  }
+
+  // It's ok to use immutable GraphTopologyView here, because we do not destroy
+  // any of the nodes in the underlying graph, we only add new nodes.
+  GraphTopologyView graph_topology;
+  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
+  if (!initialized_topology.ok()) {
+    VLOG(1) << "Failed to initialize graph topology view: "
+            << initialized_topology.error_message();
     return false;
   }
 
@@ -637,10 +657,15 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
 
     DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
+    const string tmp_var_name = strings::StrCat(node->name(), "/tmp_var");
+    if (view.GetNode(tmp_var_name) != nullptr) {
+      VLOG(1) << "Temporary variable already exists " << tmp_var_name;
+      return false;
+    }
 
     // Create the temporary variable that will hold intermediate results
     NodeDef* tmp_var = item->graph.add_node();
-    tmp_var->set_name(strings::StrCat(node->name(), "/tmp_var"));
+    tmp_var->set_name(tmp_var_name);
     tmp_var->set_op("TemporaryVariable");
     tmp_var->set_device(device);
     (*tmp_var->mutable_attr())["dtype"].set_type(dtype);
@@ -1143,7 +1168,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
 
   // Estimate the size of the data to swap for each node.
   GraphProperties properties(*item);
-  if (!properties.InferStatically(true).ok()) {
+  if (!properties
+           .InferStatically(/*assume_valid_feeds=*/true,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_tensor_values=*/false)
+           .ok()) {
     return false;
   }
   for (auto& swap : nodes_to_swap) {

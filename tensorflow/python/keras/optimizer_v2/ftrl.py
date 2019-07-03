@@ -145,7 +145,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
     l1_regularization_strength = self._get_hyper('l1_regularization_strength',
                                                  var_dtype)
@@ -179,7 +179,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
     l1_regularization_strength = self._get_hyper('l1_regularization_strength',
                                                  var_dtype)

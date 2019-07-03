@@ -122,7 +122,7 @@ inline void CreatePackedLayout(const Layout& src, const Type& scalar,
   packed->cols = round_up_pot(src.cols, kernel_layout.cols);
   packed->kernel = kernel_layout;
   int inner_size = packed->rows;
-  if (RUY_OPT_SET & RUY_OPT_AVOID_ALIASING) {
+  if (RUY_OPT_ENABLED(RUY_OPT_AVOID_ALIASING)) {
     packed->stride =
         (inner_size * scalar.size) % 1024 ? inner_size : inner_size + 64;
   } else {
@@ -189,6 +189,9 @@ void PopulateTrMulParams(TrMulParams* params) {
       &RunPack<ThePath, RhsKernelLayout, RhsScalar, PackedRhsScalar>;
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
+
+  params->cache_friendly_traversal_threshold =
+      Spec::cache_friendly_traversal_threshold();
   return;
 }
 

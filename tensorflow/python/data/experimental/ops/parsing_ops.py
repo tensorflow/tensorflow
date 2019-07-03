@@ -32,7 +32,8 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, features, num_parallel_calls):
     self._input_dataset = input_dataset
-    if not input_dataset._element_structure.is_compatible_with(  # pylint: disable=protected-access
+    if not structure.are_compatible(
+        input_dataset.element_spec,
         structure.TensorStructure(dtypes.string, [None])):
       raise TypeError("Input dataset should be a dataset of vectors of strings")
     self._num_parallel_calls = num_parallel_calls
@@ -75,7 +76,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
             [ops.Tensor for _ in range(len(self._dense_defaults))] +
             [sparse_tensor.SparseTensor for _ in range(len(self._sparse_keys))
             ]))
-    self._structure = structure.convert_legacy_structure(
+    self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
 
     variant_tensor = (
@@ -87,12 +88,12 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
             self._dense_keys,
             self._sparse_types,
             self._dense_shapes,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ParseExampleDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 # TODO(b/111553342): add arguments names and example names as well.

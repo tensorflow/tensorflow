@@ -353,6 +353,9 @@ struct LaunchLRNGrad<CPUDevice, T> {
           // However, this is numerically unstable for small values of xi. We
           // compute N explicitly here to avoid that.
 
+          T gs = grads_shaped(i, j);
+          if (gs == T(0)) continue;
+
           int64 depth_begin = std::max<int64>(0, j - depth_radius_);
           int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
 
@@ -364,7 +367,6 @@ struct LaunchLRNGrad<CPUDevice, T> {
           DCHECK_GT(norm, T(1e-6));
           T pre_computed_pow = Eigen::numext::pow(norm, -beta_);
           T activations_ab2 = alpha_beta_2_ * activations(i, j);
-          T gs = grads_shaped(i, j);
           for (int64 k = depth_begin; k < depth_end; ++k) {
             T dyi = in_shaped(i, k) * activations_ab2 / norm;
             if (k == j) {

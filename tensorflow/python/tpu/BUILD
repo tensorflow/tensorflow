@@ -9,8 +9,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-licenses(["notice"])  # Apache 2.0
-
+# Do not add anymore paths here. You do not need to be in the visibility list
+# to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
+# tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
@@ -22,6 +23,7 @@ package(
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 py_library(
@@ -81,6 +83,7 @@ py_library(
     deps = [
         ":async_checkpoint",
         ":feature_column",
+        ":feature_column_v2",
         ":functional",
         ":preempted_hook_py",
         ":tpu_embedding",
@@ -126,6 +129,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":feature_column_v2",
         ":tpu_embedding",
         ":tpu_estimator",
         ":tpu_lib",
@@ -136,10 +140,12 @@ py_library(
     name = "tpu_noestimator",
     srcs = [
         "__init__.py",
+        "api.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
         ":tpu_lib",
@@ -337,6 +343,20 @@ py_library(
     ],
 )
 
+py_library(
+    name = "feature_column_v2",
+    srcs = ["feature_column_v2.py"],
+    deps = [
+        ":feature_column",
+        ":tpu_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
+    ],
+)
+
 tf_py_test(
     name = "feature_column_test",
     srcs = [
@@ -357,4 +377,26 @@ tf_py_test(
         "//tensorflow/python/feature_column:feature_column_py",
     ],
     main = "feature_column_test.py",
+)
+
+tf_py_test(
+    name = "feature_column_v2_test",
+    srcs = [
+        "feature_column_v2_test.py",
+    ],
+    additional_deps = [
+        ":feature_column_v2",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
+    ],
+    main = "feature_column_v2_test.py",
 )

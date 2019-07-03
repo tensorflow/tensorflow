@@ -38,6 +38,24 @@ class SingleReturnTest(converter_testing.TestCase):
 
     self.assertTransformedEquivalent(test_fn, 2)
 
+  def test_superfluous_returns(self):
+
+    def test_fn():
+      retval = 1
+      return retval
+      retval = 2  # pylint:disable=unreachable
+      return retval
+
+    self.assertTransformedEquivalent(test_fn)
+
+  def test_superfluous_returns_adjacent(self):
+
+    def test_fn():
+      return 1
+      return 2  # pylint:disable=unreachable
+
+    self.assertTransformedEquivalent(test_fn)
+
   def test_conditional(self):
 
     def test_fn(x):

@@ -32,12 +32,13 @@ import weakref
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
@@ -69,7 +70,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.training import server_lib
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -157,7 +159,7 @@ def cast_to_floatx(x):
 
   Example:
   ```python
-      >>> from keras import backend as K
+      >>> from tensorflow.keras import backend as K
       >>> K.floatx()
       'float32'
       >>> arr = numpy.array([1.0, 2.0], dtype='float64')
@@ -210,10 +212,8 @@ def get_uid(prefix=''):
 def reset_uids():
   """Resets graph identifiers.
   """
-  per_graph_object_name_uids = PER_GRAPH_OBJECT_NAME_UIDS
-  keys = list(per_graph_object_name_uids.keys())
-  for key in keys:
-    del per_graph_object_name_uids[key]
+
+  PER_GRAPH_OBJECT_NAME_UIDS.clear()
 
 
 @keras_export('keras.backend.clear_session')
@@ -292,6 +292,10 @@ def learning_phase():
     return symbolic_learning_phase()
 
 
+def global_learning_phase_is_set():
+  return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
 def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
@@ -322,18 +326,6 @@ def set_learning_phase(value):
       # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
-
-
-def set_eager_learning_phase(value):
-  """Internal utility that sets the learning phase in eager execution only.
-
-  Arguments:
-      value: Learning phase value, either 0 or 1 (integers).
-  """
-  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
-  assert value in {0, 1}
-  assert context.executing_eagerly()
-  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
 
 
 @keras_export('keras.backend.learning_phase_scope')
@@ -380,9 +372,10 @@ def learning_phase_scope(value):
       elif graph in _GRAPH_LEARNING_PHASES:
         del _GRAPH_LEARNING_PHASES[graph]
 
+
 @tf_contextlib.contextmanager
 def eager_learning_phase_scope(value):
-  """Internal scope that sets the learning phase in eager execution only.
+  """Internal scope that sets the learning phase in eager / tf.function only.
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
@@ -396,13 +389,18 @@ def eager_learning_phase_scope(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
   assert ops.executing_eagerly_outside_functions()
-  previous_value = learning_phase()
+  global_learning_phase_was_set = global_learning_phase_is_set()
+  if global_learning_phase_was_set:
+    previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     yield
   finally:
-    # Restore learning phase to initial value.
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    # Restore learning phase to initial value or unset.
+    if global_learning_phase_was_set:
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    else:
+      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
 
 def _current_graph(op_input_list):
@@ -509,7 +507,7 @@ def _scratch_graph(graph=None):
     _CURRENT_SCRATCH_GRAPH = None
 
 
-@keras_export('keras.backend.set_session')
+@keras_export(v1=['keras.backend.set_session'])
 def set_session(session):
   """Sets the global TensorFlow session.
 
@@ -521,14 +519,14 @@ def set_session(session):
 
 
 def get_default_session_config():
-  if not os.environ.get('OMP_NUM_THREADS'):
-    config = config_pb2.ConfigProto(allow_soft_placement=True)
-  else:
-    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-    config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread,
-        inter_op_parallelism_threads=num_thread,
-        allow_soft_placement=True)
+  if os.environ.get('OMP_NUM_THREADS'):
+    logging.warning(
+        'OMP_NUM_THREADS is no longer used by the default Keras config. '
+        'To configure the number of threads, use tf.config.threading APIs.')
+
+  config = context.context().config
+  config.allow_soft_placement = True
+
   return config
 
 
@@ -961,7 +959,12 @@ def is_keras_tensor(x):
 
 
 @keras_export('keras.backend.placeholder')
-def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
+def placeholder(shape=None,
+                ndim=None,
+                dtype=None,
+                sparse=False,
+                name=None,
+                ragged=False):
   """Instantiates a placeholder tensor and returns it.
 
   Arguments:
@@ -973,9 +976,14 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       dtype: Placeholder type.
       sparse: Boolean, whether the placeholder should have a sparse type.
       name: Optional name string for the placeholder.
+      ragged: Boolean, whether the placeholder should have a ragged type.
+          In this case, values of 'None' in the 'shape' argument represent
+          ragged dimensions. For more information about RaggedTensors, see this
+          [guide](https://www.tensorflow.org/guide/ragged_tensors).
 
   Raises:
-      ValueError: If called with eager execution.
+      ValueError: If called with eager execution
+      ValueError: If called with sparse = True and ragged = True.
 
   Returns:
       Tensor instance (with Keras metadata included).
@@ -988,6 +996,11 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       <tf.Tensor 'Placeholder_4:0' shape=(2, 4, 5) dtype=float32>
   ```
   """
+  if sparse and ragged:
+    raise ValueError(
+        'Cannot set both sparse and ragged to True when creating a placeholder.'
+    )
+
   if dtype is None:
     dtype = floatx()
   if not shape:
@@ -996,6 +1009,20 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   with get_graph().as_default():
     if sparse:
       x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+    elif ragged:
+      ragged_rank = 0
+      for i in range(1, len(shape)):
+        if shape[i] is None:
+          ragged_rank += 1
+        else:
+          break
+      value_shape = shape[(ragged_rank + 1):]
+
+      x = ragged_factory_ops.placeholder(
+          dtype=dtype,
+          ragged_rank=ragged_rank,
+          value_shape=value_shape,
+          name=name)
     else:
       x = array_ops.placeholder(dtype, shape=shape, name=name)
   return x
@@ -1011,7 +1038,11 @@ def is_placeholder(x):
       Boolean.
   """
   try:
-    return x.op.type == 'Placeholder'
+    if isinstance(x, composite_tensor.CompositeTensor):
+      flat_components = nest.flatten(x, expand_composites=True)
+      return py_any(is_placeholder(c) for c in flat_components)
+    else:
+      return x.op.type == 'Placeholder'
   except AttributeError:
     return False
 
@@ -1215,9 +1246,9 @@ def zeros(shape, dtype=None, name=None):
   """Instantiates an all-zeros variable and returns it.
 
   Arguments:
-      shape: Tuple of integers, shape of returned Keras variable
-      dtype: String, data type of returned Keras variable
-      name: String, name of returned Keras variable
+      shape: Tuple or list of integers, shape of returned Keras variable
+      dtype: data type of returned Keras variable
+      name: name of returned Keras variable
 
   Returns:
       A variable (including Keras metadata), filled with `0.0`.
@@ -1225,14 +1256,19 @@ def zeros(shape, dtype=None, name=None):
       and will return a dynamically-shaped tensor instead.
 
   Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.zeros((3,4))
-      >>> K.eval(kvar)
-      array([[ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.zeros((3,4))
+  K.eval(kvar)
+  # array([[ 0.,  0.,  0.,  0.], [ 0.,  0.,  0.,  0.],
+  #       [ 0.,  0.,  0.,  0.]], dtype=float32)
+  A = tf.constant([1,2,3])
+  kvar2 = K.zeros(A.shape) # [0., 0., 0.] float32 by default
+  kvar3 = K.zeros(A.shape,dtype=tf.int32) # [0, 0, 0] with int32 dtype
+  kvar4 = K.zeros([2,3]) # [[0., 0., 0.], [0., 0., 0.]]
   ```
+  
   """
   with ops.init_scope():
     if dtype is None:
@@ -1315,22 +1351,23 @@ def zeros_like(x, dtype=None, name=None):
 
   Arguments:
       x: Keras variable or Keras tensor.
-      dtype: String, dtype of returned Keras variable.
-           None uses the dtype of x.
-      name: String, name for the variable to create.
+      dtype: dtype of returned Keras variable.
+             `None` uses the dtype of `x`.
+      name: name for the variable to create.
 
   Returns:
-      A Keras variable with the shape of x filled with zeros.
+      A Keras variable with the shape of `x` filled with zeros.
 
   Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.variable(np.random.random((2,3)))
-      >>> kvar_zeros = K.zeros_like(kvar)
-      >>> K.eval(kvar_zeros)
-      array([[ 0.,  0.,  0.],
-             [ 0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.variable(np.random.random((2,3)))
+  kvar_zeros = K.zeros_like(kvar)
+  K.eval(kvar_zeros)
+  # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
   ```
+  
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
@@ -1557,8 +1594,9 @@ def moving_average_update(x, value, momentum):
   # moving_averages, being low-level ops, should not be part of the training
   # module.
   from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
+  zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=True)
+      x, value, momentum, zero_debias=zero_debias)
 
 
 # LINEAR ALGEBRA
@@ -2246,7 +2284,19 @@ def maximum(x, y):
       y: Tensor or variable.
 
   Returns:
-      A tensor.
+      A tensor with the element wise maximum value(s) of `x` and `y`.
+
+  Examples:
+  ```python
+      # maximum of two tensors
+      >>> x = tf.Variable([[1, 2], [3, 4]])
+      >>> y = tf.Variable([[2, 1], [0, -1]])
+      >>> m = tf.keras.backend.maximum(x, y)
+      >>> m
+      <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+      array([[2, 2],
+             [3, 4]], dtype=int32)>
+  ```
   """
   return math_ops.maximum(x, y)
 
@@ -2572,9 +2622,11 @@ def resize_images(x, height_factor, width_factor, data_format,
   if data_format == 'channels_first':
     x = permute_dimensions(x, [0, 2, 3, 1])
   if interpolation == 'nearest':
-    x = image_ops.resize_nearest_neighbor(x, new_shape)
+    x = image_ops.resize_images_v2(
+        x, new_shape, method=image_ops.ResizeMethod.NEAREST_NEIGHBOR)
   elif interpolation == 'bilinear':
-    x = image_ops.resize_bilinear(x, new_shape)
+    x = image_ops.resize_images_v2(x, new_shape,
+                                   method=image_ops.ResizeMethod.BILINEAR)
   else:
     raise ValueError('interpolation should be one '
                      'of "nearest" or "bilinear".')
@@ -3105,63 +3157,6 @@ def print_tensor(x, message=''):
     logging_ops.print_v2(message, x, output_stream=sys.stdout)
     return x
 
-
-def is_tensor_or_composite_tensor(value):
-  """Test if a passed value object is a tensor-like or composite tensor."""
-  return (tensor_util.is_tensor(value) or isinstance(value, np.ndarray) or
-          composite_tensor_utils.is_composite_or_composite_value(value))
-
-
-def _try_process_scipy_sparse_input(value):
-  """Converts 'value' to a SparseTensor if it is a scipy sparse matrix.
-
-  Arguments:
-    value: An object that may have the attributes of a scipy sparse matrix.
-
-  Returns:
-    Either a SparseTensor based off of 'value' or 'value' itself.
-  """
-  try:
-    sparse_coo = value.tocoo()
-    row, col = sparse_coo.row, sparse_coo.col
-    data, shape = sparse_coo.data, sparse_coo.shape
-  except AttributeError:
-    # If we can't convert this object, it could be either a single data
-    # element (ie, a bool/int/float) which is OK to pass on, or something
-    # that we don't understand (which may or may not be OK). In either
-    # case, don't die here: the data standardization code will catch
-    # those issues.
-    return value
-
-  indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)), 1)
-  return sparse_tensor.SparseTensor(indices, data, shape)
-
-
-def try_convert_scipy_to_sparse(values):
-  """Converts scipy sparse matrices in 'values' to SparseTensors, if possible.
-
-  Arguments:
-    values: An input or list of inputs to convert. These may be TensorLikes,
-      ndarrays, composite tensors, or scipy sparse values.
-
-  Returns:
-    An input or list of inputs where scipy sparse tensors have been converted
-    to tf.SparseTensors.
-
-  Raises:
-    ValueError: If input cannot be converted to a SparseTensor.
-  """
-  # Convert scipy sparse data into sparse tensors.
-  value_structure = values
-  values = nest.flatten(values)
-  for idx, value in enumerate(values):
-    if not is_tensor_or_composite_tensor(value):
-      values[idx] = _try_process_scipy_sparse_input(value)
-  values = nest.pack_sequence_as(value_structure, values)
-
-  return values
-
-
 # GRAPH MANIPULATION
 
 
@@ -3191,6 +3186,7 @@ class GraphExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
+
     self._inputs_structure = inputs
     self.inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
@@ -3308,10 +3304,6 @@ class GraphExecutionFunction(object):
       return tensor
 
   def __call__(self, inputs):
-    inputs = try_convert_scipy_to_sparse(inputs)
-
-    # Ensure that input value types match any expected composite tensor types.
-    # TODO(momernick): Once TensorSpecs are implemented for CTs, use that here.
     inputs = nest.flatten(inputs, expand_composites=True)
 
     session = get_session(inputs)
@@ -3485,10 +3477,8 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
-    # Convert scipy sparse data into sparse tensors.
-    inputs = try_convert_scipy_to_sparse(inputs)
-
     input_values = nest.flatten(inputs, expand_composites=True)
+
     if self._freezable_vars_values:
       input_values = input_values + self._freezable_vars_values
     converted_inputs = []
@@ -3507,8 +3497,15 @@ class EagerExecutionFunction(object):
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
+
+    # EagerTensor.numpy() will often make a copy to ensure memory safety.
+    # However in this case `outputs` is not directly returned, so it is always
+    # safe to reuse the underlying buffer without checking. In such a case the
+    # private numpy conversion method is preferred to guarantee performance. We
+    # also have to call `_cpu_nograd()` since the Tensor may not be on the CPU.
+    # (otherwise it's just a no-op.)
     return nest.pack_sequence_as(
-        self._outputs_structure, [x.numpy() for x in outputs],
+        self._outputs_structure, [x._cpu_nograd()._numpy() for x in outputs],  # pylint: disable=protected-access
         expand_composites=True)
 
 
@@ -4202,6 +4199,20 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
+      
+  Example:
+  ```python:
+      import tensorflow as tf
+      from tensorflow.keras import backend as K
+      a = tf.constant([1., 0., 0., 0., 1., 0., 0., 0., 1.], shape=[3,3])
+      print("a: ", a)
+      b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+      print("b: ", b)
+      loss = K.categorical_crossentropy(a, b)
+      print('Loss: ', loss) #Loss: tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+      loss = K.categorical_crossentropy(a, a)
+      print('Loss: ', loss) #Loss:  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920929e-07], shape=(3,), dtype=float32)
+  ```
   """
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
@@ -5631,15 +5642,6 @@ if not os.path.exists(_config_path):
     pass
 
 
-def in_multi_worker_mode():
-  """Whether we are operating in a Multi-Worker setting."""
-  # TODO(rchao): Consider a warning if user uses multiple `model` method
-  # calls in multi-worker setting.
-  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
-  return tf_config and 'master' not in cluster_spec.jobs
-
-
 def configure_and_create_distributed_session(distribution_strategy):
   """Configure session config and create a session with it."""
 
@@ -5676,7 +5678,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if in_multi_worker_mode():
+  if multi_worker_util.in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

@@ -1,14 +1,14 @@
 # This directory contains estimators to train and run inference on
 # gradient boosted trees on top of TensorFlow.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "init_py",
@@ -71,6 +71,10 @@ py_test(
     srcs = ["trainer_hooks_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        # TODO(b/134605801): Re-enable this test.
+        "no_oss",
+    ],
     deps = [
         ":trainer_hooks",
         "//tensorflow/contrib/framework:framework_py",

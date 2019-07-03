@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -64,7 +64,11 @@ py_test(
     srcs = ["activity_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":activity_test_lib",
         ":static_analysis",
@@ -103,7 +107,11 @@ py_test(
     srcs = ["liveness_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":liveness_test_lib",
         ":static_analysis",
@@ -140,7 +148,11 @@ py_test(
     srcs = ["reaching_definitions_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":reaching_definitions_test_lib",
         ":static_analysis",

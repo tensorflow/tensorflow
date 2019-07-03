@@ -51,13 +51,17 @@ class GpuExecutable : public Executable {
  public:
   // cubin (i.e. the compiled ptx) may be empty, in which case we leave
   // compilation up to the GPU driver.
+  // We need to share ownership of hlo_module and assignment with profiler to
+  // safely keep a reference to these objects during tracing period, thus they
+  // are passed as shared pointers.
   GpuExecutable(const string& ptx, const std::vector<uint8>& cubin,
                 std::pair<int, int> compute_capability,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<const BufferAssignment> assignment,
+                std::shared_ptr<HloModule> hlo_module,
+                std::shared_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  ~GpuExecutable() override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -84,6 +88,10 @@ class GpuExecutable : public Executable {
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments) override;
+
+  std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
+    return assignment_;
+  }
 
  private:
   StatusOr<ScopedShapedBuffer> Execute(
@@ -114,6 +122,9 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::StreamExecutor* executor);
 
+  // Computes annotations for each thunk and store them in thunk_annotations_.
+  void ComputeThunkAnnotations();
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
@@ -140,7 +151,11 @@ class GpuExecutable : public Executable {
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::unique_ptr<const BufferAssignment> assignment_;
+  const std::shared_ptr<const BufferAssignment> assignment_;
+
+  // Maps a thunk to a string describing the thunk.  This is useful when
+  // constructing ScopeAnnotation objects.
+  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -30,7 +30,7 @@ template <typename T>
 __global__ void DoParallelConcatOpKernel(int nthreads, const int64 rows,
                                          const int64 cols, int32 loc,
                                          const T* src, T* dst) {
-  CUDA_1D_KERNEL_LOOP(idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64 c = idx % cols;
     int64 r = (loc % rows + rows) % rows;  // Guard index range.
     T* p = dst + r * cols + c;
@@ -43,13 +43,13 @@ template <typename T>
 Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
                               Tensor* output) {
   const int64 nelem = value.NumElements();
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   auto Toutput = output->flat_outer_dims<T>();
   const int64 nrows = Toutput.dimension(0);
   const int64 ncols = Toutput.dimension(1);
   const T* src = value.flat<T>().data();
   T* dst = output->flat<T>().data();
-  TF_CHECK_OK(CudaLaunchKernel(
+  TF_CHECK_OK(GpuLaunchKernel(
       DoParallelConcatOpKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, nrows, ncols, loc, src, dst));
   return Status::OK();
@@ -82,7 +82,7 @@ template <typename T, InplaceOpType op>
 __global__ void DoInplaceOpKernel(int nthreads, const int64 rows,
                                   const int64 cols, const int64 n, const T* src,
                                   const int32* rowids, T* dst) {
-  CUDA_1D_KERNEL_LOOP(idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64 r = idx / cols;
     int64 c = idx % cols;
     r = (rowids[r] % rows + rows) % rows;  // Guard index range.
@@ -106,7 +106,7 @@ template <typename T>
 void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
   const int64 nelem = v.NumElements();
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   auto Ty = y->flat_outer_dims<T>();
   const int64 nrows = Ty.dimension(0);
   const int64 ncols = Ty.dimension(1);
@@ -117,22 +117,22 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   T* dst = y->flat<T>().data();
   switch (op) {
     case I_UPDATE:
-      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_UPDATE>,
-                                   cfg.block_count, cfg.thread_per_block, 0,
-                                   d.stream(), cfg.virtual_thread_count, nrows,
-                                   ncols, n, src, rowids, dst));
+      TF_CHECK_OK(GpuLaunchKernel(DoInplaceOpKernel<T, I_UPDATE>,
+                                  cfg.block_count, cfg.thread_per_block, 0,
+                                  d.stream(), cfg.virtual_thread_count, nrows,
+                                  ncols, n, src, rowids, dst));
       break;
     case I_ADD:
-      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_ADD>, cfg.block_count,
-                                   cfg.thread_per_block, 0, d.stream(),
-                                   cfg.virtual_thread_count, nrows, ncols, n,
-                                   src, rowids, dst));
+      TF_CHECK_OK(GpuLaunchKernel(DoInplaceOpKernel<T, I_ADD>, cfg.block_count,
+                                  cfg.thread_per_block, 0, d.stream(),
+                                  cfg.virtual_thread_count, nrows, ncols, n,
+                                  src, rowids, dst));
       break;
     case I_SUB:
-      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_SUB>, cfg.block_count,
-                                   cfg.thread_per_block, 0, d.stream(),
-                                   cfg.virtual_thread_count, nrows, ncols, n,
-                                   src, rowids, dst));
+      TF_CHECK_OK(GpuLaunchKernel(DoInplaceOpKernel<T, I_SUB>, cfg.block_count,
+                                  cfg.thread_per_block, 0, d.stream(),
+                                  cfg.virtual_thread_count, nrows, ncols, n,
+                                  src, rowids, dst));
       break;
   }
 }
@@ -141,7 +141,7 @@ template <bool>
 void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
   const int64 nelem = v.NumElements();
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   auto Ty = y->flat_outer_dims<bool>();
   const int64 nrows = Ty.dimension(0);
   const int64 ncols = Ty.dimension(1);
@@ -151,10 +151,10 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   const int32* rowids = i.flat<int32>().data();
   bool* dst = y->flat<bool>().data();
   if (op == I_UPDATE) {
-    TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<bool, I_UPDATE>,
-                                 cfg.block_count, cfg.thread_per_block, 0,
-                                 d.stream(), cfg.virtual_thread_count, nrows,
-                                 ncols, n, src, rowids, dst));
+    TF_CHECK_OK(GpuLaunchKernel(DoInplaceOpKernel<bool, I_UPDATE>,
+                                cfg.block_count, cfg.thread_per_block, 0,
+                                d.stream(), cfg.virtual_thread_count, nrows,
+                                ncols, n, src, rowids, dst));
   }
 }
 
@@ -205,4 +205,4 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
 
 }  // end namespace functor
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

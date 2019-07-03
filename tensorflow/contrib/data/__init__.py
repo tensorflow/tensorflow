@@ -112,10 +112,7 @@ from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
-
-# Optimization constant that can be used to enable auto-tuning.
-from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
-
+from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 # pylint: enable=unused-import

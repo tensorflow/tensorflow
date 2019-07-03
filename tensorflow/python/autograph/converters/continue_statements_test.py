@@ -203,6 +203,27 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 3)
     self.assertTransformedEquivalent(test_fn, 4)
 
+  def test_multiple_guarded_continues_with_side_effects(self):
+
+    def test_fn(x):
+      def track(u, x):
+        u.append(x)
+        return x
+
+      u = []
+      v = []
+      while x > 0:
+        x -= 1
+        if track(u, x) > 1:
+          continue
+        if track(u, x) > 2:
+          continue
+        v.append(x)
+      return u, v
+
+    self.assertTransformedEquivalent(test_fn, 3)
+    self.assertTransformedEquivalent(test_fn, 2)
+
 
 if __name__ == '__main__':
   test.main()

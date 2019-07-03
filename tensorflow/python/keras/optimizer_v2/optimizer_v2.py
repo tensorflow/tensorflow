@@ -259,9 +259,6 @@ class OptimizerV2(trackable.Trackable):
 
     self._use_locking = True
     self._init_set_name(name)
-    # in graph mode, name_scope performs uniquification, so keep scope_context.
-    with backend.name_scope(self._name) as name_scope:
-      self._scope_ctx = name_scope
     self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
@@ -353,7 +350,7 @@ class OptimizerV2(trackable.Trackable):
     if callable(var_list):
       var_list = var_list()
     var_list = nest.flatten(var_list)
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name + "/gradients"):
       grads = tape.gradient(loss_value, var_list, grad_loss)
 
       if hasattr(self, "clipnorm"):
@@ -387,7 +384,8 @@ class OptimizerV2(trackable.Trackable):
         function not implemented).
     """
     params = nest.flatten(params)
-    with backend.get_graph().as_default(), backend.name_scope(self._scope_ctx):
+    with backend.get_graph().as_default(), backend.name_scope(self._name +
+                                                              "/gradients"):
       grads = gradients.gradients(loss, params)
       for grad, param in zip(grads, params):
         if grad is None:
@@ -427,7 +425,7 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
         _ = self.iterations
@@ -590,7 +588,12 @@ class OptimizerV2(trackable.Trackable):
     return slot_dict[slot_name]
 
   def _prepare(self, var_list):
-    pass
+    # pre-build the decayed learning rate only if learning rate exists.
+    if var_list and "learning_rate" in self._hyper:
+      var_dtypes = set([var.dtype.base_dtype for var in var_list])
+      self._decayed_lr_t = {}
+      for var_dtype in var_dtypes:
+        self._decayed_lr_t[var_dtype] = self._decayed_lr(var_dtype)
 
   def _create_hypers(self):
     if self._hypers_created:
@@ -996,7 +999,7 @@ def _var_key(var):
 
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
-  if getattr(var, "_distributed_container", None) is not None:
+  if hasattr(var, "_distributed_container"):
     var = var._distributed_container()
   if var._in_graph_mode:
     return var._shared_name
@@ -1010,7 +1013,7 @@ def _get_slot_key_from_var(var, slot_name):
   return name + "/" + slot_name
 
 
-class _RestoredOptimizer(OptimizerV2):
+class RestoredOptimizer(OptimizerV2):
   """A non-functional Optimizer implementation for checkpoint compatibility.
 
   Holds slot variables and hyperparameters when an optimizer is restored from a
@@ -1022,7 +1025,7 @@ class _RestoredOptimizer(OptimizerV2):
   # methods.
 
   def __init__(self):
-    super(_RestoredOptimizer, self).__init__("_RestoredOptimizer")
+    super(RestoredOptimizer, self).__init__("RestoredOptimizer")
     self._hypers_created = True
 
   def get_config(self):
@@ -1036,9 +1039,9 @@ revived_types.register_revived_type(
     "optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda proto: _RestoredOptimizer(),
+        object_factory=lambda proto: RestoredOptimizer(),
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
-        setter=_RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+        setter=RestoredOptimizer._set_hyper  # pylint: disable=protected-access
     )])

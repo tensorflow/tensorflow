@@ -610,7 +610,7 @@ class RNNTest(keras_parameterized.TestCase):
     update_2 = state_ops.assign_add(cells[0].kernel,
                                     array_ops.ones_like(cells[0].kernel))
     # TODO(b/128682878): Remove when RNNCells are __call__'d.
-    with base_layer_utils.call_context().enter(layer, x, True):
+    with base_layer_utils.call_context().enter(layer, x, True, None):
       cells[0].add_update(update_1, inputs=x)
       cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)

@@ -34,19 +34,6 @@ import java.util.concurrent.Executors;
  * standard programming library.
  *
  * <p>Instances of a {@code EagerSession} are thread-safe.
- *
- * <p><b>WARNING:</b> Resources consumed by an {@code EagerSession} object must be explicitly freed
- * by invoking the {@link #close()} method when it is no longer needed. This could be achieve using
- * the `try-with-resources` technique as the example below:
- *
- * <pre>{@code
- * try (EagerSession s = EagerSession.create()) {
- *    // execute operations eagerly
- * }
- * }</pre>
- *
- * In addition, {@code EagerSession} objects clean up unused resources during the session, working
- * in pair with the JVM garbage collector. See {@link ResourceCleanupStrategy} for more details.
  */
 public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
 
@@ -208,27 +195,131 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     }
   }
 
-  /** Returns an object that configures and builds a {@code EagerSession} with custom options. */
-  public static EagerSession.Options options() {
-    return new Options();
+  /**
+   * Initializes the default eager session, which remains active for the lifetime of the
+   * application.
+   *
+   * <p>This method is implicitly invoked on the first call to {@link #getDefault()}, but can also
+   * be invoked explicitly to override default options.
+   *
+   * <p>Note that calling this method more than once will throw an {@code IllegalArgumentException}
+   * as the default session cannot be modified once it has been created. Therefore, it is important
+   * to explicitly initialize it before {@link #getDefault()} is invoked for the first time from any
+   * thread.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * // Initializing default session to override default options is valid but
+   * // is optional
+   * EagerSession.initDefault(EagerSession.options().async(true));
+   *
+   * // Starting to build eager operations using default session, by calling
+   * // EagerSession.getDefault() implicitly
+   * Ops tf = Ops.create();
+   *
+   * // Initializing default session more than once or after using it is not
+   * // permitted and throws an exception
+   * EagerSession.initDefault(EagerSession.options().async(true));  // throws
+   * }</pre>
+   *
+   * @param options options to use to build default session
+   * @return default eager session
+   * @throws IllegalStateException if the default session is already initialized
+   * @see {@link #getDefault()}
+   */
+  public static EagerSession initDefault(Options options) {
+    synchronized (EagerSession.class) {
+      if (defaultSession != null) {
+        throw new IllegalStateException("Default eager session is already initialized");
+      }
+      defaultSession = options.build();
+    }
+    return defaultSession;
   }
 
-  /** Returns an {@code EagerSession} configured with default options. */
+  /**
+   * Returns the default eager session
+   *
+   * <p>Once initialized, the default eager session remains active for the whole life of the
+   * application, as opposed to sessions obtained from {@link #create()} or {@link Options#build()}
+   * which should be closed after their usage.
+   *
+   * <p>The default set of {@link Options} is used to initialize the session on the first call. To
+   * override this behavior, it is possible to invoke {@link #initDefault(Options)} with a different
+   * set of options prior to this first call.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * // Starting to build eager operations using default session, by calling
+   * // EagerSession.getDefault() implicitly
+   * Ops tf = Ops.create();
+   *
+   * // Starting to build eager operations using default session, by calling
+   * // EagerSession.getDefault() explictly
+   * Ops tf = Ops.create(EagerSession.getDefault());
+   * }</pre>
+   *
+   * @return default eager session
+   * @see {@link #initDefault(Options)}
+   */
+  public static EagerSession getDefault() {
+    if (defaultSession == null) {
+      synchronized (EagerSession.class) {
+        if (defaultSession == null) {
+          defaultSession = options().build();
+        }
+      }
+    }
+    return defaultSession;
+  }
+
+  /**
+   * Returns an {@code EagerSession} configured with default options.
+   *
+   * <p><b>WARNING:</b>Instances of {@code EagerSession} returned by this method must be explicitly
+   * freed by invoking {@link #close()} when they are no longer needed. This could be achieve using
+   * the `try-with-resources` technique.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * try (EagerSession session = EagerSession.create()) {
+   *   Ops tf = Ops.create(session);
+   *   // build execute operations eagerly...
+   * }
+   * }</pre>
+   */
   public static EagerSession create() {
     return options().build();
   }
 
-  private EagerSession(Options options) {
-    this.nativeHandle = allocate(options.async, options.devicePlacementPolicy.code, options.config);
-    this.resourceCleanupStrategy = options.resourceCleanupStrategy;
-
-    if (resourceCleanupStrategy == ResourceCleanupStrategy.IN_BACKGROUND) {
-      nativeResources.startCleanupThread();
-    }
+  /**
+   * Returns an object that configures and builds a {@code EagerSession} with custom options.
+   *
+   * <p><b>WARNING:</b>Instances of {@code EagerSession} returned by this method must be explicitly
+   * freed by invoking {@link #close()} when they are no longer needed. This could be achieve using
+   * the `try-with-resources` technique.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * try (EagerSession session = EagerSession.options().async(true).build()) {
+   *   Ops tf = Ops.create(session);
+   *   // build execute operations eagerly and asynchronously...
+   * }
+   * }</pre>
+   */
+  public static EagerSession.Options options() {
+    return new Options();
   }
 
   @Override
   public synchronized void close() {
+    if (this == defaultSession) {
+      throw new IllegalStateException("Default eager session cannot be closed");
+    }
     if (nativeHandle != 0L) {
       if (resourceCleanupStrategy == ResourceCleanupStrategy.IN_BACKGROUND) {
         nativeResources.stopCleanupThread();
@@ -397,14 +488,30 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     private volatile boolean cleanupInBackground = false;
   }
 
+  private static volatile EagerSession defaultSession = null;
+
   private final NativeResourceCollector nativeResources = new NativeResourceCollector();
   private final ResourceCleanupStrategy resourceCleanupStrategy;
   private long nativeHandle;
+
+  private EagerSession(Options options) {
+    this.nativeHandle = allocate(options.async, options.devicePlacementPolicy.code, options.config);
+    this.resourceCleanupStrategy = options.resourceCleanupStrategy;
+
+    if (resourceCleanupStrategy == ResourceCleanupStrategy.IN_BACKGROUND) {
+      nativeResources.startCleanupThread();
+    }
+  }
 
   private void checkSession() {
     if (nativeHandle == 0L) {
       throw new IllegalStateException("Eager session has been closed");
     }
+  }
+
+  // For tests
+  ResourceCleanupStrategy resourceCleanupStrategy() {
+    return resourceCleanupStrategy;
   }
 
   private static native long allocate(boolean async, int devicePlacementPolicy, byte[] config);

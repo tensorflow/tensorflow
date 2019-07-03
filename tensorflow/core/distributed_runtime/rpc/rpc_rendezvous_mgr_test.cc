@@ -52,8 +52,12 @@ class DummyWorkerCache : public WorkerCacheInterface {
   void ListWorkers(std::vector<string>* workers) const override {}
   void ListWorkersInJob(const string& job_name,
                         std::vector<string>* workers) const override {}
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     return nullptr;
+  }
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
   }
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {

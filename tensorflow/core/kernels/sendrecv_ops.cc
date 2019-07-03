@@ -108,16 +108,10 @@ void SendOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
-REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
-REGISTER_KERNEL_BUILDER(
-    Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
-#endif  // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_DEFAULT), SendOp);
 
 REGISTER_KERNEL_BUILDER(
-    Name("_HostSend").Device(DEVICE_GPU).HostMemory("tensor"), SendOp);
+    Name("_HostSend").Device(DEVICE_DEFAULT).HostMemory("tensor"), SendOp);
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   string send_device;
@@ -193,19 +187,10 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
-REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
-#endif  // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_DEFAULT), RecvOp);
 
 REGISTER_KERNEL_BUILDER(
-    Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
-#endif  // TENSORFLOW_USE_SYCL
+    Name("_HostRecv").Device(DEVICE_DEFAULT).HostMemory("tensor"), RecvOp);
 
 // Environment variable `DISABLE_HOST_SEND_RECV_REGISTRATION` is used to disable
 // hostSend and hostRecv registration on CPU device in the mock environment.

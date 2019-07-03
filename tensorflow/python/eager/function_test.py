@@ -30,6 +30,7 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -38,10 +39,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import sparse_tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -68,7 +69,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -106,13 +106,13 @@ class DefunnedMiniModel(MiniModel):
 
 
 def _example_indexed_slices_with_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]),
       constant_op.constant([2]))
 
 
 def _example_indexed_slices_without_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]))
 
 
@@ -920,14 +920,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1', ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor', sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
   ])  # pyformat: disable
   def testReturnCompositeTensorWithDefun(self,
@@ -949,25 +952,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+      ('RaggedTensorRaggedRank1WithSignature',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None], dtypes.int32)]),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]),
+      ('RaggedTensorRaggedRank2WithSignature',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None, None],
-                                              dtypes.int32)]),
-      (sparse_tensor.SparseTensor,
+       [ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32)]),
+      ('SparseTensorWithSignature',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
-       [sparse_tensor_spec.sparse_tensor_spec([None], dtypes.int32)]),
+       [sparse_tensor.SparseTensorSpec([None], dtypes.int32)]),
   ])  # pyformat: disable
   def testCompositeAsArgumentTensorWithDefun(self,
                                              factory_fn,
@@ -1795,7 +1805,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(rt.row_splits.shape.as_list(), [4])
       return rt
 
-    signature = [ragged_tensor_spec.ragged_tensor_spec(
+    signature = [ragged_tensor.RaggedTensorSpec(
         shape=[3, None], dtype=dtypes.int32)]
     defined = function.defun(f, input_signature=signature)
     rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
@@ -1818,7 +1828,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+    with self.assertRaisesRegexp(ValueError, 'Structure .* does not match'):
       defined(rt4)
 
     # Different rank
@@ -2233,21 +2243,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     context.context().set_optimizer_experimental_options(
         {'min_graph_nodes': -1, 'implementation_selector': True})
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'CPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'CPU'})
     def on_cpu(x):
       return x + 2
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'GPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'GPU'})
     def on_gpu(x):
       return x + 4
 
@@ -2720,6 +2724,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual((5, 4, 2), self.evaluate(output1).shape)
     self.assertEqual((10, 4, 3), self.evaluate(output2).shape)
 
+  def testAutoGraphContext(self):
+
+    @def_function.function
+    def test_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.ENABLED)
+
+    prev_status = ag_ctx.control_status_ctx().status
+    test_fn()
+    self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -3048,6 +3063,121 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
           break
 
     train()
+
+  def testDeferredCapture(self):
+    value = 1.0
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+    # After changing the value of `value` the function call should return a
+    # different result.
+    value = 2.0
+    self.assertAllEqual(lazy_capture(2.0), 4.0)
+
+  def testDeferredCaptureWithKey(self):
+    value0 = 1.0
+    value1 = 2.0
+
+    @def_function.function
+    def lazy_capture(x):
+      w = ops.get_default_graph().capture_call_time_value(
+          lambda: value0, tensor_spec.TensorSpec(None), key=0)
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value1, tensor_spec.TensorSpec(None), key=1)
+      def bad_closure():
+        raise ValueError('Should not run')
+      z = ops.get_default_graph().capture_call_time_value(
+          bad_closure, tensor_spec.TensorSpec(None), key=1)
+      return x + y + w + z
+
+    self.assertAllEqual(lazy_capture(2.0), 7.0)
+    value0 = 2.0
+    value1 = 3.0
+    self.assertAllEqual(lazy_capture(2.0), 10.0)
+
+  def testDeferredCaptureTypeError(self):
+    value = constant_op.constant(1.0)
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(()))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+
+    # dtype mismatch
+    value = constant_op.constant(1)
+    with self.assertRaisesRegexp(ValueError, 'Value .* to a tensor with dtype'):
+      lazy_capture(2.0)
+
+    # shape mismatch
+    value = constant_op.constant([1.0])
+    with self.assertRaisesRegexp(ValueError, 'Value .* shape'):
+      lazy_capture(2.0)
+
+  def testDeferredCaptureReturnNestWithCompositeTensor(self):
+    i_s = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    r_t = ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    s_t = sparse_tensor.SparseTensor(
+        values=[1, 2, 3], indices=[[0], [8], [10]], dense_shape=[20])
+
+    @def_function.function
+    def lazy_capture():
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: {'i': i_s, 't': (r_t, s_t)},
+          {'i': indexed_slices.IndexedSlicesSpec(
+              dtype=dtypes.int32, dense_shape_dtype=dtypes.int32),
+           't': (ragged_tensor.RaggedTensorSpec([2, None, None], dtypes.int32),
+                 sparse_tensor.SparseTensorSpec([None], dtypes.int32))})
+      return y['i'], y['t']
+
+    i, (r, s) = lazy_capture()
+    self.assertAllEqual(i_s.values, i.values)
+    self.assertAllEqual(i_s.indices, i.indices)
+    self.assertAllEqual(i_s.dense_shape, i.dense_shape)
+    self.assertAllEqual(r_t, r)
+    self.assertAllEqual(s_t.indices, s.indices)
+    self.assertAllEqual(s_t.values, s.values)
+    self.assertAllEqual(s_t.dense_shape, s.dense_shape)
+
+  def testDeferredCaptureCompositeTensorSpecTypeMismatch(self):
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64))
+
+    @def_function.function
+    def lazy_capture():
+      return ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          indexed_slices.IndexedSlicesSpec(dtype=dtypes.int32))
+
+    # Type matches spec.
+    lazy_capture()
+
+    # Extra dense shape component.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
+    # Index dtype mismatch int32 vs. int64.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

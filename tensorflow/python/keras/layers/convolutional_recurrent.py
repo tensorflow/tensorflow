@@ -786,8 +786,8 @@ class ConvLSTM2D(ConvRNN2D):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`).
+      By default hyperbolic tangent activation function is applied
+      (`tanh(x)`).
     recurrent_activation: Activation function to use
       for the recurrent step.
     use_bias: Boolean, whether the layer uses a bias vector.

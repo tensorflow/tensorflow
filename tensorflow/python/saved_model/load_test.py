@@ -35,6 +35,7 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -51,6 +52,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -179,7 +181,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Calling get_concrete_function wraps in a second call operation; we want to
     # inspect the original function body for the control output; digging into
     # graph.as_graph_def() and its FunctionDefLibrary is another option.
-    imported_concrete, = imported.f._concrete_functions
+    imported_concrete, = imported.f.concrete_functions
     imported_graph = imported_concrete.graph
     self.assertIn(
         imported_graph.get_operation_by_name("should_be_control_output"),
@@ -724,8 +726,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_load_in_graph_mode(self, cycles):
     root = tracking.AutoTrackable()
-    root.v1 = variables.Variable(1.)
-    root.v2 = variables.Variable(2.)
+    root.v1 = variables.Variable(1., name="v_one", trainable=False)
+    root.v2 = variables.Variable(2., name="v_two", trainable=True)
     root.f = def_function.function(
         lambda x: root.v2 * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -735,13 +737,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default() as g:
       imported = load.load(path)
       var_v1 = imported.v1
+      self.assertFalse(var_v1.trainable)
+      var_v2 = imported.v2
+      self.assertTrue(var_v2.trainable)
       output = imported.f(constant_op.constant(2.))
       with monitored_session.MonitoredSession() as sess:
         self.assertEqual(1.0, sess.run(var_v1))
         self.assertEqual(4.0, sess.run(output))
+      self.assertCountEqual([var_v1, var_v2],
+                            g.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      # load() should not add to TRAINABLE_VARIABLES. Higher levels of model
+      # building control retraining or frozen use of imported SavedModels.
+      self.assertCountEqual([],
+                            g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
   def test_load_in_func_graph(self, cycles):
     root = tracking.AutoTrackable()
@@ -1535,7 +1546,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      v.aggregation)
-    root = util.Checkpoint(v=v)
+    root = tracking.AutoTrackable()
+    root.v = v
     root = self.cycle(root, cycles)
     self.assertEqual(False, root.v.trainable)
     self.assertEqual(variables.VariableSynchronization.NONE,
@@ -1669,6 +1681,67 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         [initial_output],
         list(model.signatures["serving_default"](model_input).values()))
 
+  def test_destroy_resource(self, cycles):
+
+    def get_handle():
+      return gen_resource_variable_ops.var_handle_op(
+          shape=tensor_shape.as_shape([]),
+          dtype=dtypes.float32,
+          shared_name="my_var_name",
+          name="my_var",
+          container="my_container")
+
+    class MyResourceDeleter(tracking.CapturableResourceDeleter):
+
+      def destroy_resource(self):
+        handle = get_handle()
+        gen_resource_variable_ops.destroy_resource_op(
+            handle, ignore_lookup_error=True)
+
+    class MyResource(tracking.TrackableResource):
+
+      def __init__(self):
+        # Set the resource deleter, so when the resource object goes out of
+        # scope it will be deleted automatically.
+        super(MyResource, self).__init__(deleter=MyResourceDeleter())
+
+      def _create_resource(self):
+        return get_handle()
+
+      def _initialize(self):
+        gen_resource_variable_ops.assign_variable_op(
+            self.resource_handle, 1.0, name="assign")
+
+    class MyModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.resource = MyResource()
+
+      @def_function.function(input_signature=[])
+      def increase(self):
+        handle = self.resource.resource_handle
+        gen_resource_variable_ops.assign_add_variable_op(
+            handle, 10.0, name="assign_add")
+        return gen_resource_variable_ops.read_variable_op(
+            handle, dtypes.float32)
+
+    root = MyModel()
+    imported = self.cycle(root, cycles)
+    self.assertEqual(11, imported.increase().numpy())  # Create the resource.
+
+    handle = imported.resource.resource_handle
+
+    # Delete the imported SaveModel. Since we explicitly set the deleter, it
+    # should destroy the resource automatically.
+    del imported
+
+    # Try to destroy the resource again, should fail.
+    with self.assertRaisesRegexp(errors.NotFoundError,
+                                 r"Resource .* does not exist."):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=False)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -1700,6 +1773,27 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         [[-3.]],
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
+
+  def test_object_with_extra_dependencies(self):
+
+    class Extra(tracking.AutoTrackable):
+
+      def _list_extra_dependencies_for_serialization(self, cache):
+        if self not in cache:
+          cache[self] = {"a": variables.Variable(5.)}
+        return cache[self]
+    root = Extra()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = load.load(path)
+    self.assertEqual(5, self.evaluate(imported.a))
+
+    root.a = variables.Variable(3.)
+    with self.assertRaisesRegexp(
+        ValueError,
+        "object has an attribute named a, which is reserved."):
+      save.save(root, path)
 
 
 if __name__ == "__main__":

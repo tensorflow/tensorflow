@@ -2,12 +2,12 @@
 # OVIC Benchmarker Java API.
 
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
-
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Build targets for OVIC classification.
 java_test(
@@ -111,7 +111,6 @@ android_library(
         "src/main/java/org/tensorflow/ovic/OvicDetector.java",
         "src/main/java/org/tensorflow/ovic/OvicDetectorBenchmarker.java",
     ],
-    manifest = "//tensorflow/lite/java:AndroidManifest.xml",
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",

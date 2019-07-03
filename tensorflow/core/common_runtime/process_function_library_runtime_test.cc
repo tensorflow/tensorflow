@@ -60,6 +60,9 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
+  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+               FunctionLibraryRuntime::DoneCallback done) override {}
+
   DeviceMgr* remote_device_mgr() const override { return device_mgr_; }
 
  private:

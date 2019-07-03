@@ -250,9 +250,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         num_gpus = context.num_gpus()
       else:
         num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
-        # Save the num_gpus_per_worker for configure method which is used by the
-        # contrib version.
-        self._num_gpus_per_worker = num_gpus
+      # Save the num_gpus_per_worker for configure method which is used by the
+      # contrib version.
+      self._num_gpus_per_worker = num_gpus
 
       compute_devices = device_util.local_devices_from_num_gpus(num_gpus)
 
@@ -479,7 +479,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
-    if not isinstance(var, resource_variable_ops.ResourceVariable):
+    if not isinstance(var, resource_variable_ops.BaseResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):

@@ -20,6 +20,10 @@ limitations under the License.
 namespace tflite {
 namespace {
 void* MockInit(TfLiteContext* context, const char* buffer, size_t length) {
+  // We don't support delegate in TFL micro. This is a weak check to test if
+  // context struct being zero-initialized.
+  TF_LITE_MICRO_EXPECT_EQ(nullptr,
+                          context->ReplaceNodeSubsetsWithDelegateKernels);
   // Do nothing.
   return nullptr;
 }

@@ -102,7 +102,8 @@ TEST_P(ParameterizedRangeDatasetOpTest, GetNext) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -146,7 +147,8 @@ TEST_F(RangeDatasetOpTest, ZeroStep) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -170,7 +172,8 @@ TEST_F(RangeDatasetOpTest, DatasetNodeName) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -195,7 +198,8 @@ TEST_F(RangeDatasetOpTest, DatasetTypeString) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -221,7 +225,8 @@ TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -247,7 +252,8 @@ TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -273,7 +279,8 @@ TEST_P(ParameterizedRangeDatasetOpTest, Cardinality) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -298,7 +305,8 @@ TEST_F(RangeDatasetOpTest, DatasetSave) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -329,7 +337,8 @@ TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -362,7 +371,8 @@ TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -395,7 +405,8 @@ TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(
@@ -428,7 +439,8 @@ TEST_P(ParameterizedRangeDatasetOpTest, Roundtrip) {
   Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
   Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
   Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs({&start, &stop, &step});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
 
   std::unique_ptr<OpKernel> range_dataset_kernel;
   TF_ASSERT_OK(

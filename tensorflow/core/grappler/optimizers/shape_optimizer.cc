@@ -87,7 +87,10 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           graph.GetRegularFanin(MutableGraphView::InputPort(fanout.node, 1));
       if (!inferred_properties) {
         // Infer properties lazily in case they are not needed.
-        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        TF_RETURN_IF_ERROR(
+            properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
         inferred_properties = true;
       }
       const auto& prop =
@@ -144,7 +147,10 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
       if (!inferred_properties) {
         // Infer properties lazily in case they are not needed.
-        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        TF_RETURN_IF_ERROR(
+            properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
         inferred_properties = true;
       }
       const auto& prop1 = properties.GetInputProperties(input1.node->name());

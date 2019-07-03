@@ -164,7 +164,7 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, GetNext) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -217,7 +217,7 @@ TEST_F(PrefetchDatasetOpTest, InvalidBufferSize) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -247,7 +247,7 @@ TEST_F(PrefetchDatasetOpTest, DatasetNodeName) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -279,7 +279,7 @@ TEST_F(PrefetchDatasetOpTest, DatasetTypeString) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -312,7 +312,7 @@ TEST_F(PrefetchDatasetOpTest, DatasetOutputDtypes) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -345,7 +345,7 @@ TEST_F(PrefetchDatasetOpTest, DatasetOutputShapes) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -378,7 +378,7 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, Cardinality) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -410,7 +410,7 @@ TEST_F(PrefetchDatasetOpTest, DatasetSave) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -447,7 +447,7 @@ TEST_F(PrefetchDatasetOpTest, IteratorOutputDtypes) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -487,7 +487,7 @@ TEST_F(PrefetchDatasetOpTest, IteratorOutputShapes) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -527,7 +527,7 @@ TEST_F(PrefetchDatasetOpTest, IteratorOutputPrefix) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
@@ -568,7 +568,7 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, Roundtrip) {
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {&tensor_slice_dataset_tensor, &buffer_size});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
 
   std::unique_ptr<OpKernel> prefetch_dataset_kernel;
   TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,

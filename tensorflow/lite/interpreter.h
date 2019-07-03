@@ -325,7 +325,7 @@ class Interpreter {
   }
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
-  /// for tensor indices that are inputs.
+  /// for tensor indices that are inputs or variables.
   /// Returns status of failure or success.
   /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
   ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
@@ -373,15 +373,21 @@ class Interpreter {
   /// WARNING: This is an experimental API and subject to change.
   void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
 
-  // Owning handle to a TfLiteDelegate instance.
-  using TfLiteDelegatePtr =
-      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
-
   /// Allow a delegate to look at the graph and modify the graph to handle
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
+  // Owning handle to a TfLiteDelegate instance.
+  using TfLiteDelegatePtr =
+      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
+  /// Same as ModifyGraphWithDelegate except this interpreter takes
+  /// ownership of the provided delegate. Be sure to construct the unique_ptr
+  /// with a suitable destruction function.
+  /// WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -498,16 +504,6 @@ class Interpreter {
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
-
-  /// Variant of the public ModifyGraphWithDelegate method that additionally
-  /// Assumes ownership of the provided delegate.
-  /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
-    // Note that we retain ownership of the delegate even if graph modification
-    // fails, as delegate use will be in an indeterminate state at that point.
-    owned_delegates_.push_back(std::move(delegate));
-    return ModifyGraphWithDelegate(owned_delegates_.back().get());
-  }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

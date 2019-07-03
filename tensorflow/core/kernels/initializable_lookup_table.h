@@ -153,6 +153,8 @@ class InitializableLookupTable : public LookupInterface {
   virtual Status DoFind(const Tensor& keys, Tensor* values,
                         const Tensor& default_value) = 0;
 
+  virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
+
   mutex mu_;
   bool is_initialized_ = false;
 };

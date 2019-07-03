@@ -176,24 +176,24 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
+    self.built = True
+
+  def call(self, inputs):
     if self.padding == 'causal':
       op_padding = 'valid'
     else:
       op_padding = self.padding
     if not isinstance(op_padding, (list, tuple)):
       op_padding = op_padding.upper()
-    self._convolution_op = nn_ops.Convolution(
-        input_shape,
+    conv_op = nn_ops.Convolution(
+        inputs.shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=op_padding,
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
-    self.built = True
-
-  def call(self, inputs):
-    outputs = self._convolution_op(inputs, self.kernel)
+    outputs = conv_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
@@ -322,6 +322,19 @@ class Conv1D(Conv):
       the output of the layer (its "activation")..
     kernel_constraint: Constraint function applied to the kernel matrix.
     bias_constraint: Constraint function applied to the bias vector.
+
+  Examples:
+    ```python
+    # Small convolutional model for 128-length vectors with 6 timesteps
+    # model.input_shape == (None, 6, 128)
+    
+    model = Sequential()
+    model.add(Conv1D(32, 3, 
+              activation='relu', 
+              input_shape=(6, 128)))
+    
+    # now: model.output_shape == (None, 4, 32)
+    ```
 
   Input shape:
     3D tensor with shape: `(batch_size, steps, input_dim)`
@@ -2492,7 +2505,7 @@ class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
   Arguments:
-    cropping: Int, or tuple of 23ints, or tuple of 3 tuples of 2 ints.
+    cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.
       - If tuple of 3 ints: interpreted as two different

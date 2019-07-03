@@ -95,6 +95,10 @@ class InstantiatedCapturedFunction {
       std::function<void(std::function<void()>)> runner,
       CapturedFunction* captured_func);
 
+  // Determines whether a rendezvous object should be created when running the
+  // instantiated function.
+  bool ShouldCreateRendezvous() const;
+
   friend class CapturedFunction;
 
   FunctionLibraryRuntime* const lib_;
@@ -155,6 +159,8 @@ class FunctionMetadata {
       : func_(std::move(func)),
         is_multi_device_function_(params.is_multi_device_function),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
+
+  void ValidateMultiDevice();
 
   NameAttrList func_;
   bool is_multi_device_function_ = false;

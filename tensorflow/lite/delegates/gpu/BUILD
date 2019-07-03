@@ -89,7 +89,9 @@ objc_library(
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
-    linkopts = select({
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_gpu_gl.so",
+    ] + select({
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
@@ -115,4 +117,28 @@ cc_binary(
         "notap",
     ],
     deps = [":metal_delegate"],
+)
+
+cc_library(
+    name = "api",
+    srcs = ["api.cc"],
+    hdrs = ["api.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/gl:portable",
+        "//third_party/opencl_headers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "spi",
+    hdrs = ["spi.h"],
+    deps = [
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
 )

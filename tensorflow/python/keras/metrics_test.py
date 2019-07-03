@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
@@ -38,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_utils
 
@@ -363,6 +365,26 @@ class KerasAccuracyTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
 
+  def test_accuracy_ragged(self):
+    acc_obj = metrics.Accuracy(name='my_acc')
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    rt1 = ragged_factory_ops.constant([[1], [2], [3], [4]])
+    rt2 = ragged_factory_ops.constant([[1], [2], [3], [4]])
+    update_op = acc_obj.update_state(rt1, rt2)
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    rt1 = ragged_factory_ops.constant([[2], [1]])
+    rt2 = ragged_factory_ops.constant([[2], [0]])
+    sw_ragged = ragged_factory_ops.constant([[0.5], [0.2]])
+    result_t = acc_obj(rt1, rt2, sample_weight=sw_ragged)
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
+
   def test_binary_accuracy(self):
     acc_obj = metrics.BinaryAccuracy(name='my_acc')
 
@@ -395,10 +417,39 @@ class KerasAccuracyTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.67, 2)  # 4.5/6.7
 
+  def test_binary_accuracy_ragged(self):
+    acc_obj = metrics.BinaryAccuracy(name='my_acc')
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    rt1 = ragged_factory_ops.constant([[1], [0]])
+    rt2 = ragged_factory_ops.constant([[1], [0]])
+    update_op = acc_obj.update_state(rt1, rt2)
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check y_true squeeze only supported for dense tensors and is
+    # not supported by ragged tensor (different ranks). --> error
+    rt1 = ragged_factory_ops.constant([[[1], [1]]])
+    rt2 = ragged_factory_ops.constant([[1], [0]])
+    with self.assertRaises(ValueError):
+      result_t = acc_obj(rt1, rt2)
+      result = self.evaluate(result_t)
+
   def test_binary_accuracy_threshold(self):
     acc_obj = metrics.BinaryAccuracy(threshold=0.7)
     self.evaluate(variables.variables_initializer(acc_obj.variables))
     result_t = acc_obj([[1], [1], [0], [0]], [[0.9], [0.6], [0.4], [0.8]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.5, 2)
+
+  def test_binary_accuracy_threshold_ragged(self):
+    acc_obj = metrics.BinaryAccuracy(threshold=0.7)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+    rt1 = ragged_factory_ops.constant([[1], [1], [0], [0]])
+    rt2 = ragged_factory_ops.constant([[0.9], [0.6], [0.4], [0.8]])
+    result_t = acc_obj(rt1, rt2)
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.5, 2)
 
@@ -425,6 +476,26 @@ class KerasAccuracyTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
+  def test_categorical_accuracy_ragged(self):
+    acc_obj = metrics.CategoricalAccuracy(name='my_acc')
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    rt1 = ragged_factory_ops.constant([[0, 0, 1], [0, 1, 0]])
+    rt2 = ragged_factory_ops.constant([[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    update_op = acc_obj.update_state(rt1, rt2)
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    rt1 = ragged_factory_ops.constant([[0, 0, 1], [0, 1, 0]])
+    rt2 = ragged_factory_ops.constant([[0.1, 0.1, 0.8], [0.05, 0, 0.95]])
+    sample_weight = ragged_factory_ops.constant([[0.5], [0.2]])
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      result_t = acc_obj(rt1, rt2, sample_weight)
+      result = self.evaluate(result_t)
+
   def test_sparse_categorical_accuracy(self):
     acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
 
@@ -447,6 +518,19 @@ class KerasAccuracyTest(test.TestCase):
                        [[0.5], [0.2]])
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  def test_sparse_categorical_accuracy_ragged(self):
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
+
+    # verify that correct value is returned
+    rt1 = ragged_factory_ops.constant([[2], [1]])
+    rt2 = ragged_factory_ops.constant([[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      # sparse_categorical_accuracy is not supported for composite/ragged
+      # tensors.
+      update_op = acc_obj.update_state(rt1, rt2)
+      self.evaluate(update_op)
 
   def test_sparse_categorical_accuracy_mismatched_dims(self):
     acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')

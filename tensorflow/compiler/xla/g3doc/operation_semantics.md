@@ -2261,7 +2261,7 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     at `update_window_dims` in `U` according to `inserted_window_dims`. More
     formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
-        < `update_window_dims.size`, where `window_dims_to_operand_dims` is the
+        is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
         range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For example, if
         `update_window_dims.size` is `4`, `operand.rank` is `6`, and
@@ -2277,7 +2277,7 @@ In summary, the scatter operation can be defined as follows.
     `operand` array: \
     `output`[`O`] = `operand`[`O`]
 -   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array: \
+    in the `operand` array, if `O` is a valid index for `output`: \
     `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple

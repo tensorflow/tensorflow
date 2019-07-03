@@ -488,6 +488,14 @@ def _flip(image, flip_index, scope_name):
 def rot90(image, k=1, name=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
+
+  For example:
+  ```python
+  a=tf.constant([[[1],[2]],[[3],[4]]])
+  # rotating `a` counter clockwise by 90 degrees
+  a_rot=tf.image.rot90(a,k=1) #rotated `a`
+  print(a_rot) # [[[2],[4]],[[1],[3]]]
+  ```
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -631,6 +639,13 @@ def central_crop(image, central_fraction):
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.central_crop(x, 0.5)
+    ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
@@ -1194,7 +1209,7 @@ def resize_images_v2(images,
   `tf.image.resize_with_pad`.
 
   When 'antialias' is true, the sampling filter will anti-alias the input image
-  as well as interpolate.   When downsampling an image with [anti-aliasing](
+  as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
   'antialias' has no effect when upsampling an image.
@@ -1664,6 +1679,12 @@ def adjust_gamma(image, gamma=1, gain=1):
     gain  : A scalar or tensor. The constant multiplier.
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_gamma(x, 0.2)
+    ```
   Raises:
     ValueError: If gamma is negative.
   Notes:
@@ -1724,8 +1745,22 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Returns:
     `image`, converted to `dtype`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
+    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
+    ```
+    
+  Raises:
+    AttributeError: Raises an attribute error when dtype is neither
+    float nor integer
   """
   image = ops.convert_to_tensor(image, name='image')
+  dtype = dtypes.as_dtype(dtype)
+  if not dtype.is_floating and not dtype.is_integer:
+    raise AttributeError('dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
@@ -1889,6 +1924,13 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_hue(x, 0.2)
+    ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -2579,8 +2621,91 @@ def non_max_suppression(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
-                                                iou_threshold, score_threshold)
+    return gen_image_ops.non_max_suppression_v3(boxes, scores,
+                                                max_output_size,
+                                                iou_threshold,
+                                                score_threshold)
+
+
+@tf_export('image.non_max_suppression_with_scores')
+def non_max_suppression_with_scores(boxes,
+                                    scores,
+                                    max_output_size,
+                                    iou_threshold=0.5,
+                                    score_threshold=float('-inf'),
+                                    soft_nms_sigma=0.0,
+                                    name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  `[y1, x1, y2, x2]`, where `(y1, x1)` and `(y2, x2)` are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval `[0, 1]`) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system.  Note that this
+  algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather` operation.  For example:
+    ```python
+    selected_indices, selected_scores = tf.image.non_max_suppression_v2(
+        boxes, scores, max_output_size, iou_threshold=1.0, score_threshold=0.1,
+        soft_nms_sigma=0.5)
+    selected_boxes = tf.gather(boxes, selected_indices)
+    ```
+
+  This function generalizes the `tf.image.non_max_suppression` op by also
+  supporting a Soft-NMS (with Gaussian weighting) mode (c.f.
+  Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+  of other overlapping boxes instead of directly causing them to be pruned.
+  Consequently, in contrast to `tf.image.non_max_suppression`,
+  `tf.image.non_max_suppression_v2` returns the new scores of each input box in
+  the second output, `selected_scores`.
+
+  To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+  larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
+  `tf.image.non_max_suppression_v2` is identical to that of
+  `tf.image.non_max_suppression` (except for the extra output) both in function
+  and in running time.
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    soft_nms_sigma: A scalar float representing the Soft NMS sigma parameter;
+      See Bodla et al, https://arxiv.org/abs/1704.04503).  When
+      `soft_nms_sigma=0.0` (which is default), we fall back to standard (hard)
+      NMS.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    selected_scores: A 1-D float tensor of shape `[M]` representing the
+      corresponding scores for each selected box, where `M <= max_output_size`.
+      Scores only differ from corresponding input scores when using Soft NMS
+      (i.e. when `soft_nms_sigma>0`)
+  """
+  with ops.name_scope(name, 'non_max_suppression_with_scores'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    soft_nms_sigma = ops.convert_to_tensor(
+        soft_nms_sigma, name='soft_nms_sigma')
+    (selected_indices, selected_scores, _
+    ) = gen_image_ops.non_max_suppression_v5(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        soft_nms_sigma, pad_to_max_output_size=False)
+    return selected_indices, selected_scores
 
 
 @tf_export('image.non_max_suppression_padded')
@@ -3553,6 +3678,19 @@ def extract_glimpse(
 
   Returns:
     A `Tensor` of type `float32`.
+
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
+    CHANNELS = 1
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
+      offsets=[[1, 1]], centered=False, normalized=False)
+     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,
@@ -3619,6 +3757,19 @@ def extract_glimpse_v2(
 
   Returns:
     A `Tensor` of type `float32`.
+
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
+    CHANNELS = 1
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
+      offsets=[[1, 1]], centered=False, normalized=False)
+     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,

@@ -70,14 +70,14 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     x1 = input_layer_lib.Input(shape=(1,))
     layer = MyLayer()
-    _ = layer.apply(x1)
+    _ = layer(x1)
 
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 1)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
     x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer.apply(x2)
+    y2 = layer(x2)
 
     self.assertEqual(len(layer.updates), 3)
     self.assertEqual(len(layer.get_updates_for(x1)), 1)
@@ -90,7 +90,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer.apply(x3)
+    _ = layer(x3)
     self.assertEqual(len(network.updates), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
@@ -112,7 +112,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = keras.layers.BatchNormalization()
-    _ = layer.apply(x1)
+    _ = layer(x1)
 
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
@@ -142,14 +142,14 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     x1 = input_layer_lib.Input(shape=(1,))
     layer = MyLayer()
-    _ = layer.apply(x1)
+    _ = layer(x1)
 
     self.assertEqual(len(layer.losses), 2)
     self.assertEqual(len(layer.get_losses_for(x1)), 1)
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
     x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer.apply(x2)
+    y2 = layer(x2)
 
     self.assertEqual(len(layer.losses), 3)
     self.assertEqual(len(layer.get_losses_for(x1)), 1)
@@ -163,7 +163,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer.apply(x3)
+    _ = layer(x3)
     self.assertEqual(len(network.losses), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
@@ -967,6 +967,18 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertTrue(model.trainable)
     w = model.add_weight('w', [], initializer=keras.initializers.Constant(1))
     self.assertEqual(dtypes.int64, w.dtype)
+
+  def test_disconnected_inputs(self):
+    input_tensor1 = input_layer_lib.Input(shape=[200], name='a')
+    input_tensor2 = input_layer_lib.Input(shape=[10], name='b')
+    output_tensor1 = keras.layers.Dense(units=10)(input_tensor1)
+
+    net = keras.engine.network.Network(
+        inputs=[input_tensor1, input_tensor2], outputs=[output_tensor1])
+    net2 = keras.engine.network.Network.from_config(net.get_config())
+    self.assertLen(net2.inputs, 2)
+    self.assertEqual('a', net2.layers[0].name)
+    self.assertEqual('b', net2.layers[1].name)
 
 
 class DeferredModeTest(test.TestCase):

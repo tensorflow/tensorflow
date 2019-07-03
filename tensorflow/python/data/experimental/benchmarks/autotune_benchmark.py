@@ -22,7 +22,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -42,7 +41,7 @@ class AutotuneBenchmark(test.Benchmark):
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
     dataset = dataset.map(
-        math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
+        math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
@@ -78,7 +77,7 @@ class AutotuneBenchmark(test.Benchmark):
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
     dataset = dataset.map(
-        math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
+        math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.batch(batch_size=batch_size)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
@@ -118,7 +117,7 @@ class AutotuneBenchmark(test.Benchmark):
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
         cycle_length=10,
-        num_parallel_calls=optimization.AUTOTUNE)
+        num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
@@ -164,21 +163,21 @@ class AutotuneBenchmark(test.Benchmark):
       return a, math_ops.matmul(x, y)
 
     dataset = dataset_a
-    dataset = dataset.map(f1, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
-        num_parallel_calls=optimization.AUTOTUNE,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
         cycle_length=2)
 
     dataset = dataset_ops.Dataset.zip((dataset, dataset_b))
-    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f2, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
-        num_parallel_calls=optimization.AUTOTUNE,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
         cycle_length=2)
 
     dataset = dataset_ops.Dataset.zip((dataset, dataset_c))
-    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f2, num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune

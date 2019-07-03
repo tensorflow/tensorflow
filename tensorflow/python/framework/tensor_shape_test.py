@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -223,7 +225,7 @@ class DimensionTest(test_util.TensorFlowTestCase):
       _ = 6 / two
 
 
-class ShapeTest(test_util.TensorFlowTestCase):
+class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testUnknownShape(self):
     s = tensor_shape.TensorShape(None)
@@ -306,22 +308,54 @@ class ShapeTest(test_util.TensorFlowTestCase):
     tensor_shape.TensorShape(
         [None, None, None]).assert_is_compatible_with(unknown[1:4])
 
-  def testConcatenate(self):
+  @parameterized.named_parameters(
+      ("Concatenate", lambda x, y: x.concatenate(y)),
+      ("Add", lambda x, y: x + y),
+      ("RAdd", lambda x, y: y.__radd__(x)))
+  def testConcatenate(self, concatenate_fn):
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
-        tensor_shape.TensorShape([1, 2]).concatenate(
+        concatenate_fn(
+            tensor_shape.TensorShape([1, 2]),
             tensor_shape.TensorShape([3, 4])))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
-        tensor_shape.TensorShape([1, 2]).concatenate(
+        concatenate_fn(
+            tensor_shape.TensorShape([1, 2]),
             tensor_shape.TensorShape(None)))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
-        tensor_shape.TensorShape(None).concatenate(
+        concatenate_fn(
+            tensor_shape.TensorShape(None),
             tensor_shape.TensorShape([3, 4])))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
-        tensor_shape.TensorShape(None).concatenate(
+        concatenate_fn(
+            tensor_shape.TensorShape(None),
             tensor_shape.TensorShape(None)))
+
+  @parameterized.named_parameters(
+      ("Concatenate", lambda x, y: x.concatenate(y)),
+      ("Add", lambda x, y: x + y))
+  def testConcatenateWithDimension(self, concatenate_fn):
     tensor_shape.TensorShape([1, 2, 3]).assert_is_compatible_with(
-        tensor_shape.TensorShape([1, 2]).concatenate(
+        concatenate_fn(
+            tensor_shape.TensorShape([1, 2]),
             tensor_shape.Dimension(3)))
+
+  @parameterized.named_parameters(
+      ("List", [3, 4, 5]),
+      ("Tuple", (3, 4, 5)))
+  def testAdd_nonTensorShape(self, addend):
+    two = tensor_shape.TensorShape([2])
+    result = two + addend
+    self.assertIsInstance(result, tensor_shape.TensorShape)
+    tensor_shape.TensorShape([2, 3, 4, 5]).assert_is_compatible_with(result)
+
+  @parameterized.named_parameters(
+      ("List", [2, 3, 4]),
+      ("Tuple", (2, 3, 4)))
+  def testRAdd_nonTensorShape(self, addend):
+    five = tensor_shape.TensorShape([5])
+    result = addend + five
+    self.assertIsInstance(result, tensor_shape.TensorShape)
+    tensor_shape.TensorShape([2, 3, 4, 5]).assert_is_compatible_with(result)
 
   def _testMostSpecificCompatibleShapeHelper(self, x, y, expected):
     mcs = tensor_shape.TensorShape(x).most_specific_compatible_shape(

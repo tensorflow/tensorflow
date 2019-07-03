@@ -203,7 +203,7 @@ class RemoteExecutionTest(test.TestCase):
     """Basic server connection."""
     remote.connect_to_remote_host(self._cached_server1_target)
 
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+    with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
       x1 = array_ops.ones([2, 2])
       x2 = array_ops.ones([2, 2])
       y = math_ops.matmul(x1, x2)

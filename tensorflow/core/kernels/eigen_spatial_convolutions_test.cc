@@ -1384,6 +1384,9 @@ static void PackRhsHelper(int iters,
                           int filter_count, int filter_cols, int filter_rows,
                           /* Input strides: */
                           int col_strides, int row_strides,
+                          /* Patch inflate strides: */
+                          int patch_col_inflate_stride,
+                          int patch_row_inflate_stride,
                           /* Block dimensions: */
                           Index block_rows, Index block_cols) {
   // Set random seed for benchmark repeatability.
@@ -1477,17 +1480,19 @@ static void PackRhsHelper(int iters,
 
     // 1. Extract image patches from input tensor. All strides are `1`.
     const auto image_patch_op = TensorImagePatchOp<Dynamic, Dynamic, ArgType>(
-        tensor_map,                                            //
-        filter_rows, filter_cols,                              //
-        row_strides, col_strides,                              //
-        /*in_row_strides=*/1, /*in_col_strides=*/1,            //
-        /*row_inflate_strides=*/1, /*col_inflate_strides=*/1,  //
+        tensor_map,                                          //
+        filter_rows, filter_cols,                            //
+        row_strides, col_strides,                            //
+        /*in_row_strides=*/1, /*in_col_strides=*/1,          //
+        patch_row_inflate_stride, patch_col_inflate_stride,  //
         Eigen::PADDING_SAME, /*padding_value=*/0.0);
 
     // 2. Reshape extracted patches into "virtual" 2d tensor.
     // NOTE: This is valid for PADDING_SAME only.
-    Index output_rows = input_rows / row_strides;
-    Index output_cols = input_cols / col_strides;
+    Index input_rows_eff = (input_rows - 1) * patch_row_inflate_stride + 1;
+    Index input_cols_eff = (input_cols - 1) * patch_col_inflate_stride + 1;
+    Index output_rows = input_rows_eff / row_strides;
+    Index output_cols = input_cols_eff / col_strides;
     NewDimension reshape_dims;
     reshape_dims[0] = input_depth * filter_rows * filter_cols;    // patch size
     reshape_dims[1] = output_rows * output_cols * input_batches;  // num_patches
@@ -1735,113 +1740,137 @@ static void PackLhsHelper(int iters,
 //   FW: filter width
 //   SH: stride in height dimensions
 //   SW: stride in width dimensions
+//  ISH: patch inflate stride in height dimension
+//  ISW: patch inflate stride in width dimension
 //   BR: block rows
 //   BC: block cols
 
 #define BM_CONCAT(a, b) a##b
 
-#define BM_RHS_NAME(prefix, T, N, H, W, C, FC, FH, FW, SH, SW, BR, BC)    \
-  BM_CONCAT(                                                              \
-      BM_##prefix##_##T##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW, \
-      _s##SH##x##SW##_B##BR##x##BC)
+#define BM_RHS_NAME(prefix, T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, \
+                    BC)                                                      \
+  BM_CONCAT(                                                                 \
+      BM_##prefix##_##T##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW,    \
+      _s##SH##x##SW##_is##ISH##x##ISW##_B##BR##x##BC)
 
-#define BM_PackRhs(T, N, H, W, C, FC, FH, FW, SH, SW, BR, BC)             \
-  static void BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, BR, \
-                          BC)(int iters) {                                \
-    PackRhsHelper<T>(iters, N, H, W, C, FC, FH, FW, SH, SW, BR, BC);      \
-  }                                                                       \
-  BENCHMARK(BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, BR, BC))
+#define BM_PackRhs(T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, BC)        \
+  static void BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, ISH,     \
+                          ISW, BR, BC)(int iters) {                            \
+    PackRhsHelper<T>(iters, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, BC); \
+  }                                                                            \
+  BENCHMARK(BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW,  \
+                        BR, BC))
 
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
 
-using qint8 = Eigen::QInt8;
-
 // NOTE: This is the most common case in Tensorflow models.
 // Fast path: input channel dimension is the multiple of the packet size.
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 32,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 32,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
 // Slow path: input channel dimension is not the multiple of the packet size.
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 30,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 30,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
 // Slow path with input channel dimension smaller than the packet size.
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 256, 256,  //
-           /*channels*/ 4,      //
-           /*num_filters*/ 16,  //
-           /*filter*/ 8, 8,     //
-           /*stride*/ 1, 1,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 256, 256,  //
-           /*channels*/ 4,      //
-           /*num_filters*/ 16,  //
-           /*filter*/ 8, 8,     //
-           /*stride*/ 2, 4,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*stride*/ 2, 4,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
 
 // Short and wide block with small input channel dimension.
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 4,      //
-           /*num_filters*/ 16,  //
-           /*filter*/ 3, 3,     //
-           /*stride*/ 1, 1,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 36, 432);
 
-BM_PackRhs(/*type*/ float,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 4,      //
-           /*num_filters*/ 16,  //
-           /*filter*/ 3, 3,     //
-           /*stride*/ 2, 2,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 36, 432);
 
-BM_PackRhs(/*type*/ qint8,      //
-           /*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 32,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1,     //
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 32, 32,               //
+           /*channels*/ 96,                //
+           /*num_filters*/ 96,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 2, 2,  //
+           /*block*/ 272, 240);
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+using qint8 = Eigen::QInt8;
+BM_PackRhs(/*type*/ qint8,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 // -------------------------------------------------------------------------- //
 // Pack LHS

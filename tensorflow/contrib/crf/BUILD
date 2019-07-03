@@ -2,14 +2,14 @@
 #   Contains classes to construct a CRF layer
 #   APIs here are meant to evolve over time.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 py_library(
     name = "crf_py",

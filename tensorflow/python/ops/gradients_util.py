@@ -20,23 +20,23 @@ from __future__ import print_function
 
 import collections
 import contextlib
-import warnings
 
-import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_state
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -44,60 +44,6 @@ from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
-
-
-# Warn the user if we convert a sparse representation to dense with at
-# least this number of elements.
-_LARGE_SPARSE_NUM_ELEMENTS = 100000000
-
-
-def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
-  """Converts an IndexedSlices object `value` to a Tensor.
-
-  NOTE(mrry): This function is potentially expensive.
-
-  Args:
-    value: An ops.IndexedSlices object.
-    dtype: The dtype of the Tensor to be returned.
-    name: Optional name to use for the returned Tensor.
-    as_ref: True if a ref is requested.
-
-  Returns:
-    A dense Tensor representing the values in the given IndexedSlices.
-
-  Raises:
-    ValueError: If the IndexedSlices does not have the same dtype.
-  """
-  _ = as_ref
-  if dtype and not dtype.is_compatible_with(value.dtype):
-    raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
-        (dtype.name, value.dtype.name))
-  if value.dense_shape is None:
-    raise ValueError(
-        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-        % str(value))
-  # TODO(mrry): Consider adding static shape information to
-  # IndexedSlices, to avoid using numpy here.
-  if not context.executing_eagerly():
-    dense_shape_value = tensor_util.constant_value(value.dense_shape)
-    if dense_shape_value is not None:
-      num_elements = np.prod(dense_shape_value)
-      if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
-        warnings.warn(
-            "Converting sparse IndexedSlices to a dense Tensor with %d "
-            "elements. This may consume a large amount of memory." %
-            num_elements)
-    else:
-      warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-          "This may consume a large amount of memory.")
-  return math_ops.unsorted_segment_sum(
-      value.values, value.indices, value.dense_shape[0], name=name)
-
-
-ops.register_tensor_conversion_function(ops.IndexedSlices,
-                                        _IndexedSlicesToTensor)
 
 
 def _MarkReachedOps(from_ops, reached_ops, func_graphs):
@@ -171,7 +117,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
   # between from_ops and to_ops
 
   # 'loop_state' is None if there are no while loops.
-  loop_state = control_flow_ops.MaybeCreateControlFlowState(
+  loop_state = control_flow_state.MaybeCreateControlFlowState(
       between_op_list, between_ops, colocate_gradients_with_ops)
 
   # Initialize pending count for between ops.
@@ -214,9 +160,7 @@ def _DefaultGradYs(grad_ys,
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
   grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
   new_grad_ys = []
-  for i in xrange(len(grad_ys)):
-    grad_y = grad_ys[i]
-    y = ys[i]
+  for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
       if grad_y is None:
         if y.dtype.is_complex:
@@ -719,7 +663,7 @@ def _GradientsHelper(ys,
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
-                out_grads[i] = control_flow_ops.ZerosLikeOutsideLoop(op, i)
+                out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with src_graph._original_op(op):
@@ -849,7 +793,7 @@ def _GetGrad(grads, t, unconnected_gradients):
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      t_dtype = t.dtype if t.dtype != dtypes.resource else dtypes.float32
+      t_dtype = default_gradient.get_zeros_dtype(t)
       return array_ops.zeros_like(t, dtype=t_dtype)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
@@ -869,17 +813,6 @@ def _GetGrads(grads, op):
     return grads[op]
   else:
     return [[] for _ in xrange(len(op.outputs))]
-
-
-def _HandleNestedIndexedSlices(grad):
-  assert isinstance(grad, ops.IndexedSlices)
-  if isinstance(grad.values, ops.Tensor):
-    return grad
-  else:
-    assert isinstance(grad.values, ops.IndexedSlices)
-    g = _HandleNestedIndexedSlices(grad.values)
-    return ops.IndexedSlices(g.values, array_ops.gather(
-        grad.indices, g.indices), g.dense_shape)
 
 
 def _AccumulatorShape(inputs):
@@ -948,23 +881,23 @@ class AggregationMethod(object):
   aggregating gradients:
 
   *  `ADD_N`: All of the gradient terms are summed as part of one
-     operation using the "AddN" op (see `tf.add_n`). This 
-     method has the property that all gradients must be ready and 
+     operation using the "AddN" op (see `tf.add_n`). This
+     method has the property that all gradients must be ready and
      buffered separately in memory before any aggregation is performed.
   *  `DEFAULT`: The system-chosen default aggregation method.
 
-  The following aggregation methods are experimental and may not 
+  The following aggregation methods are experimental and may not
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce 
-    performance, but it can improve memory utilization because the 
+    using the "AddN" op. This method of summing gradients may reduce
+    performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
   * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
-    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the 
+    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the
     overall sum in a single buffer that is shared across threads.
-    This method of summing gradients can result in a lower memory footprint 
+    This method of summing gradients can result in a lower memory footprint
     and lower latency at the expense of higher CPU/GPU utilization.
     For gradients of types that "AccumulateN" does not support, this
     summation method falls back on the behavior of `EXPERIMENTAL_TREE`
@@ -1069,36 +1002,8 @@ def _AggregatedGrads(grads,
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grads[i] = _AggregateIndexedSlicesGradients(out_grad)
+        out_grads[i] = backprop.aggregate_indexed_slices_gradients(out_grad)  # pylint: disable=protected-access
     else:  # not out_grad
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
-
-
-def _AggregateIndexedSlicesGradients(grads):
-  """Aggregates gradients containing `IndexedSlices`s."""
-  if len(grads) < 1:
-    return None
-  elif len(grads) == 1:
-    return grads[0]
-  else:
-    grads = [g for g in grads if g is not None]
-    # If any gradient is a `Tensor`, sum them up and return a dense tensor
-    # object.
-    if any(isinstance(g, ops.Tensor) for g in grads):
-      return math_ops.add_n(grads)
-
-    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
-    # int64. It is to make sure the inputs of `concat` all have same the data
-    # type.
-    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
-
-    grads = [_HandleNestedIndexedSlices(x) for x in grads]  # pylint: disable=protected-access
-    # Form IndexedSlices out of the concatenated values and indices.
-    concat_grad = ops.IndexedSlices(
-        array_ops.concat([x.values for x in grads], axis=0),
-        array_ops.concat([x.indices for x in grads], axis=0),
-        grads[0].dense_shape)
-
-    return concat_grad

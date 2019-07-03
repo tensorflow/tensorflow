@@ -244,15 +244,18 @@ class MutableNodeView
 };
 
 class MutationNewNode {
+ public:
+  MutationNewNode() {}
+
  private:
   explicit MutationNewNode(Mutation* mutation, int mutation_counter, int index)
       : mutation_(mutation),
         mutation_counter_(mutation_counter),
         index_(index) {}
 
-  const Mutation* mutation_;
-  const int mutation_counter_;
-  const int index_;
+  Mutation* mutation_ = nullptr;
+  int mutation_counter_ = internal::kMissingSlot;
+  int index_ = internal::kMissingIndex;
 
   friend class Mutation;
 };

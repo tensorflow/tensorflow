@@ -408,6 +408,12 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
 
+  // Creates an instruction to update the random number generator state to
+  // reflect the new state after `delta` units of 32 random bits are generated
+  // and returns the old state.
+  static std::unique_ptr<HloInstruction> CreateRngGetAndUpdateState(
+      const Shape& shape, int64 delta);
+
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
   static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
@@ -491,28 +497,43 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_groups={{0,2},{1,3}} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
-  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
-  // not be applied cross modules.
+  // `channel_id`: for Allreduce nodes from different modules, if
+  // they have the same channel_id, they will be 'Allreduce'd. If
+  // empty, Allreduce will not be applied cross modules.
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& channel_id);
 
-  // This op handles the communication of an Alltoall operation. On each core,
-  // the operands are N ops in the same shape, where N is the number of cores
-  // participating the Alltoall. Then the N operands are scattered to N cores,
-  // e.g., the ith operand is sent to the ith core. Then each core gathers the
-  // received data into a tuple.
+  // An all-to-all op takes N array operands of the same shape and scatters them
+  // to N replicas.  Each replica gathers the results into a tuple.
   //
-  // - `replica_groups`: each ReplicaGroup contains a list of replica id. If
-  // empty, all replicas belong to one group in the order of 0 - (n-1). Alltoall
-  // will be applied within subgroups in the specified order. For example,
-  // replica groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied
-  // within replica 1, 2, 3, and in the gather phase, the received blocks will
-  // be concatenated in the order of 1, 2, 3; another Alltoall will be applied
-  // within replica 4, 5, 0, and the concatenation order is 4, 5, 0.
+  // For example, suppose we have 3 replicas, with replica i passing inputs
+  // [a_i, b_i, c_i] to its all-to-all op.  Then the resulting tuples are
+  //
+  //   replica 0: (a_0, a_1, a_2)
+  //   replica 1: (b_0, b_1, b_2)
+  //   replica 2: (c_0, c_1, c_2).
+  //
+  // If replica_groups is set, the op is sharded and the replicas are permuted.
+  // To explain by way of example, suppose we have replica_groups={{1,2},{3,0}}.
+  // Then each replica passes two operands, say [a_i, b_i], and the result is
+  //
+  //   replica 0: (b_3, b_0)
+  //   replica 1: (a_1, a_2)
+  //   replica 2: (b_1, b_2)
+  //   replica 3: (a_3, a_0).
+  //
+  // All replica groups must have the same number of elements, and the number of
+  // operands must be equal to the size of one replica group.  Each replica must
+  // appear in exactly one group.
+  //
+  // Note that this instruction is different than the all-to-all op in
+  // xla_builder.h.  The version in XlaBuilder takes one input and slices it,
+  // and then concatenates the results into a single array.  This instruction
+  // takes multiple inputs and returns a tuple; it doesn't slice or concatenate.
+  // It is used to implement the higher-level instruction in XlaBuilder.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups);
@@ -524,7 +545,8 @@ class HloInstruction {
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId();
@@ -697,8 +719,9 @@ class HloInstruction {
 
   // Creates a reshape instruction, where the operand is flattened row-major
   // order and then reshaped to the given result shape.
-  static std::unique_ptr<HloInstruction> CreateReshape(const Shape& shape,
-                                                       HloInstruction* operand);
+  static std::unique_ptr<HloInstruction> CreateReshape(
+      const Shape& shape, HloInstruction* operand,
+      int64 inferred_dimension = -1);
 
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
@@ -931,7 +954,7 @@ class HloInstruction {
       return false;
     }
 
-    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Two AllReduces are Identical if they have the same channel_id.
     // Their operands don't have to be Identical.
     if (!IsCrossModuleAllReduce()) {
       // Use an explicit loop rather than ContainerEquals, because copying
@@ -1032,12 +1055,6 @@ class HloInstruction {
                                 const CompareFunction& operand_order,
                                 bool call_finish_visit = true);
 
-  // Performs a postorder DFS visit using this node as the root. Calls the given
-  // visitor function at each instruction.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
@@ -1124,6 +1141,15 @@ class HloInstruction {
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
+
+  // Prints an instruction to a string.
+  //
+  // The canonical string representation needs to name operands and instruction
+  // names in a consistent way. This is implemented through the
+  // canonical_name_map.
+  string ToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
@@ -1404,8 +1430,9 @@ class HloInstruction {
   // Delegates to HloFftInstruction::fft_length.
   const std::vector<int64>& fft_length() const;
 
-  // Delegates to HloSendRecvInstruction::channel_id.
-  int64 channel_id() const;
+  // Delegates to HloChannelInstruction::channel_id.
+  absl::optional<int64> channel_id() const;
+  void set_channel_id(const absl::optional<int64>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual const std::vector<int64>& dimensions() const {
@@ -1420,6 +1447,9 @@ class HloInstruction {
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64 dimension() const;
+
+  // Delegates to HloReshapeInstruction::inferred_dimension.
+  int64 inferred_dimension() const;
 
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
@@ -1546,14 +1576,6 @@ class HloInstruction {
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
-
-  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
-  string all_reduce_barrier() const;
-  void set_all_reduce_barrier(const string& barrier);
-
-  // Delegates to HloAllReduceInstruction::all_reduce_id.
-  absl::optional<int64> all_reduce_id() const;
-  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns data on the window in a windowed operation such as
   // convolution.
@@ -1708,14 +1730,6 @@ class HloInstruction {
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
       const absl::optional<int64>& operand_idx) const;
-  // Prints an instruction to a string.
-  //
-  // The canonical string representation needs to name operands and instruction
-  // names in a consistent way. This is implemented through the
-  // canonical_name_map.
-  string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
 
   // Prints an operand to a string.
   virtual string OperandsToStringWithCanonicalNameMap(
@@ -1747,8 +1761,8 @@ class HloInstruction {
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
 
-  // Returns how this instruction uses elements of its `i`th operand.
-  UseKind OperandElementUse(int64 i) const;
+  // Returns how this instruction uses elements of its operand at operand_num.
+  UseKind OperandElementUse(int64 operand_num) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -1824,6 +1838,8 @@ class HloInstruction {
 // Explicit instantiations in hlo_instruction.cc.
 extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
+extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(

@@ -39,10 +39,13 @@ from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_im
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
+from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
+from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
+from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -252,6 +255,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     self._trackable_obj = trackable_obj
     self.allow_custom_ops = False
     self.target_spec = TargetSpec()
+    self._debug_info = None
 
   @classmethod
   def from_concrete_functions(cls, funcs):
@@ -376,12 +380,15 @@ class TFLiteConverterV2(TFLiteConverterBase):
         tensor.set_shape(shape)
 
     self._validate_representative_dataset()
+    self._debug_info = _get_debug_info(
+        _build_debug_info_func(self._funcs[0].graph), graph_def)
 
     converter_kwargs = {
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": self._is_weight_only_quantize(),
         "target_ops": self.target_spec.supported_ops,
+        "debug_info": self._debug_info
     }
 
     # Converts model.
@@ -506,7 +513,8 @@ class TFLiteConverter(TFLiteConverterBase):
                input_tensors,
                output_tensors,
                input_arrays_with_shape=None,
-               output_arrays=None):
+               output_arrays=None,
+               experimental_debug_info_func=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -522,6 +530,8 @@ class TFLiteConverter(TFLiteConverterBase):
       output_arrays: List of output tensors to freeze graph with. Use only when
         graph cannot be loaded into TensorFlow and when `input_tensors` and
         `output_tensors` are None. (default None)
+      experimental_debug_info_func: An experimental function to retrieve the
+        graph debug info for a set of nodes from the `graph_def`.
 
     Raises:
       ValueError: Invalid arguments.
@@ -544,6 +554,8 @@ class TFLiteConverter(TFLiteConverterBase):
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
     self.target_spec = TargetSpec()
+    self._debug_info_func = experimental_debug_info_func
+    self._debug_info = None
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -568,7 +580,11 @@ class TFLiteConverter(TFLiteConverterBase):
       TFLiteConverter class.
     """
     graph_def = _freeze_graph(sess, input_tensors, output_tensors)
-    return cls(graph_def, input_tensors, output_tensors)
+    return cls(
+        graph_def,
+        input_tensors,
+        output_tensors,
+        experimental_debug_info_func=_build_debug_info_func(sess.graph))
 
   @classmethod
   def from_frozen_graph(cls,
@@ -699,7 +715,10 @@ class TFLiteConverter(TFLiteConverterBase):
     result = _freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
                                  output_arrays, tag_set, signature_key)
     return cls(
-        graph_def=result[0], input_tensors=result[1], output_tensors=result[2])
+        graph_def=result[0],
+        input_tensors=result[1],
+        output_tensors=result[2],
+        experimental_debug_info_func=_build_debug_info_func(result[3]))
 
   @classmethod
   def from_keras_model_file(cls,
@@ -742,8 +761,12 @@ class TFLiteConverter(TFLiteConverterBase):
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
           concrete_func)
       _set_tensor_shapes(frozen_func.inputs, input_shapes)
-      return cls(frozen_func.graph.as_graph_def(), frozen_func.inputs,
-                 frozen_func.outputs)
+      return cls(
+          frozen_func.graph.as_graph_def(),
+          frozen_func.inputs,
+          frozen_func.outputs,
+          experimental_debug_info_func=_build_debug_info_func(
+              frozen_func.graph))
 
     # Handles Keras when Eager mode is disabled.
     _keras.backend.clear_session()
@@ -764,7 +787,11 @@ class TFLiteConverter(TFLiteConverterBase):
     _set_tensor_shapes(input_tensors, input_shapes)
 
     graph_def = _freeze_graph(sess, input_tensors, output_tensors)
-    return cls(graph_def, input_tensors, output_tensors)
+    return cls(
+        graph_def,
+        input_tensors,
+        output_tensors,
+        experimental_debug_info_func=_build_debug_info_func(sess.graph))
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -903,12 +930,15 @@ class TFLiteConverter(TFLiteConverterBase):
       except Exception:
         optimized_graph = self._graph_def
 
+    self._debug_info = _get_debug_info(self._debug_info_func, optimized_graph)
+
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
           input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
+          debug_info=self._debug_info,
           **converter_kwargs)
     else:
       result = _toco_convert_graph_def(

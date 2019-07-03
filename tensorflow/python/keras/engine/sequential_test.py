@@ -393,6 +393,30 @@ class TestSequential(keras_parameterized.TestCase):
         ValueError, 'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer(input_shape=(3,))])
 
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_add_after_compile_deferred(self):
+    model = keras.Sequential([keras.layers.Dense(3)])
+
+    self.assertFalse(model.built)
+    self.assertFalse(model.inputs)
+    self.assertFalse(model.outputs)
+
+    model.compile('adam', loss='mse')
+    model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
+
+    self.assertTrue(model.built)
+    self.assertTrue(model.inputs)
+    self.assertTrue(model.outputs)
+
+    model.add(keras.layers.Dense(3))
+
+    self.assertTrue(model.built)
+    self.assertTrue(model.inputs)
+    self.assertTrue(model.outputs)
+
+    model.compile('adam', loss='mse')
+    model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 

@@ -321,7 +321,7 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::NumSchedulableCPUs();
+        runner_threadpool_size = port::MaxParallelism();
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
@@ -471,6 +471,12 @@ class IteratorBase {
   // If no more outputs remain in this iterator's range, `true` will
   // be stored in `*end_of_sequence`, and the content of
   // `*out_tensors` will be undefined.
+  //
+  // Implementations should never return `OutOfRange` error. If at end of
+  // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
+  // Internally raised `OutOfRange` errors that do not imply end of sequence
+  // should be converted to a different error type before being propagated to
+  // the caller.
   //
   // This method is thread-safe.
   //
@@ -877,6 +883,35 @@ class DatasetIterator : public DatasetBaseIterator {
   const DatasetType* const typed_dataset_;  // Not owned.
 };
 
+template <typename T>
+Status ParseScalarArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name, T* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a scalar");
+  }
+  *output = argument_t->scalar<T>()();
+  return Status::OK();
+}
+
+template <typename T>
+Status ParseVectorArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name,
+                           std::vector<T>* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a vector");
+  }
+  int size = argument_t->vec<T>().size();
+  output->reserve(size);
+  for (int i = 0; i < size; ++i) {
+    output->push_back(argument_t->vec<T>()(i));
+  }
+  return Status::OK();
+}
+
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
@@ -888,35 +923,6 @@ class DatasetOpKernel : public OpKernel {
   // Subclasses should implement this method. It will be called during Compute
   // execution.
   virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
-
-  template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a scalar");
-    }
-    *output = argument_t->scalar<T>()();
-    return Status::OK();
-  }
-
-  template <typename T>
-  Status ParseVectorArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name,
-                             std::vector<T>* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a vector");
-    }
-    int size = argument_t->vec<T>().size();
-    output->reserve(size);
-    for (int i = 0; i < size; ++i) {
-      output->push_back(argument_t->vec<T>()(i));
-    }
-    return Status::OK();
-  }
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

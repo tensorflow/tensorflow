@@ -176,12 +176,12 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   return session_;
 }
 
 bool BaseRemoteRendezvous::is_initialized() {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   return is_initialized_locked();
 }
 
@@ -190,7 +190,7 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
                                   const Tensor& val, const bool is_dead) {
   VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << parsed.FullKey();
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     DCHECK(is_initialized_locked());
     if (!IsLocalDevice(session_->worker_name, parsed.src_device)) {
@@ -209,7 +209,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
   // (e.g. calling session())
   WorkerSession* sess = nullptr;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     if (!is_initialized_locked()) {
       return errors::Internal("ValidateDevices called before initialization.");
@@ -246,9 +246,11 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   // This copy must involve a GPU. Hence, "in" must support DMA
   // (e.g., string tensors do not work on GPU).  Variant copy DMA
   // checks happen inside CopyTensor::ViaDMA.
-  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
-    done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
-                                 " tensor may not be copied from/to a GPU."));
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT &&
+      in.dtype() != DT_RESOURCE) {
+    done(errors::InvalidArgument(
+        "Non-DMA-safe ", DataTypeString(in.dtype()),
+        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
     return;
   }
 

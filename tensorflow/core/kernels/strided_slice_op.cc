@@ -18,9 +18,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
@@ -440,7 +440,7 @@ TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                              \
   REGISTER_KERNEL_BUILDER(Name("StridedSlice")                          \
@@ -536,7 +536,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                         StridedSliceAssignOp<CPUDevice, int32, true>);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type)                                              \

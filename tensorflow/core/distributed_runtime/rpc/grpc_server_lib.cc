@@ -322,13 +322,13 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  channel_cache_.reset(
+  std::shared_ptr<GrpcChannelCache> channel_cache(
       NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);
 
-  const string host_port = channel_cache_->TranslateTask(name_prefix);
+  const string host_port = channel_cache->TranslateTask(name_prefix);
   int requested_port;
 
   auto colon_index = host_port.find_last_of(':');
@@ -343,7 +343,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
 
-  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache_,
+  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache,
                                                     worker_impl(), name_prefix);
   return Status::OK();
 }

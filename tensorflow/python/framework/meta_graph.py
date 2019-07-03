@@ -30,7 +30,6 @@ from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -511,53 +510,6 @@ def strip_graph_default_valued_attrs(meta_graph_def):
 
   # Tell consumers of this graph that default valued attrs have been stripped.
   meta_graph_def.meta_info_def.stripped_default_attrs = True
-
-
-def create_graph_debug_info_def(operations):
-  """Construct and returns a `GraphDebugInfo` protocol buffer.
-
-  Args:
-    operations: An iterable of op.Operation objects having _traceback members.
-
-  Returns:
-    GraphDebugInfo protocol buffer.
-
-  Raises:
-    TypeError: If the arguments are not of the correct proto buffer type.
-  """
-  # Creates an empty GraphDebugInfoDef proto.
-  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
-
-  # Gets the file names and line numbers for the exported node names. Also
-  # collects the unique file names.
-  all_file_names = set()
-  node_to_trace = {}
-  for op in operations:
-    # Gets the stack trace of the operation and then the file location.
-    node_name = op.name
-    node_to_trace[node_name] = error_interpolation.compute_useful_stack(op)
-    for trace in node_to_trace[node_name]:
-      all_file_names.add(trace[0])
-
-  # Sets the `files` field in the GraphDebugInfo proto
-  graph_debug_info_def.files.extend(all_file_names)
-
-  # Builds a mapping between file names and index of the `files` field, so we
-  # only store the indexes for the nodes in the GraphDebugInfo.
-  file_to_index = dict(
-      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
-
-  # Creates the FileLineCol proto for each node and sets the value in the
-  # GraphDebugInfo proto. We only store the file name index for each node to
-  # save the storage space.
-  for node_name, trace in node_to_trace.items():
-    trace_def = graph_debug_info_def.traces[node_name]
-    for file_name, line, func, code in trace:
-      file_index = file_to_index[file_name]
-      trace_def.file_line_cols.add(
-          file_index=file_index, line=line, func=func, code=code)
-
-  return graph_debug_info_def
 
 
 def create_meta_graph_def(meta_info_def=None,
@@ -1105,12 +1057,14 @@ def export_scoped_meta_graph(filename=None,
 
       # Gets the operation from the graph by the name. Exludes variable nodes,
       # so only the nodes in the frozen models are included.
+      # TODO(liufengdb): fix this for functions.
       ops_to_export = []
       for node in scoped_meta_graph_def.graph_def.node:
         scoped_op_name = ops.prepend_name_scope(node.name, export_scope)
-        ops_to_export.append(graph.get_operation_by_name(scoped_op_name))
+        ops_to_export.append(("", graph.get_operation_by_name(scoped_op_name)))
 
-      graph_debug_info = create_graph_debug_info_def(ops_to_export)
+      graph_debug_info = error_interpolation.create_graph_debug_info_def(
+          ops_to_export)
 
       graph_io.write_graph(
           graph_debug_info,

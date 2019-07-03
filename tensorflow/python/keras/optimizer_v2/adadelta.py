@@ -49,7 +49,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
   $$E[g^2]_t := \rho * E[g^2]_{t-1} + (1 - \rho) * g^2$$
   $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
   $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
-  $$x_t := x_{t-1} + \Delta x_{t}
+  $$x_t := x_{t-1} + \Delta x_{t}$$
 
   References
     See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
@@ -119,7 +119,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_apply_adadelta(
@@ -134,7 +134,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_sparse_apply_adadelta(

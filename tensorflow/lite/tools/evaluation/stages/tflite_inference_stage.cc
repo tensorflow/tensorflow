@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -39,13 +40,34 @@ TfLiteModelInfo GetTfliteModelInfo(const Interpreter& interpreter) {
 
 }  // namespace
 
+void TfliteInferenceStage::UpdateModelInfo() {
+  model_info_ = GetTfliteModelInfo(*interpreter_);
+
+  outputs_.clear();
+  outputs_.reserve(interpreter_->outputs().size());
+  for (int i : interpreter_->outputs()) {
+    TfLiteTensor* tensor = interpreter_->tensor(i);
+    outputs_.push_back(tensor->data.raw);
+  }
+}
+
 TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
-    TfLiteDelegate* delegate) {
+    Interpreter::TfLiteDelegatePtr delegate) {
   if (!interpreter_) {
     LOG(ERROR) << "Stage not initialized before calling ApplyCustomDelegate";
     return kTfLiteError;
   }
-  return interpreter_->ModifyGraphWithDelegate(delegate);
+  // Skip if delegate is a nullptr.
+  if (!delegate) {
+    LOG(WARNING)
+        << "Tried to apply null TfLiteDelegatePtr to TfliteInferenceStage";
+    return kTfLiteOk;
+  }
+  delegates_.push_back(std::move(delegate));
+  TF_LITE_ENSURE_STATUS(
+      interpreter_->ModifyGraphWithDelegate(delegates_.back().get()));
+  UpdateModelInfo();
+  return kTfLiteOk;
 }
 
 TfLiteStatus TfliteInferenceStage::Init() {
@@ -96,15 +118,8 @@ TfLiteStatus TfliteInferenceStage::Init() {
       LOG(FATAL) << "Failed to apply delegate %d" << i;
     }
   }
-
   interpreter_->AllocateTensors();
-  model_info_ = GetTfliteModelInfo(*interpreter_);
-
-  outputs_.reserve(interpreter_->outputs().size());
-  for (int i : interpreter_->outputs()) {
-    TfLiteTensor* tensor = interpreter_->tensor(i);
-    outputs_.push_back(tensor->data.raw);
-  }
+  UpdateModelInfo();
 
   return kTfLiteOk;
 }

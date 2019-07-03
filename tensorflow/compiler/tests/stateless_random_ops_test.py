@@ -33,7 +33,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self, include_int=False):
-    allowed_types = {dtypes.float32, dtypes.bfloat16}
+    allowed_types = {dtypes.float64, dtypes.float32, dtypes.bfloat16}
     if include_int:
       allowed_types.update({dtypes.int32, dtypes.int64})
     return self.all_tf_types & allowed_types
@@ -128,7 +128,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
             shape=[n], seed=seed_t, dtype=dtype)
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
         random_test_util.test_truncated_normal(
-            self.assertEqual, self.assertAllClose, dtype, n, y)
+            self.assertEqual, self.assertAllClose, n, y,
+            variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
 
 
 if __name__ == '__main__':

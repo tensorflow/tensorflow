@@ -192,7 +192,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.x depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -480,7 +480,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.z depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -1158,7 +1158,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.z));
   // Holds block plus halo and filter data for blockDim.x depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -1431,7 +1431,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.x));
   // Holds block plus halo and filter data for blockDim.z depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 

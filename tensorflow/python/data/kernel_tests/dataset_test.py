@@ -43,21 +43,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-# For testing deserialization of Datasets represented as functions
-class _RevivedDataset(dataset_ops.DatasetV2):
-
-  def __init__(self, variant, element_structure):
-    self._structure = element_structure
-    super(_RevivedDataset, self).__init__(variant)
-
-  def _inputs(self):
-    return []
-
-  @property
-  def _element_structure(self):
-    return self._structure
-
-
 @test_util.run_all_in_graph_and_eager_modes
 class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -75,8 +60,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn = original_dataset._trace_variant_creation()
       variant = fn()
 
-      revived_dataset = _RevivedDataset(
-          variant, original_dataset._element_structure)
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
       self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
 
   def testAsFunctionWithMapInFlatMap(self):
@@ -88,8 +73,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn = original_dataset._trace_variant_creation()
       variant = fn()
 
-      revived_dataset = _RevivedDataset(
-          variant, original_dataset._element_structure)
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
       self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
   @staticmethod
@@ -270,16 +255,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Tensor", lambda: constant_op.constant(37.0),
        structure.TensorStructure(dtypes.float32, [])),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1])),
+          indices=[[0]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1])),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
-          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
-       structure.NestedStructure({
-           "a": structure.TensorStructure(dtypes.float32, []),
-           "b": (structure.TensorStructure(dtypes.string, [1]),
-                 structure.TensorStructure(dtypes.string, []))})),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
+      }, {
+          "a":
+              structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.TensorStructure(
+              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+      }),
       ("Dataset", lambda: dataset_ops.Dataset.from_tensor_slices(
           constant_op.constant([1, 2, 3])),
        dataset_ops.DatasetStructure(
@@ -290,18 +277,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
-    dataset_structure = structure.Structure.from_value(dataset)
+    dataset_structure = structure.type_spec_from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
 
-    # TODO(b/110122868): Add a public API to `tf.data.Dataset` for accessing
-    # the element structure.
-    self.assertTrue(expected_element_structure.is_compatible_with(
-        dataset_structure._element_structure))
-    self.assertTrue(dataset_structure._element_structure.is_compatible_with(
-        expected_element_structure))
-
-    self.assertEqual([dtypes.variant], dataset_structure._flat_types)
-    self.assertEqual([tensor_shape.scalar()], dataset_structure._flat_shapes)
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset), expected_element_structure))
+    self.assertEqual([dtypes.variant],
+                     structure.get_flat_tensor_types(dataset_structure))
+    self.assertEqual([tensor_shape.scalar()],
+                     structure.get_flat_tensor_shapes(dataset_structure))
 
     # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
     # and _to_tensor_list().
@@ -384,7 +369,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           _uses_dataset.get_concrete_function(
               dataset_ops.Dataset.zip((first_dataset, second_dataset))))
 
-  def testLimitedRetracingWithCompositeTensors(self):
+  def testLimitedRetracing(self):
     trace_count = [0]
 
     @def_function.function

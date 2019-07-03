@@ -193,11 +193,33 @@ class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
   def __init__(self, input_workers, iterators, strategy):
+    static_shape = True
+    for iterator in iterators:
+      if not isinstance(iterator, _SingleWorkerDatasetIterator):
+        continue
+      flattened_shapes = nest.flatten(iterator.output_shapes)
+      for output_shape in flattened_shapes:
+        if not output_shape.is_fully_defined():
+          static_shape = False
+          break
+
     # TODO(b/133073708): we currently need a flag to control the usage because
     # there is a performance difference between get_next() and
-    # get_next_as_optional().
-    self._enable_get_next_as_optional = getattr(
-        strategy.extended, "experimental_enable_get_next_as_optional", False)
+    # get_next_as_optional(). And we only enable get_next_as_optional when the
+    # output shapes are not static.
+    #
+    # TODO(yuefengz): Currently `experimental_enable_get_next_as_optional` is
+    # always set to False in CollectiveAllReduceStrategy. We want to have a way
+    # to distinguish multi workers/single worker between graph, so we can enable
+    # the behavior in single worker case.
+    #
+    # TODO(rxsang): We want to always enable the get_next_as_optional behavior
+    # when user passed input_fn instead of dataset.
+    if getattr(
+        strategy.extended, "experimental_enable_get_next_as_optional", False):
+      self._enable_get_next_as_optional = not static_shape
+    else:
+      self._enable_get_next_as_optional = False
 
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
@@ -382,7 +404,7 @@ class _IterableInput(object):
       return has_data, data, state
 
     has_data, data, final_state = control_flow_ops.while_loop(
-        cond, loop_body, [has_data, data, initial_state])
+        cond, loop_body, [has_data, data, initial_state], parallel_iterations=1)
     return final_state
 
 
@@ -456,18 +478,20 @@ class DistributedDataset(_IterableInput):
           self._cloned_datasets.append(cloned_dataset)
 
     self._input_workers = input_workers
-    # TODO(anjalisridhar): Identify if we need to set this property on the
-    # iterator.
-    self._element_structure = dataset._element_structure  # pylint: disable=protected-access
+    self.element_spec = dataset.element_spec
     self._strategy = strategy
 
   def __iter__(self):
-    worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
-                                                    self._input_workers)
-    iterator = DistributedIterator(self._input_workers, worker_iterators,
-                                   self._strategy)
-    iterator._element_structure = self._element_structure  # pylint: disable=protected-access
-    return iterator
+    if (context.executing_eagerly() or
+        ops.executing_eagerly_outside_functions()):
+      worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
+                                                      self._input_workers)
+      iterator = DistributedIterator(self._input_workers, worker_iterators,
+                                     self._strategy)
+      iterator.element_spec = self.element_spec
+      return iterator
+    raise RuntimeError("__iter__() is only supported inside of tf.function "
+                       "or when eager execution is enabled.")
 
 
 class DistributedDatasetV1(DistributedDataset):
@@ -489,6 +513,12 @@ class DistributedDatasetV1(DistributedDataset):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for DistributedDatasetV1."""
+    # Graph mode with one shot iterator is disabled because we have to call
+    # `initialize` on the iterator which is only required if we are using a
+    # tf.distribute strategy.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
     return self._get_iterator()
 
   def make_initializable_iterator(self):
@@ -505,7 +535,7 @@ class DistributedDatasetV1(DistributedDataset):
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
-    iterator._element_structure = self._element_structure  # pylint: disable=protected-access
+    iterator.element_spec = self.element_spec
     return iterator
 
 
@@ -638,9 +668,9 @@ class DatasetIterator(DistributedIteratorV1):
         dist_dataset._cloned_datasets, input_workers)  # pylint: disable=protected-access
     super(DatasetIterator, self).__init__(
         input_workers,
-        worker_iterators,  # pylint: disable=protected-access
+        worker_iterators,
         strategy)
-    self._element_structure = dist_dataset._element_structure  # pylint: disable=protected-access
+    self.element_spec = dist_dataset.element_spec  # pylint: disable=protected-access
 
 
 def _dummy_tensor_fn(value_structure):
@@ -669,17 +699,13 @@ def _dummy_tensor_fn(value_structure):
 
   result = []
   # pylint: disable=protected-access
-  for feature_shape, feature_type in zip(value_structure._flat_shapes,
-                                         value_structure._flat_types):
+  for feature_shape, feature_type in zip(
+      structure.get_flat_tensor_shapes(value_structure),
+      structure.get_flat_tensor_types(value_structure)):
     result.append(create_dummy_tensor(feature_shape, feature_type))
 
-  if isinstance(value_structure, structure.NestedStructure):
-    result = nest.pack_sequence_as(value_structure._nested_structure, result)
-  else:
-    result = result[0]
+  return nest.pack_sequence_as(value_structure, result)
   # pylint: enable=protected-access
-
-  return result
 
 
 class _SingleWorkerDatasetIterator(object):

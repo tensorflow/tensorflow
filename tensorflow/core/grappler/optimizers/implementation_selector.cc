@@ -140,6 +140,8 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
 
   for (const auto& attr_name : function_attribute_names) {
     string function_name = node_def->attr().at(attr_name).func().name();
+    // Skip the function if its already optimized by function optimizer.
+    if (::absl::StrContains(function_name, "_specialized_for_")) continue;
     std::vector<string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         function_name, &equiv_func_names));
@@ -153,7 +155,8 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
     }
   }
 
-  if (lib_info_->GetApiInfo(node_def->op()) != nullptr) {
+  if (lib_info_->GetApiInfo(node_def->op()) != nullptr &&
+      !::absl::StrContains(node_def->op(), "_specialized_for_")) {
     std::vector<string> equiv_func_names;
     TF_RETURN_IF_ERROR(lib_info_->GetEquivalentImplementations(
         node_def->op(), &equiv_func_names));

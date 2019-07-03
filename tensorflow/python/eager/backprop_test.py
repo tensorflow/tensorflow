@@ -38,6 +38,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -1460,6 +1461,16 @@ class JacobianTest(test.TestCase):
     dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
     self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_indexed_slices(self):
+    with backprop.GradientTape(persistent=True) as g:
+      inp = random_ops.random_uniform([3, 2])
+      g.watch(inp)
+      output = nn.embedding_lookup(inp, [0, 2])
+    self.assertAllClose(
+        g.jacobian(output, inp, experimental_use_pfor=True),
+        g.jacobian(output, inp, experimental_use_pfor=False))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase):
@@ -1562,6 +1573,51 @@ class BatchJacobianTest(test.TestCase):
       y = math_ops.matmul(x, w)
     self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
                         g.batch_jacobian(y, x, parallel_iterations=3))
+
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(backprop.aggregate_indexed_slices_gradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    result = backprop.aggregate_indexed_slices_gradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant([[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
 
 if __name__ == '__main__':
   test.main()

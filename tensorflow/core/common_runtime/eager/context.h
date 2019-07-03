@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -62,7 +63,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Note: there's a copy enum in eager/c_api.h. It should be kept in sync.
+// LINT.IfChange
+// Note: Keep in sync with exported copy of enum in eager/c_api.h.
 enum ContextDevicePlacementPolicy {
   // Running operations with input tensors on the wrong device will fail.
   DEVICE_PLACEMENT_EXPLICIT = 0,
@@ -74,6 +76,19 @@ enum ContextDevicePlacementPolicy {
   // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
+// LINT.ThenChange(//tensorflow/c/eager/c_api.h)
+
+// LINT.IfChange
+// Note: Keep in sync with exported copy of enum in eager/c_api_experimental.h.
+enum ContextMirroringPolicy {
+  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
+  // copies with their own lifetime.
+  MIRRORING_NONE = 0,
+  // Mirroring any remote tensor handles, associating them with the lifetime of
+  // the local TensorHandle.
+  MIRRORING_ALL = 1,
+};
+// LINT.ThenChange(//tensorflow/c/eager/c_api_experimental.h)
 
 class RunMetadataListener {
  public:
@@ -83,20 +98,15 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
-  // TODO: remove this constructor once we migrate all callers to the next one.
   EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_policy, bool async,
-               std::unique_ptr<const DeviceMgr> device_mgr,
-               Rendezvous* rendezvous);
+               ContextDevicePlacementPolicy default_device_placement_policy,
+               ContextMirroringPolicy default_mirroring_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator,
+               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
-  EagerContext(
-      const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-      bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
-      Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
-      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr);
-
-  ~EagerContext();
+  ~EagerContext() override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {
@@ -133,7 +143,15 @@ class EagerContext : public core::RefCounted {
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
 
   // Returns the device placement policy for the current thread.
-  ContextDevicePlacementPolicy GetDevicePlacementPolicy();
+  ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
+
+  // Sets the implicit copy policy for the current thread.
+  void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
+
+  // Returns the implicit copy policy for the current thread.
+  ContextMirroringPolicy GetMirroringPolicy() const;
+
+  bool MirrorTensors() const;
 
   Status AsyncWait() { return executor_.WaitForAllPendingNodes(); }
 
@@ -148,7 +166,7 @@ class EagerContext : public core::RefCounted {
 
   const FunctionDef* FindFunctionDef(const string& name);
 
-  Status FindDeviceByName(const string& name, Device** result);
+  Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
 
@@ -156,13 +174,15 @@ class EagerContext : public core::RefCounted {
 
   uint64 NextId() { return executor_.NextId(); }
 
-  void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
+  void ExecutorAdd(std::unique_ptr<EagerNode> node) {
+    executor_.Add(std::move(node));
+  }
 
   Status AddFunctionDef(const FunctionDef& fdef);
 
   Status RemoveFunction(const string& func);
 
-  KernelAndDevice* GetCachedKernel(Fprint128 cache_key);
+  core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
@@ -206,7 +226,8 @@ class EagerContext : public core::RefCounted {
                                               : local_unowned_device_manager_;
   }
   const tensorflow::DeviceMgr* remote_device_mgr() const {
-    return remote_device_manager_.get();
+    return (remote_device_manager_ != nullptr) ? remote_device_manager_.get()
+                                               : remote_unowned_device_manager_;
   }
 
   // TODO(apassos) remove the need for this
@@ -232,13 +253,16 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetClientAndContextID(Device* device, eager::EagerClient** client,
-                               uint64* context_id);
+  Status GetClient(Device* device, eager::EagerClient** client);
+
+  uint64 GetContextId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
   //
-  // Enables the eager context to communicate with remote devices.
+  // Enables the eager context to communicate with remote devices. When
+  // initializing with this method, this context will be the master context,
+  // which will kill all its slaves in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
@@ -246,20 +270,23 @@ class EagerContext : public core::RefCounted {
   // communicate with remote eager services.
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
-  // - remote_contexts: A map containing task name to remote context ID.
-  Status InitializeRemote(
+  // - remote_contexts: A vector containing task names.
+  Status InitializeRemoteMaster(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
-      const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr);
 
-  bool HasActiveRemoteContext(uint64 context_id) {
-    return active_remote_contexts_.find(context_id) !=
-           active_remote_contexts_.end();
-  }
+  // Similar with InitializeRemoteMaster but this context will not kill remote
+  // contexts in shutdown.
+  Status InitializeRemoteWorker(
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      const DeviceMgr* remote_device_mgr,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      std::function<Rendezvous*(const int64)> rendezvous_creator);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
@@ -277,22 +304,36 @@ class EagerContext : public core::RefCounted {
   // All child threads will be reset() when destructing EagerContext.
   void AddChildThread(std::unique_ptr<Thread> thread);
 
+  Status FindDeviceFromName(const char* device_name, Device** device) const;
+
+  bool IsLocal(const Device* d) const;
+  bool OnSameTask(const Device* first, const Device* second) const;
+  // Gets the CPU device on the task of device.
+  Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
 
-  const ContextDevicePlacementPolicy policy_;
+  const ContextDevicePlacementPolicy default_device_placement_policy_;
+  const ContextMirroringPolicy default_mirroring_policy_;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a
   // thread-local-object-local variable in C++11.
-  mutex policy_map_mu_;
+  mutable mutex policy_map_mu_;
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
-      thread_local_policies_ GUARDED_BY(policy_map_mu_);
+      device_placement_policy_ GUARDED_BY(policy_map_mu_);
+  std::unordered_map<std::thread::id, ContextMirroringPolicy> mirroring_policy_
+      GUARDED_BY(policy_map_mu_);
 
   // Only one of the below is set.
   std::unique_ptr<const DeviceMgr> local_device_manager_;
   const DeviceMgr* local_unowned_device_manager_;
+
+  // Only one of the below is set. remote_unowned_device_manager_ is set on
+  // remote worker to allow running multi-device function on remote worker.
   std::unique_ptr<DeviceMgr> remote_device_manager_;
+  const DeviceMgr* remote_unowned_device_manager_ = nullptr;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
@@ -308,6 +349,7 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  const CustomKernelCreator* const custom_kernel_creator_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
@@ -321,8 +363,9 @@ class EagerContext : public core::RefCounted {
 
     std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
   };
-  std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
-      GUARDED_BY(cache_mu_);
+  std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
+                     Fprint128Hasher>
+      kernel_cache_ GUARDED_BY(cache_mu_);
   std::unordered_map<string, RegisteredFunction*> registered_functions_
       GUARDED_BY(cache_mu_);
 
@@ -368,10 +411,9 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  gtl::FlatMap<string, uint64> remote_contexts_;
-  gtl::FlatSet<uint64> active_remote_contexts_;
-  gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
-      device_to_client_cache_;
+  uint64 context_id_;
+  std::vector<string> remote_contexts_;
+  gtl::FlatMap<Device*, eager::EagerClient*> device_to_client_cache_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;

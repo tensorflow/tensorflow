@@ -429,10 +429,12 @@ class MathTest(PForTestCase):
       data = array_ops.gather(t, i)
       data_0 = array_ops.gather(t, 0)
       seg_ids = array_ops.gather(segment_ids, i)
+      seg_ids_0 = array_ops.gather(segment_ids, 0)
       return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
-              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments))
+              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments),
+              math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
 
-    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 3)
 
   def test_cast(self):
     x = constant_op.constant([[1], [2]])
@@ -457,7 +459,6 @@ class MathTest(PForTestCase):
     self._test_loop_fn(loop_fn, n)
 
   def test_select(self):
-    cond = constant_op.constant([True, False])
     a = random_ops.random_uniform([2, 3, 5])
     b = random_ops.random_uniform([2, 3, 5])
     for cond_shape in [2], [2, 3], [2, 3, 5]:
@@ -469,6 +470,65 @@ class MathTest(PForTestCase):
         b_i = array_ops.gather(b, i)
         cond_i = array_ops.gather(cond, i)
         return array_ops.where(cond_i, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_selectv2_cond_needs_broadcast(self):
+    a = random_ops.random_uniform([2, 3, 5])
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for cond_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      cond = random_ops.random_uniform(cond_shape) > 0.5
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        cond_i = array_ops.gather(cond, i)
+        return array_ops.where_v2(cond_i, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_selectv2_args_need_broadcast(self):
+    a = random_ops.random_uniform([2, 5])
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for cond_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      cond = random_ops.random_uniform(cond_shape) > 0.5
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        cond_i = array_ops.gather(cond, i)
+        return array_ops.where_v2(cond_i, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_selectv2_cond_fixed(self):
+    cond = random_ops.random_uniform([3, 5]) > 0.5
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for a_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      a = random_ops.random_uniform(a_shape)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        return array_ops.where_v2(cond, a_i, b_i)
 
       # pylint: enable=cell-var-from-loop
 

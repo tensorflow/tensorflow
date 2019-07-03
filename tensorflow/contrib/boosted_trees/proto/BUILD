@@ -1,10 +1,10 @@
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
 tf_proto_library(
     name = "learner_proto",

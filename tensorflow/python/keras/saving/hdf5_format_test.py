@@ -265,33 +265,33 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir)
     h5_path = os.path.join(temp_dir, 'test.h5')
 
-    num_hidden = 5
-    input_dim = 3
     batch_size = 5
-    num_classes = 2
+    shape = (None, None, 3)
 
     with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
-      model.add(keras.layers.Dense(num_classes))
+      def gen_model():
 
-      nested_model = keras.models.Sequential()
-      nested_model.add(keras.layers.Dense(num_hidden, input_dim=num_classes))
-      nested_model.add(keras.layers.Dense(num_classes))
-      model.add(nested_model)
+        def seq_model():
+          model = keras.models.Sequential([
+              keras.layers.Conv2D(3, 1, input_shape=shape),
+              keras.layers.BatchNormalization()])
+          return model
 
-      x = np.random.random((batch_size, input_dim))
+        x = inner_inputs = keras.layers.Input((None, None, 3))
+        x = seq_model()(x)
+        x = seq_model()(x)
+        inner_model = keras.models.Model(inner_inputs, x)
+
+        inputs = keras.layers.Input(shape)
+        return keras.models.Model(inputs, inner_model(inputs))
+
+      model = gen_model()
+      x = np.random.random((batch_size, 1, 1, 3))
       ref_y = model.predict(x)
 
       model.save_weights(h5_path)
 
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
-      model.add(keras.layers.Dense(num_classes))
-      nested_model = keras.models.Sequential()
-      nested_model.add(keras.layers.Dense(num_hidden, input_dim=num_classes))
-      nested_model.add(keras.layers.Dense(num_classes))
-      model.add(nested_model)
+      model = gen_model()
       model.load_weights(h5_path)
       y = model.predict(x)
 
@@ -662,7 +662,8 @@ class TestWholeModelSaving(test.TestCase):
       for i in range(4):
         f = keras.layers.Dense(2, name='dense_%d' % (i,))(f)
       model = keras.Model(inputs=[x], outputs=[f])
-      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model.compile(
+          'adam', loss=keras.losses.MeanSquaredError(), metrics=['acc'])
 
       x = np.random.random((1, 2))
       y = np.random.random((1, 2))
@@ -792,6 +793,19 @@ class TestWholeModelSaving(test.TestCase):
       model = keras.models.load_model(fname)
       os.close(fd)
       os.remove(fname)
+
+  def test_primitive_attrs_contain_no_extraneous_strings(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=[2]))
+    fname = os.path.join(self.get_temp_dir(), 'model.h5')
+    model.save(fname)
+
+    h5file = h5py.File(fname, 'r')
+    self.assertRegexpMatches(
+        h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
 
 
 class SubclassedModel(training.Model):

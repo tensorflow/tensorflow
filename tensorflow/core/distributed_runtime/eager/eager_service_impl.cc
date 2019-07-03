@@ -19,8 +19,10 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace eager {
@@ -95,8 +98,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     cluster_device_attributes.push_back(cluster_device);
   }
 
-  auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
-  auto session_name = strings::StrCat("eager_", request->rendezvous_id());
+  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  auto session_name =
+      tensorflow::strings::StrCat("eager_", request->context_id());
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -120,8 +124,31 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, nullptr,
-      worker_session->cluster_flr.get(), std::move(rendezvous_creator));
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
+      device_mgr, false, r, GetDefaultCustomKernelCreator(),
+      worker_session->cluster_flr.get());
+
+  Status s;
+  std::vector<string> remote_workers;
+  worker_session->worker_cache->ListWorkers(&remote_workers);
+  remote_workers.erase(std::remove(remote_workers.begin(), remote_workers.end(),
+                                   worker_session->worker_name),
+                       remote_workers.end());
+
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  s = worker_session->worker_cache->GetEagerClientCache(&remote_eager_workers);
+  if (!s.ok()) {
+    delete ctx;
+    return s;
+  }
+
+  s = ctx->InitializeRemoteWorker(
+      std::move(remote_eager_workers), worker_session->remote_device_mgr(),
+      remote_workers, request->context_id(), std::move(rendezvous_creator));
+  if (!s.ok()) {
+    delete ctx;
+    return s;
+  }
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -129,17 +156,17 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   for (const auto& da : device_attributes) {
     *response->add_device_attributes() = da;
   }
-
-  uint64 context_id;
   {
     mutex_lock l(contexts_mu_);
-    do {
-      context_id = random::New64();
-    } while (contexts_.find(context_id) != contexts_.end());
-    contexts_.emplace(context_id,
+    if (contexts_.find(request->context_id()) != contexts_.end()) {
+      delete ctx;
+      return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                     "Context id: <", request->context_id(),
+                                     "> already exists.");
+    }
+    contexts_.emplace(request->context_id(),
                       new ServerContext(ctx, request->keep_alive_secs(), env_));
   }
-  response->set_context_id(context_id);
 
   return Status::OK();
 }
@@ -177,12 +204,16 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
 
-  for (const auto& remote_handle : operation.inputs()) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
-        RemoteTensorHandleInternal(remote_handle), &handle));
+  {
+    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                               profiler::TraceMeLevel::kVerbose);
+    for (const auto& remote_handle : operation.inputs()) {
+      tensorflow::TensorHandle* handle;
+      TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
+          RemoteTensorHandleInternal(remote_handle), &handle));
 
-    op->AddInput(handle);
+      op->AddInput(handle);
+    }
   }
 
   for (const auto& attr : operation.attrs()) {
@@ -208,6 +239,11 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response) {
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
+      },
+      profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
@@ -292,13 +328,15 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle =
-        new TensorHandle(tensor, nullptr, nullptr, nullptr);
-
+    TensorHandle* tensor_handle = nullptr;
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
-    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
-                                         request->device_name().c_str(),
-                                         &copied_handle));
+    EagerContext* ctx = context->Context();
+    Device* device;
+    TF_RETURN_IF_ERROR(
+        ctx->FindDeviceFromName(request->device_name().c_str(), &device));
+    TF_RETURN_IF_ERROR(
+        EagerCopyToDevice(tensor_handle, ctx, device, false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
   }

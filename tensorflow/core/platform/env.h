@@ -456,6 +456,16 @@ Status WriteTextProto(Env* env, const string& fname,
 Status ReadTextProto(Env* env, const string& fname,
                      ::tensorflow::protobuf::Message* proto);
 
+/// Read contents of named file and parse as either text or binary encoded proto
+/// data and store into `*proto`.
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+#if !defined(TENSORFLOW_LITE_PROTOS)
+                             ::tensorflow::protobuf::Message* proto
+#else
+                             ::tensorflow::protobuf::MessageLite* proto
+#endif
+);
+
 // START_SKIP_DOXYGEN
 
 namespace register_file_system {

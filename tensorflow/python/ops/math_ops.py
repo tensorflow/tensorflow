@@ -144,6 +144,15 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
   Note that in case of ties the identity of the return value is not guaranteed.
 
+  For example:
+  ```python
+  A=tf.constant([2,20,30,3,6]) # Constant 1-D Tensor
+  tf.math.argmax(A) # output 2 as index 2 (A[2]) is maximum in tensor A
+  B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
+  tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
+  tf.math.argmax(B,1) # [2, 2, 1]
+  ```
+   
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -322,7 +331,7 @@ def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -478,6 +487,9 @@ def complex(real, imag, name=None):
 
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
+
+  Raises: 
+    TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
   imag = ops.convert_to_tensor(imag, name="imag")
@@ -519,6 +531,7 @@ def real(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
@@ -552,6 +565,7 @@ def imag(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -591,6 +605,7 @@ def angle(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Angle", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -640,7 +655,7 @@ def cast(x, dtype, name=None):
 
   ```python
   x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
+  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
   ```
 
   The operation supports data types (for `x` and `dtype`) of
@@ -1173,6 +1188,17 @@ truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
 
 
+def _add_dispatch(x, y, name=None):
+  """Dispatches to add for strings and add_v2 for all other types."""
+  if fwd_compat.forward_compatible(2019, 6, 25):
+    if x.dtype == dtypes.string:
+      return gen_math_ops.add(x, y, name=name)
+    else:
+      return gen_math_ops.add_v2(x, y, name=name)
+  else:
+    return gen_math_ops.add(x, y, name=name)
+
+
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
   is_tensor_y = isinstance(y, ops.Tensor)
@@ -1195,7 +1221,7 @@ _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
-_OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
+_OverrideBinaryOperatorHelper(_add_dispatch, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
@@ -2414,6 +2440,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @deprecation.deprecated_endpoints("trace")
+@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -3034,6 +3061,26 @@ def bincount(arr,
   value in `weights` at each index where the corresponding value in `arr` is
   `i`.
 
+  ```python
+  values = tf.constant([1,1,2,3,2,4,4,5])
+  tf.math.bincount(values) #[0 2 2 1 2 1]
+  ```
+  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
+                  will be the vector length.
+
+  Each bin value in the output indicates number of occurrences of the particular
+  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
+  two times in `values`.
+
+  ```python
+  values = tf.constant([1,1,2,3,2,4,4,5])
+  weights = tf.constant([1,5,0,1,0,5,4,5])
+  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
+  ```
+  Bin will be incremented by the corresponding weight instead of 1.
+  Here, index 1 in output has a value 6. This is the summation of weights
+  corresponding to the value in `values`.
+
   Args:
     arr: An int32 tensor of non-negative values.
     weights: If non-None, must be the same shape as arr. For each value in
@@ -3049,6 +3096,10 @@ def bincount(arr,
   Returns:
     A vector with the same dtype as `weights` or the given `dtype`. The bin
     values.
+
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
+
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
@@ -3416,8 +3467,8 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3486,7 +3537,65 @@ def sparse_segment_sum_v2(data,
                           segment_ids,
                           num_segments=None,
                           name=None):
-  return sparse_segment_mean(
+  r"""Computes the sum along sparse segments of a tensor.
+
+  Read [the section on
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  for an explanation of segments.
+
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  For example:
+
+  ```python
+  c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+  # Select two rows, one segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+  # => [[0 0 0 0]]
+
+  # Select two rows, two segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+  # => [[ 1  2  3  4]
+  #     [-1 -2 -3 -4]]
+
+  # With missing segment ids.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 2]),
+                        num_segments=4)
+  # => [[ 1  2  3  4]
+  #     [ 0  0  0  0]
+  #     [-1 -2 -3 -4]
+  #     [ 0  0  0  0]]
+
+  # Select all rows, two segments.
+  tf.sparse.segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+  # => [[0 0 0 0]
+  #     [5 6 7 8]]
+
+  # Which is equivalent to:
+  tf.math.segment_sum(c, tf.constant([0, 0, 1]))
+  ```
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_sum(
       data, indices, segment_ids, name=name, num_segments=num_segments)
 
 
@@ -3503,8 +3612,9 @@ def sparse_segment_mean(data,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3548,8 +3658,9 @@ def sparse_segment_mean_v2(data,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3619,7 +3730,12 @@ def sparse_segment_sqrt_n_v2(data,
                              name=None):
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
-  `N` is the size of the segment being reduced.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  for an explanation of segments.
+
+  Like `tf.sparse.segment_mean`, but instead of dividing by the size of the
+  segment, `N`, divide by `sqrt(N)` instead.
 
   Args:
     data: A `Tensor` with data that will be assembled in the output.

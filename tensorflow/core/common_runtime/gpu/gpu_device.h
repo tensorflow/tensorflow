@@ -169,8 +169,6 @@ class BaseGPUDevice : public LocalDevice {
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
 
-  void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
-
   string ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                     const int& stream_id);
 

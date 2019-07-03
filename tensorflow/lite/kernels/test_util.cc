@@ -29,6 +29,18 @@ namespace {
 // be set via a command-line flag.
 static bool force_use_nnapi = false;
 
+TfLiteDelegate* TestNnApiDelegate() {
+  static TfLiteDelegate* delegate = [] {
+    StatefulNnApiDelegate::Options options;
+    // In Android Q, the NNAPI delegate avoids delegation if the only device
+    // is the reference CPU. However, for testing purposes, we still want
+    // delegation coverage, so force use of this reference path.
+    options.accelerator_name = "nnapi-reference";
+    return new StatefulNnApiDelegate(options);
+  }();
+  return delegate;
+}
+
 }  // namespace
 
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
@@ -149,7 +161,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   if (force_use_nnapi) {
     // TODO(b/124505407): Check the result and fail accordingly.
-    interpreter_->ModifyGraphWithDelegate(NnApiDelegate());
+    interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
   }
 
   // Modify delegate with function.
@@ -158,7 +170,9 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   }
 }
 
-void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }
+void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
+
+TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {

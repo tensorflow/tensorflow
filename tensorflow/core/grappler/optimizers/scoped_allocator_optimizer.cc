@@ -739,9 +739,9 @@ Status ScopedAllocatorOptimizer::Optimize(Cluster* /*cluster*/,
 
   GraphProperties graph_properties(item);
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-  LOG_WARNING_AND_RETURN_IF_ERROR(
-      graph_properties.InferStatically(assume_valid_feeds));
-
+  LOG_WARNING_AND_RETURN_IF_ERROR(graph_properties.InferStatically(
+      assume_valid_feeds, /*aggressive_shape_inference=*/false,
+      /*include_tensor_values=*/false));
   *optimized_graph = item.graph;
   node_map_.reset(new NodeMap(optimized_graph));
 

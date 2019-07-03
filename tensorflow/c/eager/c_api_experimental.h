@@ -40,8 +40,7 @@ TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
 // The output string is a binary string of tensorflow.tpu.Trace. User can write
 // the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
-                                                         TFE_Profiler* profiler,
+TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
                                                          TF_Buffer* buf,
                                                          TF_Status* status);
 
@@ -85,7 +84,18 @@ TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
 // https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
 TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
     const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts);
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    TF_Status* status);
+
+// Send a grpc request to profiler server (service_addr) to perform on-demand
+// monitoring and return the result in a string. It will block the
+// caller thread until receiving the monitoring result.
+// This API is designed for TensorBoard, for end user, please use
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
+// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
+    const char* service_addr, int duration_ms, int monitoring_level,
+    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
@@ -309,6 +319,42 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
     TFE_MonitoringSampler2* sampler);
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
+
+// LINT.IfChange
+// Note: Keep in sync with internal copy of enum in eager/context.h.
+typedef enum TFE_ContextMirroringPolicy {
+  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
+  // copies with their own lifetime.
+  TFE_MIRRORING_NONE = 0,
+  // Mirroring any remote tensor handles, associating them with the lifetime of
+  // the local TensorHandle.
+  TFE_MIRRORING_ALL = 1,
+} TFE_ContextMirroringPolicy;
+// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
+
+// Sets a thread-local mirroring policy. After this call, other calls to
+// TFE_Execute in the same thread will use the mirroring policy specified here
+// instead of the mirroring policy used to construct the context. This has no
+// effect on the mirroring policy used by other program threads.
+TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
+    TFE_Context*, TFE_ContextMirroringPolicy);
+
+// Returns the mirroring policy to be used by this context in the current
+// thread.
+TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
+    TFE_Context*);
+
+// -----------------------------------------------------------------------------
+// Cancellation APIs.
+
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
+    TFE_CancellationManager*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

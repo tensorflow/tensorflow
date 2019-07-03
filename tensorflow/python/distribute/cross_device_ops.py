@@ -48,7 +48,7 @@ def check_destinations(destinations):
     Boolean which is True if `destinations` is not empty.
   """
   # Calling bool() on a ResourceVariable is not allowed.
-  if isinstance(destinations, resource_variable_ops.ResourceVariable):
+  if isinstance(destinations, resource_variable_ops.BaseResourceVariable):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -56,7 +56,7 @@ def check_destinations(destinations):
 def validate_destinations(destinations):
   if not isinstance(destinations,
                     (value_lib.DistributedValues,
-                     resource_variable_ops.ResourceVariable,
+                     resource_variable_ops.BaseResourceVariable,
                      value_lib.AggregatingVariable,
                      six.string_types,
                      value_lib.TPUMirroredVariable,
@@ -933,8 +933,8 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
           aggregated_grads = range_agg_grads
         else:
           assert len(aggregated_grads) == len(range_agg_grads)
-          for i in range(len(aggregated_grads)):
-            aggregated_grads[i] += range_agg_grads[i]
+          for i, range_agg_grad in enumerate(range_agg_grads):
+            aggregated_grads[i] += range_agg_grad
     assert not remaining_grads
 
     return _ungroup_and_make_mirrored(aggregated_grads, per_replica_values[0],
@@ -949,11 +949,12 @@ class CollectiveCommunication(enum.Enum):
   * `RING`: TensorFlow's ring algorithms for all-reduce and
     all-gather.
   * `NCCL`: Use ncclAllReduce for all-reduce, and ring algorithms for
-    all-gather.  TODO(ayushd): add ncclAllGather implementation.
+    all-gather.
   """
   AUTO = "AUTO"
   RING = "RING"
   NCCL = "NCCL"
+  # TODO(ayushd): add ncclAllGather implementation.
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.
@@ -998,14 +999,15 @@ class CollectiveAllReduce(CrossDeviceOps):
       return all_reduced
     devices = device_map.logical_to_actual_devices(logical_device)
     index = []
-    for d in devices:
-      if d in all_reduced.devices:
-        index.append(all_reduced.get(d))
-      else:
-        # TODO(josh11b): Once we add support for model parallelism, get the
-        # copy from the corresponding replica instead of the primary.
-        with ops.control_dependencies(all_reduced.values), ops.device(d):
-          index.append(array_ops.identity(all_reduced.primary))
+    with ops.control_dependencies(all_reduced.values):
+      for d in devices:
+        with ops.device(d):
+          if d in all_reduced.devices:
+            index.append(array_ops.identity(all_reduced.get(d)))
+          else:
+            # TODO(josh11b): Once we add support for model parallelism, get the
+            # copy from the corresponding replica instead of the primary.
+            index.append(array_ops.identity(all_reduced.primary))
 
     return value_lib.Mirrored(device_map, index, logical_device)
 

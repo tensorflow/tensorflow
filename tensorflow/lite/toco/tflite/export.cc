@@ -207,7 +207,8 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    FlatBufferBuilder* builder,
+    std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
     const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
@@ -219,7 +220,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     int buffer_index = buffers_to_write->size();
     auto type = DataType::Serialize(array.data_type);
-    buffers_to_write->push_back(&array);
+    buffers_to_write->push_back(DataBuffer::Serialize(array, builder));
 
     std::vector<int> shape;
     if (array.has_shape()) {
@@ -413,13 +414,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 }
 
 Offset<Vector<Offset<Buffer>>> ExportBuffers(
-    const Model& model, const std::vector<const Array*>& buffers_to_write,
+    const Model& model,
+    const std::vector<Offset<Vector<uint8_t>>>& buffers_to_write,
     FlatBufferBuilder* builder) {
   std::vector<Offset<Buffer>> buffer_vector;
-  for (const Array* array_ptr : buffers_to_write) {
-    const Array& array = *array_ptr;
-    Offset<Vector<uint8_t>> data_buffer = DataBuffer::Serialize(array, builder);
-    buffer_vector.push_back(CreateBuffer(*builder, data_buffer));
+  buffer_vector.reserve(buffers_to_write.size());
+  for (const auto buffer : buffers_to_write) {
+    buffer_vector.push_back(CreateBuffer(*builder, buffer));
   }
   return builder->CreateVector(buffer_vector);
 }
@@ -459,6 +460,13 @@ tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+  for (const string& input_array : model.GetInvalidInputArrays()) {
+    if (model.HasArray(input_array)) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Placeholder ", input_array, " should be specied by input_arrays."));
+    }
+  }
+
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   details::TensorsMap tensors_map;
@@ -468,9 +476,9 @@ tensorflow::Status Export(
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
                             params.enable_select_tf_ops);
 
-  std::vector<const Array*> buffers_to_write;
-  Array empty_array;
-  buffers_to_write.push_back(&empty_array);
+  std::vector<Offset<Vector<uint8_t>>> buffers_to_write;
+  // Insert an empty buffer to the beginning of the list.
+  buffers_to_write.push_back(0);
 
   auto op_codes =
       ExportOperatorCodes(model, ops_by_type, operators_map, &builder, params);

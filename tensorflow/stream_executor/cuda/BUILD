@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -15,7 +15,11 @@ load(
     "//tensorflow/core:platform/default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
 
 package(
     default_visibility = [":friends"],
@@ -99,9 +103,10 @@ cc_library(
     srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
     hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
     deps = if_cuda_is_configured([
-        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         ":cuda_driver",
+        ":ptxas_wrapper",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
@@ -109,8 +114,13 @@ cc_library(
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
-    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
+        "@com_google_absl//absl/container:flat_hash_map",
+    ]),
 )
+
+# Buildozer can not remove dependencies inside select guards, so we have to use
+# an intermediate target.
+cc_library(name = "ptxas_wrapper")
 
 cc_library(
     name = "cuda_driver",
@@ -572,4 +582,41 @@ cc_library(
         ":curand_plugin",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "redzone_allocator",
+    srcs = if_cuda_is_configured(["redzone_allocator.cc"]),
+    hdrs = if_cuda_is_configured(["redzone_allocator.h"]),
+    deps = if_cuda_is_configured([
+        ":ptxas_utils",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "//tensorflow/core:allocator",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:stream_executor_headers",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "redzone_allocator_test",
+    srcs = ["redzone_allocator_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cuda_activation",
+        ":cuda_gpu_executor",
+        ":ptxas_utils",
+        ":redzone_allocator",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
+    ],
 )

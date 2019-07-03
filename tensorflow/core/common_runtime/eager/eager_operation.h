@@ -52,7 +52,9 @@ class EagerOperation {
   MutableInputs() {
     return &inputs_;
   }
+
   void AddInput(tensorflow::TensorHandle* h);
+  void UpdateInput(int i, tensorflow::TensorHandle* h);
   void ConsumeInput(tensorflow::TensorHandle* h);
 
   const tensorflow::string& Name() const { return name_; }

@@ -31,7 +31,7 @@ limitations under the License.
 #include <arm_neon.h>
 #endif
 
-#if RUY_OPT_SET & RUY_OPT_PREFETCH
+#if RUY_OPT_ENABLED(RUY_OPT_PREFETCH)
 #define RUY_PREFETCH(X) X
 #else
 #define RUY_PREFETCH(X)

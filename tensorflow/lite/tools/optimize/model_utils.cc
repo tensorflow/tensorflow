@@ -114,10 +114,6 @@ bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
   return true;
 }
 
-bool IsQuantized(const SubGraphT* subgraph, int tensor_index) {
-  return subgraph->tensors[tensor_index]->type != TensorType_FLOAT32;
-}
-
 bool HasMinMax(const TensorT* tensor) {
   return tensor->quantization && !tensor->quantization->min.empty() &&
          !tensor->quantization->max.empty();

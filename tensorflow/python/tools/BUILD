@@ -1,15 +1,15 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(

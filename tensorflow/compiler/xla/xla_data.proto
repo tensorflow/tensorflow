@@ -170,6 +170,10 @@ message LayoutProto {
   // TODO(b/119839262): implement in each backend or add Unimplemented error.
   int64 element_size_in_bits = 7;
 
+  // Memory space where this array resides. The integer field is interpreted in
+  // a backend-specific manner.
+  int64 memory_space = 8;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
 }

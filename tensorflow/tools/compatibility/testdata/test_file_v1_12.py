@@ -26,7 +26,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0."""
 
   def setUp(self):
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_v2_behavior()
 
   def testRenames(self):
     self.assertAllClose(1.04719755, tf.acos(0.5))

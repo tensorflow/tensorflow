@@ -1,9 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 tf_cuda_library(
     name = "profiler_service_impl",

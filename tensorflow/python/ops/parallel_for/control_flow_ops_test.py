@@ -30,8 +30,10 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -108,6 +110,34 @@ class PForTest(PForTestCase):
     result = pfor_control_flow_ops.vectorized_map(
         compute, array_ops.ones((10, 5, 3)))
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class IndexedSlicesTest(PForTestCase):
+
+  def test_indexed_slices(self):
+
+    def loop_fn(i):
+      return indexed_slices.IndexedSlices(
+          indices=i,
+          values=array_ops.reshape(i, [1]),
+          dense_shape=[3, 1])
+
+    self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.int32])
+
+  def test_indexed_slices_components(self):
+
+    def loop_fn(i):
+      slices = indexed_slices.IndexedSlices(
+          indices=i,
+          values=array_ops.reshape(i, [1]),
+          dense_shape=[3, 1])
+      # Note that returning the components inside the slice avoids
+      # densification, which may be more efficient.
+      return slices.values, slices.indices
+
+    self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.int32] * 2)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
@@ -1300,6 +1330,91 @@ class ParsingTest(PForTestCase):
     pfor = pfor_control_flow_ops.pfor(loop_fn, iters=10)
     manual = parsing_ops.parse_example(examples, features)
     self.run_and_assert_equal(pfor, manual)
+
+
+class PartitionedCallTest(PForTestCase):
+
+  def test_simple(self):
+
+    @def_function.function
+    def f(x):
+      return math_ops.square(x) + 1
+
+    z = random_ops.random_uniform([4])
+
+    def loop_fn(i):
+      return f(array_ops.gather(z, i))
+
+    self._test_loop_fn(loop_fn, 4)
+
+  def test_nested_calls(self):
+
+    @def_function.function
+    def inner(x):
+      return math_ops.square(x)
+
+    @def_function.function
+    def outer(y):
+      return math_ops.reduce_sum(inner(y)) + 2
+
+    z = random_ops.random_uniform([4, 2])
+
+    def loop_fn(i):
+      return outer(array_ops.gather(z, i))
+
+    self._test_loop_fn(loop_fn, 4)
+
+  def test_nested_definition(self):
+
+    @def_function.function
+    def outer(y):
+      @def_function.function
+      def inner(x):
+        return math_ops.square(x) + 1
+
+      return math_ops.reduce_sum(inner(y)) + 2
+
+    z = random_ops.random_uniform([4, 2])
+
+    def loop_fn(i):
+      return outer(array_ops.gather(z, i))
+
+    self._test_loop_fn(loop_fn, 4)
+
+  def test_gradients(self):
+
+    @def_function.function
+    def f(x):
+      return math_ops.square(x) + 1
+
+    z = random_ops.random_uniform([4, 2])
+
+    def loop_fn(i):
+      z_i = array_ops.gather(z, i)
+      with backprop.GradientTape() as g:
+        g.watch(z_i)
+        out = f(z_i)
+      return out, g.gradient(out, z_i)
+
+    self._test_loop_fn(loop_fn, 4, [dtypes.float32] * 2)
+
+  def test_stateful_with_gradients(self):
+
+    z = random_ops.random_uniform([4, 2])
+    v = variables.Variable(z[0])
+
+    @def_function.function
+    def f(x):
+      return math_ops.square(x) + v + 1
+
+    def loop_fn(i):
+      z_i = array_ops.gather(z, i)
+      with backprop.GradientTape() as g:
+        g.watch(z_i)
+        out = f(z_i)
+      return out, g.gradient(out, z_i)
+
+    self._test_loop_fn(loop_fn, 4, [dtypes.float32] * 2)
 
 
 if __name__ == "__main__":

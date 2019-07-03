@@ -41,11 +41,38 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
+)
+
+py_library(
+    name = "multi_worker_training_state",
+    srcs = [
+        "multi_worker_training_state.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_training_state_test",
+    srcs = ["multi_worker_training_state_test.py"],
+    additional_deps = [
+        ":multi_worker_testing_utils",
+        ":multi_worker_training_state",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -75,10 +102,9 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 4,
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -140,6 +166,8 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
+        # TODO(b/134764123): Re-enable this test.
+        "notap",
         "notsan",
     ],
     deps = [
@@ -321,10 +349,35 @@ cuda_py_test(
         ":multi_worker_testing_utils",
         "//tensorflow/python/keras",
     ],
-    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
+    shard_count = 24,
     tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/132384649): Flakily times out.
+        "manual",
+        "no_oss",
+        "noguitar",
+        "notap",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "multi_worker_fault_tolerance_test",
+    srcs = ["multi_worker_fault_tolerance_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 14,
+    # TODO(b/132384649): Enable once fixed.
+    tags = [
+        "no_oss",
     ],
     xla_enable_strict_auto_jit = True,
 )

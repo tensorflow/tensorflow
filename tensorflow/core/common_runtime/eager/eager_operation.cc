@@ -31,6 +31,12 @@ void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 
+void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
+  h->Ref();
+  inputs_[i]->Unref();
+  inputs_[i] = h;
+}
+
 void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));

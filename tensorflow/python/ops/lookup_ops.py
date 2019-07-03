@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import uuid
 import six
 
 from tensorflow.python.compat import compat as fwd_compat
@@ -170,7 +171,7 @@ class InitializableLookupTableBase(LookupInterface):
       self._initializer = self._track_trackable(initializer, "_initializer")
     with ops.init_scope():
       self._resource_handle = self._create_resource()
-      self._init_op = self._initialize()
+    self._init_op = self._initialize()
 
   def _initialize(self):
     return self._initializer.initialize(self)
@@ -239,16 +240,17 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
 
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
-  """A generic hash table implementation.
+  """A generic hash table that is immutable once initialized.
 
   Example usage:
 
   ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
   table = tf.lookup.StaticHashTable(
-      tf.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor)
-  table.init.run()
-  print(out.eval())
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
   ```
   """
 
@@ -272,6 +274,12 @@ class StaticHashTable(InitializableLookupTableBase):
     self._initializer = initializer
     self._default_value = default_value
     self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
+    if not self._shared_name:
+      # Force using a shared name so that StaticHashTable resources can be
+      # shared across different kernels. If no "shared_name" is set and
+      # "use_node_name_sharing" is False, then each kernel gets its own local
+      # resource.
+      self._shared_name = "hash_table_%s" % (str(uuid.uuid4()),)
     self._name = name or "hash_table"
     self._table_name = None
     super(StaticHashTable, self).__init__(default_value, initializer)
@@ -314,6 +322,37 @@ class StaticHashTable(InitializableLookupTableBase):
 
 @tf_export(v1=["lookup.StaticHashTable"])
 class StaticHashTableV1(StaticHashTable):
+  """A generic hash table that is immutable once initialized.
+
+  When running in graph mode, you must evaluate the tensor returned by
+  `tf.tables_initializer()` before evaluating the tensor returned by
+  this class's `lookup()` method. Example usage in graph mode:
+
+  ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  out = table.lookup(input_tensor)
+  with tf.Session() as sess:
+      sess.run(tf.tables_initializer())
+      print(sess.run(out))
+  ```
+
+  In eager mode, no special code is needed to initialize the table.
+  Example usage in eager mode:
+
+  ```python
+  tf.enable_eager_execution()
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
+  ```
+  """
 
   @property
   def initializer(self):
@@ -381,10 +420,9 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    with ops.init_scope():
-      self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
-      self._values = ops.convert_to_tensor(
-          values, dtype=value_dtype, name="values")
+    self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+    self._values = ops.convert_to_tensor(
+        values, dtype=value_dtype, name="values")
     self._name = name if name is not None else "key_value_init"
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious
@@ -1192,8 +1230,8 @@ def index_table_from_file(vocabulary_file=None,
   `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1308,8 +1346,8 @@ def index_table_from_tensor(vocabulary_list,
   `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.
@@ -1406,8 +1444,8 @@ def index_to_string_table_from_file(vocabulary_file,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1493,8 +1531,8 @@ def index_to_string_table_from_tensor(vocabulary_list,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.
@@ -1749,7 +1787,11 @@ class MutableHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(MutableHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                MutableHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableHashTable."""
@@ -2041,7 +2083,11 @@ class DenseHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(DenseHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                DenseHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""

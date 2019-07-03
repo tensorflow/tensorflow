@@ -123,7 +123,7 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       minus = y - z
 
     add_or_sub_pattern = graph_matcher.OpTypePattern(
-        'Add|Sub', inputs=['*', '*'])
+        'AddV2|Add|Sub', inputs=['*', '*'])
     matcher = graph_matcher.GraphMatcher(add_or_sub_pattern)
     self.assertEqual([
         match_result.get_op(add_or_sub_pattern)
@@ -180,11 +180,11 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       plus = x + y
 
     add_pattern_a = graph_matcher.OpTypePattern(
-        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=False)
+        'Add|AddV2', inputs=['Const', 'Placeholder'], ordered_inputs=False)
     add_pattern_b = graph_matcher.OpTypePattern(
-        'Add', inputs=['Placeholder', 'Const'], ordered_inputs=False)
+        'Add|AddV2', inputs=['Placeholder', 'Const'], ordered_inputs=False)
     add_pattern_fail = graph_matcher.OpTypePattern(
-        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=True)
+        'Add|AddV2', inputs=['Const', 'Placeholder'], ordered_inputs=True)
     # Both add_pattern_a and add_pattern_b should match the graph since
     # ordered_input was set False.
     matcher_a = graph_matcher.GraphMatcher(add_pattern_a)
