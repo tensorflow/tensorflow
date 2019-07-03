@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,12 +40,20 @@ class _SlideDataset(dataset_ops.UnaryDataset):
 
     input_structure = dataset_ops.get_structure(input_dataset)
     self._structure = input_structure._batch(None)  # pylint: disable=protected-access
-    variant_tensor = ged_ops.experimental_sliding_window_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        window_size=self._window_size,
-        window_shift=self._window_shift,
-        window_stride=self._window_stride,
-        **dataset_ops.flat_structure(self))
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
     super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -64,6 +64,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("RebatchDataset").Device(DEVICE_CPU),
+                        RebatchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalRebatchDataset").Device(DEVICE_CPU),
                         RebatchDatasetOp);
 
