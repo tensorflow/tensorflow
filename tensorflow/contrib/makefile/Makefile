@@ -914,7 +914,7 @@ ifeq ($(TARGET),OSX)
   ifeq($(HOST_ARCH), x86_64)
 	HOST_LDOPTS += -framework CoreFoundation
 	LIBS += -framework CoreFoundation
-  endif()
+  endif
 endif
 ifeq ($(TARGET),IOS)
   ifeq ($(IOS_ARCH),X86_64)
