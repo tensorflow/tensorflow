@@ -92,7 +92,7 @@ bool ModelTransformer::ApplyStartingWithNode(
   // expected_sequence_length until a node with multiple dependents is found.
   while (true) {
     // Apply transformation if possible.
-    if (sequence.size() == expected_sequence_length) {
+    if (sequence.size() == static_cast<size_t>(expected_sequence_length)) {
       nodes.clear();
       for (NodeId id : sequence) {
         // Nodes present in sequence should be present in a graph. If they are
@@ -186,7 +186,7 @@ bool ModelTransformer::ApplyStartingWithNode(
 
     sequence.push_back(next_node_in_sequence->id);
     // Decrease sequence until it matches expected length.
-    if (sequence.size() > expected_sequence_length) {
+    if (sequence.size() > static_cast<size_t>(expected_sequence_length)) {
       sequence.pop_front();
     }
   }
