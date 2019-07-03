@@ -31,7 +31,7 @@ limitations under the License.
 #include "third_party/nccl/nccl.h"
 #endif
 #if TENSORFLOW_USE_ROCM
-#include "third_party/rccl/rccl.h"
+#include "rccl.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"

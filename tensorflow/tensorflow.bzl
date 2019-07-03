@@ -245,7 +245,7 @@ def if_nccl(a):
     })
 
 def nccl_config():
-    return (if_rocm_is_configured(["@local_config_rccl//:rccl"])
+    return (if_rocm_is_configured(["@local_config_rocm//rocm:rccl"])
          or if_cuda_is_configured(["@local_config_nccl//:nccl"])
          or [])
 
