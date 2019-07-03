@@ -359,7 +359,7 @@ def checkpoint_exists_internal(checkpoint_prefix):
       `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
       V1/V2.
   Returns:
-    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
   """
   pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
                                         saver_pb2.SaverDef.V2)
@@ -387,9 +387,9 @@ def checkpoint_exists(checkpoint_prefix):
       `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
       V1/V2.
   Returns:
-    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
   """
-  return checkpoint_exists_internal(checkpoint_exists)
+  return checkpoint_exists_internal(checkpoint_prefix)
 
 
 @deprecation.deprecated(
