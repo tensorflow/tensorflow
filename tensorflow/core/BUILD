@@ -4596,8 +4596,8 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags(),
     deps = [
-        ":rocm_rocdl_path",
         ":lib",
+        ":rocm_rocdl_path",
         ":test",
         ":test_main",
     ],
