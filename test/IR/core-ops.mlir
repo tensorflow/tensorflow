@@ -423,3 +423,25 @@ func @test_vector.transfer_ops(%arg0: memref<?x?xf32>) {
   vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d1, d0)} : vector<3x7xf32>, memref<?x?xf32>
   return
 }
+
+func @std_for(%arg0 : index, %arg1 : index, %arg2 : index) {
+  std.for %i0 = %arg0 to %arg1 step %arg2 {
+    std.for %i1 = %arg0 to %arg1 step %arg2 {
+      %min_cmp = cmpi "slt", %i0, %i1 : index
+      %min = select %min_cmp, %i0, %i1 : index
+      %max_cmp = cmpi "sge", %i0, %i1 : index
+      %max = select %max_cmp, %i0, %i1 : index
+      std.for %i2 = %min to %max step %i1 {
+      }
+    }
+  }
+  return
+}
+// CHECK-LABEL: func @std_for(%arg0: index, %arg1: index, %arg2: index) {
+//  CHECK-NEXT:   std.for %i0 = %arg0 to %arg1 step %arg2 {
+//  CHECK-NEXT:     std.for %i1 = %arg0 to %arg1 step %arg2 {
+//  CHECK-NEXT:       %0 = cmpi "slt", %i0, %i1 : index
+//  CHECK-NEXT:       %1 = select %0, %i0, %i1 : index
+//  CHECK-NEXT:       %2 = cmpi "sge", %i0, %i1 : index
+//  CHECK-NEXT:       %3 = select %2, %i0, %i1 : index
+//  CHECK-NEXT:       std.for %i2 = %1 to %3 step %i1 {

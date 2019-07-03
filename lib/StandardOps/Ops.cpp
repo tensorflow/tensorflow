@@ -81,7 +81,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<DmaStartOp, DmaWaitOp,
+  addOperations<DmaStartOp, DmaWaitOp, StdForOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -1642,6 +1642,125 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto elementsAttr = aggregate.dyn_cast<ElementsAttr>())
     return elementsAttr.getValue(indices);
   return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// StdForOp.
+////////////////////////////////////////////////////////////////////////////////
+// Check that if a "block" has a terminator, it is an `TerminatorOp`.
+static LogicalResult checkHasTerminator(OpState &op, Block &block) {
+  if (block.empty() || isa<StdTerminatorOp>(block.back()))
+    return success();
+
+  return op.emitOpError("expects regions to end with '" +
+                        StdTerminatorOp::getOperationName() + "'")
+             .attachNote()
+         << "in custom textual format, the absence of terminator implies '"
+         << StdTerminatorOp::getOperationName() << "'";
+}
+
+// Insert `cf.terminator` at the end of the StdForOp only region's only block
+// if it does not have a terminator already.  If a new `cf.terminator` is
+// inserted, the location is specified by `loc`. If the region is empty,
+// insert a new block first.
+static void ensureTerminator(Region &region, Builder &builder, Location loc) {
+  impl::ensureRegionTerminator<StdTerminatorOp>(region, builder, loc);
+}
+
+void StdForOp::build(Builder *builder, OperationState *result, Value *lb,
+                     Value *ub, Value *step) {
+  result->addOperands({lb, ub, step});
+  Region *bodyRegion = result->addRegion();
+  Block *body = new Block();
+  body->addArgument(IndexType::get(builder->getContext()));
+  bodyRegion->push_back(body);
+  ensureTerminator(*bodyRegion, *builder, result->location);
+}
+
+LogicalResult StdForOp::verify() {
+  if (!getLowerBound()->getType().isa<IndexType>())
+    return emitOpError("lower bound operand must be an index");
+  if (!getUpperBound()->getType().isa<IndexType>())
+    return emitOpError("upper bound operand must be an index");
+  if (!getStep()->getType().dyn_cast<IndexType>())
+    return emitOpError("step operand must be an index");
+  if (auto cst = dyn_cast_or_null<ConstantIndexOp>(getStep()->getDefiningOp()))
+    if (cst.getValue() <= 0)
+      return emitOpError("constant step operand must be nonnegative");
+
+  if (std::next(getOperation()->getRegions().begin()) !=
+      getOperation()->getRegions().end())
+    return emitOpError("operation expected to have exactly one region");
+
+  auto &bodyRegion = getOperation()->getRegion(0);
+  // The body region must contain a single basic block.
+  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+    return emitOpError("expected body region to have a single block");
+  // Check that the body defines as single block argument for the induction
+  // variable.
+  auto *body = getBody();
+  if (body->getNumArguments() != 1 ||
+      !body->getArgument(0)->getType().isIndex())
+    return emitOpError("expected body to have a single index argument for "
+                       "the induction variable");
+  if (failed(checkHasTerminator(*this, *body)))
+    return failure();
+  return success();
+}
+
+void StdForOp::print(OpAsmPrinter *p) {
+  *p << getOperationName() << " " << *getInductionVar() << " = "
+     << *getLowerBound() << " to " << *getUpperBound() << " step "
+     << *getStep();
+  p->printRegion(getRegion(),
+                 /*printEntryBlockArgs=*/false,
+                 /*printBlockTerminators=*/false);
+  p->printOptionalAttrDict(getAttrs());
+}
+
+ParseResult StdForOp::parse(OpAsmParser *parser, OperationState *result) {
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType inductionVariable, lb, ub, step;
+  // Parse the induction variable followed by '='.
+  if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
+    return failure();
+
+  // Parse loop bounds.
+  Type indexType = builder.getIndexType();
+  if (parser->parseOperand(lb) ||
+      parser->resolveOperand(lb, indexType, result->operands) ||
+      parser->parseKeyword("to") || parser->parseOperand(ub) ||
+      parser->resolveOperand(ub, indexType, result->operands) ||
+      parser->parseKeyword("step") || parser->parseOperand(step) ||
+      parser->resolveOperand(step, indexType, result->operands))
+    return failure();
+
+  // Parse the body region.
+  Region *body = result->addRegion();
+  if (parser->parseRegion(*body, inductionVariable, indexType))
+    return failure();
+
+  ensureTerminator(*body, builder, result->location);
+
+  // Parse the optional attribute list.
+  if (parser->parseOptionalAttributeDict(result->attributes))
+    return failure();
+
+  return success();
+}
+
+OpBuilder StdForOp::getBodyBuilder() {
+  Block *body = getBody();
+  return OpBuilder(body, std::prev(body->end()));
+}
+
+StdForOp getStdForInductionVarOwner(Value *val) {
+  auto *ivArg = dyn_cast<BlockArgument>(val);
+  if (!ivArg)
+    return StdForOp();
+  assert(ivArg->getOwner() && "unlinked block argument");
+  auto *containingInst = ivArg->getOwner()->getContainingOp();
+  return dyn_cast_or_null<StdForOp>(containingInst);
 }
 
 //===----------------------------------------------------------------------===//

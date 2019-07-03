@@ -699,3 +699,75 @@ func @index_cast_float_to_index(%arg0: f32) {
   %0 = index_cast %arg0 : f32 to index
   return
 }
+
+// -----
+
+func @std_for_lb(%arg0: f32, %arg1: index) {
+  // expected-error@+1 {{lower bound operand must be an index}}
+  "std.for"(%arg0, %arg1, %arg1) : (f32, index, index) -> ()
+  return
+}
+
+// -----
+
+func @std_for_ub(%arg0: f32, %arg1: index) {
+  // expected-error@+1 {{upper bound operand must be an index}}
+  "std.for"(%arg1, %arg0, %arg1) : (index, f32, index) -> ()
+  return
+}
+
+// -----
+
+func @std_for_step(%arg0: f32, %arg1: index) {
+  // expected-error@+1 {{step operand must be an index}}
+  "std.for"(%arg1, %arg1, %arg0) : (index, index, f32) -> ()
+  return
+}
+
+// -----
+
+func @std_for_step_nonnegative(%arg0: index) {
+  // expected-error@+2 {{constant step operand must be nonnegative}}
+  %c0 = constant 0 : index
+  "std.for"(%arg0, %arg0, %c0) : (index, index, index) -> ()
+  return
+}
+
+// -----
+
+func @std_for_one_region(%arg0: index) {
+  // expected-error@+1 {{operation expected to have exactly one region}}
+  "std.for"(%arg0, %arg0, %arg0) (
+    {"std.terminator"() : () -> ()},
+    {"std.terminator"() : () -> ()}
+  ) : (index, index, index) -> ()
+  return
+}
+
+// -----
+
+func @std_for_single_block(%arg0: index) {
+  // expected-error@+1 {{expected body region to have a single block}}
+  "std.for"(%arg0, %arg0, %arg0) (
+    {
+    ^bb1:
+      "std.terminator"() : () -> ()
+    ^bb2:
+      "std.terminator"() : () -> ()
+    }
+  ) : (index, index, index) -> ()
+  return
+}
+
+// -----
+
+func @std_for_single_index_argument(%arg0: index) {
+  // expected-error@+1 {{expected body to have a single index argument for the induction variable}}
+  "std.for"(%arg0, %arg0, %arg0) (
+    {
+    ^bb0(%i0 : f32):
+      "std.terminator"() : () -> ()
+    }
+  ) : (index, index, index) -> ()
+  return
+}

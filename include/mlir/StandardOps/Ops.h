@@ -31,6 +31,7 @@
 namespace mlir {
 class AffineMap;
 class Builder;
+class OpBuilder;
 
 class StandardOpsDialect : public Dialect {
 public:
@@ -354,6 +355,81 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 ParseResult parseDimAndSymbolList(OpAsmParser *parser,
                                   SmallVector<Value *, 4> &operands,
                                   unsigned &numDims);
+
+/// The "std.for" operation represents a loop nest taking 3 SSA value as
+/// operands that represent the lower bound, upper bound and step respectively.
+/// The operation defines an SSA value for its induction variable. It has one
+/// region capturing the loop body. The induction variable is represented as an
+/// argument of this region. This SSA value always has type index, which is the
+/// size of the machine word. The step is a value of type index, required to be
+/// positive.
+/// The lower and upper bounds specify a half-open range: the range includes the
+/// lower bound but does not include the upper bound.
+///
+/// The body region must contain exactly one block that terminates with
+/// "std.terminator".  Calling StdForOp::build will create such region and
+/// insert the terminator, so will the parsing even in cases when it is absent
+/// from the custom format. For example:
+///
+/// ```mlir
+///    std.for %iv = %lb to %ub step %step {
+///      ... // body
+///    }
+/// ```
+// TODO(ntv) Move to ODS once we can override the default `build` method to
+// add a terminator.
+class StdForOp
+    : public Op<StdForOp, OpTrait::NOperands<3>::Impl, OpTrait::ZeroResult> {
+public:
+  using Op::Op;
+
+  // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result, Value *lb,
+                    Value *ub, Value *step);
+  LogicalResult verify();
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+
+  static StringRef getOperationName() { return "std.for"; }
+
+  /// Return a Builder set up to insert operations immediately before the
+  /// terminator.
+  OpBuilder getBodyBuilder();
+
+  /// Get the body of the StdForOp.
+  Block *getBody() { return &getRegion().front(); }
+
+  /// Get the body region of the StdForOp.
+  Region &getRegion() { return getOperation()->getRegion(0); }
+
+  /// Returns the induction variable for this loop.
+  Value *getInductionVar() { return getBody()->getArgument(0); }
+
+  //===--------------------------------------------------------------------===//
+  // Bounds and step
+  //===--------------------------------------------------------------------===//
+  /// Returns the lower bound operand.
+  Value *getLowerBound() { return getOperand(0); }
+
+  /// Returns the upper bound operand.
+  Value *getUpperBound() { return getOperand(1); }
+
+  /// Returns loop step.
+  Value *getStep() { return getOperand(2); }
+
+  /// Set lower bound.
+  void setLowerBound(Value *lb) { setOperand(0, lb); }
+
+  /// Set upper bound.
+  void setUpperBound(Value *ub) { setOperand(1, ub); }
+
+  /// Set loop step.
+  void setStep(Value *step) { setOperand(2, step); }
+};
+
+/// Returns the loop parent of an induction variable. If the provided value is
+/// not an induction variable, then return nullptr.
+StdForOp getStdForInductionVarOwner(Value *val);
 
 } // end namespace mlir
 

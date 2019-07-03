@@ -879,6 +879,26 @@ def TensorCastOp : CastOp<"tensor_cast"> {
   }];
 }
 
+def StdTerminatorOp :
+    Std_Op<"terminator", [NativeOpTrait<"IsTerminator">]> {
+  let summary = "cf terminator operation";
+  let description = [{
+    "std.terminator" is a special terminator operation for blocks inside
+    std loops. It terminates the region. This operation does _not_ have a custom
+    syntax. However, `std` control operations omit the terminator in their 
+    custom syntax for brevity.
+
+       std.terminator
+  }];
+
+  // No custom parsing/printing form.
+  let parser = ?;
+  let printer = ?;
+
+  // Fully specified by traits.
+  let verifier = ?;
+}
+
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
   let hasFolder = 1;
