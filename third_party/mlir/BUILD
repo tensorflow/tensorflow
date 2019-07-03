@@ -96,6 +96,7 @@ cc_library(
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [
+        "include/mlir/Analysis/Verifier.h",
         "include/mlir/Pass/AnalysisManager.h",
         "include/mlir/Pass/Pass.h",
         "include/mlir/Pass/PassInstrumentation.h",
@@ -910,6 +911,7 @@ cc_library(
         "include/mlir/Analysis/SliceAnalysis.h",
         "include/mlir/Analysis/Utils.h",
         "include/mlir/Analysis/VectorAnalysis.h",
+        "include/mlir/Analysis/Verifier.h",
     ],
     includes = ["include"],
     deps = [
@@ -1094,6 +1096,7 @@ cc_library(
     hdrs = ["include/mlir/Support/TranslateClParser.h"],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":IR",
         ":Parser",
         ":Support",
