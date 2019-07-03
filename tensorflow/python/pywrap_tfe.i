@@ -74,6 +74,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
