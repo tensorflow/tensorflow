@@ -52,7 +52,7 @@ __global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
       using UnsignedOutputType = typename std::make_unsigned<OutputType>::type;
       GpuAtomicMax(reinterpret_cast<UnsignedOutputType*>(output + maxima_idx),
-                    static_cast<UnsignedOutputType>(index % num_classes));
+                   static_cast<UnsignedOutputType>(index % num_classes));
     }
   }
 }
@@ -105,7 +105,8 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
     Constants<GPUDevice> constants;
     gpuprim::Max op;
-    functor::ReduceImpl<float, gpuprim::Max, float*, const float*, ReductionAxes>(
+    functor::ReduceImpl<float, gpuprim::Max, float*, const float*,
+                        ReductionAxes>(
         /*ctx=*/ctx, /*out=*/maxima.data(), /*in=*/scores.data(), /*in_rank=*/2,
         /*in_dim0=*/batch_size * num_samples,
         /*in_dim1=*/num_classes, /*in_dim2=*/1, /*out_rank=*/1,

@@ -16,13 +16,13 @@ limitations under the License.
 // The algorithm for dynamic partition has the following steps:
 // 1. Let N be the size of partitions. We initialize a new vector indices_in
 //    with the values 0, 1, 2, ..., N-1.
-// 2. We apply gpuprim::DeviceRadixSort::SortPairs to the key - value pairs given
-//    by partitions and indices_in. This will result in two new vectors
+// 2. We apply gpuprim::DeviceRadixSort::SortPairs to the key - value pairs
+//    given by partitions and indices_in. This will result in two new vectors
 //    partitions_out and indices_out, with partitions_out sorted.
 // 3. The first dimension of outputs[i] is equal to the number of i-values in
 //    partitions_out. We determine it in two steps:
-//    - apply gpuprim::DeviceReduce::ReduceByKey to count how many times each value
-//      appears in partitions_out,
+//    - apply gpuprim::DeviceReduce::ReduceByKey to count how many times each
+//      value appears in partitions_out,
 //    - move the results to partition_count. This handles missing values
 //      (corresponding to empty parts).
 // 4. Because partition_count is on the GPU, we bring it asynchronously to
@@ -90,8 +90,8 @@ void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
   TF_CHECK_OK(GpuLaunchKernel(RangeInitKernel<T>, config.block_count,
-                               config.thread_per_block, 0, d.stream(), start,
-                               delta, size, out.data()));
+                              config.thread_per_block, 0, d.stream(), start,
+                              delta, size, out.data()));
 }
 
 // Given *num_runs pairs (key, value), this function moves the value
@@ -105,8 +105,8 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
   // only handle the first out_size values.
   GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
   TF_CHECK_OK(GpuLaunchKernel(MoveValuesKernel, config.block_count,
-                               config.thread_per_block, 0, d.stream(), keys,
-                               values, num_runs, out_size, out));
+                              config.thread_per_block, 0, d.stream(), keys,
+                              values, num_runs, out_size, out));
 }
 
 template <typename T>
@@ -114,10 +114,10 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
   GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
-  TF_CHECK_OK(GpuLaunchKernel(
-      GatherOpKernel<T, int32, true>, config.block_count,
-      config.thread_per_block, 0, d.stream(), params, indices, out,
-      gather_dim_size, indices_size, slice_size, out_size));
+  TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, int32, true>,
+                              config.block_count, config.thread_per_block, 0,
+                              d.stream(), params, indices, out, gather_dim_size,
+                              indices_size, slice_size, out_size));
 }
 
 struct IdentityOp {
@@ -409,7 +409,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
 #if GOOGLE_CUDA
     cub::ConstantInputIterator<int32> values_in(1);
 #elif TENSORFLOW_USE_ROCM
-    using ConstantInputIterator = ::rocprim::constant_iterator<int32, ptrdiff_t>;
+    using ConstantInputIterator =
+        ::rocprim::constant_iterator<int32, ptrdiff_t>;
     ConstantInputIterator values_in(1);
 #endif
     gpuprim::Sum reduction_op;
@@ -423,9 +424,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    gpuprim::DeviceReduce::ReduceByKey(NULL, temp_storage_bytes, keys_in_ptr,
-                                   unique_out_it, values_in, aggregates_out_it,
-                                   num_runs_ptr, reduction_op, N, cu_stream);
+    gpuprim::DeviceReduce::ReduceByKey(
+        NULL, temp_storage_bytes, keys_in_ptr, unique_out_it, values_in,
+        aggregates_out_it, num_runs_ptr, reduction_op, N, cu_stream);
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
@@ -437,10 +438,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // each index appears in partitions. The distinct indices are stored
     // in unique_out, while the count is stored in aggregates_out.
     // The total number of distinct indices is stored in num_runs.
-    gpuprim::DeviceReduce::ReduceByKey(cub_temp_storage.flat<int8>().data(),
-                                   temp_storage_bytes, keys_in_ptr,
-                                   unique_out_it, values_in, aggregates_out_it,
-                                   num_runs_ptr, reduction_op, N, cu_stream);
+    gpuprim::DeviceReduce::ReduceByKey(
+        cub_temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in_ptr,
+        unique_out_it, values_in, aggregates_out_it, num_runs_ptr, reduction_op,
+        N, cu_stream);
     // We are not done yet. unique_out only contains the indices that appeared
     // at least once in partitions. We move each value from aggregates_out
     // to the corresponding position in partition_count. This will handle

@@ -86,8 +86,7 @@ namespace {
 // Command-line opts to this tool.  See main() for descriptions of these
 // fields.
 struct Options {
-  Options()
-      : intra_op_thread_pool_size(tensorflow::port::NumSchedulableCPUs()) {}
+  Options() : intra_op_thread_pool_size(tensorflow::port::MaxParallelism()) {}
 
   bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 

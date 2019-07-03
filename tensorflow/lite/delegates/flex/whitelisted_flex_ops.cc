@@ -104,6 +104,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "DivNoNan",
           "DynamicPartition",
           "DynamicStitch",
+          "Einsum",
           "Elu",
           "EluGrad",
           "EncodeWav",

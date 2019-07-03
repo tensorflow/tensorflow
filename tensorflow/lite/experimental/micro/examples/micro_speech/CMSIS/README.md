@@ -5,7 +5,7 @@
 *   **hanning.cc**: Precomputed
     [Hann window](https://en.wikipedia.org/wiki/Hann_function) for use in the
     preprocessor. This file is created in ../create_constants.py
-*   **hanning.h**: Header file fro hanning.cc
+*   **hanning.h**: Header file for hanning.cc
 *   **preprocessor.cc**: CMSIS version of the preprocessor
 *   **sin_1k.cc**: A 1 kHZ sinusoid used for comparing the CMSIS preprocessor
     with the Micro-Lite fixed_point preprocessor

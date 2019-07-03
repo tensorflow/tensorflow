@@ -151,9 +151,9 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
-    deferred_captures: Maps arbitrary key -> (closure, placeholder), where at
-      function call time the value of closure() will be used to feed the
-      placeholder.
+    deferred_captures: Maps arbitrary key -> (closure, nest of placeholders),
+      where at function call time the value of closure() will be used to feed
+      the nest of placeholders.
     control_captures: Set of external ops on which this graph has a control
       dependency.
     seed: The graph-level random seed.
@@ -252,37 +252,45 @@ class FuncGraph(ops.Graph):
 
     Args:
       closure: function which takes no arguments, to be evaluated at function
-       call time, returning a tensor of compatible `shape` and `dtype`
-      spec: TypeSpec for the value to capture.
+       call time, returning a nest of tensors compatible with `spec`.
+      spec: nest of TypeSpec for the value to capture.
       key: optional. If not None, multiple calls to lazy_capture with the same
        key in the same graph will return the same placeholder, and the
        first closure will be used at function call time.
 
     Returns:
-      placeholder which, at function call time, will be fed with the result
-      of calling closure().
+      Nest of placeholders which, at function call time, will be fed with the
+      result of calling closure().
 
     Raises:
       ValueError: at function call time, if the return value of closure() is
-       not compatible with shape and dtype.
-      TypeError: if spec is not a supported type (currently only TensorSpec
-       is supported).
+       not compatible with `spec`.
     """
     if key is None:
       key = object()
-    if not isinstance(spec, tensor_spec.TensorSpec):
-      raise TypeError("Only TensorSpec supported so far, not", repr(spec))
-    dtype = spec.dtype
-    shape = spec.shape
     if key not in self.deferred_captures:
-      placeholder = array_ops.placeholder(dtype=dtype, shape=shape)
+
+      def convert_to_placeholder(s):
+        if not isinstance(s, tensor_spec.TensorSpec):
+          raise TypeError(
+              "Expected a nest of `TypeSpec` objects, found %s of type %s." %
+              (s, type(s)))
+        return array_ops.placeholder(dtype=s.dtype, shape=s.shape)
+
+      placeholder = nest.map_structure(
+          convert_to_placeholder, spec, expand_composites=True)
+
       def wrapped_closure():
-        tensor = ops.convert_to_tensor(closure(), dtype=dtype)
-        if not tensor.shape.is_compatible_with(shape):
-          raise ValueError(
-              "Return value of closure,", tensor,
-              "not compatible with shape", shape, "passed to lazy_placeholder")
-        return tensor
+        ret_nest = closure()
+        nest.assert_same_structure(spec, ret_nest, expand_composites=True)
+        # This uses the tensor dtype defined in `spec` when converting values
+        # in `ret_nest` to tensors.
+        # pylint: disable=protected-access
+        y = nest.map_structure(lambda s, r: s._to_components(r), spec, ret_nest,
+                               expand_composites=False)
+        # pylint: enable=protected-access
+        return nest.flatten(y, expand_composites=True)
+
       self.deferred_captures[key] = (wrapped_closure, placeholder)
     return self.deferred_captures[key][1]
 
@@ -806,9 +814,12 @@ def func_graph_from_py_func(name,
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
     variables = [v for v in graph_variables if v not in arg_variables]
-    func_graph.inputs = inputs + list(
-        func_graph.captures.values()) + [
-            x[1] for x in func_graph.deferred_captures.values()]
+    func_graph.inputs = (
+        inputs +
+        list(func_graph.captures.values()) +
+        nest.flatten(
+            [x[1] for x in func_graph.deferred_captures.values()],
+            expand_composites=True))
 
     func_graph.structured_outputs = func_outputs
     # Returning a closed-over tensor does not trigger convert_to_tensor.

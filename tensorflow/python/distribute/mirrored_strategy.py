@@ -382,9 +382,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
+    self.experimental_enable_get_next_as_optional = True
+
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
     # coordinator as well.
+    assert devices, "Must specify at least one device."
+    devices = tuple(device_util.resolve(d) for d in devices)
+    assert len(set(devices)) == len(devices), (
+        "No duplicates allowed in `devices` argument: %s" % (devices,))
     if _is_device_list_local(devices):
       self._initialize_local(devices)
     else:
@@ -393,11 +399,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_local(self, devices):
     """Initializes the object for local training."""
     self._local_mode = True
-    assert devices, "Must specify at least one device."
-    devices = tuple(device_util.resolve(d) for d in devices)
-    assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument: %s" % (devices,))
-    # TODO(josh11b): Require at least 2 devices?
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
     self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
@@ -407,13 +408,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
     self._local_mode = False
-
-    assert devices, "Must specify at least one device."
-    devices = tuple(device_util.resolve(d) for d in devices)
-    assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument: %s" % devices)
-    # TODO(josh11b): Require at least 2 devices?
-
     device_dict = _group_device_list(devices)
     workers = []
     worker_devices = []
@@ -450,9 +444,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
   def _get_variable_creator_initial_value(self,
-                                          replica_id=0,
-                                          device=None,
-                                          primary_var=None,
+                                          replica_id,
+                                          device,
+                                          primary_var,
                                           **kwargs):
     """Return the initial value for variables on a replica."""
     if replica_id == 0:

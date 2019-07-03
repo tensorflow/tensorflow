@@ -327,15 +327,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
 
   Result Finish() override;
 
- private:
-  int64 alignment_;
-  Result result_;
-  Type type_;
-
-  // The current time represented as an integer. It increments by 1 at each
-  // Alloc or Free call.
-  int64 current_time_ = 0;
-
+ protected:
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
     const BufferValue* buffer;
@@ -353,11 +345,77 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     bool need_allocation;
   };
 
+  // Node in BufferIntervalTree that stores the alloc and free times of a
+  // buffer, and the chunk assigned to it.
+  struct BufferIntervalTreeNode {
+    // Alloc time.
+    int64 start;
+    // Free time.
+    int64 end;
+    // Maximum free time of all nodes in the subtree where this node is the
+    // root.
+    int64 subtree_end;
+    // Allocated chunk for the buffer.
+    HeapSimulator::Chunk chunk;
+    // Left child.
+    BufferIntervalTreeNode* left;
+    // Right child.
+    BufferIntervalTreeNode* right;
+  };
+
+  // An interval tree that can query buffers overlapping in time.
+  class BufferIntervalTree {
+   public:
+    // Adds a buffer to the interval tree, with the time interval and allocated
+    // chunk specified.
+    void Add(int64 start, int64 end, const Chunk& chunk);
+
+    // Returns vector of allocated chunks that overlap with the given time
+    // interval.
+    std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
+
+   private:
+    std::list<BufferIntervalTreeNode> node_storage_;
+  };
+
+  // The candidate contains a chunk and the resultant heap size if this
+  // chunk is to be committed.
+  struct ChunkCandidate {
+    Chunk chunk;
+    int64 heap_size;
+  };
+
+  // Returns the buffer intervals sorted according to type_.
+  std::vector<BufferInterval> GetSortedBufferIntervals() const;
+
+  // These two methods below are exposed to other heap algorithms that inherit
+  // from this class. The Finish() method tries to find a candidate chunk for
+  // each BufferInterval, after calling GetSortedBufferIntervals. The
+  // ChunkCandidate returns the chunk and the final heap size if it chunk is to
+  // be committed. The Finish() method can then call CommitChunk to associate
+  // the chunk with the BufferInterval, if the final heap size is within the
+  // limits.
+  ChunkCandidate FindChunkCandidate(
+      const BufferInterval& buffer_interval) const;
+  void CommitChunk(const BufferInterval& buffer_interval,
+                   ChunkCandidate chunk_candidate);
+
+ private:
+  int64 alignment_;
+  Result result_;
+  Type type_;
+
+  // The current time represented as an integer. It increments by 1 at each
+  // Alloc or Free call.
+  int64 current_time_ = 0;
+
+  BufferIntervalTree interval_tree_;
+
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.
   absl::flat_hash_set<const BufferValue*> GetTransitiveColocations(
-      const BufferInterval& interval);
+      const BufferInterval& interval) const;
   absl::flat_hash_map<const BufferValue*, BufferInterval> buffer_intervals_;
 };
 

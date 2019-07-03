@@ -7956,6 +7956,7 @@ struct OperatorT : public flatbuffers::NativeTable {
   std::vector<uint8_t> custom_options;
   CustomOptionsFormat custom_options_format;
   std::vector<bool> mutating_variable_inputs;
+  std::vector<int32_t> intermediates;
   OperatorT()
       : opcode_index(0),
         custom_options_format(CustomOptionsFormat_FLEXBUFFERS) {
@@ -7972,7 +7973,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_BUILTIN_OPTIONS = 12,
     VT_CUSTOM_OPTIONS = 14,
     VT_CUSTOM_OPTIONS_FORMAT = 16,
-    VT_MUTATING_VARIABLE_INPUTS = 18
+    VT_MUTATING_VARIABLE_INPUTS = 18,
+    VT_INTERMEDIATES = 20
   };
   uint32_t opcode_index() const {
     return GetField<uint32_t>(VT_OPCODE_INDEX, 0);
@@ -8272,6 +8274,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<uint8_t> *mutating_variable_inputs() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_MUTATING_VARIABLE_INPUTS);
   }
+  const flatbuffers::Vector<int32_t> *intermediates() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_INTERMEDIATES);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX) &&
@@ -8287,6 +8292,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int8_t>(verifier, VT_CUSTOM_OPTIONS_FORMAT) &&
            VerifyOffset(verifier, VT_MUTATING_VARIABLE_INPUTS) &&
            verifier.VerifyVector(mutating_variable_inputs()) &&
+           VerifyOffset(verifier, VT_INTERMEDIATES) &&
+           verifier.VerifyVector(intermediates()) &&
            verifier.EndTable();
   }
   OperatorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8685,6 +8692,9 @@ struct OperatorBuilder {
   void add_mutating_variable_inputs(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> mutating_variable_inputs) {
     fbb_.AddOffset(Operator::VT_MUTATING_VARIABLE_INPUTS, mutating_variable_inputs);
   }
+  void add_intermediates(flatbuffers::Offset<flatbuffers::Vector<int32_t>> intermediates) {
+    fbb_.AddOffset(Operator::VT_INTERMEDIATES, intermediates);
+  }
   explicit OperatorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8706,8 +8716,10 @@ inline flatbuffers::Offset<Operator> CreateOperator(
     flatbuffers::Offset<void> builtin_options = 0,
     flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom_options = 0,
     CustomOptionsFormat custom_options_format = CustomOptionsFormat_FLEXBUFFERS,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> mutating_variable_inputs = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> mutating_variable_inputs = 0,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> intermediates = 0) {
   OperatorBuilder builder_(_fbb);
+  builder_.add_intermediates(intermediates);
   builder_.add_mutating_variable_inputs(mutating_variable_inputs);
   builder_.add_custom_options(custom_options);
   builder_.add_builtin_options(builtin_options);
@@ -8728,11 +8740,13 @@ inline flatbuffers::Offset<Operator> CreateOperatorDirect(
     flatbuffers::Offset<void> builtin_options = 0,
     const std::vector<uint8_t> *custom_options = nullptr,
     CustomOptionsFormat custom_options_format = CustomOptionsFormat_FLEXBUFFERS,
-    const std::vector<uint8_t> *mutating_variable_inputs = nullptr) {
+    const std::vector<uint8_t> *mutating_variable_inputs = nullptr,
+    const std::vector<int32_t> *intermediates = nullptr) {
   auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
   auto custom_options__ = custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0;
   auto mutating_variable_inputs__ = mutating_variable_inputs ? _fbb.CreateVector<uint8_t>(*mutating_variable_inputs) : 0;
+  auto intermediates__ = intermediates ? _fbb.CreateVector<int32_t>(*intermediates) : 0;
   return tflite::CreateOperator(
       _fbb,
       opcode_index,
@@ -8742,7 +8756,8 @@ inline flatbuffers::Offset<Operator> CreateOperatorDirect(
       builtin_options,
       custom_options__,
       custom_options_format,
-      mutating_variable_inputs__);
+      mutating_variable_inputs__,
+      intermediates__);
 }
 
 flatbuffers::Offset<Operator> CreateOperator(flatbuffers::FlatBufferBuilder &_fbb, const OperatorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -11724,6 +11739,7 @@ inline void Operator::UnPackTo(OperatorT *_o, const flatbuffers::resolver_functi
   { auto _e = custom_options(); if (_e) { _o->custom_options.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->custom_options[_i] = _e->Get(_i); } } };
   { auto _e = custom_options_format(); _o->custom_options_format = _e; };
   { auto _e = mutating_variable_inputs(); if (_e) { _o->mutating_variable_inputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->mutating_variable_inputs[_i] = _e->Get(_i) != 0; } } };
+  { auto _e = intermediates(); if (_e) { _o->intermediates.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intermediates[_i] = _e->Get(_i); } } };
 }
 
 inline flatbuffers::Offset<Operator> Operator::Pack(flatbuffers::FlatBufferBuilder &_fbb, const OperatorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11742,6 +11758,7 @@ inline flatbuffers::Offset<Operator> CreateOperator(flatbuffers::FlatBufferBuild
   auto _custom_options = _o->custom_options.size() ? _fbb.CreateVector(_o->custom_options) : 0;
   auto _custom_options_format = _o->custom_options_format;
   auto _mutating_variable_inputs = _o->mutating_variable_inputs.size() ? _fbb.CreateVector(_o->mutating_variable_inputs) : 0;
+  auto _intermediates = _o->intermediates.size() ? _fbb.CreateVector(_o->intermediates) : 0;
   return tflite::CreateOperator(
       _fbb,
       _opcode_index,
@@ -11751,7 +11768,8 @@ inline flatbuffers::Offset<Operator> CreateOperator(flatbuffers::FlatBufferBuild
       _builtin_options,
       _custom_options,
       _custom_options_format,
-      _mutating_variable_inputs);
+      _mutating_variable_inputs,
+      _intermediates);
 }
 
 inline SubGraphT *SubGraph::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

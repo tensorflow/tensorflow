@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
@@ -191,6 +192,36 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
     EXPECT_TRUE(
         absl::StrContains(s.error_message(), "No such callable handle"));
   }
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
+  Initialize({3, 2, -1, 0});
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_optimize_for_static_graph(true);
+  auto session = absl::WrapUnique(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  s = session->Extend({});
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "optimize_for_static_graph"));
 }
 
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {

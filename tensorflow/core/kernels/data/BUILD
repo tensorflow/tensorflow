@@ -84,7 +84,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@com_googlesource_code_re2//:re2",
     ],
 )
 

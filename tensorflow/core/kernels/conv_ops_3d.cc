@@ -432,6 +432,7 @@ struct LaunchConvOp<GPUDevice, T> {
     using se::dnn::ProfileResult;
 
     AlgorithmConfig algorithm_config;
+
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -479,14 +480,13 @@ struct LaunchConvOp<GPUDevice, T> {
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
       ProfileResult best_result;
-      LOG(INFO) << "running auto-tune for convolution";
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       bool miopen_find_status =
           stream
-              ->ThenConvolveWithAlgorithm(
-                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_ptr, &scratch_allocator,
-                  AlgorithmConfig(), &best_result)
+              ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                          filter_ptr, conv_desc, output_desc,
+                                          &output_ptr, &scratch_allocator,
+                                          AlgorithmConfig(), &best_result)
               .ok();
       OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
                   errors::NotFound("Failed to find conv algorithm!"));

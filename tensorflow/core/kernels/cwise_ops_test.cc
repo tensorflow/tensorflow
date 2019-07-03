@@ -107,10 +107,19 @@ Graph* BinaryScalar(int num, const string& func) {
     test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC)).Run(iters); \
   }                                                                \
   BENCHMARK(BM_##DEVICE##_##FUNC##_scalar)                         \
-      ->Arg(4096) /* must >= 4096 */                               \
-      ->Arg(32768)                                                 \
-      ->Arg(131072)                                                \
-      ->Arg(1048576);
+      ->Arg(1 << 12) /* must >= 4096 */                            \
+      ->Arg(1 << 13)                                               \
+      ->Arg(1 << 14)                                               \
+      ->Arg((1 << 15) - (1 << 13))                                 \
+      ->Arg(1 << 15)                                               \
+      ->Arg((1 << 15) + (1 << 14))                                 \
+      ->Arg(1 << 16)                                               \
+      ->Arg((1 << 17) - (1 << 15))                                 \
+      ->Arg(1 << 17)                                               \
+      ->Arg((1 << 17) + (1 << 16))                                 \
+      ->Arg(1 << 18)                                               \
+      ->Arg(1 << 19)                                               \
+      ->Arg(1 << 20);
 
 BM_BINARY_SCALAR(cpu, Less);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

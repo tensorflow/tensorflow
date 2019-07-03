@@ -472,6 +472,163 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
   return Status::OK();
 }
 
+Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
+  std::unordered_map<string, Node*> outside_compilation_attr_to_node;
+  for (Node* n : g->op_nodes()) {
+    bool is_lifted_arg;
+    string outside_compilation_attr;
+    if (GetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg).ok() &&
+        GetNodeAttr(n->def(), "_xla_outside_compilation",
+                    &outside_compilation_attr)
+            .ok()) {
+      TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
+      outside_compilation_attr_to_node[outside_compilation_attr] = n;
+    }
+  }
+
+  for (Node* n : g->op_nodes()) {
+    if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
+      continue;
+    }
+
+    if (n->type_string() == "While") {
+      // Check if there is any lifted args in body function.
+      NameAttrList body_func;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "body", &body_func));
+      const FunctionDef* body_fdef = fld->Find(body_func.name());
+      TF_RET_CHECK(body_fdef);
+      bool has_lifted_args = false;
+      for (const NodeDef& ndef : body_fdef->node_def()) {
+        if (ndef.op() == "Placeholder" &&
+            ndef.attr().find(kXlaLiftedArgOutsideCompilationAttrName) !=
+                ndef.attr().end()) {
+          has_lifted_args = true;
+          break;
+        }
+      }
+      if (!has_lifted_args) {
+        continue;
+      }
+
+      // Gather all lifted args.
+      std::unique_ptr<FunctionBody> fbody;
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          *body_fdef, AttrSlice(&body_func.attr()), fld, &fbody));
+      Graph* body_graph = fbody->graph;
+      std::vector<std::pair<Node*, Node*>>
+          lifted_arg_node_and_outside_compilation_node;
+      for (Node* n : body_graph->op_nodes()) {
+        string oc_cluster;
+        if (n->type_string() == "Placeholder" &&
+            GetNodeAttr(n->def(), kXlaLiftedArgOutsideCompilationAttrName,
+                        &oc_cluster)
+                .ok()) {
+          TF_RET_CHECK(outside_compilation_attr_to_node.find(oc_cluster) !=
+                       outside_compilation_attr_to_node.end());
+          lifted_arg_node_and_outside_compilation_node.push_back(
+              {n, outside_compilation_attr_to_node.at(oc_cluster)});
+        }
+      }
+
+      // Append lifted args' types to While node's T attribute.
+      std::vector<DataType> dtypes;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtypes));
+      int original_arg_count = dtypes.size();
+      for (auto i : lifted_arg_node_and_outside_compilation_node) {
+        DataType dtype;
+        TF_RET_CHECK(i.second->IsIdentity() ||
+                     i.second->type_string() == "Placeholder");
+        if (i.second->IsIdentity()) {
+          TF_RETURN_IF_ERROR(GetNodeAttr(i.second->def(), "T", &dtype));
+        } else {
+          TF_RETURN_IF_ERROR(GetNodeAttr(i.second->def(), "dtype", &dtype));
+        }
+        dtypes.push_back(dtype);
+      }
+      n->ClearAttr("T");
+      n->AddAttr("T", dtypes);
+
+      // Add edges from outside compilation nodes to While node.
+      for (int i = original_arg_count; i < dtypes.size(); i++) {
+        Node* outside_compilation_node =
+            lifted_arg_node_and_outside_compilation_node[i - original_arg_count]
+                .second;
+        g->AddEdge(outside_compilation_node, 0, n, i);
+      }
+
+      // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
+      // nodes with the new _Arg nodes.
+      for (int i = original_arg_count; i < dtypes.size(); i++) {
+        NodeDefBuilder arg_builder(absl::StrCat("arg_", i), "_Arg");
+        arg_builder.Attr("T", dtypes[i]);
+        arg_builder.Attr("index", i);
+        NodeDef arg_def;
+        TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
+        Status s;
+        Node* arg_node = body_graph->AddNode(arg_def, &s);
+        TF_RETURN_IF_ERROR(s);
+
+        NodeDefBuilder ret_builder(absl::StrCat("ret_", i), "_Retval");
+        ret_builder.Attr("T", dtypes[i]);
+        ret_builder.Attr("index", i);
+        ret_builder.Input(arg_node->name(), 0, dtypes[i]);
+        NodeDef ret_def;
+        TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
+        Node* ret_node = body_graph->AddNode(ret_def, &s);
+        TF_RETURN_IF_ERROR(s);
+        body_graph->AddEdge(arg_node, 0, ret_node, 0);
+
+        Node* lifted_arg_node =
+            lifted_arg_node_and_outside_compilation_node[i - original_arg_count]
+                .first;
+        std::vector<const Edge*> out_edges(lifted_arg_node->out_edges().begin(),
+                                           lifted_arg_node->out_edges().end());
+        for (const Edge* e : out_edges) {
+          if (e->IsControlEdge()) {
+            body_graph->AddControlEdge(arg_node, e->dst());
+          } else {
+            body_graph->AddEdge(arg_node, 0, e->dst(), e->dst_input());
+          }
+        }
+
+        body_graph->RemoveNode(lifted_arg_node);
+      }
+      FunctionDef rewritten_body_fdef;
+      TF_RETURN_IF_ERROR(GraphToFunctionDef(*body_graph, body_func.name(),
+                                            &rewritten_body_fdef));
+      TF_RETURN_IF_ERROR(
+          fld->ReplaceFunction(body_func.name(), rewritten_body_fdef));
+
+      // In cond_graph, add new _Arg nodes.
+      NameAttrList cond_func;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "cond", &cond_func));
+      const FunctionDef* cond_fdef = fld->Find(cond_func.name());
+      TF_RET_CHECK(cond_fdef);
+      std::unique_ptr<FunctionBody> cond_fbody;
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          *cond_fdef, AttrSlice(&cond_func.attr()), fld, &cond_fbody));
+      Graph* cond_graph = cond_fbody->graph;
+      for (int i = original_arg_count; i < dtypes.size(); i++) {
+        NodeDefBuilder arg_builder(absl::StrCat("arg_", i), "_Arg");
+        arg_builder.Attr("T", dtypes[i]);
+        arg_builder.Attr("index", i);
+        NodeDef arg_def;
+        TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
+        Status s;
+        cond_graph->AddNode(arg_def, &s);
+        TF_RETURN_IF_ERROR(s);
+      }
+      FunctionDef rewritten_cond_fdef;
+      TF_RETURN_IF_ERROR(GraphToFunctionDef(*cond_graph, cond_func.name(),
+                                            &rewritten_cond_fdef));
+      TF_RETURN_IF_ERROR(
+          fld->ReplaceFunction(cond_func.name(), rewritten_cond_fdef));
+    }
+  }
+
+  return Status::OK();
+}
+
 // For an XLA computation, builds host side graph given all outside compilation
 // graphs inside it. The host side graph contains:
 // 1) a "sequencer" node (we will add control edge between XlaRecvAtHost and
@@ -599,6 +756,9 @@ Status ConstructHostGraph(
   // Postprocess edges between different outside compilations.
   TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
       &host_graph, outside_compilation_attr_name));
+
+  // Postprocess lifted arg nodes.
+  TF_RETURN_IF_ERROR(PostprocessLiftedArgs(&host_graph, fld));
 
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
@@ -1483,7 +1643,8 @@ Status RewriteOutsideCompilationSubgraphFn::operator()(
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def) {
   string old_name = node_def->op();
-  string new_name = absl::StrCat(xla_cluster_name_, "_", old_name);
+  string new_name =
+      absl::StrCat(xla_cluster_name_, "_", new_function_name_, "_", old_name);
   node_def->set_op(new_name);
   node_def->set_name(new_name);
 
@@ -1632,7 +1793,8 @@ Status ExtractOutsideCompilationForFunction(
   // Encapsulate outside_compilation cluster into function call node.
   std::unique_ptr<Graph> graph_out;
   RewriteOutsideCompilationSubgraphFn rewrite_fn(
-      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name);
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      new_func_name);
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       outside_compilation_attr_name, *fbody->graph, rewrite_fn,
       /*reuse_existing_functions=*/true, &graph_out, fld));

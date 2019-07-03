@@ -294,7 +294,10 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
+    typedef
+        typename Eigen::internal::scalar_left<Tout, Tin, Binary,
+                                              /*is_scalar_in_host_memory=*/true>
+            Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
@@ -304,7 +307,9 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
+    typedef typename Eigen::internal::scalar_right<
+        Tout, Tin, Binary, /*is_scalar_in_host_memory=*/true>
+        Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
@@ -350,7 +355,10 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
+    typedef
+        typename Eigen::internal::scalar_left<Tout, Tin, Binary,
+                                              /*is_scalar_in_host_memory=*/true>
+            Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
@@ -360,7 +368,9 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
+    typedef typename Eigen::internal::scalar_right<
+        Tout, Tin, Binary, /*is_scalar_in_host_memory=*/true>
+        Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
@@ -490,7 +500,10 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, true> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
+    typedef
+        typename Eigen::internal::scalar_left<Tout, Tin, Binary,
+                                              /*is_scalar_in_host_memory=*/true>
+            Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data(), error)));
   }
 
@@ -500,7 +513,9 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, true> {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
+    typedef typename Eigen::internal::scalar_right<
+        Tout, Tin, Binary, /*is_scalar_in_host_memory=*/true>
+        Unary;
     Assign(d, out, in.unaryExpr(Unary(scalar.data(), error)));
   }
 

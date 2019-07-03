@@ -250,7 +250,7 @@ class TrainingTest(keras_parameterized.TestCase):
     model = keras.Sequential([ReturnTraining()])
     model.compile('sgd', 'mse')
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
-    self.assertAllClose(hist.history['loss'][0], (10000,))
+    self.assertAllClose(hist.history['loss'][0], 10000)
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes

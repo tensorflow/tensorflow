@@ -225,8 +225,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
         use_function_backup=False,
-        max_batch_size=min(batch_list),
-        cached_engine_batches=None)
+        max_batch_size=min(batch_list))
     return conversion_params._replace(
         use_function_backup=IsQuantizationWithCalibration(conversion_params))
 
@@ -315,7 +314,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             for expected_shape, actual_val in zip(expected_shapes, new_val):
               self.assertEqual(list(expected_shape), list(actual_val.shape))
             if val is not None:
-              self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
+              # Some ops may have nondeterministic output. E.g. Conv2D may use
+              # winograd algorithm. So we set atol/rtol be larger than 1.e-06.
+              self.assertAllClose(val, new_val, atol=1.e-05, rtol=1.e-05)
             val = new_val
           vals.append(val)
         return vals
@@ -332,7 +333,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=conversion_params.minimum_segment_size,
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
-        cached_engine_batches=conversion_params.cached_engine_batches,
         use_calibration=conversion_params.use_calibration,
         use_function_backup=conversion_params.use_function_backup)
     return converter
@@ -344,7 +344,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     assert conversion_params.precision_mode == "INT8"
     assert conversion_params.is_dynamic_op
     assert conversion_params.maximum_cached_engines == 1
-    assert not conversion_params.cached_engine_batches
     assert conversion_params.use_calibration
 
     # We only support calibrating single engine.
