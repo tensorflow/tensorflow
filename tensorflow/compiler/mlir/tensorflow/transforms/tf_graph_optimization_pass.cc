@@ -144,9 +144,11 @@ void GraphOptPass::runOnModule() {
   auto module_out = std::move(module_or_status).ValueOrDie();
 
   // We cannot replace the module in a ModulePass. So we simply copy the
-  // Function list from module_out to module_in.
-  module_in.clear();
-  module_in.splice(module_in.getFunctions().end(), *module_out);
+  // operation list from module_out to module_in.
+  auto& module_in_ops = module_in.getBody()->getOperations();
+  module_in_ops.clear();
+  module_in_ops.splice(module_in_ops.end(),
+                       module_out->getBody()->getOperations());
 }
 }  // namespace tensorflow
 

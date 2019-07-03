@@ -310,7 +310,7 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (arg->getFunction().getName().is("main")) {
+  if (arg->getFunction().getName() == "main") {
     if (!arg->hasOneUse()) {
       return errors::FailedPrecondition(
           "Arg in 'main' should only have one user.");
@@ -507,8 +507,10 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
   // Ignore the gradient attribute on the function as it gets converted to
   // GradientDef.
   absl::flat_hash_set<string> attrs_to_ignore = {grad_string};
-  TF_RETURN_IF_ERROR(ConvertAttributes(function.getAttrs(), attrs_to_ignore,
-                                       func_def.mutable_attr()));
+  llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
+      function.getDialectAttrs());
+  TF_RETURN_IF_ERROR(
+      ConvertAttributes(funcAttrs, attrs_to_ignore, func_def.mutable_attr()));
   (*flib->add_function()) = func_def;
   return Status::OK();
 }

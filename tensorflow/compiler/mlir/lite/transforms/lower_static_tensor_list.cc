@@ -383,7 +383,7 @@ void LowerStaticTensorListPass::runOnModule() {
   std::vector<Function> funcs_in_module;
   for (auto func : getModule().getFunctions()) {
     // Always place the main function to be the first in the list.
-    if (func.getName().is("main")) {
+    if (func.getName() == "main") {
       funcs_in_module.insert(funcs_in_module.begin(), func);
     } else {
       funcs_in_module.push_back(func);
