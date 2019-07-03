@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #if !defined(PLATFORM_GOOGLE)
-#include "rocm/rocm_config.h"
+#include "third_party/gpus/rocm/rocm_config.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 
