@@ -284,8 +284,6 @@ TfLiteStatus MicroInterpreter::Invoke() {
         reinterpret_cast<TfLiteIntArray*>(temporaries_data);
     temporaries_array->size = 0;
 
-    const int kWeights = 1;
-
     TfLiteNode node;
     node.inputs = inputs_array;
     node.outputs = outputs_array;

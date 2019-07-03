@@ -1,4 +1,4 @@
-# Settings for x86 on Linux
+# Settings for SparcV8 based LEON processors from Gaisler Aeroflex
 ifeq ($(TARGET), leon)
   PLATFORM_FLAGS = -O3 -mcpu=leon3
   CXXFLAGS += -std=c++11 $(PLATFORM_FLAGS)

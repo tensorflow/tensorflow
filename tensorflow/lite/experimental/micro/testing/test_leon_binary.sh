@@ -33,8 +33,6 @@ SCRIPT_PATH="`dirname \"$BASH_SOURCE\"`"
 SCRIPT_PATH="`( cd \"$SCRIPT_PATH\" && pwd )`"
 LEON_COMMANDS="$SCRIPT_PATH/leon_commands"
 
-echo "pwd is ${ROOT_DIR}"
-
 tsim-leon3 $1 -c ${LEON_COMMANDS} 2>&1 | tee ${MICRO_LOG_FILENAME}
 
 if grep -q "$2" ${MICRO_LOG_FILENAME}
