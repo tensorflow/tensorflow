@@ -1928,7 +1928,7 @@ class Model(network.Network):
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
-    if getattr(self, 'train_function') is None or has_recompiled:
+    if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
       self._set_trainable_state(self._compiled_trainable_state)
@@ -1971,7 +1971,7 @@ class Model(network.Network):
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
-    if getattr(self, 'test_function') is None or has_recompiled:
+    if getattr(self, 'test_function', None) is None or has_recompiled:
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
