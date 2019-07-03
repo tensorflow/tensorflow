@@ -828,18 +828,16 @@ class TRTEngineResource(tracking.TrackableResource):
                filename,
                maximum_cached_engines,
                device="GPU"):
-    super(
-        TRTEngineResource,
-        self).__init__(deleter=TRTEngineResourceDeleter(resource_name, device))
+    super(TRTEngineResource, self).__init__(
+        device=device, deleter=TRTEngineResourceDeleter(resource_name, device))
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
         tracking.TrackableAsset(filename), "_serialized_trt_engine_filename")
     self._maximum_cached_engines = maximum_cached_engines
-    self._device = device
 
   def _create_resource(self):
-    return _get_resource_handle(self._resource_name, self._device)
+    return _get_resource_handle(self._resource_name, self._resource_device)
 
   def _initialize(self):
     gen_trt_ops.populate_trt_engine_cache(
