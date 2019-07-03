@@ -167,6 +167,13 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
                       op_name_func(inst->getName().getStringRef()));
   node_def->set_op(op_name);
   node_def->set_name(name);
+
+  // Add inputs to the NodeDef based on the number of operands. This is required
+  // as later when edges are added to the Node using Graph::AddEdge the
+  // associated NodeDef is not updated.
+  for (int i = 0, e = inst->getNumOperands(); i < e; ++i) {
+    node_def->add_input();
+  }
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("device")) {
     node_def->set_device(attr.getValue());
   }
