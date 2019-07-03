@@ -179,6 +179,7 @@ filegroup(
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
+        "@kissfft//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",

@@ -18,10 +18,7 @@ limitations under the License.
 
 #define FIXED_POINT 16
 #include "kiss_fft.h"
-// Internal test dependency placeholder1
-// Internal test dependency placeholder2
 #include "tools/kiss_fftr.h"
-// Internal test dependency placeholder3
 
 void FftCompute(struct FftState* state, const int16_t* input,
                 int input_scale_shift) {
@@ -40,8 +37,10 @@ void FftCompute(struct FftState* state, const int16_t* input,
   }
 
   // Apply the FFT.
-  kiss_fftr((const kiss_fftr_cfg)state->scratch, state->input,
-            (kiss_fft_cpx*)state->output);
+  kiss_fftr(
+      reinterpret_cast<const kiss_fftr_cfg>(state->scratch),
+      state->input,
+      reinterpret_cast<kiss_fft_cpx*>(state->output));
 }
 
 void FftInit(struct FftState* state) {
