@@ -2999,7 +2999,6 @@ tf_cc_tests(
         "non_max_suppression_op_test.cc",
         "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
-        "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
         "scale_and_translate_op_test.cc",
     ],
@@ -3007,6 +3006,26 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        ":sampling_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resize_bilinear_op_test",
+    srcs = ["resize_bilinear_op_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":image",
         ":ops_testutil",
