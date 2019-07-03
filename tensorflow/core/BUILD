@@ -132,6 +132,9 @@ load(
     "tf_additional_numa_lib_defines",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
+    "tf_additional_rocdl_data",
+    "tf_additional_rocdl_deps",
+    "tf_additional_rocdl_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_additional_verbs_lib_defines",
@@ -155,6 +158,7 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -1845,6 +1849,7 @@ filegroup(
             # :platform_base, a common dependency for downstream targets.
             "platform/**/env_time.cc",
             "platform/**/logging.cc",
+            "platform/**/rocm_rocdl_path.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/rocm.h",
@@ -2521,6 +2526,7 @@ cc_library(
             "platform/**/logger.cc",
             "platform/**/logging.cc",
             "platform/**/human_readable_json.cc",
+            "platform/**/rocm_rocdl_path.cc",
             "platform/abi.cc",
             "platform/protobuf.cc",
         ],
@@ -2537,6 +2543,8 @@ cc_library(
             "platform/**/logger.cc",
             "platform/**/logging.cc",
             "platform/**/human_readable_json.cc",
+            "platform/**/rocm.h",
+            "platform/**/rocm_rocdl_path.cc",
             "platform/abi.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
@@ -4581,6 +4589,20 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test_gpu(
+    name = "rocm_rocdl_path_test",
+    size = "small",
+    srcs = ["platform/rocm_rocdl_path_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        ":rocm_rocdl_path",
+        ":lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
 tf_cuda_only_cc_test(
     name = "util_gpu_kernel_helper_test",
     srcs = [
@@ -5555,6 +5577,18 @@ cc_library(
     deps = [
         ":lib",
     ] + tf_additional_libdevice_deps(),
+)
+
+cc_library(
+    name = "rocm_rocdl_path",
+    srcs = ["platform/rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
+    hdrs = ["platform/rocm_rocdl_path.h"],
+    copts = tf_copts(),
+    data = tf_additional_rocdl_data(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ] + tf_additional_rocdl_deps(),
 )
 
 transitive_hdrs(
