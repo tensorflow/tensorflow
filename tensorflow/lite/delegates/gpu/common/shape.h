@@ -362,7 +362,9 @@ struct DimensionGetterFunc {
   template <Layout T>
   int32_t operator()() const {
     int i = GetAxisIndex<T>(d);
-    return i >= 0 && i < l->dimensions.size() ? l->dimensions[i] : -1;
+    return i >= 0 && static_cast<size_t>(i) < l->dimensions.size()
+               ? l->dimensions[i]
+               : -1;
   }
   Axis d;
   const Shape* l;
@@ -387,7 +389,7 @@ struct DimensionSetterFunc {
   template <Layout T>
   bool operator()() const {
     int i = GetAxisIndex<T>(d);
-    if (i >= 0 && i < l->dimensions.size()) {
+    if (i >= 0 && static_cast<size_t>(i) < l->dimensions.size()) {
       l->dimensions[i] = v;
       return true;
     }
@@ -577,7 +579,7 @@ auto DispatchByLayout(Layout type, F f)
       return f.template operator()<Layout::SCALAR>();
     case Layout::BHWC:
       return f.template operator()<Layout::BHWC>();
-    case Layout::UNKNOWN:
+    default:
       return f.template operator()<Layout::UNKNOWN>();
   }
 }
