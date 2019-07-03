@@ -47,6 +47,17 @@ class ScatterUpdateOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 };
+class ScatterSubOpTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType variable_ref_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterSub")
+                     .Input(FakeInput(variable_ref_type))
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(RemoveRefType(variable_ref_type)))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
 
 TEST_F(ScatterUpdateOpTest, Simple_StringType) {
   MakeOp(DT_STRING_REF, DT_INT32);
@@ -175,6 +186,19 @@ TEST_F(ScatterUpdateOpTest, Error_IndexOutOfRange) {
       << s;
 }
 
+TEST_F(ScatterSubOpTest, Error_IndexOutOfRange) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({14}),
+                           {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32>(TensorShape({3}), {0, 1, 99});
+  AddInputFromArray<float>(TensorShape({3}), {100, 101, 102});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 14)"))
+      << s;
+}
+
 TEST_F(ScatterUpdateOpTest, Error_WrongDimsIndices) {
   MakeOp(DT_FLOAT_REF, DT_INT32);
 
@@ -238,7 +262,8 @@ class ScatterUpdateBM : public ScatterUpdateOpTest {
 };
 
 template <typename Index>
-static void BM_ScatterHelper(int iters, int embedding_size, const char* op) {
+static void BM_ScatterHelper(int iters, int embedding_size, const char* op,
+                             bool big_num_updates = false) {
   testing::StopTiming();
   const int kRows = 10000000 / embedding_size;
   std::vector<float> values;
@@ -246,7 +271,7 @@ static void BM_ScatterHelper(int iters, int embedding_size, const char* op) {
   for (int i = 0; i < kRows * embedding_size; i++) {
     values.push_back(i);
   }
-  const int kNumUpdates = 1000;
+  int kNumUpdates = big_num_updates ? 1000000 : 1000;
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<Index> indices;
@@ -282,7 +307,9 @@ static void BM_ScatterUpdateInt64(int iters, int embedding_size) {
 
 static void BM_ScatterAddInt32(int iters, int embedding_size) {
   BM_ScatterHelper<int32>(iters, embedding_size, "ScatterAdd");
+  BM_ScatterHelper<int32>(iters, embedding_size, "ScatterAdd", true);
 }
+
 static void BM_ScatterAddInt64(int iters, int embedding_size) {
   BM_ScatterHelper<int64>(iters, embedding_size, "ScatterAdd");
 }
@@ -314,7 +341,7 @@ static void BM_ScatterMaxInt32(int iters, int embedding_size) {
 static void BM_ScatterMaxInt64(int iters, int embedding_size) {
   BM_ScatterHelper<int64>(iters, embedding_size, "ScatterMax");
 }
-
+/*
 BENCHMARK(BM_ScatterUpdateInt32)
     ->Arg(1)
     ->Arg(10)
@@ -337,8 +364,9 @@ BENCHMARK(BM_ScatterUpdateInt64)
     ->Arg(256)
     ->Arg(1024)
     ->Arg(100000);
-
+*/
 BENCHMARK(BM_ScatterAddInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+/*
 BENCHMARK(BM_ScatterAddInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterMulInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
@@ -352,6 +380,6 @@ BENCHMARK(BM_ScatterMinInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterMaxInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterMaxInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
-
+*/
 }  // namespace
 }  // namespace tensorflow

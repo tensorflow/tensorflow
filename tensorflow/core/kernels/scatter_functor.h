@@ -18,14 +18,15 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -205,16 +206,32 @@ struct ScatterFunctorBase {
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  Do this carefully,
-      // to avoid checking the value and grabbing it again from
-      // memory a second time (a security risk since it may change in between).
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
-                                            updates.template chip<0>(i));
-    }
+    mutex mu_;
+    Index bad_index GUARDED_BY(mu_);
+    bool found_bad_index = false GUARDED_BY(mu_);
+    auto ParallelScatter = [&](Index start, Index end) LOCKS_EXCLUDED(mu_){
+      for (Index i = start; i < end; i++) {
+        // Grab the index and check its validity.  Do this carefully,
+        // to avoid checking the value and grabbing it again from
+        // memory a second time (a security risk since it may change in
+        // between).
+        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, limit)) {
+          mutex_lock lock(mu_);
+          bad_index = i;
+          found_bad_index = true;
+          return;
+        }
+        // Copy last Ndim-1 dimensions of updates[i] to params[index]
+        scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
+                                              updates.template chip<0>(i));
+      }
+    };
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(c->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, N, 35.0,
+          ParallelScatter);  // Cost is arbitrary for now.
+    if (found_bad_index) return bad_index;
     return -1;
   }
 };
