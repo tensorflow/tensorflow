@@ -332,6 +332,9 @@ typedef enum TFE_ContextMirroringPolicy {
 } TFE_ContextMirroringPolicy;
 // LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
 
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetMirroringPolicy(
+    TFE_ContextOptions*, TFE_ContextMirroringPolicy);
+
 // Sets a thread-local mirroring policy. After this call, other calls to
 // TFE_Execute in the same thread will use the mirroring policy specified here
 // instead of the mirroring policy used to construct the context. This has no
