@@ -84,7 +84,7 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
           OwningModuleRef(parseSourceFile(inputFilename, sourceMgr, context));
       if (!module)
         return failure();
-      return failure(function(module.get(), outputFilename));
+      return function(module.get(), outputFilename);
     };
     wrapperStorage.emplace_back(std::move(wrapper));
 

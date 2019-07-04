@@ -92,17 +92,17 @@ static TranslateFromMLIRRegistration
     registration("mlir-to-nvvmir",
                  [](Module module, llvm::StringRef outputFilename) {
                    if (!module)
-                     return true;
+                     return failure();
 
                    auto llvmModule = mlir::translateModuleToNVVMIR(module);
                    if (!llvmModule)
-                     return true;
+                     return failure();
 
                    auto file = openOutputFile(outputFilename);
                    if (!file)
-                     return true;
+                     return failure();
 
                    llvmModule->print(file->os(), nullptr);
                    file->keep();
-                   return false;
+                   return success();
                  });

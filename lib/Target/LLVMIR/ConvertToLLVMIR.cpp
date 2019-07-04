@@ -38,17 +38,17 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToLLVMIR(Module m) {
 static TranslateFromMLIRRegistration registration(
     "mlir-to-llvmir", [](Module module, llvm::StringRef outputFilename) {
       if (!module)
-        return true;
+        return failure();
 
       auto llvmModule = LLVM::ModuleTranslation::translateModule<>(module);
       if (!llvmModule)
-        return true;
+        return failure();
 
       auto file = openOutputFile(outputFilename);
       if (!file)
-        return true;
+        return failure();
 
       llvmModule->print(file->os(), nullptr);
       file->keep();
-      return false;
+      return success();
     });

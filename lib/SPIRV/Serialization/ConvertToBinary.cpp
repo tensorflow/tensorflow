@@ -74,5 +74,5 @@ LogicalResult serializeModule(Module module, StringRef outputFilename) {
 static TranslateFromMLIRRegistration
     registration("serialize-spirv",
                  [](Module module, StringRef outputFilename) {
-                   return failed(serializeModule(module, outputFilename));
+                   return serializeModule(module, outputFilename);
                  });
