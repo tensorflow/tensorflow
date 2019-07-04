@@ -265,10 +265,10 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>>
 ConstructLLVMTargetMachineForModule(llvm::Module* module,
                                     GpuVersion gpu_version,
                                     const HloModuleConfig& hlo_module_config,
-                                    const string& device_bitcode_dir_path,
-                                    se::StreamExecutor* stream_exec) {
+                                    const string& device_bitcode_dir_path) {
   // Check if we are running the backend for NVPTX or AMDGPU
-  bool isNVPTX = (stream_exec->platform_kind() == se::PlatformKind::kCuda);
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  bool isNVPTX = target_triple.isNVPTX();
 
   if (isNVPTX) {
     // Link the input module with libdevice, to pull in implementations of some
@@ -308,7 +308,6 @@ ConstructLLVMTargetMachineForModule(llvm::Module* module,
 
   // Try to fetch the target triple from the module. If not present, set a
   // default target triple.
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::UnknownArch) {
     LOG(WARNING) << "target triple not found in the module";
     if (isNVPTX) {
@@ -682,8 +681,7 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 StatusOr<string> CompileToPtx(llvm::Module* module,
                               GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path,
-                              se::StreamExecutor* stream_exec) {
+                              const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, nvptx::NVPTXBackendInit, hlo_module_config);
 
@@ -706,8 +704,9 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
     TF_ASSIGN_OR_RETURN(target_machine,
                         ConstructLLVMTargetMachineForModule(
                             module, gpu_version, hlo_module_config,
-                            libdevice_dir_path, stream_exec));
-    TF_ASSIGN_OR_RETURN(ptx, nvptx::EmitModuleToPTX(module, target_machine.get()));
+                            libdevice_dir_path));
+    TF_ASSIGN_OR_RETURN(ptx,
+                        nvptx::EmitModuleToPTX(module, target_machine.get()));
   }
   return ptx;
 }
@@ -715,8 +714,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                             GpuVersion gpu_version,
                                             const HloModuleConfig& hlo_module_config,
-                                            const string& rocdl_dir_path,
-                                            se::StreamExecutor* stream_exec) {
+                                            const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, amdgpu::AMDGPUBackendInit, hlo_module_config);
 
@@ -730,7 +728,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
     TF_ASSIGN_OR_RETURN(target_machine,
                         ConstructLLVMTargetMachineForModule(
                             module, gpu_version, hlo_module_config,
-                            rocdl_dir_path, stream_exec));
+                            rocdl_dir_path));
     TF_ASSIGN_OR_RETURN(hsaco, amdgpu::EmitModuleToHsaco(module, target_machine.get()));
   }
   return std::move(hsaco);
