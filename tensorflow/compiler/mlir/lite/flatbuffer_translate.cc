@@ -1002,25 +1002,25 @@ bool tflite::MlirToFlatBufferTranslateFunction(
   return false;
 }
 
-static bool MlirToFlatBufferFileTranslateFunction(Module module,
-                                                  llvm::StringRef filename) {
+static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
+    Module module, llvm::StringRef filename) {
   std::string serialized_flatbuffer;
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
           emit_select_tf_ops, emit_custom_ops))
-    return true;
+    return mlir::failure();
 
   auto file = openOutputFile(filename);
   if (!file) {
     auto* context = module.getContext();
     return emitError(UnknownLoc::get(context), "failed to open output file ")
                << filename,
-           true;
+           mlir::failure();
   }
 
   file->os() << serialized_flatbuffer;
   file->keep();
-  return false;
+  return mlir::success();
 }
 
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
