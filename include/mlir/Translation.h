@@ -25,7 +25,7 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
-class LogicalResult;
+struct LogicalResult;
 class MLIRContext;
 class ModuleOp;
 using Module = ModuleOp;
