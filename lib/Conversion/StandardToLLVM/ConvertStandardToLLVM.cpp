@@ -1061,8 +1061,8 @@ ModulePassBase *mlir::createConvertToLLVMIRPass() {
 }
 
 ModulePassBase *
-createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
-                          LLVMTypeConverterMaker typeConverterMaker) {
+mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
+                                LLVMTypeConverterMaker typeConverterMaker) {
   return new LLVMLoweringPass(patternListFiller, typeConverterMaker);
 }
 
