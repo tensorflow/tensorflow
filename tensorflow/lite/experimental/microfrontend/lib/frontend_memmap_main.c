@@ -34,6 +34,7 @@ int main(int argc, char** argv) {
   if (audio_file_size !=
       fread(audio_data, sizeof(int16_t), audio_file_size, fp)) {
     fprintf(stderr, "Failed to read in all audio data\n");
+    fclose(fp);
     return 1;
   }
 
@@ -54,5 +55,6 @@ int main(int argc, char** argv) {
   }
 
   free(original_audio_data);
+  fclose(fp);
   return 0;
 }
