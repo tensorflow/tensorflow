@@ -124,9 +124,7 @@ class Stack : public ResourceBase {
       }
       int index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
-      if (index < stack_.size()) {
-        stack_[index].second.reset();
-      }
+      stack_[index].second.reset();
       if (!cond(stack_[index].first)) {
         continue;
       }
