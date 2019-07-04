@@ -504,8 +504,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
     if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() ==
-                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      TF_RET_CHECK(sharding.value().type() == xla::OpSharding::MAXIMAL);
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {
         core = core_annotation;
