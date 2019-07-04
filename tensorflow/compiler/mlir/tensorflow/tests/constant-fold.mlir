@@ -1,17 +1,21 @@
 // RUN: tf-opt %s -test-constant-fold | FileCheck %s
 
 // CHECK-LABEL: func @testShape
-func @testShape(tensor<1x32x32x16xf32>, tensor<*xf32>, tensor<f32>) -> (tensor<?xi32>, tensor<?xi32>, tensor<1xi32>) {
-^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<*xf32>, %arg2: tensor<f32>):
+func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {
+^bb0(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>):
+
+  // CHECK: constant dense<[]> : tensor<0xi32>
+  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<0xi32>
+
   // Result shape need not be static. Folding harness uses TensorFlow constant
   // in that case.
   // CHECK: "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi32>} : () -> tensor<?xi32>
-  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<?xi32>
+  %1 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<?xi32>
 
-  // CHECK: %0 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
-  %1 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
-  %2 = "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<1xi32>
-  return %0, %1, %2 : tensor<?xi32>, tensor<?xi32>, tensor<1xi32>
+  // CHECK: "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
+  %2 = "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
+
+  return %0, %1, %2 : tensor<0xi32>, tensor<?xi32>, tensor<?xi32>
 }
 
 // CHECK-LABEL: func @testLeakyRelu
