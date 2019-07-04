@@ -53,6 +53,14 @@ class Stack : public ResourceBase {
     bool swapped_to_cpu;
   };
 
+  struct StackElement {
+    TensorAndAllocation value;
+    absl::optional<std::list<int>::iterator>
+        unswap_iter;  // holds iterator to unswapped_lru_
+    absl::optional<std::list<int>::iterator>
+        swap_iter;  // holds iterator to swapped_mru_
+  };
+
   Stack(const DataType& elem_type, const string& stack_name, int max_size)
       : elem_type_(elem_type),
         stack_name_(stack_name),
@@ -68,8 +76,8 @@ class Stack : public ResourceBase {
     }
     int index = stack_.size();
     unswapped_lru_.push_back(index);
-    auto iter = std::prev(unswapped_lru_.end());
-    stack_.push_back({value, iter});
+    auto unswap_iter = std::prev(unswapped_lru_.end());
+    stack_.push_back({value, unswap_iter, absl::nullopt});
     return Status::OK();
   }
 
@@ -85,10 +93,12 @@ class Stack : public ResourceBase {
       cond_swapping_ins_[index].wait(l);
       index = stack_.size() - 1;
     }
-    *value = stack_.back().first;
-    absl::optional<std::list<int>::iterator> iter = stack_.back().second;
-    if (iter) {
-      unswapped_lru_.erase(*iter);
+    *value = stack_.back().value;
+    if (stack_.back().unswap_iter) {
+      unswapped_lru_.erase(*(stack_.back().unswap_iter));
+    }
+    if (stack_.back().swap_iter) {
+      swapped_mru_.erase(*(stack_.back().swap_iter));
     }
     stack_.pop_back();
     return Status::OK();
@@ -117,41 +127,32 @@ class Stack : public ResourceBase {
   bool GetTensorToSwapOut(std::function<bool(const TensorAndAllocation&)> cond,
                           TensorAndAllocation** value) {
     mutex_lock l(mu_);
-    bool can_swap = false;
-    while (!can_swap) {
-      if (unswapped_lru_.empty()) {
-        break;
-      }
+    while (!unswapped_lru_.empty()) {
       int index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
-      stack_[index].second.reset();
-      if (!cond(stack_[index].first)) {
+      stack_[index].unswap_iter.reset();
+      if (!cond(stack_[index].value)) {
         continue;
       }
       swapped_mru_.push_back(index);
-      *value = &(stack_[index].first);
-      can_swap = true;
+      stack_[index].swap_iter = std::prev(swapped_mru_.end());
+      *value = &(stack_[index].value);
+      return true;
     }
-    return can_swap;
+    return false; // nothing to swap out
   }
 
   bool GetTensorToSwapIn(TensorAndAllocation** value, int* index) {
     mutex_lock l(mu_);
-    bool can_unswap = false;
-    while (!can_unswap) {
-      if (swapped_mru_.empty()) {
-        break;
-      }
+    while (!swapped_mru_.empty()) {
       *index = swapped_mru_.back();
       swapped_mru_.pop_back();
-      if (*index >= stack_.size()) {
-        continue;
-      }
-      *value = &(stack_[*index].first);
+      stack_[*index].swap_iter.reset();
+      *value = &(stack_[*index].value);
       is_swapping_ins_[*index] = true;
-      can_unswap = true;
+      return true;
     }
-    return can_unswap;
+    return false; // nothing to swap in
   }
 
   void FinishSwappingIn(int index) {
@@ -166,7 +167,7 @@ class Stack : public ResourceBase {
     if (stack_.empty()) {
       return false;
     }
-    const Tensor& first = stack_.front().first.tensor;
+    const Tensor& first = stack_.front().value.tensor;
     return !tensor.SharesBufferWith(first);
   }
 
@@ -195,9 +196,7 @@ class Stack : public ResourceBase {
   Tensor handle_;
   int max_size_;
   bool closed_ GUARDED_BY(mu_);
-  std::vector<
-      std::pair<TensorAndAllocation, absl::optional<std::list<int>::iterator>>>
-      stack_ GUARDED_BY(mu_);
+  std::vector<StackElement> stack_ GUARDED_BY(mu_);
 
   std::list<int> unswapped_lru_ GUARDED_BY(mu_);  // holds indices into stack_
   std::list<int> swapped_mru_ GUARDED_BY(mu_);    // holds indices into stack_
