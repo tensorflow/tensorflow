@@ -595,8 +595,6 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   auto rankedTensorType = inputType.dyn_cast<RankedTensorType>();
   if (!rankedTensorType || !rankedTensorType.hasStaticShape()) return {};
 
-  // TODO: This is handling the simple case where the resultant type matches the
-  // size of getShape()'s returned type.
   auto shape = rankedTensorType.getShape();
   int rank = shape.size();
   if (rank == 0) return {};
