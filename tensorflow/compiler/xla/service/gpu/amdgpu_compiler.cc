@@ -376,11 +376,6 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 
 }  // namespace
 
-AMDGPUCompiler::AMDGPUCompiler()
-    : pointer_size_(llvm::DataLayout(amdgpu::kDataLayout)
-                        .getPointerSize(0 /* default address space */)),
-      platform_id_(se::rocm::kROCmPlatformId) {}
-
 AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
     : pointer_size_(llvm::DataLayout(amdgpu::kDataLayout)
                         .getPointerSize(0 /* default address space */)),

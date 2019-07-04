@@ -41,7 +41,6 @@ namespace gpu {
 // The GPU compiler generates efficient GPU executables.
 class NVPTXCompiler : public LLVMCompiler {
  public:
-  NVPTXCompiler();
   NVPTXCompiler(se::Platform::Id platform_id);
   ~NVPTXCompiler() override {}
 

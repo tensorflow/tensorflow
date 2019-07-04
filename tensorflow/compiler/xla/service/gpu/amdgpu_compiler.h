@@ -39,7 +39,6 @@ namespace gpu {
 // The GPU compiler generates efficient GPU executables.
 class AMDGPUCompiler : public LLVMCompiler {
  public:
-  AMDGPUCompiler();
   AMDGPUCompiler(se::Platform::Id platform_id);
   ~AMDGPUCompiler() override {}
 
