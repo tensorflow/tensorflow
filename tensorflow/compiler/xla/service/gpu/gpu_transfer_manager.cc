@@ -178,26 +178,25 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace gpu
 }  // namespace xla
 
-static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
+static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
-#if TENSORFLOW_USE_ROCM
-      /*id=*/stream_executor::rocm::kROCmPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
-#else
       /*id=*/stream_executor::cuda::kCudaPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
-#endif
+          .getPointerSize(0 /* default address space */));
+}
+
+static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
-#if TENSORFLOW_USE_ROCM
   xla::TransferManager::RegisterTransferManager(
-      stream_executor::rocm::kROCmPlatformId, &CreateGpuTransferManager);
-#else
+      stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   xla::TransferManager::RegisterTransferManager(
-      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
-#endif
+      stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
