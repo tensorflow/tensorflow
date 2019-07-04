@@ -295,32 +295,32 @@ class MklShape {
     CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
   }
 
-  // The following methods are used for serializing and de-serializing the
-  // contents of the mklshape object.
-  // The data is serialized in this order
-  // isMklTensor_
-  // dimension_
-  // sizes_
-  // strides_
-  // mklLayout_
-  // tfLayout_
-  // tf_to_mkl_dim_map_
+// The following methods are used for serializing and de-serializing the
+// contents of the mklshape object.
+// The data is serialized in this order
+// isMklTensor_
+// dimension_
+// sizes_
+// strides_
+// mklLayout_
+// tfLayout_
+// tf_to_mkl_dim_map_
 
 #define SIZE_OF_MKL_DNN_BUF \
   (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
                                             // serialize dnn_layout pointer
 
-  // Size of buffer to hold the serialized object, the size is computed as
-  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
-  // sizeof(strides_)
-  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-  // + sizeof(tf_to_mkl_dim_map_)
+// Size of buffer to hold the serialized object, the size is computed as
+// follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
+// sizeof(strides_)
+// + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
+// + sizeof(tf_to_mkl_dim_map_)
 
 #define SIZE_OF_MKL_SERIAL_DATA(dims) \
   (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
 
-  // First we need to define some macro for offsets into the serial buffer where
-  // different elements of Mklshape is written/read from
+// First we need to define some macro for offsets into the serial buffer where
+// different elements of Mklshape is written/read from
 
 #define IS_MKL_TENSOR_OFFSET 0
 // Location from start of buffer where isMklTensor_ is serialized
@@ -880,9 +880,9 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
@@ -902,15 +902,20 @@ inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
           sizeof(uint8));
 }
 #else
-inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
-  mklshape->DeSerializeMklDnnShape(
-      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
-          .flat<uint8>()
-          .data(),
-      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
-              .flat<uint8>()
-              .size() *
-          sizeof(uint8));
+inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape,
+                        bool eager_mode = false) {
+  if (!eager_mode) {
+    mklshape->DeSerializeMklDnnShape(
+        ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+            .flat<uint8>()
+            .data(),
+        ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+                .flat<uint8>()
+                .size() *
+            sizeof(uint8));
+  } else {
+    mklshape->SetMklTensor(false);
+  }
 }
 #endif
 
@@ -959,14 +964,15 @@ inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
 /// Get shape of input tensor pointed by 'input_idx' in TensorShape format.
 /// If the input tensor is in MKL layout, then obtains TensorShape from
 /// MklShape.
-inline TensorShape GetTfShape(OpKernelContext* context, size_t input_idx) {
+inline TensorShape GetTfShape(OpKernelContext* context, size_t input_idx,
+                              bool eager_mode = false) {
   // Sanity check.
   CHECK_NOTNULL(context);
   CHECK_LT(input_idx, context->num_inputs());
 
   MklDnnShape input_mkl_shape;
-  GetMklShape(context, input_idx, &input_mkl_shape);
-  if (input_mkl_shape.IsMklTensor()) {
+  GetMklShape(context, input_idx, &input_mkl_shape, eager_mode);
+  if (input_mkl_shape.IsMklTensor() && !eager_mode) {
     return input_mkl_shape.GetTfShape();
   } else {
     const Tensor& t = MklGetInput(context, input_idx);
@@ -1035,19 +1041,22 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
                                       Tensor** output,
                                       const TensorShape& tf_shape,
-                                      const MklDnnShape& mkl_shape) {
-  Tensor* second_tensor = nullptr;
-  TensorShape second_shape;
-  second_shape.AddDim(mkl_shape.GetSerializeBufferSize());
+                                      const MklDnnShape& mkl_shape,
+                                      bool eager_mode = false) {
   OP_REQUIRES_OK(
       ctext, ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
                                     tf_shape, output));
-  OP_REQUIRES_OK(ctext, ctext->allocate_output(
-                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
-                            second_shape, &second_tensor));
-  mkl_shape.SerializeMklDnnShape(
-      second_tensor->flat<uint8>().data(),
-      second_tensor->flat<uint8>().size() * sizeof(uint8));
+  if (!eager_mode) {
+    Tensor* second_tensor = nullptr;
+    TensorShape second_shape;
+    second_shape.AddDim(mkl_shape.GetSerializeBufferSize());
+    OP_REQUIRES_OK(ctext, ctext->allocate_output(
+                              GetTensorMetaDataIndex(n, ctext->num_outputs()),
+                              second_shape, &second_tensor));
+    mkl_shape.SerializeMklDnnShape(
+        second_tensor->flat<uint8>().data(),
+        second_tensor->flat<uint8>().size() * sizeof(uint8));
+  }
 }
 #endif
 

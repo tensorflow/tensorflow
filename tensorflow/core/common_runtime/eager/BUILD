@@ -3,6 +3,11 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
 
 package(
     default_visibility = [
@@ -262,7 +267,14 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
         ],
-    }),
+    }) + if_mkl(["mkl_eager_op_rewrite"]),
+)
+
+cc_library(
+    name = "mkl_eager_op_rewrite",
+    srcs = if_mkl(["mkl_eager_op_rewrite.cc"]),
+    copts = if_mkl(["-DINTEL_MKL=1"]),
+    deps = [":eager_op_rewrite_registry"],
 )
 
 cc_library(

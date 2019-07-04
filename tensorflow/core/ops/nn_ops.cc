@@ -1281,9 +1281,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1337,9 +1337,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -1651,6 +1651,25 @@ MKL version of Conv2D operator. Uses MKL DNN APIs to perform 2D convolution.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklEagerConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
+    .Doc(R"doc(
+    MKL version of Conv2D operator for Eager mode. Uses MKL DNN APIs to perform 2D convolution.
+
+    NOTE Do not invoke this operator directly in Python. Eager Op rewrite is
+    expected to invoke these operators.
+    )doc");
 
 REGISTER_OP("__MklDummyConv2DWithBias")
     .Input("input: T")

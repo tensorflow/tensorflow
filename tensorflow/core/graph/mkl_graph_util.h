@@ -104,12 +104,20 @@ static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
+static const char* const kMklEagerOpPrefix = "_MklEager";
 
 // Get the name of Mkl op from original TensorFlow op
 // We prefix 'Mkl' to the original op to get Mkl op.
 inline string GetMklOpName(const string& name) {
   return string(kMklOpPrefix) + name;
 }
+
+// Get the name of Mkl Eager op from original TensorFlow op
+// We prefix 'MklEager' to the original op to get Mkl Eager op.
+inline string GetMklEagerOpName(const string& name) {
+  return string(kMklEagerOpPrefix) + name;
+}
+
 // Check whether opname with type T is registered as MKL operator
 // that can accept input tensors in MKL layout.
 //
