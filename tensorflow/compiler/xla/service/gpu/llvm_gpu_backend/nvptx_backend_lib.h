@@ -41,8 +41,7 @@ using GpuVersion = absl::variant<std::pair<int, int>, int>;
 // preliminary; multithreaded use is not recommended at this time.
 StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path,
-                              se::StreamExecutor* stream_exec);
+                              const string& libdevice_dir_path);
 
 }  // namespace gpu
 }  // namespace xla

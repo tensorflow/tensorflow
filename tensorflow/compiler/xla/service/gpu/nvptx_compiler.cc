@@ -630,7 +630,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, CompileToPtx(&llvm_module, std::pair<int, int>{cc_major, cc_minor},
-                          module->config(), libdevice_dir, stream_exec));
+                          module->config(), libdevice_dir));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/true);
