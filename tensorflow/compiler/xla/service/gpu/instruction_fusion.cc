@@ -83,10 +83,6 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
   auto producer = consumer->operand(operand_index);
 
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
-    return false;
-  }
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {
     return false;

@@ -182,7 +182,9 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kIota ||
           instr.opcode() == HloOpcode::kPad ||
           (instr.opcode() == HloOpcode::kReduce &&
-           !IsReductionFromOrToContiguousDimensions(instr)) ||
+           !IsReductionFromOrToContiguousDimensions(instr) &&
+           !instr.shape().IsTuple()) ||  // TODO(b/129089333): Don't fuse
+                                         // variadic reductions.
           instr.opcode() == HloOpcode::kReduceWindow ||
           instr.opcode() == HloOpcode::kReshape ||
           instr.opcode() == HloOpcode::kReverse ||
