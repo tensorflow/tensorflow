@@ -274,7 +274,10 @@ TfLiteStatus InterpreterWriter::Write(const std::string& filename) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
-  if (fwrite(buffer.get(), 1, size, fp) != size) return kTfLiteError;
+  if (fwrite(buffer.get(), 1, size, fp) != size) {
+    fclose(fp);
+    return kTfLiteError;
+  }
   if (fclose(fp)) return kTfLiteError;
 
   return kTfLiteOk;
