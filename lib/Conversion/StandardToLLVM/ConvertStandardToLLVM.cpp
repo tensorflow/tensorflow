@@ -1005,29 +1005,65 @@ LLVMTypeConverter::convertSignature(FunctionType type,
   return failure();
 }
 
+/// Create an instance of LLVMTypeConverter in the given context.
+static std::unique_ptr<LLVMTypeConverter>
+makeStandardToLLVMTypeConverter(MLIRContext *context) {
+  return llvm::make_unique<LLVMTypeConverter>(context);
+}
+
 namespace {
-/// A pass converting MLIR Standard operations into the LLVM IR dialect.
+/// A pass converting MLIR operations into the LLVM IR dialect.
 struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
+  // By default, the patterns are those converting Standard operations to the
+  // LLVMIR dialect.
+  explicit LLVMLoweringPass(
+      LLVMPatternListFiller patternListFiller =
+          populateStdToLLVMConversionPatterns,
+      LLVMTypeConverterMaker converterBuilder = makeStandardToLLVMTypeConverter)
+      : patternListFiller(patternListFiller),
+        typeConverterMaker(converterBuilder) {}
+
   // Run the dialect converter on the module.
   void runOnModule() override {
+    if (!typeConverterMaker || !patternListFiller)
+      return signalPassFailure();
+
     Module m = getModule();
     LLVM::ensureDistinctSuccessors(m);
 
-    LLVMTypeConverter converter(&getContext());
+    std::unique_ptr<LLVMTypeConverter> typeConverter =
+        typeConverterMaker(&getContext());
+    if (!typeConverter)
+      return signalPassFailure();
+
     OwningRewritePatternList patterns;
-    populateStdToLLVMConversionPatterns(converter, patterns);
+    patternListFiller(*typeConverter, patterns);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    if (failed(
-            applyConversionPatterns(m, target, converter, std::move(patterns))))
+    if (failed(applyConversionPatterns(m, target, *typeConverter,
+                                       std::move(patterns))))
       signalPassFailure();
   }
+
+  // Callback for creating a list of patterns.  It is called every time in
+  // runOnModule since applyConversionPatterns consumes the list.
+  LLVMPatternListFiller patternListFiller;
+
+  // Callback for creating an instance of type converter.  The converter
+  // constructor needs an MLIRContext, which is not available until runOnModule.
+  LLVMTypeConverterMaker typeConverterMaker;
 };
-} // end anonymous namespace
+} // end namespace
 
 ModulePassBase *mlir::createConvertToLLVMIRPass() {
-  return new LLVMLoweringPass();
+  return new LLVMLoweringPass;
+}
+
+ModulePassBase *
+createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
+                          LLVMTypeConverterMaker typeConverterMaker) {
+  return new LLVMLoweringPass(patternListFiller, typeConverterMaker);
 }
 
 static PassRegistration<LLVMLoweringPass>

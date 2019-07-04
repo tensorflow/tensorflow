@@ -18,6 +18,7 @@
 #ifndef MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVMPASS_H_
 #define MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVMPASS_H_
 
+#include "llvm/ADT/STLExtras.h"
 #include <memory>
 #include <vector>
 
@@ -28,20 +29,53 @@ class Module;
 namespace mlir {
 class DialectConversion;
 class LLVMTypeConverter;
+class MLIRContext;
 class ModuleOp;
 using Module = ModuleOp;
 class ModulePassBase;
 class RewritePattern;
 class Type;
 
+// Owning list of rewriting patterns.
 using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 
-/// Creates a pass to convert Standard dialects into the LLVMIR dialect.
-ModulePassBase *createConvertToLLVMIRPass();
+/// Type for a callback constructing the owning list of patterns for the
+/// conversion to the LLVMIR dialect.  The callback is expected to append
+/// patterns to the owning list provided as the second argument.
+using LLVMPatternListFiller =
+    std::function<void(LLVMTypeConverter &, OwningRewritePatternList &)>;
+
+/// Type for a callback constructing the type converter for the conversion to
+/// the LLVMIR dialect.  The callback is expected to return an instance of the
+/// converter.
+using LLVMTypeConverterMaker =
+    std::function<std::unique_ptr<LLVMTypeConverter>(MLIRContext *)>;
 
 /// Collect a set of patterns to convert from the Standard dialect to LLVM.
 void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);
+
+/// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
+ModulePassBase *createConvertToLLVMIRPass();
+
+/// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
+/// is defined by a list of patterns and a type converter that will be obtained
+/// during the pass using the provided callbacks.
+ModulePassBase *
+createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
+                          LLVMTypeConverterMaker typeConverterMaker);
+
+/// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
+/// is defined by a list of patterns obtained during the pass using the provided
+/// callback and an optional type conversion class, an instance is created
+/// during the pass.
+template <typename TypeConverter = LLVMTypeConverter>
+ModulePassBase *
+createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller) {
+  return createConvertToLLVMIRPass(patternListFiller, [](MLIRContext *context) {
+    return llvm::make_unique<TypeConverter>(context);
+  });
+}
 
 namespace LLVM {
 /// Make argument-taking successors of each block distinct.  PHI nodes in LLVM
