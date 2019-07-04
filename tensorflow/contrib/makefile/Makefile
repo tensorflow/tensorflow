@@ -911,15 +911,15 @@ $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
 # Ensures we link CoreFoundation as it is used for time library when building
 # for Mac and iOS
 ifeq ($(TARGET),OSX)
-	ifeq ($(HOST_ARCH),x86_64)
-		HOST_LDOPTS += -framework CoreFoundation
-		LIBS += -framework CoreFoundation
-	endif
+  ifeq ($(HOST_ARCH),x86_64)
+    HOST_LDOPTS += -framework CoreFoundation
+    LIBS += -framework CoreFoundation
+  endif
 endif
 ifeq ($(TARGET),IOS)
-	ifeq ($(IOS_ARCH),X86_64)
-		HOST_LDOPTS += -framework CoreFoundation
-	endif
+  ifeq ($(IOS_ARCH),X86_64)
+    HOST_LDOPTS += -framework CoreFoundation
+  endif
 endif
 
 # Runs proto_text to generate C++ source files from protos.
