@@ -62,6 +62,7 @@ class _SavedModelBuilder(object):
   with the shared set of variables and assets.
 
   Typical usage for the `SavedModelBuilder`:
+
   ```python
   ...
   builder = tf.compat.v1.saved_model.Builder(export_dir)
