@@ -1813,6 +1813,7 @@ filegroup(
             "framework/node_def_util.*",
             "framework/op_kernel.*",
             "framework/dataset.*",
+            "framework/training_op_helpers.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
