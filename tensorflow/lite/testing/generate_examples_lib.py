@@ -3990,6 +3990,14 @@ def make_slice_tests(options):
                     [0, 0, 0, 1]],
           "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
       },
+      # last dimension out of index
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4]],
+          "begin": [[3, 3, 4]],
+          "size": [[-1, -1, -1]],
+      },
   ]
 
   def build_graph(parameters):
