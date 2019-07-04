@@ -49,17 +49,7 @@ Region *Region::getContainingRegion() {
   return container->getContainingRegion();
 }
 
-Operation *Region::getContainingOp() {
-  // TODO: Several usages of getContainingOp need to be updated to handle
-  // functions operations.
-  return getContainingFunction() ? nullptr : container;
-}
-
-Function Region::getContainingFunction() {
-  if (auto func = llvm::dyn_cast<FuncOp>(container))
-    return func;
-  return FuncOp();
-}
+Operation *Region::getContainingOp() { return container; }
 
 bool Region::isProperAncestor(Region *other) {
   if (this == other)

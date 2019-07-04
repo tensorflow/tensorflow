@@ -41,12 +41,17 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
                 AffineIfOp, AffineLoadOp, AffineStoreOp, AffineTerminatorOp>();
 }
 
+/// A utility function to check if a given region is attached to a function.
+static bool isFunctionRegion(Region *region) {
+  return llvm::isa<FuncOp>(region->getContainingOp());
+}
+
 /// A utility function to check if a value is defined at the top level of a
 /// function. A value defined at the top level is always a valid symbol.
 bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
-    return arg->getOwner()->getParent()->getContainingFunction();
-  return value->getDefiningOp()->getParentOp() == nullptr;
+    return isFunctionRegion(arg->getOwner()->getParent());
+  return isFunctionRegion(value->getDefiningOp()->getContainingRegion());
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -59,7 +64,7 @@ bool mlir::isValidDim(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (op->getParentOp() == nullptr || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -84,7 +89,7 @@ bool mlir::isValidSymbol(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (op->getParentOp() == nullptr || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -95,9 +100,8 @@ bool mlir::isValidSymbol(Value *value) {
       return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }
-  // Otherwise, the only valid symbol is a top level block argument.
-  auto *arg = cast<BlockArgument>(value);
-  return arg->getOwner()->getParent()->getContainingFunction();
+  // Otherwise, check that the value is a top level symbol.
+  return isTopLevelSymbol(value);
 }
 
 /// Utility function to verify that a set of operands are valid dimension and
@@ -1445,7 +1449,7 @@ AffineForOp mlir::getForInductionVarOwner(Value *val) {
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
   auto *containingInst = ivArg->getOwner()->getParent()->getContainingOp();
-  return dyn_cast_or_null<AffineForOp>(containingInst);
+  return dyn_cast<AffineForOp>(containingInst);
 }
 
 /// Extracts the induction variables from a list of AffineForOps and returns

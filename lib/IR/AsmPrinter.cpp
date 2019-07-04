@@ -1357,7 +1357,7 @@ void OperationPrinter::numberValueID(Value *value) {
       if (auto *block = cast<BlockArgument>(value)->getOwner()) {
         auto *parentRegion = block->getParent();
         if (parentRegion && block == &parentRegion->front()) {
-          if (parentRegion->getContainingFunction())
+          if (llvm::isa<FuncOp>(parentRegion->getContainingOp()))
             specialName << "arg" << nextArgumentID++;
           else
             specialName << "i" << nextRegionArgumentID++;

@@ -547,7 +547,7 @@ static Block *getCommonBlock(const MemRefAccess &srcAccess,
                              unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
     auto *block = srcAccess.opInst->getBlock();
-    while (block->getContainingOp()) {
+    while (!llvm::isa<FuncOp>(block->getContainingOp())) {
       block = block->getContainingOp()->getBlock();
     }
     return block;

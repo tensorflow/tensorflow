@@ -68,7 +68,7 @@ public:
   }
 
   /// Return the region containing this region or nullptr if it is a top-level
-  /// region, i.e. a function body region.
+  /// region.
   Region *getContainingRegion();
 
   /// Return the parent operation this region is attached to.
@@ -84,10 +84,6 @@ public:
     } while ((region = region->getContainingRegion()));
     return ParentT();
   }
-
-  /// A Region is either a function body or a part of an operation.  If it is
-  /// a Function body, then return this function, otherwise return null.
-  Function getContainingFunction();
 
   /// Return true if this region is a proper ancestor of the `other` region.
   bool isProperAncestor(Region *other);

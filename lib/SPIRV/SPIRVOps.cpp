@@ -428,8 +428,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
-  auto funcOp =
-      returnOp.getOperation()->getContainingRegion()->getContainingFunction();
+  auto funcOp = llvm::dyn_cast<FuncOp>(returnOp.getOperation()->getParentOp());
   if (!funcOp)
     return returnOp.emitOpError("must appear in a 'func' op");
 

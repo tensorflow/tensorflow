@@ -34,12 +34,11 @@ using namespace mlir;
 static Region *getInsertionRegion(Operation *op) {
   while (Region *region = op->getContainingRegion()) {
     // Insert in this region for any of the following scenarios:
-    //  * The parent is not an operation, i.e. is a Function.
     //  * The parent is unregistered, or is known to be isolated from above.
     //  * The parent is a top-level operation.
     auto *parentOp = region->getContainingOp();
-    if (!parentOp || !parentOp->isRegistered() ||
-        parentOp->isKnownIsolatedFromAbove() || !parentOp->getBlock())
+    if (!parentOp->isRegistered() || parentOp->isKnownIsolatedFromAbove() ||
+        !parentOp->getBlock())
       return region;
     // Traverse up the parent looking for an insertion region.
     op = parentOp;
