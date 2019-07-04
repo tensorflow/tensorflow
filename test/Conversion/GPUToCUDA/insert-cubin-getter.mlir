@@ -4,10 +4,10 @@ func @kernel(!llvm.float, !llvm<"float*">)
 // CHECK: attributes  {gpu.kernel, nvvm.cubin = "CUBIN", nvvm.cubingetter = @kernel_cubin}
   attributes  {gpu.kernel, nvvm.cubin = "CUBIN"}
 
-// CHECK: func @mcuMalloc(!llvm.i32) -> !llvm<"i8*">
+// CHECK: func @malloc(!llvm.i64) -> !llvm<"i8*">
 // CHECK: func @kernel_cubin() -> !llvm<"i8*">
-// CHECK-NEXT: %0 = llvm.constant(5 : i32) : !llvm.i32
-// CHECK-NEXT: %1 = llvm.call @mcuMalloc(%0) : (!llvm.i32) -> !llvm<"i8*">
+// CHECK-NEXT: %0 = llvm.constant(5 : index) : !llvm.i64
+// CHECK-NEXT: %1 = llvm.call @malloc(%0) : (!llvm.i64) -> !llvm<"i8*">
 // CHECK-NEXT: %2 = llvm.constant(0 : i32) : !llvm.i32
 // CHECK-NEXT: %3 = llvm.getelementptr %1[%2] : (!llvm<"i8*">, !llvm.i32) -> !llvm<"i8*">
 // CHECK-NEXT: %4 = llvm.constant(67 : i8) : !llvm.i8

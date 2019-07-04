@@ -124,7 +124,7 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
       return {};
     }
     targetMachine.reset(
-        target->createTargetMachine(triple.str(), "sm_75", "+ptx60", {}, {}));
+        target->createTargetMachine(triple.str(), "sm_35", "+ptx60", {}, {}));
   }
 
   // Set the data layout of the llvm module to match what the ptx target needs.

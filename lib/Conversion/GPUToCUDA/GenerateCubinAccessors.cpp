@@ -40,27 +40,32 @@ namespace {
 constexpr const char *kCubinAnnotation = "nvvm.cubin";
 constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
 constexpr const char *kCubinGetterSuffix = "_cubin";
-constexpr const char *kMallocHelperName = "mcuMalloc";
+constexpr const char *kMallocHelperName = "malloc";
 
 /// A pass generating getter functions for all cubin blobs annotated on
 /// functions via the nvvm.cubin attribute.
 ///
-/// The functions allocate memory using a mcuMalloc helper function with the
-/// signature void *mcuMalloc(int32_t size). This function has to be provided
-/// by the actual runner that executes the generated code.
+/// The functions allocate memory using the system malloc call with signature
+/// void *malloc(size_t size). This function has to be provided by the actual
+/// runner that executes the generated code.
 ///
 /// This is a stop-gap measure until MLIR supports global constants.
 class GpuGenerateCubinAccessorsPass
     : public ModulePass<GpuGenerateCubinAccessorsPass> {
 private:
+  LLVM::LLVMType getIndexType() {
+    unsigned bits =
+        llvmDialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
+    return LLVM::LLVMType::getIntNTy(llvmDialect, bits);
+  }
+
   Function getMallocHelper(Location loc, Builder &builder) {
     Function result = getModule().getNamedFunction(kMallocHelperName);
     if (!result) {
       result = Function::create(
           loc, kMallocHelperName,
-          builder.getFunctionType(
-              ArrayRef<Type>{LLVM::LLVMType::getInt32Ty(llvmDialect)},
-              LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
+          builder.getFunctionType(ArrayRef<Type>{getIndexType()},
+                                  LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
       getModule().push_back(result);
     }
     return result;
@@ -84,8 +89,8 @@ private:
     OpBuilder ob(result.getBody());
     ob.createBlock();
     auto sizeConstant = ob.create<LLVM::ConstantOp>(
-        loc, LLVM::LLVMType::getInt32Ty(llvmDialect),
-        builder.getI32IntegerAttr(blob.getValue().size()));
+        loc, getIndexType(),
+        builder.getIntegerAttr(builder.getIndexType(), blob.getValue().size()));
     auto memory =
         ob.create<LLVM::CallOp>(
               loc, ArrayRef<Type>{LLVM::LLVMType::getInt8PtrTy(llvmDialect)},

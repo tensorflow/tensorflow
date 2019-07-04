@@ -34,6 +34,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassNameParser.h"
@@ -249,7 +250,12 @@ static Error compileAndExecuteSingleFloatReturnFunction(
   return Error::success();
 }
 
-int run(int argc, char **argv) {
+// Entry point for all CPU runners. Expects the common argc/argv arguments for
+// standard C++ main functions and an mlirTransformer.
+// The latter is applied after parsing the input into MLIR IR and before passing
+// the MLIR module to the ExecutionEngine.
+int run(int argc, char **argv,
+        llvm::function_ref<LogicalResult(mlir::Module)> mlirTransformer) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
@@ -291,6 +297,10 @@ int run(int argc, char **argv) {
     llvm::errs() << "could not parse the input IR\n";
     return 1;
   }
+
+  if (mlirTransformer)
+    if (failed(mlirTransformer(m.get())))
+      return EXIT_FAILURE;
 
   auto transformer =
       mlir::makeLLVMPassesTransformer(passes, optLevel, optPosition);

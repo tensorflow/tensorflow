@@ -11,6 +11,10 @@ llvm_canonicalize_cmake_booleans(
 # for linalg integration tests.
 set(MLIR_LINALG_INTEGRATION_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
+# Passed to lit.site.cfg.py.in to set up the path where to find the libraries
+# for the mlir cuda runner tests.
+set(MLIR_CUDA_WRAPPER_LIBRARY_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
@@ -46,6 +50,12 @@ if(LLVM_BUILD_EXAMPLES)
     toyc-ch4
     toyc-ch5
     )
+endif()
+
+if(MLIR_CUDA_RUNNER_ENABLED)
+  list(APPEND MLIR_TEST_DEPENDS
+    mlir-cuda-runner
+  )
 endif()
 
 add_lit_testsuite(check-mlir "Running the MLIR regression tests"
