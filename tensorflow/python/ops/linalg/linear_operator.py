@@ -27,7 +27,6 @@ import six
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
@@ -45,7 +44,7 @@ __all__ = ["LinearOperator"]
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
 @six.add_metaclass(abc.ABCMeta)
-class LinearOperator(module.Module):
+class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
