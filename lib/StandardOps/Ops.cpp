@@ -264,15 +264,6 @@ static LogicalResult verify(AllocOp op) {
     AffineMap affineMap = memRefType.getAffineMaps()[0];
     // Store number of symbols used in affine map (used in subsequent check).
     numSymbols = affineMap.getNumSymbols();
-    // TODO(zinenko): this check does not belong to AllocOp, or any other op but
-    // to the type system itself.  It has been partially hoisted to Parser but
-    // remains here in case an AllocOp gets constructed programmatically.
-    // Remove when we can emit errors directly from *Type::get(...) functions.
-    //
-    // Verify that the layout affine map matches the rank of the memref.
-    if (affineMap.getNumDims() != memRefType.getRank())
-      return op.emitOpError(
-          "affine map dimension count must equal memref rank");
   }
   unsigned numDynamicDims = memRefType.getNumDynamicDims();
   // Check that the total number of operands matches the number of symbols in
