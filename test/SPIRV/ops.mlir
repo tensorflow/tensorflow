@@ -146,7 +146,7 @@ func @load_incorrect_attributes() -> () {
 
 func @load_unknown_memory_access() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
-  // expected-error @+1 {{invalid memory access specifier: "Something"}}
+  // expected-error @+1 {{custom op 'spv.Load' invalid memory_access attribute specification: "Something"}}
   %1 = spv.Load "Function" %0 ["Something"] : f32
   return
 }

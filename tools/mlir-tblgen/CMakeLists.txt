@@ -11,6 +11,6 @@ add_tablegen(mlir-tblgen MLIR
   OpDocGen.cpp
   ReferenceImplGen.cpp
   RewriterGen.cpp
-  SPIRVSerializationGen.cpp
+  SPIRVUtilsGen.cpp
   )
 set_target_properties(mlir-tblgen PROPERTIES FOLDER "Tablegenning")

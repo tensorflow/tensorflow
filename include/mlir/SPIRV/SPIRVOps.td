@@ -110,15 +110,6 @@ def SPV_LoadOp : SPV_Op<"Load"> {
     SPV_Type:$value
   );
 
-  let extraClassDeclaration = [{
-    static StringRef getMemoryAccessAttrName() {
-      return "memory_access";
-    }
-    static StringRef getAlignmentAttrName() {
-      return "alignment";
-    }
-  }];
-
   let opcode = 61;
 }
 
@@ -178,15 +169,6 @@ def SPV_StoreOp : SPV_Op<"Store"> {
     OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
     OptionalAttr<APIntAttr>:$alignment
   );
-
-  let extraClassDeclaration = [{
-    static StringRef getMemoryAccessAttrName() {
-      return "memory_access";
-    }
-    static StringRef getAlignmentAttrName() {
-      return "alignment";
-    }
-  }];
 
   let opcode = 62;
 }

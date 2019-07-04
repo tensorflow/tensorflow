@@ -177,22 +177,22 @@ func @image_parameters_delimiter(!spv.image f32, 1D, NoDepth, NonArrayed, Single
 
 // -----
 
-// expected-error @+1 {{unknown Dim in Image type: '1D NoDepth'}}
+// expected-error @+1 {{unknown attribute: '1D NoDepth'}}
 func @image_parameters_nocomma_1(!spv.image<f32, 1D NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown ImageDepthInfo in Image type: 'NoDepth NonArrayed'}}
+// expected-error @+1 {{unknown attribute: 'NoDepth NonArrayed'}}
 func @image_parameters_nocomma_2(!spv.image<f32, 1D, NoDepth NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown ImageArrayedInfo in Image type: 'NonArrayed SingleSampled'}}
+// expected-error @+1 {{unknown attribute: 'NonArrayed SingleSampled'}}
 func @image_parameters_nocomma_3(!spv.image<f32, 1D, NoDepth, NonArrayed SingleSampled, SamplerUnknown, Unknown>) -> ()
 
 // -----
 
-// expected-error @+1 {{unknown ImageSamplingInfo in Image type: 'SingleSampled SamplerUnknown'}}
+// expected-error @+1 {{unknown attribute: 'SingleSampled SamplerUnknown'}}
 func @image_parameters_nocomma_4(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled SamplerUnknown, Unknown>) -> ()
 
 // -----

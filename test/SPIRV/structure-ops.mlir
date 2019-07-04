@@ -99,7 +99,7 @@ func @module_with_func() -> () {
 // -----
 
 func @missing_addressing_model() -> () {
-  // expected-error@+1 {{requires string for addressing model}}
+  // expected-error@+1 {{custom op 'spv.module' expected addressing_model attribute specified as string}}
   spv.module { }
   return
 }
@@ -107,7 +107,7 @@ func @missing_addressing_model() -> () {
 // -----
 
 func @wrong_addressing_model() -> () {
-  // expected-error@+1 {{unknown addressing model: "Physical"}}
+  // expected-error@+1 {{custom op 'spv.module' invalid addressing_model attribute specification: "Physical"}}
   spv.module "Physical" { }
   return
 }
@@ -115,7 +115,7 @@ func @wrong_addressing_model() -> () {
 // -----
 
 func @missing_memory_model() -> () {
-  // expected-error@+1 {{requires string for memory model}}
+  // expected-error@+1 {{custom op 'spv.module' expected memory_model attribute specified as string}}
   spv.module "Logical" { }
   return
 }
@@ -123,7 +123,7 @@ func @missing_memory_model() -> () {
 // -----
 
 func @wrong_memory_model() -> () {
-  // expected-error@+1 {{unknown memory model: "Bla"}}
+  // expected-error@+1 {{custom op 'spv.module' invalid memory_model attribute specification: "Bla"}}
   spv.module "Logical" "Bla" { }
   return
 }

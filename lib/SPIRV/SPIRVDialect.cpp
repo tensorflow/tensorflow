@@ -22,6 +22,12 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace mlir {
+namespace spirv {
+#include "mlir/SPIRV/SPIRVOpUtils.inc"
+} // namespace spirv
+} // namespace mlir
+
 using namespace mlir;
 using namespace mlir::spirv;
 
@@ -204,12 +210,15 @@ static Type parseRuntimeArrayType(SPIRVDialect const &dialect, StringRef spec,
 }
 
 // Specialize this function to parse each of the parameters that define an
-// ImageType
+// ImageType. By default it assumes this is an enum type.
 template <typename ValTy>
 static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect, Location loc,
                                       StringRef spec) {
-  emitError(loc, "unexpected parameter while parsing '") << spec << "'";
-  return llvm::None;
+  auto val = spirv::symbolizeEnum<ValTy>()(spec);
+  if (!val) {
+    emitError(loc, "unknown attribute: '") << spec << "'";
+  }
+  return val;
 }
 
 template <>
@@ -221,72 +230,6 @@ Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect, Location loc,
     return llvm::None;
   }
   return ty;
-}
-
-template <>
-Optional<Dim> parseAndVerify<Dim>(SPIRVDialect const &dialect, Location loc,
-                                  StringRef spec) {
-  auto dim = symbolizeDim(spec);
-  if (!dim) {
-    emitError(loc, "unknown Dim in Image type: '") << spec << "'";
-  }
-  return dim;
-}
-
-template <>
-Optional<ImageDepthInfo>
-parseAndVerify<ImageDepthInfo>(SPIRVDialect const &dialect, Location loc,
-                               StringRef spec) {
-  auto depth = symbolizeImageDepthInfo(spec);
-  if (!depth) {
-    emitError(loc, "unknown ImageDepthInfo in Image type: '") << spec << "'";
-  }
-  return depth;
-}
-
-template <>
-Optional<ImageArrayedInfo>
-parseAndVerify<ImageArrayedInfo>(SPIRVDialect const &dialect, Location loc,
-                                 StringRef spec) {
-  auto arrayedInfo = symbolizeImageArrayedInfo(spec);
-  if (!arrayedInfo) {
-    emitError(loc, "unknown ImageArrayedInfo in Image type: '") << spec << "'";
-  }
-  return arrayedInfo;
-}
-
-template <>
-Optional<ImageSamplingInfo>
-parseAndVerify<ImageSamplingInfo>(SPIRVDialect const &dialect, Location loc,
-                                  StringRef spec) {
-  auto samplingInfo = symbolizeImageSamplingInfo(spec);
-  if (!samplingInfo) {
-    emitError(loc, "unknown ImageSamplingInfo in Image type: '") << spec << "'";
-  }
-  return samplingInfo;
-}
-
-template <>
-Optional<ImageSamplerUseInfo>
-parseAndVerify<ImageSamplerUseInfo>(SPIRVDialect const &dialect, Location loc,
-                                    StringRef spec) {
-  auto samplerUseInfo = symbolizeImageSamplerUseInfo(spec);
-  if (!samplerUseInfo) {
-    emitError(loc, "unknown ImageSamplerUseInfo in Image type: '")
-        << spec << "'";
-  }
-  return samplerUseInfo;
-}
-
-template <>
-Optional<ImageFormat> parseAndVerify<ImageFormat>(SPIRVDialect const &dialect,
-                                                  Location loc,
-                                                  StringRef spec) {
-  auto format = symbolizeImageFormat(spec);
-  if (!format) {
-    emitError(loc, "unknown ImageFormat in Image type: '") << spec << "'";
-  }
-  return format;
 }
 
 template <>

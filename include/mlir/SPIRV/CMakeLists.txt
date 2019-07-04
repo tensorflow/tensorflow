@@ -11,3 +11,7 @@ add_public_tablegen_target(MLIRSPIRVEnumsIncGen)
 set(LLVM_TARGET_DEFINITIONS SPIRVOps.td)
 mlir_tablegen(SPIRVSerialization.inc -gen-spirv-serial)
 add_public_tablegen_target(MLIRSPIRVSerializationGen)
+
+set(LLVM_TARGET_DEFINITIONS SPIRVBase.td)
+mlir_tablegen(SPIRVOpUtils.inc -gen-spirv-op-utils)
+add_public_tablegen_target(MLIRSPIRVOpUtilsGen)

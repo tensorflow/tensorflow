@@ -65,38 +65,7 @@ public:
   int64_t getElementCount() const;
 };
 
-// SPIR-V pointer type
-class PointerType
-    : public Type::TypeBase<PointerType, Type, detail::PointerTypeStorage> {
-public:
-  using Base::Base;
-
-  static bool kindof(unsigned kind) { return kind == TypeKind::Pointer; }
-
-  static PointerType get(Type pointeeType, StorageClass storageClass);
-
-  Type getPointeeType() const;
-
-  StorageClass getStorageClass() const;
-  StringRef getStorageClassStr() const;
-};
-
-// SPIR-V run-time array type
-class RuntimeArrayType
-    : public Type::TypeBase<RuntimeArrayType, Type,
-                            detail::RuntimeArrayTypeStorage> {
-public:
-  using Base::Base;
-
-  static bool kindof(unsigned kind) { return kind == TypeKind::RuntimeArray; }
-
-  static RuntimeArrayType get(Type elementType);
-
-  Type getElementType() const;
-};
-
 // SPIR-V image type
-// TODO(ravishankarm) : Move this in alphabetical order
 class ImageType
     : public Type::TypeBase<ImageType, Type, detail::ImageTypeStorage> {
 public:
@@ -130,6 +99,36 @@ public:
   ImageSamplerUseInfo getSamplerUseInfo() const;
   ImageFormat getImageFormat() const;
   // TODO(ravishankarm): Add support for Access qualifier
+};
+
+// SPIR-V pointer type
+class PointerType
+    : public Type::TypeBase<PointerType, Type, detail::PointerTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::Pointer; }
+
+  static PointerType get(Type pointeeType, StorageClass storageClass);
+
+  Type getPointeeType() const;
+
+  StorageClass getStorageClass() const;
+  StringRef getStorageClassStr() const;
+};
+
+// SPIR-V run-time array type
+class RuntimeArrayType
+    : public Type::TypeBase<RuntimeArrayType, Type,
+                            detail::RuntimeArrayTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::RuntimeArray; }
+
+  static RuntimeArrayType get(Type elementType);
+
+  Type getElementType() const;
 };
 
 // SPIR-V struct type
