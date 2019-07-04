@@ -1347,6 +1347,7 @@ cc_test(
     srcs = [
         "slice_test.cc",
     ],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

@@ -1516,6 +1516,17 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_POW>;
         }
         break;
+      case kTfLiteBuiltinSlice: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        const auto begin_type = context->tensors[node->inputs->data[1]].type;
+        const auto size_type = context->tensors[node->inputs->data[2]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteInt32 ||
+             input_type == kTfLiteUInt8) &&
+            begin_type == kTfLiteInt32 && size_type == kTfLiteInt32) {
+          return BasicMappingFn<ANEURALNETWORKS_SLICE>;
+        }
+      } break;
       case kTfLiteBuiltinSin:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           return BasicMappingFn<ANEURALNETWORKS_SIN>;
