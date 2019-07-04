@@ -27,6 +27,9 @@ cc_library(
         "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
+        "@org_tensorflow//tensorflow:freebsd": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "//conditions:default": [],
     }) + glob([
         "aws-cpp-sdk-core/include/**/*.h",
@@ -63,6 +66,11 @@ cc_library(
         "-DAWS_SDK_VERSION_PATCH=8",
     ],
     defines = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "ENABLE_NO_ENCRYPTION",
+        ],
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",

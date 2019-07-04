@@ -89,7 +89,7 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
     // Diagonal elements. Must have length m.
     const auto& maindiag = inputs[1].row(0);
 
-    // Superdiagonal elements. Must have length m.
+    // Subdiagonal elements. Must have length m.
     // First element is ignored.
     const auto& subdiag = inputs[2].row(0);
 

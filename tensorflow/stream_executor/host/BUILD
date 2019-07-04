@@ -1,17 +1,18 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
 )
-
-package(default_visibility = [":friends"])
 
 # Filegroup used to collect source files for the dependency check.
 filegroup(
@@ -67,6 +68,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/synchronization",

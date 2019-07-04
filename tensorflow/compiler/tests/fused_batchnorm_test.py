@@ -85,7 +85,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     y_ref, mean_ref, var_ref, _ = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -130,7 +130,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     y_ref, mean_ref, _, var_ref_corr = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -213,7 +213,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     grad_x_ref, grad_scale_ref, grad_offset_ref = self._reference_grad(
         x_val, grad_val, scale_val, mean_val, var_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(
@@ -266,7 +266,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     data_format_src = "NHWC"
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(

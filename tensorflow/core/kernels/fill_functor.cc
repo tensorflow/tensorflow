@@ -137,6 +137,7 @@ struct FillFunctor<Eigen::ThreadPoolDevice, T> {
 TF_CALL_ALL_TYPES(DEFINE_FILL_CPU);
 DEFINE_FILL_CPU(quint8);
 DEFINE_FILL_CPU(quint16);
+DEFINE_FILL_CPU(uint32);
 #undef DEFINE_FILL_CPU
 
 #ifdef TENSORFLOW_USE_SYCL

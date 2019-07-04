@@ -559,7 +559,6 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     for epoch in range(initial_epochs):
       self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
     self.assertFalse(os.path.exists(filepath.format(epoch=initial_epochs + 1)))
-    self.skipTest('b/131852849')
     self.assertEqual(
         callback._get_most_recently_modified_file_matching_pattern(filepath),
         filepath.format(epoch=initial_epochs))
@@ -580,6 +579,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       (model, train_ds, filepath, weights_after_one_more_epoch
       ) = self._run_load_weights_on_restart_test_common_iterations()
 
+      # Sleep for some short time period ensuring the files are created with
+      # a different time (in MacOS OSS the granularity is only 1 second).
+      time.sleep(2)
       callback = keras.callbacks.ModelCheckpoint(
           filepath=filepath,
           save_weights_only=save_weights_only,
@@ -655,6 +657,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     (model, train_ds, filepath,
      _) = self._run_load_weights_on_restart_test_common_iterations()
 
+    # Sleep for some short time period to ensure the files are created with
+    # a different time (in MacOS OSS the granularity is only 1 second).
+    time.sleep(2)
     callback = keras.callbacks.ModelCheckpoint(
         filepath=filepath, save_weights_only=True)
     model.load_weights(

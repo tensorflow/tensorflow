@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mutex.h"
 
 // gRPC response caching.  Most WorkerService methods cannot be retried directly
 // as they will fail or deadlock.  To enable retrying, we can instead cache

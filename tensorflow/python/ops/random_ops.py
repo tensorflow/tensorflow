@@ -19,29 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_random_ops import *
-from tensorflow.python.util import deprecation
-from tensorflow.python.util.tf_export import tf_export
-
 # pylint: enable=wildcard-import
 
-
-def _ShapeTensor(shape):
-  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
-  if isinstance(shape, (tuple, list)) and not shape:
-    dtype = dtypes.int32
-  else:
-    dtype = None
-  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("random.normal", v1=["random.normal", "random_normal"])
@@ -71,7 +65,7 @@ def random_normal(shape,
     A tensor of the specified shape filled with random normal values.
   """
   with ops.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -121,7 +115,7 @@ def parameterized_truncated_normal(shape,
   """
   with ops.name_scope(name, "parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, dtype=dtype, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, dtype=dtype, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
@@ -170,7 +164,7 @@ def truncated_normal(shape,
     A tensor of the specified shape filled with random truncated normal values.
   """
   with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -236,7 +230,7 @@ def random_uniform(shape,
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
-    shape = _ShapeTensor(shape)
+    shape = tensor_util.shape_tensor(shape)
     minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)

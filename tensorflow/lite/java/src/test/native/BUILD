@@ -1,11 +1,12 @@
 # Description:
 # Java Native Interface (JNI) library for testing the TensorFlow Lite Java API.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "native",

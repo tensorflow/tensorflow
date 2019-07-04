@@ -1,5 +1,9 @@
 package(default_visibility = ["//visibility:public"])
 
+# The following line is only here to make this project import into IDEs that embed
+# a Bazel toolchain.
+licenses(["notice"])
+
 cc_toolchain_suite(
     name = "toolchain",
     toolchains = {

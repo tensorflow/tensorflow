@@ -2069,7 +2069,7 @@ def _maybe_mask_score(score,
     raise ValueError("memory_sequence_length and memory_mask can't be provided "
                      "at same time.")
   if memory_sequence_length is not None:
-    message = "All values in memory_sequence_length must greater than zero."
+    message = "All values in memory_sequence_length must be greater than zero."
     with ops.control_dependencies(
         [check_ops.assert_positive(memory_sequence_length, message=message)]):
       memory_mask = array_ops.sequence_mask(

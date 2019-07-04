@@ -15,8 +15,11 @@ limitations under the License.
 #include "tensorflow/python/framework/python_op_gen.h"
 
 #include <stdio.h>
+
 #include <sstream>
 #include <unordered_map>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -108,7 +111,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
                    const string& function_name)
       : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
     op_name_ = function_name_;
-    str_util::ConsumePrefix(&op_name_, "_");
+    absl::ConsumePrefix(&op_name_, "_");
   }
   ~GenEagerPythonOp() override {}
 
@@ -487,7 +490,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, "  ", attr_api_name,
                          " = ", default_value, "\n");
     }
-    if (str_util::StartsWith(attr_type, "list(")) {
+    if (absl::StartsWith(attr_type, "list(")) {
       ExpectListArg(indentation, attr_api_name, function_setup);
     }
 
@@ -1071,11 +1074,11 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
 
   result.append("# ");
   auto ops_text = ProtoDebugString(cleaned_ops);
-  str_util::StripTrailingWhitespace(&ops_text);
+  absl::StripTrailingAsciiWhitespace(&ops_text);
   result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
   result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
-                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
+                   absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

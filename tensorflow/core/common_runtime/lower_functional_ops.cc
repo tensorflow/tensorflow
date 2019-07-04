@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
@@ -114,13 +115,13 @@ Status LowerFunctionalOpsPass::Run(
                                           ? *keep_lowered_nodes_fetchable_
                                           : !HasArgsOrRetvals(*g);
 
-  // Lower all If and While ops that have the `kLowerUsingSwitchMergeAttr` attr
-  // set and inlines all function calls into the graph.
+  // Lower all If, Case, While ops that have the `kLowerUsingSwitchMergeAttr`
+  // attr set and inline all function calls into the graph.
   // We start at `i` = 2 to skip the source and sink nodes.
-  // Note that `g->num_node_ids()` may change in the for body if a matching If
-  // or While node is lowered. Since new graph nodes are always added to the
-  // end of the list of nodes it is ensured that nested If/While nodes will be
-  // lowered as well.
+  // Note that `g->num_node_ids()` may change in the for body if a matching If,
+  // Case, While node is lowered. Since new graph nodes are always added to the
+  // end of the list of nodes it is ensured that nested If/Case/While nodes will
+  // be lowered as well.
   for (int i = 2; i < g->num_node_ids(); ++i) {
     Node* n = g->FindNodeId(i);
     if (n == nullptr) continue;  // deleted node
@@ -136,9 +137,12 @@ Status LowerFunctionalOpsPass::Run(
     }
 
     if (LowerUsingSwitchMergeIsOn(n)) {
-      if (n->type_string() == "If") {
+      if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(
             RewriteIfNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
+      } else if (n->type_string() == "Case") {
+        TF_RETURN_IF_ERROR(
+            RewriteCaseNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
       } else if (n->type_string() == "While") {
         TF_RETURN_IF_ERROR(
             RewriteWhileNode(n, g, *flib_def, keep_lowered_nodes_fetchable));

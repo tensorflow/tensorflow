@@ -844,6 +844,10 @@ class ParameterServerStrategyTest(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean_gradient_tape(distribution)
 
+  def testTrainableVariables(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy()
+    self._test_trainable_variable(distribution)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):

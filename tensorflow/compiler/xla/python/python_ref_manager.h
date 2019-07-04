@@ -1,0 +1,78 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_
+
+#include <deque>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "include/pybind11/pybind11.h"
+
+namespace xla {
+
+// Class that manages destruction of Python objects.
+//
+// We must not destroy Python objects without holding the GIL. However, we
+// frequently want to hold references to Python objects for the duration of
+// an asynchronous transfer on a Stream, and release our reference when the
+// transfer completes.
+//
+// This class holds references to Python objects outside a GIL scope, that can
+// be collected later when the GIL is held by calling CollectGarbage().
+class PythonRefManager {
+ public:
+  PythonRefManager() = default;
+
+  // Holds references to a set of pybind11::objects, adding the references to
+  // the PythonRefManager on destruction.
+  class ManagedPyObjects {
+   public:
+    ManagedPyObjects() = default;
+    ManagedPyObjects(PythonRefManager* manager,
+                     absl::Span<pybind11::object> objects);
+
+    ~ManagedPyObjects();
+
+    ManagedPyObjects(const ManagedPyObjects& other) = default;
+    ManagedPyObjects(ManagedPyObjects&& other) = default;
+    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
+    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
+
+   private:
+    PythonRefManager* manager_ = nullptr;
+    absl::InlinedVector<pybind11::object, 1> objects_;
+  };
+
+  // Creates a managed std::shared_ptr to an object. When the shared_ptr is
+  // destroyed, the reference to 'object' will be added to python_garbage_,
+  // and collected next time CollectGarbage() is called.
+  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
+
+  // Releases the contents of python_garbage_. Requires that the GIL is held.
+  // The client calls this method during API entry points where the GIL is held
+  // to free any garbage that has accumulated.
+  void CollectGarbage();
+
+ private:
+  absl::Mutex mu_;
+  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
+};
+
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_

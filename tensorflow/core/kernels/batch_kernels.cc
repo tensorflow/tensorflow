@@ -520,7 +520,6 @@ class BatchResource : public ResourceBase {
       return;
     }
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = last_task_context->step_id();
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();
     opts.stats_collector = last_task_context->stats_collector();

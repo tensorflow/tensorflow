@@ -14,7 +14,7 @@ detection model, takes up a total of 22KB.
     *   [Getting Started with Portable Reference Code](#getting-started-with-portable-reference-code)
     *   [Building Portable Reference Code using Make](#building-portable-reference-code-using-make)
     *   [Building for the "Blue Pill" STM32F103 using Make](#building-for-the-blue-pill-stm32f103-using-make)
-    *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
+    *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
     *   [Building for the Eta Compute ECM3531 EVB using Make](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
@@ -23,12 +23,12 @@ detection model, takes up a total of 22KB.
 
 -   [Generating Project Files](#generating-project-files)
 
--   [Generating Arduino Libraries](#generating-arduino_libraries)
+-   [Generating Arduino Libraries](#generating-arduino-libraries)
 
 -   [How to Port TensorFlow Lite Micro to a New Platform](#how-to-port-tensorflow-lite-micro-to-a-new-platform)
 
     *   [Requirements](#requirements)
-    *   [Getting Started](getting-started)
+    *   [Getting Started](#getting-started-1)
     *   [Troubleshooting](#troubleshooting)
     *   [Optimizing for your Platform](#optimizing-for-your-platform)
     *   [Code Module Organization](#code-module-organization)
@@ -93,7 +93,7 @@ run them manually. For example, here's how to run the depthwise convolution
 test, and its output:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test
+tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/depthwise_conv_test
 
 Testing SimpleTest
 Testing SimpleTestQuantized
@@ -164,7 +164,7 @@ test, but through the emulated device test harness, with the following command:
 
 ```
 tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh \
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test \
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test \
 '~~~ALL TESTS PASSED~~~'
 
 ```
@@ -191,7 +191,7 @@ LOGS:
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+41µs host +0s virt 0s virt from start]   ~~~ALL TESTS PASSED~~~
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+5µs host +0s virt 0s virt from start]
 ...
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test: PASS
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test: PASS
 ```
 
 There's a lot of output here, but you should be able to see that the same tests
@@ -266,13 +266,13 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 
 ## Building for Ambiq Micro Apollo3Blue EVB using Make
 
-Follow these steps to get the pushbutton yes/no example working on Apollo 3:
+Follow these steps to get the micro_speech yes example working on Apollo 3 EVB:
 
 1.  Make sure to run the "Building Portable Reference Code using Make" section
     before performing the following steps
 2.  Compile the project with the following command: make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
-    pushbutton_cmsis_speech_test_bin
+    micro_speech_bin
 3.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
 4.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
     to the computer and power it on.
@@ -283,29 +283,19 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
         connection"
 6.  Back in the original terminal, run the program via the debugger
     1.  Navigate to
-        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
+        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3evb
     2.  Start gdb by entering the following command: arm-none-eabi-gdb
     3.  Run the command script by entering the following command: source
-        pushbutton_cmsis_scores.cmd. This script does the following:
-        1.  Load the binary created in step 6
-        2.  Set a breakpoint after inference scores have been computed
-        3.  Tell the debugger what variables should be printed out at this
-            breakpoint
-        4.  Begin program execution
-        5.  Press Ctrl+c to exit
-    4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
-        this one second
-    5.  The debugger will print out four numbers. They are the probabilites for
-        1.  no speech
-        2.  unknown speech
-        3.  yes
-        4.  no
-    6.  The EVB LEDs will indicate detection.
-        1.  LED0 (rightmost LED) - ON when capturing 1sec of audio
-        2.  LED1 - ON when detecting silence
-        3.  LED2 - ON when detecting UNKNOWN utterance
-        4.  LED3 - ON when detecting YES utterance
-        5.  LED4 (leftmost LED) - ON when detecting NO utterance
+        micro_speech.cmd. This script does the following:
+        1.  Load the binary created in step 2
+        2.  Reset
+        3.  Begin program execution
+        4.  Press Ctrl+c to exit
+    4.  The EVB LEDs will indicate detection.
+        1.  LED0 (rightmost LED) - ON when Digital MIC interface is initialized
+        2.  LED1 - Toggles after each inference
+        3.  LED2 thru 4 - "Ramp ON" when "Yes" is detected
+    5.  Say "Yes"
 
 ### Additional Apollo3 Instructions
 
@@ -315,7 +305,7 @@ To flash a part with JFlash Lite, do the following:
 2.  Device = AMA3B1KK-KBR
 3.  Interface = SWD at 1000 kHz
 4.  Data file =
-    `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
+    `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/micro_speech.bin`
 5.  Prog Addr = 0x0000C000
 
 ## Building for the Eta Compute ECM3531 EVB using Make
@@ -625,7 +615,7 @@ As mentioned above, the one function you will need to implement for a completely
 new platform is debug logging. If your device is just a variation on an existing
 platform you may be able to reuse code that's already been written. To
 understand what's available, begin with the default reference implementation at
-[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc]),
+[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc),
 which uses fprintf and stderr. If your platform has this level of support for
 the C standard library in its toolchain, then you can just reuse this.
 Otherwise, you'll need to do some research into how your platform and device can
@@ -910,7 +900,7 @@ git commit -a -m "Added DebugLog() support for <your platform>"
 git push origin master
 ```
 
-Then go back to https://github.com/<your account>/tensorflow, and choose "New
+Then go back to `https://github.com/<your account>/tensorflow`, and choose "New
 Pull Request" near the top. You should then be able to go through the standard
 TensorFlow PR process to get your change added to the main repository, and
 available to the rest of the community!

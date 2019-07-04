@@ -127,6 +127,20 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, 3)
 
+  def test_multiple_correlated_breaks_with_side_effects(self):
+    def test_fn(cond1):
+      lst = []
+      while True:
+        if cond1:
+          lst.append(1)
+        else:
+          break
+        if lst[-1] > 0:  # lst always has an element here
+          break
+      return lst
+
+    self.assertTransformedEquivalent(test_fn, True)
+    self.assertTransformedEquivalent(test_fn, False)
 
 if __name__ == '__main__':
   test.main()

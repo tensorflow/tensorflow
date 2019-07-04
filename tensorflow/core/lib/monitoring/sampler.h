@@ -96,6 +96,11 @@ class Buckets {
   static std::unique_ptr<Buckets> Explicit(
       std::initializer_list<double> bucket_limits);
 
+  // This alternative Explicit Buckets factory method is primarily meant to be
+  // used by the CLIF layer code paths that are incompatible with
+  // initialize_lists.
+  static std::unique_ptr<Buckets> Explicit(std::vector<double> bucket_limits);
+
   virtual const std::vector<double>& explicit_bounds() const = 0;
 };
 

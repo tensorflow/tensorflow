@@ -32,7 +32,7 @@ from tensorflow.python.training import proximal_adagrad
 class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
 
   def testResourceProximalAdagradwithoutRegularization(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([0.0, 0.0])
       var1 = resource_variable_ops.ResourceVariable([0.0, 0.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -62,7 +62,7 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       self.assertEqual(2, len(opt_vars))
 
   def testProximalAdagradwithoutRegularization2(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -86,7 +86,7 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       self.assertAllClose(np.array([3.715679, 2.433051]), self.evaluate(var1))
 
   def testProximalAdagradWithL1(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -110,7 +110,7 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       self.assertAllClose(np.array([2.959304, 1.029232]), self.evaluate(var1))
 
   def testProximalAdagradWithL1_L2(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -153,7 +153,7 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
     return self.evaluate(var0), self.evaluate(var1)
 
   def testEquivAdagradwithoutRegularization(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       val0, val1 = self.applyOptimizer(
           proximal_adagrad.ProximalAdagradOptimizer(
               3.0,
@@ -161,7 +161,7 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
               l1_regularization_strength=0.0,
               l2_regularization_strength=0.0))
 
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       val2, val3 = self.applyOptimizer(
           adagrad.AdagradOptimizer(
               3.0, initial_accumulator_value=0.1))

@@ -101,6 +101,16 @@ REGISTER_OP("ReduceJoin")
     .Output("output: string")
     .SetShapeFn(shape_inference::ReductionShape);
 
+REGISTER_OP("UnsortedSegmentJoin")
+    .Input("inputs: string")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Attr("separator: string = ''")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")

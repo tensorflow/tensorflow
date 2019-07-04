@@ -17,7 +17,6 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
-#include <unordered_map>
 #include <vector>
 
 // TODO(rmlarsen): Get rid of this workaround. "gpu_assert" is defined when
@@ -27,6 +26,7 @@ limitations under the License.
 #define gpu_assert(x)
 #endif
 
+#include "absl/container/flat_hash_map.h"
 #include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -198,13 +198,13 @@ class NcclManager {
                       ncclRedOp_t reduction_op);
 
   // If `collective` is ready to run, removes it from the `collectives_` map and
-  // returns the pointer.  Otherwise returns `nullptr`.
+  // returns true.  Otherwise returns false.
   // Assumes `collective_key` corresponds to `collective`.
   //
   // A collective is ready to run when all local participants have called Add*
   // function, and the collective is signalled globally ready via
   // `SetMultiNodeReady`.
-  Collective* CheckReady(const string& collective_key, Collective* collective)
+  bool CheckReady(const string& collective_key, Collective* collective)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Run <collective>.  This calls takes ownership of <collective>.
@@ -214,13 +214,12 @@ class NcclManager {
   mutex mu_;
 
   // Maps key to collectives currently being assembled or run.
-  std::unordered_map<string, std::unique_ptr<Collective>> collectives_
-      GUARDED_BY(mu_);
+  absl::flat_hash_map<string, Collective*> collectives_ GUARDED_BY(mu_);
 
   // Maps a device to the communication streams that make up its collective.
   // This is used to share the stream across different communicators that
   // include the same device.
-  std::map<se::StreamExecutor*, std::vector<std::unique_ptr<NcclStream>>>
+  absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
       device_to_comm_streams_ GUARDED_BY(mu_);
 
   std::vector<std::unique_ptr<Communicator>> communicators_;

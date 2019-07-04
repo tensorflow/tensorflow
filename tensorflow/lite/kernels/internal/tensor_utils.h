@@ -67,8 +67,9 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 //   1. m_cols is a multiple of 16 so that all blocks are full blocks.
 //   2. m_cols < 254 * 16 so that block index can be represented by uint8.
 void SparseMatrixBatchVectorMultiplyAccumulate(
-    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
-    const float* vector, int n_batch, float* result, int result_stride);
+    const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
+    float* __restrict__ result, int result_stride);
 
 // Same as the function above, but for values quantized using symmetric
 // quantization (e.g. by calling SymmetricQuantizeFloats).

@@ -69,7 +69,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       // is set with a truthy value.
       const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
       string load_config =
-          load_config_env ? str_util::Lowercase(load_config_env) : "";
+          load_config_env ? absl::AsciiStrToLower(load_config_env) : "";
       if (load_config == "true" || load_config == "1") {
         Aws::String config_file;
         // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
@@ -155,7 +155,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
-  str_util::ConsumePrefix(&objectp, "/");
+  absl::ConsumePrefix(&objectp, "/");
   *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",

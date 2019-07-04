@@ -106,7 +106,6 @@ class ScopedAllocatorInstance : public Allocator {
   }
   void DeallocateRaw(void* p) LOCKS_EXCLUDED(mu_) override;
   bool TracksAllocationSizes() const override { return false; }
-  bool ShouldAllocateEmptyTensors() const override { return false; }
   size_t RequestedSize(const void* ptr) const override { return 0; }
   size_t AllocatedSize(const void* ptr) const override { return 0; }
   int64 AllocationId(const void* ptr) const override { return 0; }

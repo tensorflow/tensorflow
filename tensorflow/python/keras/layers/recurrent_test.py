@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.ops import array_ops
@@ -601,15 +602,17 @@ class RNNTest(keras_parameterized.TestCase):
     cells = [keras.layers.LSTMCell(1),
              keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
-    layer.build((None, None, 1))
-
     x = keras.Input((None, 1))
+    _ = layer(x)
+
     update_1 = state_ops.assign_add(cells[0].kernel,
                                     x[0, 0, 0] * cells[0].kernel)
     update_2 = state_ops.assign_add(cells[0].kernel,
                                     array_ops.ones_like(cells[0].kernel))
-    cells[0].add_update(update_1, inputs=x)
-    cells[0].add_update(update_2)
+    # TODO(b/128682878): Remove when RNNCells are __call__'d.
+    with base_layer_utils.call_context().enter(layer, x, True, None):
+      cells[0].add_update(update_1, inputs=x)
+      cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
     self.assertEqual(len(layer.get_updates_for(x)), 1)
@@ -1301,6 +1304,35 @@ class RNNTest(keras_parameterized.TestCase):
       cell = Minimal2DRNNCell(1, 2)
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
+
+  @parameterized.parameters(
+      [keras.layers.SimpleRNNCell, keras.layers.GRUCell, keras.layers.LSTMCell])
+  def test_stateful_rnn_with_stacking(self, cell):
+    # See https://github.com/tensorflow/tensorflow/issues/28614.
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    output_dim = 64
+    cells = [cell(32), cell(64)]
+    x = keras.Input(batch_shape=(batch, None, input_dim))
+    layer = keras.layers.RNN(cells, stateful=True)
+    y = layer(x)
+
+    model = keras.Model(x, y)
+    model.compile(optimizer='rmsprop', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)),
+        np.zeros((batch, output_dim)))
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
+    model.reset_states()
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
+    new_states = nest.map_structure(lambda s: np.ones((batch, s)),
+                                    layer.cell.state_size)
+    layer.reset_states(new_states)
+    model.predict(np.ones((batch, timesteps, input_dim)))
 
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)

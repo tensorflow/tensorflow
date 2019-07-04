@@ -137,7 +137,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
   if (!host_memory_args.empty()) {
     return errors::InvalidArgument(
-        "HostMemory args '", str_util::Join(host_memory_args, "', '"),
+        "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
   }
   CHECK_LE(inp_mtypes->size(), inp_dtypes.size());

@@ -8,9 +8,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -22,6 +21,7 @@ py_library(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:model_combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:saved_model_test_base",
         "//tensorflow/python/distribute:single_loss_example",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:strategy_test_lib",
@@ -85,6 +85,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/133330625)
     ],
 )
 
@@ -146,8 +147,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "nomsan",  # TODO(b/130299192)
+        "notap",  # TODO(b/130432997)
     ],
 )
 
@@ -223,64 +227,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-    ],
-)
-
-cuda_py_test(
-    name = "estimator_integration_test",
-    srcs = ["estimator_integration_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/optimizer_v2:training",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-    ],
-    tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # http://b/119349471
-        "tf_integration_test",
-    ],
-)
-
-cuda_py_test(
-    name = "estimator_training_test",
-    srcs = ["estimator_training_test.py"],
-    additional_deps = [
-        ":collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        ":mirrored_strategy",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        ":parameter_server_strategy",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/optimizer_v2:training",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        "//tensorflow/python/distribute:distribute_coordinator_context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-    ],
-    shard_count = 48,
-    tags = [
-        "multi_and_single_gpu",
-        # TODO(b/118768923): Re-enable {a,m,t}san test.
-        "noasan",
-        "nomsan",
-        "notsan",
-        "no_oss",  # http://b/119349471
     ],
 )
 

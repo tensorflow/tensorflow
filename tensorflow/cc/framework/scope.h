@@ -255,6 +255,12 @@ struct CompositeOpScopes {
   Scope last;
 };
 
+// Creates a node of the given operation, with the given inputs, and assigns the
+// result to output. This does not support the ability to add additional
+// attributes.
+Status CreateOutputWithScope(string op_name,
+                             absl::Span<const ::tensorflow::Input> inputs,
+                             const Scope& scope, Output* output);
 /// @}
 
 }  // namespace tensorflow

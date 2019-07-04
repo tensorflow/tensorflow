@@ -98,8 +98,8 @@ class SparseDenseBinaryOpShared : public OpKernel {
                 errors::InvalidArgument(
                     "SparseDenseBinaryOpShared broadcasts dense to sparse "
                     "only; got incompatible shapes: [",
-                    str_util::Join(lhs_dims, ","), "] vs. [",
-                    str_util::Join(rhs_dims, ","), "]"));
+                    absl::StrJoin(lhs_dims, ","), "] vs. [",
+                    absl::StrJoin(rhs_dims, ","), "]"));
 
     Tensor *output_values = nullptr;
     Tensor dense_gathered;

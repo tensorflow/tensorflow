@@ -51,12 +51,12 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1024, 256}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {256, 1}), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kExp, arg0));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), exp0, arg1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), exp0, arg1));
 
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -68,14 +68,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 256}), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {256}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(F32, {256, 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {256, 1024}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1, 1024}), arg0, exp1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), arg0, exp1));
 
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -89,14 +89,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {256, 1}), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* bitcast0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kBitcast, exp0));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), bitcast0, arg1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), bitcast0, arg1));
 
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -110,7 +110,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {256, 1}), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
@@ -118,7 +118,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
       builder.AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(S32, {1024, 256}), exp0));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), reshape0, arg1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), reshape0, arg1));
 
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -130,14 +130,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
 TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 32 * 1024}), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {32 * 1024}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(F32, {256, 32 * 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {256, 32 * 1024}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1, 32 * 1024}), arg0, exp1));
+      MakeDot(ShapeUtil::MakeShape(F32, {32 * 1024}), arg0, exp1));
 
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -637,6 +637,13 @@ void CreateComputationForDotAddOutputFusionTest(const string& test_name,
   Shape dot_lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
   Shape dot_rhs_shape = ShapeUtil::MakeShape(F32, {k, n});
   Shape dot_shape = ShapeUtil::MakeShape(F32, {m, n});
+  if (m == 1) {
+    dot_lhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {n});
+  } else if (n == 1) {
+    dot_rhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {m});
+  }
 
   auto* dot_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, dot_lhs_shape, "param0"));
@@ -882,6 +889,61 @@ INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
                          GatherLoopFusionTest,
                          ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
                          GatherLoopFusionTestSpec::Name);
+
+TEST_F(InstructionFusionTest, NoFuseReduceMajor) {
+  absl::string_view module_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[50,60]{1,0} parameter(1)
+  c = f32[50,60]{1,0} add(a, b)
+  init = f32[] constant(0)
+  ROOT r = f32[60]{0} reduce(c, init), dimensions={0}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+TEST_F(InstructionFusionTest, FuseReduceMinor) {
+  absl::string_view module_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[50,60]{1,0} parameter(1)
+  c = f32[50,60]{1,0} add(a, b)
+  init = f32[] constant(0)
+  ROOT r = f32[] reduce(c, init), dimensions={0,1}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_TRUE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

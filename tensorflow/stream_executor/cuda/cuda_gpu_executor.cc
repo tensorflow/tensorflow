@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
@@ -200,7 +201,7 @@ static string GetBinaryDir(bool strip_exe) {
   HMODULE hModule = GetModuleHandle(NULL);
   GetModuleFileName(hModule, exe_path, MAX_PATH);
 #else
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
 #endif
 #endif
   // Make sure it's null-terminated:

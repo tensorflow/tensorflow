@@ -34,8 +34,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu.ops import tpu_ops
+from tensorflow.python.util.tf_export import tf_export
 
 TRAINING = elc.TPUEmbeddingConfiguration.TRAINING
 INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
@@ -99,12 +101,13 @@ class TableConfig(
 class FeatureConfig(
     collections.namedtuple(
         'FeatureConfig',
-        ['table_id', 'max_sequence_length'])):
+        ['table_id', 'max_sequence_length', 'weight_key'])):
   """Feature configuration."""
 
   def __new__(cls,
               table_id,
-              max_sequence_length=0):
+              max_sequence_length=0,
+              weight_key=None):
     """Feature configuration.
 
     Args:
@@ -113,6 +116,8 @@ class FeatureConfig(
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
+      weight_key: If using weights for the combiner, this key specifies which
+        input feature contains the weights.
 
     Returns:
       `FeatureConfig`.
@@ -124,7 +129,8 @@ class FeatureConfig(
       raise ValueError('Invalid max_sequence_length {}.'.format(
           max_sequence_length))
 
-    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length)
+    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
+                                             weight_key)
 
 
 class EnqueueData(
@@ -149,11 +155,10 @@ class EnqueueData(
         If it is None, we assume each embedding_indices belongs to a different
         sample. Both int32 and int64 are allowed and will be converted to int32
         internally.
-      aggregation_weights: A rank 1 Tensors containing per training example
-        aggregation weights. It corresponds to sp_weights.values in
-        embedding_lookup_sparse(). If it is None, we assume all weights are 1.
-        Both float32 and float64 are allowed and will be converted to float32
-        internally.
+      aggregation_weights: A rank 1 Tensors containing aggregation weights.
+        It corresponds to sp_weights.values in embedding_lookup_sparse(). If it
+        is None, we assume all weights are 1. Both float32 and float64 are
+        allowed and will be converted to float32 internally.
 
     Returns:
       An EnqueueData tuple.
@@ -224,8 +229,25 @@ class _OptimizationParameters(object):
     self.clip_weight_max = clip_weight_max
 
 
+@tf_export(v1=['tpu.experimental.AdagradParameters'])
 class AdagradParameters(_OptimizationParameters):
-  """Optimization parameters for Adagrad."""
+  """Optimization parameters for Adagrad with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdagradParameters(0.1),
+          ...))
+  ```
+
+  """
 
   def __init__(self,
                learning_rate,
@@ -253,8 +275,25 @@ class AdagradParameters(_OptimizationParameters):
     self.initial_accumulator = initial_accumulator
 
 
+@tf_export(v1=['tpu.experimental.AdamParameters'])
 class AdamParameters(_OptimizationParameters):
-  """Optimization parameters for Adam."""
+  """Optimization parameters for Adam with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.AdamParameters(0.1),
+          ...))
+  ```
+
+  """
 
   def __init__(self,
                learning_rate,
@@ -306,8 +345,25 @@ class AdamParameters(_OptimizationParameters):
     self.sum_inside_sqrt = sum_inside_sqrt
 
 
+@tf_export(v1=['tpu.experimental.StochasticGradientDescentParameters'])
 class StochasticGradientDescentParameters(_OptimizationParameters):
-  """Optimization parameters for stochastic gradient descent."""
+  """Optimization parameters for stochastic gradient descent for TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=(
+              tf.tpu.experimental.StochasticGradientDescentParameters(0.1))))
+  ```
+
+  """
 
   def __init__(self, learning_rate, clip_weight_min=None,
                clip_weight_max=None):
@@ -606,7 +662,10 @@ class TPUEmbedding(object):
       table_descriptor.name = table
 
       table_config = self._table_to_config_dict[table]
-      table_descriptor.vocabulary_size = table_config.vocabulary_size
+      # For small tables, we pad to the number of hosts so that at least one
+      # id will be assigned to each host.
+      table_descriptor.vocabulary_size = max(table_config.vocabulary_size,
+                                             len(self.hosts))
       table_descriptor.dimension = table_config.dimension
 
       table_descriptor.num_features = self._table_to_num_features_dict[table]
@@ -1278,14 +1337,19 @@ def _create_device_fn(hosts):
   def device_fn(op):
     """Returns the `device` for `op`."""
     part_match = re.match(r'.*/part_(\d+)(/|$)', op.name)
+    dummy_match = re.match(r'.*dummy_(\d+).*', op.name)
+    if not part_match and not dummy_match:
+      raise RuntimeError(
+          'Internal Error: Expected {} to contain /part_* or dummy_*'.format(
+              op.name))
 
     if part_match:
       idx = int(part_match.group(1))
     else:
-      raise RuntimeError('Internal Error: '
-                         'Expected %s to contain /part_*.' % op.name)
+      idx = int(dummy_match.group(1))
 
     device = hosts[idx]
+    logging.debug('assigning {} to {}.', op, device)
     return device
 
   return device_fn
@@ -1298,17 +1362,31 @@ def _create_partitioned_variables(name,
                                   initializer,
                                   collections=None):  # pylint: disable=redefined-outer-name
   """Creates ParitionedVariables based on `num_hosts` for `table`."""
-  # TODO(shizhiw): automatically place embedding lookup elsewhere?
-  if vocabulary_size < num_hosts:
-    raise ValueError('`vocabulary_size`({}) is smaller than `num_hosts`({}). '
-                     'As TPU embedding is not optimized for small tables, '
-                     'please consider other ways for this embedding lookup.')
 
-  return list(variable_scope.get_variable(
-      name,
-      shape=(vocabulary_size, embedding_dimension),
-      partitioner=partitioned_variables.fixed_size_partitioner(num_hosts),
-      dtype=dtypes.float32,
-      initializer=initializer,
-      collections=collections,
-      trainable=False))
+  num_slices = min(vocabulary_size, num_hosts)
+
+  var_list = list(
+      variable_scope.get_variable(
+          name,
+          shape=(vocabulary_size, embedding_dimension),
+          partitioner=partitioned_variables.fixed_size_partitioner(num_slices),
+          dtype=dtypes.float32,
+          initializer=initializer,
+          collections=collections,
+          trainable=False))
+
+  if vocabulary_size >= num_hosts:
+    return var_list
+
+  # For padded part, define the dummy variable to be loaded into TPU system.
+  for idx in range(num_hosts - vocabulary_size):
+    var_list.append(
+        variable_scope.get_variable(
+            'dummy_{}_{}'.format(vocabulary_size + idx, name),
+            shape=(1, embedding_dimension),
+            dtype=dtypes.float32,
+            initializer=initializer,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            trainable=False))
+
+  return var_list

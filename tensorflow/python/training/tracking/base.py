@@ -19,9 +19,6 @@ from __future__ import print_function
 
 import abc
 import collections
-import functools
-import json
-import weakref
 
 import six
 
@@ -35,7 +32,7 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
 # Key where the object graph proto is saved in a TensorBundle
@@ -467,6 +464,38 @@ def no_automatic_dependency_tracking(method):
       target=method, decorator_func=_method_wrapper)
 
 
+@tf_contextlib.contextmanager
+def no_automatic_dependency_tracking_scope(obj):
+  """A context that disables automatic dependency tracking when assigning attrs.
+
+  Objects that inherit from Autotrackable automatically creates dependencies
+  to trackable objects through attribute assignments, and wraps data structures
+  (lists or dicts) with trackable classes. This scope may be used to temporarily
+  disable this behavior. This works similar to the decorator
+  `no_automatic_dependency_tracking`.
+
+  Example usage:
+  ```
+  model = tf.keras.Model()
+  model.arr1 = []  # Creates a ListWrapper object
+  with no_automatic_dependency_tracking_scope(model):
+    model.arr2 = []  # Creates a regular, untracked python list
+  ```
+
+  Args:
+    obj: A trackable object.
+
+  Yields:
+    a scope in which the object doesn't track dependencies.
+  """
+  previous_value = getattr(obj, "_setattr_tracking", True)
+  obj._setattr_tracking = False  # pylint: disable=protected-access
+  try:
+    yield
+  finally:
+    obj._setattr_tracking = previous_value  # pylint: disable=protected-access
+
+
 class Trackable(object):
   """Base class for `Trackable` objects without automatic dependencies.
 
@@ -551,6 +580,23 @@ class Trackable(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._self_name_based_restores = set()
+
+  @property
+  def _object_identifier(self):
+    """String used to identify this object in a SavedModel.
+
+    Generally, the object identifier is constant across objects of the same
+    class, while the metadata field is used for instance-specific data.
+
+    Returns:
+      String object identifier.
+    """
+    return "_generic_user_object"
+
+  @property
+  def _tracking_metadata(self):
+    """String containing object metadata, which is saved to the SavedModel."""
+    return ""
 
   def _no_dependency(self, value):
     """If automatic dependency tracking is enabled, ignores `value`."""
@@ -883,44 +929,52 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    if not hasattr(self, "get_config"):
-      return {}
-    try:
-      self.get_config()
-    except NotImplementedError:
-      return {}
-    weak_self = weakref.ref(self)
+    return {}
 
-    def _state_callback():
-      """Serializes `self.get_config()` for saving."""
-      dereferenced_self = weak_self()
-      if dereferenced_self:
-        try:
-          return json.dumps(
-              dereferenced_self,
-              default=serialization.get_json_type,
-              sort_keys=True).encode("utf8")
-        except TypeError:
-          # Even if get_config worked objects may have produced garbage.
-          return ""
-      else:
-        return ""
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    """Lists extra dependencies to serialize.
 
-    return {
-        OBJECT_CONFIG_JSON_KEY:
-            functools.partial(
-                PythonStringStateSaveable, state_callback=_state_callback)
-    }
+    Internal sub-classes can override this method to return extra dependencies
+    that should be saved with the object during SavedModel serialization. For
+    example, this is used to save `trainable_variables` in Keras models. The
+    python property `trainable_variables` contains logic to iterate through the
+    weights from the model and its sublayers. The serialized Keras model saves
+    `trainable_weights` as a trackable list of variables.
 
-  def _list_functions_for_serialization(self):
+    PLEASE NOTE when overriding this method:
+      1. This function may only generate new trackable objects the first time it
+         is called.
+      2. The returned dictionary must not have naming conflicts with
+         dependencies tracked by the root. In other words, if the root is
+         tracking `object_1` with name 'x', and this functions returns
+         `{'x': object_2}`, an error is raised when saving.
+
+    Args:
+      serialization_cache: A dictionary shared between all objects in the same
+        object graph. This object is passed to both
+        `_list_extra_dependencies_for_serialization` and
+        `_list_functions_for_serialization`.
+
+    Returns:
+      A dictionary mapping attribute names to trackable objects.
+    """
+    del serialization_cache
+    return dict()
+
+  def _list_functions_for_serialization(self, serialization_cache):
     """Lists the functions of this trackable to serialize.
 
     Internal sub-classes can override this with specific logic. E.g.
     `AutoTrackable` provides an implementation that returns the `attr`
     that return functions.
 
+    Args:
+      serialization_cache: Dictionary passed to all objects in the same object
+        graph during serialization.
+
     Returns:
         A dictionary mapping attribute names to `Function` or
         `ConcreteFunction`.
     """
+    del serialization_cache
     return dict()

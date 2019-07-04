@@ -389,7 +389,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the module's file is contained as the definition location.
     self.assertEqual(
-        os.path.relpath(test_module.__file__, '/'), page_info.defined_in.path)
+        os.path.relpath(test_module.__file__.rstrip('c'), '/'),
+        page_info.defined_in.path)
 
   def test_docs_for_function(self):
     index = {

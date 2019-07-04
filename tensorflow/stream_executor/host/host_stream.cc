@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_stream.h"
 
 #include "absl/synchronization/notification.h"
+#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/setround.h"
 
 namespace stream_executor {
 namespace host {
@@ -45,6 +47,11 @@ bool HostStream::EnqueueTask(std::function<void()> fn) {
 bool HostStream::WorkAvailable() { return !work_queue_.empty(); }
 
 void HostStream::WorkLoop() {
+  // Set denormal and rounding behavior to match the default TF ThreadPool
+  // behavior.
+  // TODO(phawkins, jlebar): it's not clear this is the best place to set this.
+  tensorflow::port::ScopedFlushDenormal flush;
+  tensorflow::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
     std::function<void()> fn;
     {

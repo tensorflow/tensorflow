@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -361,6 +362,16 @@ Status XlaCompilationCache::CompileImpl(
               << tensorflow::strings::HumanReadableElapsedTime(
                      it->second.cumulative_compile_time_us / 1.0e6)
               << ")";
+
+      XlaJitCompilationActivity jit_compilation_activity;
+      jit_compilation_activity.set_cluster_name(function.name());
+      jit_compilation_activity.set_compile_count(it->second.compile_count);
+      jit_compilation_activity.set_compile_time_us(compile_time_us);
+      jit_compilation_activity.set_cumulative_compile_time_us(
+          it->second.cumulative_compile_time_us);
+
+      TF_RETURN_IF_ERROR(
+          BroadcastXlaActivity(std::move(jit_compilation_activity)));
     }
   }
   TF_RETURN_IF_ERROR(entry->compilation_status);

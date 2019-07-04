@@ -28,50 +28,37 @@ from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 #===============================================================================
 # Masking
 #===============================================================================
-def boolean_mask(data, mask, keepdims=False, name=None):
-  """Applies a boolean mask to `data`.
+
+
+@tf_export('ragged.boolean_mask')
+def boolean_mask(data, mask, name=None):
+  """Applies a boolean mask to `data` without flattening the mask dimensions.
 
   Returns a potentially ragged tensor that is formed by retaining the elements
   in `data` where the corresponding value in `mask` is `True`.
-
-  If `keepdims` is true then outer dimensions (corresponding to the `mask`
-  dimensions) are preserved, and:
 
   * `output[a1...aA, i, b1...bB] = data[a1...aA, j, b1...bB]`
 
      Where `j` is the `i`th `True` entry of `mask[a1...aA]`.
 
-  If `keepdims` is false, then the outer dimensions are collapsed (similar to
-  the behavior of `tf.boolean_mask`), and:
-
-  * `output[i, b1...bB] = data[a1...aA, b1...bB]`
-
-     Where `(a1...aA)` is the `i`th `True` entry of `mask`
-     (in row-major order).
+  Note that `output` preserves the mask dimensions `a1...aA`; this differs
+  from `tf.boolean_mask`, which flattens those dimensions.
 
   Args:
     data: A potentially ragged tensor.
     mask: A potentially ragged boolean tensor.  `mask`'s shape must be a prefix
       of `data`'s shape.  `rank(mask)` must be known statically.
-    keepdims: Whether to preserve the outer dimensions (`keepdims=True`) or
-      flatten them (`keepdims=False`).
     name: A name prefix for the returned tensor (optional).
 
   Returns:
     A potentially ragged tensor that is formed by retaining the elements in
     `data` where the corresponding value in `mask` is `True`.
-
-    If `keepdims` is false:
-
-    * `rank(output) = rank(data) - rank(mask) + 1`.
-    * `output.ragged_rank = max(data.ragged_rank - rank(mask) + 1, 0)`.
-
-    If `keepdims` is true:
 
     * `rank(output) = rank(data)`.
     * `output.ragged_rank = max(data.ragged_rank, rank(mask) - 1)`.
@@ -85,34 +72,19 @@ def boolean_mask(data, mask, keepdims=False, name=None):
     >>> # Aliases for True & False so data and mask line up.
     >>> T, F = (True, False)
 
-    >>> tf.ragged.boolean_mask(  # Mask a 2D Tensor.  Flatten outer dims.
+    >>> tf.ragged.boolean_mask(  # Mask a 2D Tensor.
     ...     data=[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-    ...     mask=[[T, F, T], [F, F, F], [T, F, F]],
-    ...     keepdims=False).tolist()
-    [1, 3, 7]
-
-    >>> tf.ragged.boolean_mask(  # Mask a 2D Tensor.  Preserve outer dims.
-    ...     data=[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-    ...     mask=[[T, F, T], [F, F, F], [T, F, F]],
-    ...     keepdims=True).tolist()
+    ...     mask=[[T, F, T], [F, F, F], [T, F, F]]).tolist()
     [[1, 3], [], [7]]
 
-    >>> tf.ragged.boolean_mask(  # Mask a 2D RaggedTensor.  Flatten outer dims.
+    >>> tf.ragged.boolean_mask(  # Mask a 2D RaggedTensor.
     ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
-    ...     tf.ragged.constant([[F, F, T], [F], [T, T]]),
-    ...     keepdims=False).tolist()
-    [3, 5, 6]
-
-    >>> tf.ragged.boolean_mask(  # Mask a 2D RaggedTensor.  Preserve outer dims.
-    ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
-    ...     tf.ragged.constant([[F, F, T], [F], [T, T]]),
-    ...     keepdims=True).tolist()
+    ...     tf.ragged.constant([[F, F, T], [F], [T, T]])).tolist()
     [[3], [], [5, 6]]
 
     >>> tf.ragged.boolean_mask(  # Mask rows of a 2D RaggedTensor.
     ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
-    ...     tf.ragged.constant([True, False, True]),
-    ...     keepdims=True).tolist()
+    ...     tf.ragged.constant([True, False, True])).tolist()
     [[1, 2, 3], [5, 6]]
     ```
   """
@@ -161,12 +133,11 @@ def boolean_mask(data, mask, keepdims=False, name=None):
           data = data.values
 
         # Recursively apply the nested non-ragged mask to the nested data.
-        masked_values = boolean_mask(data, mask, keepdims)
+        masked_values = boolean_mask(data, mask)
 
         # Add the ragged `splits` back to the result.
-        if keepdims:
-          masked_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
-              masked_values, splits, validate=False)
+        masked_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
+            masked_values, splits, validate=False)
 
         return masked_values
 
@@ -186,7 +157,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
       # construct the masked values tensor.
       segment_ids = segment_id_ops.row_splits_to_segment_ids(data.row_splits)
       segment_mask = array_ops.gather(mask, segment_ids)
-      masked_values = boolean_mask(data.values, segment_mask, keepdims=False)
+      masked_values = boolean_mask(data.values, segment_mask)
 
       return ragged_tensor.RaggedTensor.from_row_splits(masked_values,
                                                         masked_splits,
@@ -198,14 +169,14 @@ def boolean_mask(data, mask, keepdims=False, name=None):
       mask = ragged_tensor.RaggedTensor.from_tensor(
           mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
           row_splits_dtype=data.row_splits.dtype)
-      return boolean_mask(data, mask, keepdims)
+      return boolean_mask(data, mask)
 
     # Otherwise, data and mask are both `Tensor`s.
     else:
       # Apply `boolean_mask` to get the masked values.
       masked_values = array_ops.boolean_mask(data, mask)
 
-      if mask.shape.ndims >= 2 and keepdims:
+      if mask.shape.ndims >= 2:
         # Add the innermost ragged dimension.  For each innermost cell, get the
         # number of values it contains.  Then flatten that to get a list of
         # cell lengths, and convert it to splits.  Finally, combine the splits
@@ -217,7 +188,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
             masked_values, flattened_masked_lengths, validate=False)
 
         # Wrap remaining ragged dimensions.
-        if mask.shape.ndims > 2 and keepdims:
+        if mask.shape.ndims > 2:
           mask_shape = array_ops.shape(mask, out_type=row_splits_dtype)
           split_size = math_ops.cumprod(mask_shape) + 1
           for dim in range(mask.shape.ndims - 3, -1, -1):

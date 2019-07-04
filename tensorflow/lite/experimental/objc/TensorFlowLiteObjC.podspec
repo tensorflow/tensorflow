@@ -1,5 +1,3 @@
-# Run `pod lib lint TensorFlowLiteObjC.podspec` to ensure this is a valid spec.
-
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
   s.version          = '0.2.0'
@@ -26,7 +24,6 @@ Pod::Spec.new do |s|
   s.public_header_files = objc_dir + 'apis/*.h'
   s.source_files = [
     objc_dir + '{apis,sources}/*.{h,m,mm}',
-    tfl_dir + 'c/c_api_internal.h',
     tfl_dir + 'experimental/c/c_api.h',
     tfl_dir + 'experimental/c/c_api_types.h',
   ]

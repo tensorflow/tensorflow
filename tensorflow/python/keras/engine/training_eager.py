@@ -28,8 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -61,10 +63,10 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   if targets:
     metric_results = model._handle_metrics(
         outputs,
-        return_weighted_and_unweighted_metrics=True,
         targets=targets,
         sample_weights=sample_weights,
-        masks=masks)
+        masks=masks,
+        return_weighted_and_unweighted_metrics=True)
 
   # Add metric results from the `add_metric` metrics.
   metric_results.extend([
@@ -118,7 +120,6 @@ def _model_loss(model,
     inputs = nest.map_structure(ops.convert_to_tensor, inputs)
 
   outs = model(inputs, **kwargs)
-
   outs = nest.flatten(outs)
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
@@ -142,10 +143,10 @@ def _model_loss(model,
           else:
             # Update dimensions of weights to match with mask if possible.
             mask, _, weights = (
-                losses_utils.squeeze_or_expand_dimensions(mask, None, weights))
+                tf_losses_utils.squeeze_or_expand_dimensions(
+                    mask, sample_weight=weights))
             weights *= mask
 
-        weighted_losses = None
         if hasattr(loss_fn, 'reduction'):
           per_sample_losses = loss_fn.call(targets[i], outs[i])
           weighted_losses = losses_utils.compute_weighted_loss(
@@ -162,8 +163,6 @@ def _model_loss(model,
           # Compute the stateless loss value.
           output_loss = losses_utils.reduce_weighted_loss(
               weighted_losses, reduction=loss_reduction)
-          if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
         else:
           # Compute the stateless loss value for a custom loss class.
           # Here we assume that the class takes care of loss reduction
@@ -171,25 +170,22 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-          # For custom losses we assume reduction was mean.
-          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
       # associated with a model, each output's loss is calculated and returned
       # as part of the loss_metrics.
       if len(model.outputs) > 1:
-        # Compute the stateful loss value.
-        if weighted_losses is not None:
-          aggregated_output_loss = output_loss_metrics[i](weighted_losses)
-        else:
-          # Custom loss class.
-          aggregated_output_loss = training_utils.call_metric_function(
-              output_loss_metrics[i], targets[i], outs[i], weights=weights)
         # Keep track of the stateful output loss result.
-        output_losses.append(aggregated_output_loss)
+        output_losses.append(output_loss_metrics[i](output_loss))
 
-      total_loss += model.loss_weights_list[i] * output_loss
+      # Scale output loss for distribution. For custom losses we assume
+      # reduction was mean.
+      if (getattr(loss_fn, 'reduction',
+                  losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
+          losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+        output_loss = losses_utils.scale_loss_for_distribution(output_loss)
+      total_loss += model._loss_weights_list[i] * output_loss
 
     # Add regularization losses
     custom_losses = model.losses
@@ -229,6 +225,8 @@ def _process_single_batch(model,
       ValueError: If the model has no loss to optimize.
   """
   with backend.eager_learning_phase_scope(1 if training else 0):
+    current_trainable_state = model._get_trainable_state()
+    model._set_trainable_state(model._compiled_trainable_state)
     with GradientTape() as tape:
       outs, total_loss, output_losses, masks = (
           _model_loss(
@@ -241,15 +239,21 @@ def _process_single_batch(model,
       if total_loss is None:
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
+      if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
+        scaled_total_loss = model.optimizer.get_scaled_loss(total_loss)
+      else:
+        scaled_total_loss = total_loss
     if training:
       if not model.trainable_weights:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
       else:
-        grads = tape.gradient(total_loss, model.trainable_weights)
-        model.optimizer.apply_gradients(zip(grads,
-                                            model.trainable_weights))
+        grads = tape.gradient(scaled_total_loss, model.trainable_weights)
+        if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
+          grads = model.optimizer.get_unscaled_gradients(grads)
+        model.optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    model._set_trainable_state(current_trainable_state)
     return outs, total_loss, output_losses, masks
 
 
@@ -273,12 +277,13 @@ def train_on_batch(model,
   """
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_dtype(inputs)
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
+                                                                     model)
       if targets:
         targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in inputs])
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
+          [ops.convert_to_tensor(val) for val in inputs], model)
       if targets:
         targets = training_utils.cast_if_floating_dtype(
             [ops.convert_to_tensor(val) for val in targets])
@@ -331,13 +336,16 @@ def test_on_batch(model,
   """
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_dtype(inputs)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
+                                                                     model)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in inputs])
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
+          [ops.convert_to_tensor(val) for val in inputs], model)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))

@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -326,6 +327,20 @@ class MaxPoolGradOp : public XlaOpKernel {
 
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
+
+    // Create a MaxPool operation to check the expected resulting shape, and
+    // then throw away the operation because we don't actually neeed it here.
+    TensorShape expected_out_shape;
+    auto pooling =
+        xla::MaxPool(ctx->Input(0), ksize_, stride_, xla_padding,
+                     XlaTensorFormat(data_format_, tensor_in_shape.dims() - 2));
+    auto status_or_shape = pooling.builder()->GetShape(pooling);
+    OP_REQUIRES_OK(ctx, status_or_shape.status());
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(status_or_shape.ValueOrDie(),
+                                              &expected_out_shape));
+    OP_REQUIRES(ctx, expected_out_shape == out_backprop_shape,
+                errors::Unimplemented("The output dimensions do not match the "
+                                      "other input values."));
 
     xla::PrimitiveType element_type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(2), &element_type));

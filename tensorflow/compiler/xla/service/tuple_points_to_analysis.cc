@@ -315,6 +315,29 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // CopyDone forwards its aliased operand.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(copy_done);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(copy_done->operand(0));
+  operand_points_to_set.ForEachElement(
+      [&points_to_set, &operand_points_to_set](
+          const ShapeIndex& src_index,
+          const PointsToSet::BufferList& points_to) {
+        if (src_index == ShapeIndex({0})) {
+          const ShapeIndex target_index = {};
+          *points_to_set.mutable_element(target_index) = points_to;
+
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(src_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        }
+      });
+
+  return Status::OK();
+}
+
 Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
   // Send creates a tuple of {aliased operand, U32 context, token}.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(send);

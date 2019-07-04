@@ -110,13 +110,7 @@ void Pack(Model* model, PackOperator const& op) {
       break;
   }
 
-  // Erase input arrays if no longer used
-  for (const auto& input : op->inputs) {
-    toco::DeleteArrayIfUsedOnce(input, model);
-  }
-
-  // Erase the operator
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

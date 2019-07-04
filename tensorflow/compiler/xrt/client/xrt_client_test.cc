@@ -76,19 +76,20 @@ TEST_F(XrtClientTest, XrtGrpcEagerClientWorks) {
 
   // Create and destroy a context to verify we can make RPCs.
   eager::CreateContextRequest request;
+  uint64 context_id = random::New64();
   ServerDef* server_def = request.mutable_server_def();
   *server_def->mutable_cluster() = cluster_def_;
   server_def->set_job_name("localhost");
   server_def->set_protocol("grpc");
   request.set_keep_alive_secs(60);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
 
   eager::CreateContextResponse create_response;
   TF_ASSERT_OK(client->SyncCall(&XrtGrpcEagerClient::CreateContextAsync,
                                 &request, &create_response));
 
   eager::CloseContextRequest close_request;
-  close_request.set_context_id(create_response.context_id());
+  close_request.set_context_id(context_id);
 
   eager::CloseContextResponse close_response;
   TF_ASSERT_OK(client->SyncCall(&XrtGrpcEagerClient::CloseContextAsync,
@@ -302,6 +303,22 @@ TEST_F(XrtClientTest, TupleDestructuringAndDelete) {
   pieces[1]->Delete();
 }
 
+TEST_F(XrtClientTest, EmptyTuples) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+
+  // Tests sending a literal to and from the device.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<XrtBuffer> buffer,
+      XrtBuffer::MakeTuple(context, /*elements=*/{}, /*xrt_device_ordinal=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<XrtBuffer>> pieces,
+                          buffer->DestructureTuple());
+  EXPECT_EQ(pieces.size(), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal out, buffer->ToLiteral());
+  ASSERT_TRUE(out.shape().IsTuple());
+  EXPECT_EQ(out.shape().tuple_shapes_size(), 0);
+}
+
 TEST_F(XrtClientTest, TupleConstructionAndDestructuring) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
 
@@ -326,8 +343,9 @@ TEST_F(XrtClientTest, TupleConstructionAndDestructuring) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(b, b_in));
 
   std::vector<std::shared_ptr<XrtBuffer>> elems = {a_buffer, b_buffer};
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtBuffer> buffer,
-                          XrtBuffer::MakeTuple(context, elems));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<XrtBuffer> buffer,
+      XrtBuffer::MakeTuple(context, elems, /*xrt_device_ordinal=*/0));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<XrtBuffer>> pieces,
                           buffer->DestructureTuple());
 

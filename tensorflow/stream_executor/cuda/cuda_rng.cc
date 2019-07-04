@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
 // clang-format off
-#include "cuda/include/curand.h"
+#include "third_party/gpus/cuda/include/curand.h"
 // clang-format on
 
 // Formats curandStatus_t to output prettified values into a log stream.

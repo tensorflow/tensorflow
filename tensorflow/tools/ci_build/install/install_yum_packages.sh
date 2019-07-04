@@ -40,9 +40,11 @@ yum install -y  atlas-devel \
                 perl-core \
                 python27 \
                 readline-devel \
-                rh-python35 \
-                rh-python36 \
                 sqlite-devel \
                 wget \
                 xz-devel \
                 zlib-devel
+
+# Install latest git.
+yum install -y http://opensource.wandisco.com/centos/6/git/x86_64/wandisco-git-release-6-1.noarch.rpm
+yum install -y git

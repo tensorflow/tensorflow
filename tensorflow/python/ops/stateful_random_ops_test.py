@@ -96,7 +96,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """
     shape = [2, 3]
     count = 6
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     keys1 = gen._make_int64_keys(shape=shape)
     keys2 = gen._make_int64_keys(shape=shape)
     self.assertAllDifferent([keys1, keys2])
@@ -126,42 +126,100 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """Tests that a CPU RNG can split into RNGs on GPU.
     """
     with ops.device("/device:CPU:0"):
-      gen = random.Generator(seed=1234)  # gen is on CPU
+      gen = random.Generator.from_seed(1234)  # gen is on CPU
       self.assertRegex("CPU", gen.state.device)
     with ops.device(test_util.gpu_device_name()):
       gens = gen.split(count=10)  # gens are on GPU
       self.assertRegex("GPU", gens[0].state.device)
 
   @test_util.run_v2_only
-  def testGeneratorCreationInDefun(self):
-    """Tests creating a Generator in defun.
+  def testReset(self):
+    shape = [2, 3]
+    gen = random.Generator.from_seed(0)
+    for resetter in [
+        lambda g: g.reset(state=[1, 2, 3]),
+        lambda g: g.reset_from_seed(1234),
+        lambda g: g.reset_from_key_counter(key=1, counter=[2, 3]),
+    ]:
+      resetter(gen)
+      expected_normal = gen.normal(shape)
+      @def_function.function
+      def f(resetter):
+        resetter(gen)
+        return gen.normal(shape)
+      def check_results(expected_normal, v):
+        self.assertAllEqual(expected_normal, v)
+      check_results(expected_normal, f(resetter))
+      check_results(expected_normal, f(resetter))
+
+  @test_util.run_v2_only
+  def testGeneratorCreation(self):
+    """Tests generator creation, in both eager and tf.function.
 
     The interaction between Generator creation and defun should be the same as
     tf.Variable.
     """
-    seed = 1234
     shape = [2, 3]
-    with ops.device("/device:CPU:0"):
-      gen = random.Generator(seed=seed)
+    alg = random.RNG_ALG_PHILOX
+    for constructor in [
+        lambda: random.Generator(state=[1, 2, 3], alg=alg),
+        lambda: random.Generator.from_seed(1234),
+        lambda: random.Generator.from_key_counter(  # pylint: disable=g-long-lambda
+            key=1, counter=[2, 3], alg=alg),
+    ]:
+      gen = constructor()
+      # Tests tf.function
       expected_normal1 = gen.normal(shape)
       expected_normal2 = gen.normal(shape)
+      global g_seeded
+      g_seeded = None
       @def_function.function
-      def f():
+      def f(constructor):
         global g_seeded
-        global g_unseeded
         # defun'ed function should only create variables once
         if g_seeded is None:
-          g_seeded = random.Generator(seed=seed)
-        if g_unseeded is None:
-          g_unseeded = random.Generator()
-        r = g_seeded.normal(shape)
-        r = (r, g_unseeded.normal(shape))
-        return r
-      def check_results(expected_normal, v1, v2):
-        self.assertAllEqual(expected_normal, v1)
-        self.assertAllEqual(shape, v2.shape)
-      check_results(expected_normal1, *f())
-      check_results(expected_normal2, *f())
+          g_seeded = constructor()
+        return g_seeded.normal(shape)
+      def check_results(expected_normal, v):
+        self.assertAllEqual(expected_normal, v)
+      check_results(expected_normal1, f(constructor))
+      check_results(expected_normal2, f(constructor))
+
+  @test_util.run_v2_only
+  def testGeneratorCreationUnseeded(self):
+    """Tests generator creation, the unseeded case."""
+    shape = [2, 3]
+    global g_unseeded
+    g_unseeded = None
+    @def_function.function
+    def f():
+      global g_unseeded
+      # defun'ed function should only create variables once
+      if g_unseeded is None:
+        g_unseeded = random.Generator.from_non_deterministic_state()
+      return g_unseeded.normal(shape)
+    self.assertAllEqual(shape, f().shape)
+
+  @test_util.run_v2_only
+  def testGeneratorCopy(self):
+    """Tests copying a generator."""
+    g = random.Generator.from_seed(0)
+    g_copy = random.Generator(g)
+    self.assertAllEqual(g.algorithm, g_copy.algorithm)
+    self.assertAllEqual(g.state.read_value(), g_copy.state.read_value())
+    # Tests tf.function
+    global g_seeded
+    g_seeded = None
+    # Do the same in tf.function
+    @def_function.function
+    def f():
+      global g_seeded
+      # defun'ed function should only create variables once
+      if g_seeded is None:
+        g_seeded = random.Generator(g)
+      self.assertAllEqual(g.algorithm, g_seeded.algorithm)
+      self.assertAllEqual(g.state.read_value(), g_seeded.state.read_value())
+    f()
 
   @test_util.run_v1_only(
       ("This test is specifically for checking TF1 compatibility. "
@@ -176,8 +234,8 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         [[-0.3964749, 0.8369565, -0.30946946],
          [1.1206646, 1.00852597, -0.10185789]], dtype=dtypes.float32)
     with self.cached_session() as sess:
-      gen1 = random.Generator(seed=seed)
-      gen2 = random.Generator()
+      gen1 = random.Generator.from_seed(seed)
+      gen2 = random.Generator.from_non_deterministic_state()
       sess.run((gen1._state_var.initializer, gen2._state_var.initializer))
       r1 = gen1.normal(shape, dtype=dtypes.float32)
       r2 = gen2.normal(shape, dtype=dtypes.float32)
@@ -203,9 +261,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     https://github.com/tensorflow/tensorflow/issues/9171
     """
     shape = (3,)
-    random.get_global_generator().reset(1)
+    random.get_global_generator().reset_from_seed(1)
     a = random.get_global_generator().normal(shape)
-    random.get_global_generator().reset(1)
+    random.get_global_generator().reset_from_seed(1)
     b = random.get_global_generator().normal(shape)
     self.assertAllEqual(a, b)
 
@@ -214,9 +272,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     def f():
       return random.get_global_generator().normal(shape)
 
-    random.get_global_generator().reset(1)
+    random.get_global_generator().reset_from_seed(1)
     c = f()
-    random.get_global_generator().reset(1)
+    random.get_global_generator().reset_from_seed(1)
     d = f()
     self.assertAllEqual(c, d)
     self.assertAllEqual(a, c)
@@ -237,9 +295,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       return random.get_global_generator().normal(shape)
 
     def compare(fst_includes_print, snd_includes_print):
-      random.get_global_generator().reset(50)
+      random.get_global_generator().reset_from_seed(50)
       fst = f(fst_includes_print)
-      random.get_global_generator().reset(50)
+      random.get_global_generator().reset_from_seed(50)
       snd = f(snd_includes_print)
       self.assertAllEqual(fst, snd)
       # Now do the above again using accelerated (defunned) 'f'.
@@ -247,9 +305,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       # two different graphs to be generated, hence demonstrating the
       # insensitivity to graph changes.
       f_acc = def_function.function(f)
-      random.get_global_generator().reset(50)
+      random.get_global_generator().reset_from_seed(50)
       fst = f_acc(fst_includes_print)
-      random.get_global_generator().reset(50)
+      random.get_global_generator().reset_from_seed(50)
       snd = f_acc(snd_includes_print)
       self.assertAllEqual(fst, snd)
 
@@ -260,7 +318,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testKey(self):
     key = 1234
-    gen = random.Generator(seed=[0, 0, key])
+    gen = random.Generator(state=[0, 0, key], alg=random.RNG_ALG_PHILOX)
     got = gen.key
     self.assertAllEqual(key, got)
     @def_function.function
@@ -273,7 +331,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   def testSkip(self):
     key = 1234
     counter = 5678
-    gen = random.Generator(seed=[counter, 0, key])
+    gen = random.Generator(state=[counter, 0, key], alg=random.RNG_ALG_PHILOX)
     delta = 432
     gen.skip(delta)
     new_counter = gen._state_var[0]
@@ -285,7 +343,8 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       # note how the two seeds for the old op correspond to the seed for the new
       # op
       with ops.device(device):
-        gen = random.Generator(seed=[0, seed2, seed1])
+        gen = random.Generator(state=[0, seed2, seed1],
+                               alg=random.RNG_ALG_PHILOX)
 
       # create a graph for the old op in order to call it many times
       @def_function.function
@@ -361,10 +420,10 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     seed = 1234
     shape = [315, 49]
     with ops.device("/device:CPU:0"):
-      cpu = random.Generator(seed=seed).uniform_full_int(
+      cpu = random.Generator.from_seed(seed).uniform_full_int(
           shape=shape, dtype=dtype)
     with ops.device(test_util.gpu_device_name()):
-      gpu = random.Generator(seed=seed).uniform_full_int(
+      gpu = random.Generator.from_seed(seed).uniform_full_int(
           shape=shape, dtype=dtype)
     self.assertAllEqual(cpu, gpu)
 
@@ -374,7 +433,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     minval = 2
     maxval = 33
     size = 1000
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     x = gen.uniform(
         shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
     self.assertTrue(np.all(x >= minval))
@@ -383,7 +442,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(FLOATS)
   @test_util.run_v2_only
   def testNormalIsFinite(self, dtype):
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[10000], dtype=dtype).numpy()
     self.assertTrue(np.all(np.isfinite(x)))
 
@@ -393,7 +452,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """Use Pearson's Chi-squared test to test for uniformity."""
     n = 1000
     seed = 12
-    gen = random.Generator(seed=seed)
+    gen = random.Generator.from_seed(seed)
     maxval = 1
     if dtype.is_integer:
       maxval = 100
@@ -413,7 +472,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   def testDistributionOfNormal(self, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
     n = 1000
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[n], dtype=dtype).numpy()
     # The constant 2.492 is the 5% critical value for the Anderson-Darling
     # test where the mean and variance are known. This test is probabilistic
@@ -426,7 +485,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """Tests that proper errors are raised.
     """
     shape = [2, 3]
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     with self.assertRaisesWithPredicateMatch(
         errors.InvalidArgumentError,
         r"must have shape \[\], not"):
@@ -466,8 +525,8 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
           var.handle, random.RNG_ALG_PHILOX, shape)
 
   @test_util.run_v2_only
-  def testResetGlobalGeneratorBadWithDefun(self):
-    """Demonstrates that reset_global_generator don't work properly with defun.
+  def testSetGlobalGeneratorBadWithDefun(self):
+    """Demonstrates that set_global_generator don't work properly with defun.
     """
     shape = (3,)
 
@@ -475,11 +534,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     def f():
       return random.get_global_generator().normal(shape)
 
-    random.reset_global_generator(50)
+    random.set_global_generator(random.Generator.from_seed(50))
     with self.assertRaisesWithPredicateMatch(
         errors.NotFoundError, "Resource .+ does not exist"):
       _ = f()
-      random.reset_global_generator(50)
+      random.set_global_generator(random.Generator.from_seed(50))
       _ = f()
 
   @test_util.run_v2_only
@@ -492,7 +551,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """
     shape = [3, 4]
     dtype = dtypes.int32
-    gen = random.Generator(seed=1234)
+    gen = random.Generator.from_seed(1234)
     strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
     with strat.scope():
       def f():
@@ -519,7 +578,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     dtype = dtypes.int32
     strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
     with strat.scope():
-      gen = random.Generator(seed=1234)
+      gen = random.Generator.from_seed(1234)
       def f():
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
         t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
@@ -545,7 +604,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     dtype = dtypes.int32
     strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
     def f():
-      gen = random.Generator(seed=1234)
+      gen = random.Generator.from_seed(1234)
       t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
       t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
       t = array_ops.stack([t1, t2])
@@ -575,7 +634,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     #   different random-number stream. The only obstacle is that op
     #   'NonDeterministicInts' is not implemented on GPU.)
     with strat.scope():
-      gen = random.Generator()
+      gen = random.Generator.from_non_deterministic_state()
       def f():
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
         t2 = gen.uniform_full_int(shape=shape, dtype=dtype)

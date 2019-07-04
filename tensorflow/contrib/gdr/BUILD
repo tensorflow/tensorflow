@@ -1,11 +1,18 @@
 # Description:
 #   GPU Direct RDMA Out-of-Band Tensor transport for TensorFlow.
 
-package(default_visibility = [
-    "//tensorflow:__subpackages__",
-])
+# For platform specific build config
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_cc",
+)
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -15,12 +22,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
 )
 
 tf_proto_library_cc(

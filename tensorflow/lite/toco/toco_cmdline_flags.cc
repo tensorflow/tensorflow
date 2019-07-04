@@ -158,6 +158,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.split_tflite_lstm_inputs.default_value(),
            "Split the LSTM inputs from 5 tensors to 18 tensors for TFLite. "
            "Ignored if the output format is not TFLite."),
+      Flag("quantize_to_float16", parsed_flags.quantize_to_float16.bind(),
+           parsed_flags.quantize_to_float16.default_value(),
+           "Used in conjuction with post_training_quantize. Specifies that "
+           "the weights should be quantized to fp16 instead of the default "
+           "(int8)"),
       Flag("quantize_weights", parsed_flags.quantize_weights.bind(),
            parsed_flags.quantize_weights.default_value(),
            "Deprecated. Please use --post_training_quantize instead."),
@@ -266,6 +271,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(dedupe_array_min_size_bytes, FlagRequirement::kNone);
   READ_TOCO_FLAG(split_tflite_lstm_inputs, FlagRequirement::kNone);
   READ_TOCO_FLAG(quantize_weights, FlagRequirement::kNone);
+  READ_TOCO_FLAG(quantize_to_float16, FlagRequirement::kNone);
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);

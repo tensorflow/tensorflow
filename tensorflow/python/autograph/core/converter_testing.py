@@ -58,9 +58,10 @@ class TestCase(test.TestCase):
     source = None
 
     self.dynamic_calls = []
-    def converted_call(*args):
+    # See api.converted_call
+    def converted_call(unused_f, unused_opts, args, kwargs):
       """Mock version of api.converted_call."""
-      self.dynamic_calls.append(args[3:])  # args only; see api.converted_call
+      self.dynamic_calls.append((args, kwargs))
       return RESULT_OF_MOCK_CONVERTED_CALL
 
     try:
@@ -134,6 +135,6 @@ class TestCase(test.TestCase):
         future_features=future_features,
         namespace=namespace)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
-    origin_info.resolve(node, source, test_fn)
+    origin_info.resolve_entity(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx

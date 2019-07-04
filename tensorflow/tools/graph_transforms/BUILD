@@ -1,18 +1,19 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_v2",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_copts",
     "tf_py_test",
-    "if_not_v2",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
@@ -98,7 +99,6 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
-        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
@@ -150,6 +150,7 @@ cc_library(
         "//tensorflow/core:string_ops_op_lib",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:rnn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:manip_ops_op_lib",
@@ -158,9 +159,6 @@ cc_library(
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:candidate_sampling_ops_op_lib",
         "//tensorflow/core:array_ops_op_lib",
-    ]) + if_not_v2([
-        "//tensorflow/contrib/rnn:gru_ops_op_lib",
-        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ]),
     alwayslink = 1,
 )

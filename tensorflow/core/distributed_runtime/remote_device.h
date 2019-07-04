@@ -19,12 +19,22 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+class DeviceAttributes;
 class Device;
 class Env;
 class WorkerCacheInterface;
+
+// Creates Remote Devices for the provided device attributes. Helpful when the
+// list of attributes is known, and doesn't need to be discovered via RPC.
+void AsRemoteDevices(
+    Env* env,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+    std::vector<std::unique_ptr<Device>>* remote_devices);
 
 // NewRemoteDevices discovers available devices on the
 // 'remote_worker'.  The implementation uses 'channel_cache' to

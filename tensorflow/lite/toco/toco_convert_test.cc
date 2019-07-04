@@ -133,6 +133,11 @@ TEST(TocoTest, TransientStringTensors) {
   // input array must have a shape.
   toco_flags.set_output_format(TFLITE);
 
+  toco::InputArray* input_1 = model_flags.add_input_arrays();
+  input_1->set_name("input1");
+  toco::InputArray* indices_1 = model_flags.add_input_arrays();
+  indices_1->set_name("indices1");
+
   model_flags.add_output_arrays("output1");
   string input = R"GraphDef(
     node {

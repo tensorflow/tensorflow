@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 
+#define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,6 +37,7 @@ namespace functor {
 //   output: [Di, ... , DN] where i belongs to set [1,N]
 template <typename T, typename AccumT, typename BinaryFunctor>
 struct ReduceOuterDimensions {
+  ReduceOuterDimensions(){};
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
@@ -194,6 +199,7 @@ struct ReduceOuterDimensions {
 //   output: [Di, ... , Dj] where i & j belongs to set [1,N].
 template <typename T, typename AccumT, typename BinaryFunctor, typename Reducer>
 struct ReduceMiddleDimensions {
+  ReduceMiddleDimensions(){};
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
@@ -252,7 +258,7 @@ struct ReduceMiddleDimensions {
     using Input = Eigen::TensorMap<Eigen::Tensor<const T, 1>>;
 
     Eigen::array<Eigen::Index, 1> reduction_axis = {0};
-    const Reducer reducer;
+    Reducer reducer;
     const BinaryFunctor binary_op;
 
     const auto compute = [inner_dim, middle_dim, input_data, buffer_data,

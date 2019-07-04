@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="14460.31" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+    <device id="retina4_7" orientation="portrait">
+        <adaptation id="fullscreen"/>
+    </device>
+    <dependencies>
+        <deployment version="2304" identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14460.20"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="BYZ-38-t0r" customClass="ViewController" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="5Qd-iD-SiH"/>
+                        <viewControllerLayoutGuide type="bottom" id="zTS-de-uge"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <toolbar opaque="NO" clearsContextBeforeDrawing="NO" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="ahi-i4-2FP" userLabel="Top Model Toolbar">
+                                <rect key="frame" x="0.0" y="34" width="375" height="44"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="44" id="nwy-nk-0wZ"/>
+                                </constraints>
+                                <items>
+                                    <barButtonItem style="plain" id="Ywd-KS-s96">
+                                        <segmentedControl key="customView" opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="top" segmentControlStyle="bar" selectedSegmentIndex="0" id="8kc-88-CHj" userLabel="Model Control">
+                                            <rect key="frame" x="16" y="7.5" width="343" height="29"/>
+                                            <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                            <segments>
+                                                <segment title="Add"/>
+                                                <segment title="AddQuantized"/>
+                                                <segment title="MultiAdd"/>
+                                            </segments>
+                                            <connections>
+                                                <action selector="modelChanged:" destination="BYZ-38-t0r" eventType="valueChanged" id="z13-8K-EwC"/>
+                                            </connections>
+                                        </segmentedControl>
+                                    </barButtonItem>
+                                </items>
+                            </toolbar>
+                            <toolbar opaque="NO" clearsContextBeforeDrawing="NO" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="UWb-3E-O5r" userLabel="Bottom Invoke Toolbar">
+                                <rect key="frame" x="0.0" y="140" width="375" height="44"/>
+                                <items>
+                                    <barButtonItem title="Invoke Interpreter" width="374" id="He4-7G-biW">
+                                        <connections>
+                                            <action selector="invokeInterpreter:" destination="BYZ-38-t0r" id="Ycs-E9-Vul"/>
+                                        </connections>
+                                    </barButtonItem>
+                                </items>
+                            </toolbar>
+                            <textView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" misplaced="YES" editable="NO" adjustsFontForContentSizeCategory="YES" selectable="NO" translatesAutoresizingMaskIntoConstraints="NO" id="7Ws-3t-76I">
+                                <rect key="frame" x="0.0" y="194" width="375" height="488"/>
+                                <color key="backgroundColor" red="0.12820077356385221" green="0.40366933178860925" blue="0.96080166101455688" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
+                                <color key="textColor" cocoaTouchSystemColor="tableCellGroupedBackgroundColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits" autocapitalizationType="sentences"/>
+                            </textView>
+                        </subviews>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="ahi-i4-2FP" firstAttribute="top" secondItem="5Qd-iD-SiH" secondAttribute="bottom" constant="14" id="0V2-16-9cM"/>
+                            <constraint firstAttribute="trailing" secondItem="ahi-i4-2FP" secondAttribute="trailing" id="1D2-FC-OQ0"/>
+                            <constraint firstItem="UWb-3E-O5r" firstAttribute="leading" secondItem="8bC-Xf-vdC" secondAttribute="leading" id="1To-8n-Knb"/>
+                            <constraint firstItem="7Ws-3t-76I" firstAttribute="leading" secondItem="8bC-Xf-vdC" secondAttribute="leading" id="3Et-px-WCV"/>
+                            <constraint firstItem="zTS-de-uge" firstAttribute="top" secondItem="7Ws-3t-76I" secondAttribute="bottom" id="Lkb-XF-ldX"/>
+                            <constraint firstItem="7Ws-3t-76I" firstAttribute="top" secondItem="UWb-3E-O5r" secondAttribute="bottom" id="bXr-pF-Ld2"/>
+                            <constraint firstItem="ahi-i4-2FP" firstAttribute="leading" secondItem="8bC-Xf-vdC" secondAttribute="leading" id="c98-HO-3m5"/>
+                            <constraint firstAttribute="trailing" secondItem="UWb-3E-O5r" secondAttribute="trailing" id="oJz-hf-dJa"/>
+                            <constraint firstAttribute="trailing" secondItem="7Ws-3t-76I" secondAttribute="trailing" id="oyy-C7-mUJ"/>
+                            <constraint firstItem="UWb-3E-O5r" firstAttribute="top" secondItem="ahi-i4-2FP" secondAttribute="bottom" constant="62" id="uFg-MF-aJz"/>
+                        </constraints>
+                    </view>
+                    <connections>
+                        <outlet property="invokeButton" destination="He4-7G-biW" id="kpj-CS-Fss"/>
+                        <outlet property="modelControl" destination="8kc-88-CHj" id="GTB-WG-ozW"/>
+                        <outlet property="resultsTextView" destination="7Ws-3t-76I" id="fnd-i5-Pdh"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="136.80000000000001" y="132.68365817091455"/>
+        </scene>
+    </scenes>
+</document>

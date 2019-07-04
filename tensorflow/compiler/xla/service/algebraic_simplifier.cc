@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -182,6 +183,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleBitcastConvert(HloInstruction* bitcast) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
+
+  Status HandleCompare(HloInstruction* compare) override;
 
   Status HandleConcatenate(HloInstruction* concatenate) override;
 
@@ -582,20 +585,20 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
       return Status::OK();
     }
+  }
 
-    // A && False => False
-    VLOG(10) << "trying transform [A && False => False]: "
-             << logical_and->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
-      return Status::OK();
-    }
+  // A && False => False or A & 0 => 0
+  VLOG(10) << "trying transform [A && False => False]: "
+           << logical_and->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+    return Status::OK();
+  }
 
-    // False && A => False
-    VLOG(10) << "trying transform [False && A => False]: "
-             << logical_and->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
-      return Status::OK();
-    }
+  // False && A => False or A & 0 => 0
+  VLOG(10) << "trying transform [False && A => False]: "
+           << logical_and->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+    return Status::OK();
   }
 
   return Status::OK();
@@ -1234,7 +1237,8 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.lhs_batch_dimensions_size() != 0) {
+      dnums.lhs_batch_dimensions_size() != 0 ||
+      dot->shape().dimensions_size() != 2) {  // dot output 2D
     return nullptr;
   }
 
@@ -1581,6 +1585,15 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
       lhs_contracting_dims.Add(i);
     }
   }
+  // We require the "unsquished" lhs contracting dims to be consecutive.
+  auto is_iota = [](absl::Span<const int64> dims) {
+    return absl::c_adjacent_find(dims, [](const int64 a, const int64 b) {
+             return (b != a + 1);
+           }) == dims.end();
+  };
+  if (!is_iota(AsInt64Slice(lhs_contracting_dims))) {
+    return nullptr;
+  }
   lhs = lhs->mutable_operand(0);
 
   // Check that the transpose only permutes the contracting dims.
@@ -1597,6 +1610,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
+  CHECK(IsPermutation(permutation, permutation.size()));
   auto new_lhs_contracting_dims =
       ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
   lhs_contracting_dims.Clear();
@@ -1724,12 +1738,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  // Only optimize F32 or BF16 dot operations where the dot, rhs and lhs.
-  if (dot->shape().element_type() != F32 &&
-      dot->shape().element_type() != BF16) {
-    return Status::OK();
-  }
-
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
   if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
@@ -1770,12 +1778,16 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-           dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
-       lhs->shape().rank()) ||
-      (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
-           dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
-       rhs->shape().rank())) {
+  if (options_.enable_dot_strength_reduction() &&
+      (dot->shape().element_type() == F32 ||
+       dot->shape().element_type() == F16 ||
+       dot->shape().element_type() == BF16) &&
+      ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+            dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
+        lhs->shape().rank()) ||
+       (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
+            dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
+        rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -1871,12 +1883,10 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return ReplaceInstruction(dot, dot_of_gather_optimized);
   }
 
-  if (options_.enable_dot_strength_reduction()) {
-    TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
-                        RemoveDegenerateDimensionFromDot(dot));
-    if (removed_degenerate_dimensions) {
-      return Status::OK();
-    }
+  TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
+                      RemoveDegenerateDimensionFromDot(dot));
+  if (removed_degenerate_dimensions) {
+    return Status::OK();
   }
 
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
@@ -1999,20 +2009,18 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
       return Status::OK();
     }
+  }
 
-    // A || False => A
-    VLOG(10) << "trying transform [A || False => A]: "
-             << logical_or->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
-      return Status::OK();
-    }
+  // A || False => A and A | 0 => A
+  VLOG(10) << "trying transform [A || False => A]: " << logical_or->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+    return Status::OK();
+  }
 
-    // False || A => A
-    VLOG(10) << "trying transform [False || A => A]: "
-             << logical_or->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
-      return Status::OK();
-    }
+  // False || A => A and 0 | A => A
+  VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+    return Status::OK();
   }
 
   return Status::OK();
@@ -2209,6 +2217,49 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
         broadcast,
         HloInstruction::CreateBroadcast(
             broadcast->shape(), operand->mutable_operand(0), new_dimensions));
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
+  HloInstruction* lhs;
+  HloInstruction* rhs;
+  CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
+
+  auto replace_with_pred_broadcast = [&](bool value) {
+    return ReplaceWithNewInstruction(
+        compare,
+        HloInstruction::CreateBroadcast(
+            compare->shape(),
+            computation_->AddInstruction(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0(value))),
+            {}));
+  };
+  if (compare->comparison_direction() == ComparisonDirection::kLt &&
+      lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+    return replace_with_pred_broadcast(false);
+  } else if (compare->comparison_direction() == ComparisonDirection::kGt &&
+             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+    return replace_with_pred_broadcast(false);
+  } else if (compare->comparison_direction() == ComparisonDirection::kGe &&
+             lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+    return replace_with_pred_broadcast(true);
+  } else if (compare->comparison_direction() == ComparisonDirection::kLe &&
+             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+    return replace_with_pred_broadcast(true);
+  }
+  if (lhs == rhs &&
+      primitive_util::IsIntegralType(lhs->shape().element_type())) {
+    switch (compare->comparison_direction()) {
+      case ComparisonDirection::kGt:
+      case ComparisonDirection::kLt:
+      case ComparisonDirection::kNe:
+        return replace_with_pred_broadcast(false);
+      case ComparisonDirection::kEq:
+      case ComparisonDirection::kGe:
+      case ComparisonDirection::kLe:
+        return replace_with_pred_broadcast(true);
+    }
   }
   return Status::OK();
 }
@@ -3464,6 +3515,38 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                        transpose->shape(), operand->mutable_operand(0),
                        ComposePermutations(operand->dimensions(),
                                            transpose->dimensions())));
+  }
+
+  // Convert transpose(dot(a,b)) to dot(b,a).
+  if (operand->opcode() == HloOpcode::kDot && operand->user_count() == 1 &&
+      operand->shape().rank() == 2) {
+    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
+      const auto& dnums = operand->dot_dimension_numbers();
+      if (dnums.lhs_batch_dimensions_size() != 0) {
+        return false;
+      }
+      HloInstruction* lhs = operand->mutable_operand(0);
+      if (lhs->shape().rank() != 1 + dnums.lhs_contracting_dimensions_size()) {
+        return false;
+      }
+      HloInstruction* rhs = operand->mutable_operand(1);
+      if (rhs->shape().rank() != 1 + dnums.rhs_contracting_dimensions_size()) {
+        return false;
+      }
+      DotDimensionNumbers new_dnums;
+      *new_dnums.mutable_lhs_contracting_dimensions() =
+          dnums.rhs_contracting_dimensions();
+      *new_dnums.mutable_rhs_contracting_dimensions() =
+          dnums.lhs_contracting_dimensions();
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          transpose, HloInstruction::CreateDot(transpose->shape(), /*lhs=*/rhs,
+                                               /*rhs=*/lhs, new_dnums,
+                                               operand->precision_config())));
+      return true;
+    }());
+    if (did_transform) {
+      return Status::OK();
+    }
   }
 
   // Replace transpose with a reshape if more than one degenerate method is

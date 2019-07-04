@@ -207,7 +207,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
@@ -243,7 +243,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
@@ -294,6 +294,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       options.num_replicas * options.arguments.size() + 1);
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
   int64 index = 0;
+  RunId run_id;
   for (int64 i = 0; i < options.num_replicas; ++i) {
     int64 device = (*device_assignment)(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -301,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     streams.push_back(absl::make_unique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), device_assignment));
+        device, streams.back().get(), device_assignment, run_id));
 
     // Copy arguments to device.
     for (const Literal* argument : options.arguments) {
@@ -443,7 +444,8 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
 }
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
-    int64 device, se::Stream* stream, DeviceAssignment* device_assignment) {
+    int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+    RunId run_id) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);
   run_options.set_stream(stream);
@@ -453,6 +455,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
+  run_options.set_run_id(run_id);
   return ServiceExecutableRunOptions(run_options, backend().StreamBorrower());
 }
 

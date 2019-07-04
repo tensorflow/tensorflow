@@ -38,7 +38,6 @@ import tensorflow as tf
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -355,26 +354,34 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
-    api_version = 2 if '_api.v2' in tf.__name__ else 1
+    api_version = 2 if '_api.v2' in tf.bitwise.__name__ else 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
+    omit_golden_symbols_map = {}
+    if api_version == 2 and FLAGS.only_test_core_api:
+      # In TF 2.0 these summary symbols are imported from TensorBoard.
+      omit_golden_symbols_map['tensorflow.summary'] = [
+          'audio', 'histogram', 'image', 'scalar', 'text']
+
     self._checkBackwardsCompatibility(
         tf,
         golden_file_pattern,
         api_version,
         # Skip compat.v1 and compat.v2 since they are validated
         # in separate tests.
-        additional_private_map={'tf.compat': ['v1', 'v2']})
+        additional_private_map={'tf.compat': ['v1', 'v2']},
+        omit_golden_symbols_map=omit_golden_symbols_map)
 
     # Also check that V1 API has contrib
     self.assertTrue(
+        api_version == 2 or
         'tensorflow.python.util.lazy_loader.LazyLoader'
         in str(type(tf.contrib)))
+    # Check that V2 API does not have contrib
+    self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(

@@ -30,6 +30,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -68,8 +69,8 @@ namespace xla {
 // disabled on a particular platform. For a test that should be disabled,
 // returns DISABLED_ prepended to its name; otherwise returns the test name
 // unmodified.
-string PrependDisabledIfIndicated(const string& test_case_name,
-                                  const string& test_name);
+std::string PrependDisabledIfIndicated(absl::string_view test_case_name,
+                                       absl::string_view test_name);
 
 }  // namespace xla
 

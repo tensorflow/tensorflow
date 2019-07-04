@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 # Linear algebra ops.
@@ -61,6 +62,7 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 
 
 @tf_export('linalg.logdet')
+@dispatch.add_dispatch_support
 def logdet(matrix, name=None):
   """Computes log of the determinant of a hermitian positive definite matrix.
 
@@ -68,7 +70,7 @@ def logdet(matrix, name=None):
   # Compute the determinant of a matrix while reducing the chance of over- or
   underflow:
   A = ... # shape 10 x 10
-  det = tf.exp(tf.logdet(A))  # scalar
+  det = tf.exp(tf.linalg.logdet(A))  # scalar
   ```
 
   Args:
@@ -94,6 +96,7 @@ def logdet(matrix, name=None):
 
 
 @tf_export('linalg.adjoint')
+@dispatch.add_dispatch_support
 def adjoint(matrix, name=None):
   """Transposes the last two dimensions of and conjugates tensor `matrix`.
 

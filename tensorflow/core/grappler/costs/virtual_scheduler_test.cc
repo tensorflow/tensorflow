@@ -372,6 +372,40 @@ TEST_F(ReadyNodeManagerTest, DeterminismInFirstReadyManager) {
   EXPECT_TRUE(manager2.Empty());
 }
 
+TEST_F(ReadyNodeManagerTest, GetAndRemoveMultiplePriorityReadyManager) {
+  PriorityReadyManager manager;
+  TF_EXPECT_OK(manager.Init(&node_states_));
+
+  // Sets up node priorities.
+  std::unordered_map<string, int> node_priority = {{"Node1", 1}, {"Node2", 2},
+                                                   {"Node3", 3}, {"Node4", 4},
+                                                   {"Node5", 5}, {"Node6", 6}};
+  TF_EXPECT_OK(manager.SetPriority(node_priority));
+
+  // Inserts nodes in some random order.
+  manager.AddNode(&node2_);
+  manager.AddNode(&node1_);
+  manager.AddNode(&node4_);
+  manager.AddNode(&node5_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node6_);
+
+  // Expects nodes scheduled based on priority.
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node3");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node4");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node5");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node6");
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
 TEST_F(ReadyNodeManagerTest, RemoveSingleNodeCompositeNodeManager) {
   CompositeNodeManager manager;
   TF_EXPECT_OK(manager.Init(&node_states_));
@@ -2199,6 +2233,17 @@ versions {
     EXPECT_EQ(expected.size(), test_elements.size());
   }
 
+  // Helper method for validating an unordered map.
+  template <typename T, typename U>
+  void ExpectUnorderedMapEq(const std::unordered_map<T, U>& expected,
+                            const std::unordered_map<T, U>& test_map) {
+    EXPECT_EQ(expected.size(), test_map.size());
+    for (const auto& key_val : expected) {
+      EXPECT_GT(test_map.count(key_val.first), 0);
+      EXPECT_EQ(test_map.at(key_val.first), key_val.second);
+    }
+  }
+
   // Helper method that checks name - port pairs.
   void ValidateMemoryUsageSnapshot(
       const std::vector<string>& expected_names, const int port_num_expected,
@@ -2380,6 +2425,12 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
+      scheduler_->GetPersistentMemoryUsage());
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 160000)},
+      scheduler_->GetPeakMemoryUsage());
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
@@ -2412,6 +2463,12 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, -1 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 0)},
+      scheduler_->GetPersistentMemoryUsage());
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 28)},
+      scheduler_->GetPeakMemoryUsage());
 }
 
 TEST_F(VirtualSchedulerTest, ComplexDependency) {
@@ -2495,6 +2552,12 @@ TEST_F(VirtualSchedulerTest, Variable) {
   // Only x in peak memory usage snapshot.
   ValidateMemoryUsageSnapshot({"x"}, /*port_num_expected=*/0,
                               cpu_state.mem_usage_snapshot_at_peak);
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 4624)},
+      scheduler_->GetPersistentMemoryUsage());
+  ExpectUnorderedMapEq(
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 12800)},
+      scheduler_->GetPeakMemoryUsage());
 }
 
 TEST_F(VirtualSchedulerTest, WhileLoop) {

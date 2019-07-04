@@ -108,7 +108,19 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
     if (visited[n->id()]) continue;
     visited[n->id()] = true;
 
-    for (const Edge* e : n->in_edges()) {
+    // Sort "n->in_edges()" to make sure nodes are copied in a deterministic
+    // order.
+    std::vector<const Edge*> sorted_edges(n->in_edges().begin(),
+                                          n->in_edges().end());
+    std::sort(sorted_edges.begin(), sorted_edges.end(),
+              [](const Edge* a, const Edge* b) {
+                int a_src_output = a->src_output(),
+                    b_src_output = b->src_output();
+                StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+                return std::tie(a_src_output, a_name) <
+                       std::tie(b_src_output, b_name);
+              });
+    for (const Edge* e : sorted_edges) {
       Node* src = e->src();
       if (frame != nullptr && frame->nodes.find(src) == frame->nodes.end()) {
         // We traversed out of the loop frame, without encountering a cut node.

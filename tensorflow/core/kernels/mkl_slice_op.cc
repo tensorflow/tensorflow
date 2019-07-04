@@ -16,8 +16,9 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #ifdef INTEL_MKL
-#ifndef INTEL_MKL_ML_ONLY
 
+#include "mkldnn.hpp"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,9 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/prefetch.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-#include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
@@ -475,14 +473,15 @@ class MklSliceOp : public OpKernel {
 };
 
 // MKL-DNN Slice registration
-#define REGISTER_MKL_SLICE(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("_MklSlice")                         \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .HostMemory("begin")                  \
-                              .HostMemory("size")                   \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklSliceOp<CPUDevice, type>);
+#define REGISTER_MKL_SLICE(type)                               \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklSlice")                                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .HostMemory("begin")                                 \
+          .HostMemory("size")                                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklSliceOp<CPUDevice, type>);
 
 TF_CALL_float(REGISTER_MKL_SLICE);
 TF_CALL_bfloat16(REGISTER_MKL_SLICE);
@@ -490,5 +489,4 @@ TF_CALL_bfloat16(REGISTER_MKL_SLICE);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL_DNN
 #endif  // INTEL_MKL

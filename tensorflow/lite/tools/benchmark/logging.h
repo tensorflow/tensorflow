@@ -22,6 +22,10 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#ifdef _WIN32
+#undef ERROR
+#endif
+
 namespace tflite {
 namespace logging {
 // A wrapper that logs to stderr.

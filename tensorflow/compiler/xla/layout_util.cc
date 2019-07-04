@@ -55,7 +55,7 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
 
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-    int64 element_size_in_bits) {
+    int64 element_size_in_bits, int64 memory_space) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
@@ -72,6 +72,7 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
     *layout.add_tiles() = tile;
   }
   layout.set_element_size_in_bits(element_size_in_bits);
+  layout.set_memory_space(memory_space);
   return layout;
 }
 
@@ -466,6 +467,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     }
   }
   hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
+  hash_value = Hash64Combine(hash_value, layout.memory_space());
 
   return hash_value;
 }

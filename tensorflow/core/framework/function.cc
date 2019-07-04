@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -34,11 +35,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
+
+/* static */ constexpr const char* const FunctionLibraryDefinition::kArgOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceArgOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kIntsOnDeviceAttr;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kGradientOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kFuncAttr;
 
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
@@ -289,8 +300,7 @@ class FunctionInstantiationHelper {
       // must lie in the range [node_name, node_colon_bound).
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
-        if (it->first == node_name ||
-            tensorflow::str_util::StartsWith(it->first, node_colon)) {
+        if (it->first == node_name || absl::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -498,7 +508,7 @@ string Print(const AttrValue& attr_value) {
     }
     std::sort(entries.begin(), entries.end());
     return strings::StrCat(attr_value.func().name(), "[",
-                           str_util::Join(entries, ", "), "]");
+                           absl::StrJoin(entries, ", "), "]");
   }
   return SummarizeAttrValue(attr_value);
 }
@@ -523,21 +533,21 @@ string Print(const NodeDef& n) {
         entries.push_back("device=<FAILED_TO_PARSE>");
       }
     }
-    strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
+    strings::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (str_util::ConsumePrefix(&s, "^")) {
+    if (absl::ConsumePrefix(&s, "^")) {
       dep.emplace_back(s);
     } else {
       dat.push_back(s);
     }
   }
-  strings::StrAppend(&out, str_util::Join(dat, ", "), ")");
+  strings::StrAppend(&out, absl::StrJoin(dat, ", "), ")");
   if (!dep.empty()) {
-    strings::StrAppend(&out, " @ ", str_util::Join(dep, ", "));
+    strings::StrAppend(&out, " @ ", absl::StrJoin(dep, ", "));
   }
   return out;
 }
@@ -901,27 +911,27 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   }
   if (!options.target.empty()) {
     entries.push_back(
-        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+        strings::StrCat("_target", "=", absl::CEscape(options.target)));
   }
   for (int i = 0; i < options.input_devices.size(); ++i) {
-    entries.push_back(strings::StrCat(
-        "_input_dev", i, "=", str_util::CEscape(options.input_devices[i])));
+    entries.push_back(strings::StrCat("_input_dev", i, "=",
+                                      absl::CEscape(options.input_devices[i])));
   }
   for (int i = 0; i < options.output_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
-        "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
+        "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
   }
   for (const auto& iter : options.input_tensor_shapes) {
     entries.push_back(
         strings::StrCat("_input_tensor_shape", iter.first, "=",
-                        str_util::CEscape(iter.second.DebugString())));
+                        absl::CEscape(iter.second.DebugString())));
   }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
     entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
-                                      DataTypeString(iter.second.first)));
+                                      DataTypeString(iter.second.dtype)));
     entries.push_back(
         strings::StrCat("_input_resource_shape", iter.first, "=",
-                        str_util::CEscape(iter.second.second.DebugString())));
+                        absl::CEscape(iter.second.shape.DebugString())));
   }
   if (options.lib_def) {
     entries.push_back(strings::StrCat(
@@ -938,11 +948,11 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   string config_proto_serialized;
   options.config_proto.SerializeToString(&config_proto_serialized);
   if (!config_proto_serialized.empty()) {
-    entries.push_back(strings::StrCat(
-        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
+    entries.push_back(strings::StrCat("_config_proto", "=",
+                                      absl::CEscape(config_proto_serialized)));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
+  return strings::StrCat(funcname, "[", absl::StrJoin(entries, ","), "]");
 }
 
 FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,

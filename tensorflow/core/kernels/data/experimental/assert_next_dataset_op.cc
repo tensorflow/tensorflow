@@ -99,7 +99,7 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         std::vector<string> tokens =
-            str_util::Split(prefix(), ':', str_util::SkipEmpty());
+            absl::StrSplit(prefix(), ':', absl::SkipEmpty());
         if (dataset()->transformations_.size() > tokens.size() - 2) {
           return errors::InvalidArgument(
               "Asserted next ", dataset()->transformations_.size(),
@@ -155,6 +155,8 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("AssertNextDataset").Device(DEVICE_CPU),
+                        AssertNextDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalAssertNextDataset").Device(DEVICE_CPU),
     AssertNextDatasetOp);

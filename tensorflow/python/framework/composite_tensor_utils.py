@@ -38,6 +38,15 @@ def is_composite_or_composite_value(tensor):
        ragged_tensor_value.RaggedTensorValue))
 
 
+def get_shape(tensor):
+  """Returns the shape of the passed composite tensor."""
+  if isinstance(tensor, sparse_tensor.SparseTensorValue):
+    # SparseTensorValues use a 'dense_shape' attribute
+    return tensor.dense_shape
+  else:
+    return tensor.shape
+
+
 def _append_sparse_tensor_value(target, to_append):
   """Append sparse tensor value objects."""
   # Make sure the sparse tensors are of the same size (except for the 0th dim).

@@ -177,9 +177,9 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
   if (!constant.has_value()) {
     return errors::InvalidArgument(
-        "Input ", index, " to ", context_->op_kernel().type_string(),
-        " operator must be a compile-time constant.\n"
-        "\n"
+        "Input ", index, " to node `", context_->op_kernel().name(),
+        "` with op ", context_->op_kernel().type_string(),
+        " must be a compile-time constant.\n\n"
         "XLA compilation requires that operator arguments that represent "
         "shapes or dimensions be evaluated to concrete values at compile time. "
         "This error means that a shape or dimension argument could not be "

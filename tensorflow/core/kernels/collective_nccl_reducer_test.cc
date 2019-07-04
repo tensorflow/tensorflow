@@ -95,7 +95,6 @@ class NcclReducerTest : public ::testing::Test {
   void Init(int num_ranks) {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
-    setenv("TF_CPP_VMODULE", "nccl_manager=2", 1 /* replace */);
     InitGPUDevices();
     std::vector<std::unique_ptr<Device>> local_devices;
     std::vector<string> device_names;

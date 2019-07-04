@@ -50,6 +50,14 @@ class DatasetVariantWrapper {
     if (dataset_) dataset_->Ref();
   }
 
+  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
+    if (&other == this) return *this;
+    std::swap(dataset_, other.dataset_);
+    return *this;
+  }
+
+  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
+
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
   }
@@ -75,7 +83,7 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* const dataset_;  // Owns one reference.
+  DatasetBase* dataset_;  // Owns one reference.
 };
 
 const char kWrappedDatasetVariantTypeName[] =
@@ -405,18 +413,18 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
-  profiler::TraceMe activity(absl::string_view(params_.prefix),
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
-  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-    s = errors::Internal(
-        "Iterator \"", params_.prefix,
-        "\" returned OutOfRange without setting `*end_of_sequence`. This "
-        "indicates that an error may have occurred. Original message: ",
-        s.error_message());
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
     LOG(ERROR) << s;
   }
   return s;

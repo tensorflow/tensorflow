@@ -150,10 +150,6 @@ template <typename AccumScalar, typename DstScalar,
           QuantizationFlavor quantization_flavor>
 void ValidateGemmParams(
     const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params) {
-  // For now require a bias vector. Again, ruy does not rely on that requirement
-  // but the gemmlowp and Eigen path would require more code to handle it,
-  // and currently TFLite only uses the case where there is a bias vector.
-  TFLITE_DCHECK(params.bias);
   // Guard consistency of the quantized multiplier fields.
   if (quantization_flavor == QuantizationFlavor::kFloatingPoint) {
     TFLITE_DCHECK(!params.multiplier_fixedpoint);
@@ -162,12 +158,20 @@ void ValidateGemmParams(
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
              QuantizationFlavor::kIntegerWithUniformMultiplier) {
+    // For now require a bias vector. Ruy does not care, but for gemmlowp
+    // it's a separate instantiation of the whole GEMM, so we save a lot of
+    // binary size by requiring a bias vector, and that's what we've been
+    // doing all along in our usage of gemmlowp, so somehow that must
+    // be OK with all existing users.
+    TFLITE_DCHECK(params.bias);
     TFLITE_DCHECK(params.multiplier_fixedpoint);
     // Nothing to check about multiplier_exponent
     TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
              QuantizationFlavor::kIntegerWithPerRowMultiplier) {
+    // See above comment about requiring bias.
+    TFLITE_DCHECK(params.bias);
     TFLITE_DCHECK(!params.multiplier_fixedpoint);
     TFLITE_DCHECK(!params.multiplier_exponent);
     TFLITE_DCHECK(params.multiplier_fixedpoint_perchannel);

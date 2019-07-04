@@ -135,7 +135,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   LocalService* service = ClientLibrary::GetXlaService(client->platform());
   Backend* backend = service->mutable_backend();
   se::StreamExecutor* executor = backend->default_stream_executor();
-  DeviceMemoryAllocator* allocator = backend->memory_allocator();
+  se::DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
   TF_ASSERT_OK_AND_ASSIGN(
       StreamPool::Ptr stream_ptr,
@@ -376,7 +376,8 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
   // pass, otherwise a while loop is transformed and we could not match the
   // original name in the ProfileWhileComputation test.
   new_argv[argc + 1] = strdup(
-      "--xla_disable_hlo_passes=fusion,while-loop-invariant-code-motion");
+      "--xla_disable_hlo_passes=fusion,fusion_merger,multi_output_fusion,"
+      "while-loop-invariant-code-motion");
   return {argc + 2, new_argv};
 }
 

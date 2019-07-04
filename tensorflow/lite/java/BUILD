@@ -13,12 +13,7 @@ load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
-]) + select({
-    "//tensorflow:android": [
-        "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
-    ],
-    "//conditions:default": [],
-})
+]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
@@ -175,7 +170,10 @@ java_test(
 java_test(
     name = "InterpreterTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterTest.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
     data = [
         "src/testdata/add.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
@@ -232,6 +230,12 @@ java_test(
         "@com_google_truth",
         "@junit",
     ],
+)
+
+filegroup(
+    name = "portable_tests",
+    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
+    visibility = ["//visibility:public"],
 )
 
 filegroup(

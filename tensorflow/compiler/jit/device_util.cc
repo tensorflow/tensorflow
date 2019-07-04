@@ -97,27 +97,18 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
-Status PickDeviceForXlaImpl(const jit::DeviceInfoCache& device_info_cache,
-                            const jit::DeviceSet& devices,
-                            bool allow_mixing_unknown_and_cpu,
-                            bool* out_can_pick_device,
-                            absl::optional<jit::DeviceId>* out_device_picked) {
-  if (out_can_pick_device) {
-    *out_can_pick_device = true;
-  }
-
+xla::StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
+    const jit::DeviceInfoCache& device_info_cache,
+    const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu,
+    bool failure_to_pick_is_error) {
 #define FAILED_TO_PICK_DEVICE(failing_status) \
   do {                                        \
-    if (out_can_pick_device) {                \
-      *out_can_pick_device = false;           \
-      return Status::OK();                    \
-    } else {                                  \
+    if (failure_to_pick_is_error) {           \
       return failing_status;                  \
+    } else {                                  \
+      return {absl::nullopt};                 \
     }                                         \
   } while (false)
-
-  TF_RET_CHECK(!devices.IsEmpty()) << "No devices to choose from";
-  DCHECK_NE(out_can_pick_device == nullptr, out_device_picked == nullptr);
 
   absl::optional<jit::DeviceId> maybe_gpu_device;
   absl::optional<jit::DeviceId> maybe_cpu_device;
@@ -182,17 +173,15 @@ Status PickDeviceForXlaImpl(const jit::DeviceInfoCache& device_info_cache,
     }
   }
 
-  if (out_device_picked) {
-    if (maybe_gpu_device) {
-      *out_device_picked = *maybe_gpu_device;
-    } else if (maybe_unknown_device) {
-      *out_device_picked = *maybe_unknown_device;
-    } else {
-      *out_device_picked = *maybe_cpu_device;
-    }
+  if (maybe_gpu_device) {
+    return {*maybe_gpu_device};
+  } else if (maybe_unknown_device) {
+    return {*maybe_unknown_device};
+  } else if (maybe_cpu_device) {
+    return {*maybe_cpu_device};
   }
 
-  return Status::OK();
+  FAILED_TO_PICK_DEVICE(errors::Internal("Empty device set!"));
 
 #undef FAILED_TO_PICK_DEVICE
 }
@@ -200,21 +189,18 @@ Status PickDeviceForXlaImpl(const jit::DeviceInfoCache& device_info_cache,
 xla::StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
-  absl::optional<jit::DeviceId> device;
-  TF_RETURN_IF_ERROR(PickDeviceForXlaImpl(
-      device_info_cache, devices, allow_mixing_unknown_and_cpu,
-      /*out_can_pick_device=*/nullptr, &device));
-  return *device;
+  TF_ASSIGN_OR_RETURN(absl::optional<jit::DeviceId> device_id,
+                      PickDeviceForXlaImpl(device_info_cache, devices,
+                                           allow_mixing_unknown_and_cpu,
+                                           /*failure_to_pick_is_error=*/true));
+  return *device_id;
 }
 
-xla::StatusOr<bool> CanPickDeviceForXla(
+xla::StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
-  bool can_pick_device;
-  TF_RETURN_IF_ERROR(PickDeviceForXlaImpl(device_info_cache, devices,
-                                          allow_mixing_unknown_and_cpu,
-                                          &can_pick_device,
-                                          /*out_device_picked=*/nullptr));
-  return can_pick_device;
+  return PickDeviceForXlaImpl(device_info_cache, devices,
+                              allow_mixing_unknown_and_cpu,
+                              /*failure_to_pick_is_error=*/false);
 }
 }  // namespace tensorflow

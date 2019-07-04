@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -52,8 +53,18 @@ class ConstCheckingPtr final {
   using element_type = T;
 
   // Convenience methods. Most `set` calls go through these.
-  void operator=(T* ptr) { set(ptr); }
-  void operator=(const T* ptr) { set(ptr); }
+  ConstCheckingPtr& operator=(T* ptr) {
+    set(ptr);
+    return *this;
+  }
+  ConstCheckingPtr& operator=(const T* ptr) {
+    set(ptr);
+    return *this;
+  }
+  ConstCheckingPtr& operator=(std::nullptr_t) {
+    set(static_cast<T*>(nullptr));
+    return *this;
+  }
 
   // Core accessors. These encapsulate the main logic:
   // - for `set`, the constness of the argument determines whether internal
@@ -117,6 +128,15 @@ inline void MakeSimpleLayout(int rows, int cols, Order order, Layout* layout) {
   layout->stride = order == Order::kColMajor ? rows : cols;
 }
 
+// Opaque data structure representing a pre-packed matrix, as obtained from
+// Ruy's advanced API.
+struct PrepackedMatrix {
+  void* data = nullptr;
+  std::size_t data_size = 0;
+  void* sums = nullptr;
+  std::size_t sums_size = 0;
+};
+
 template <typename StreamType, typename Scalar>
 StreamType& operator<<(StreamType& stream, const Matrix<Scalar>& mat) {
   for (int row = 0; row < mat.layout.rows; row++) {
@@ -127,6 +147,19 @@ StreamType& operator<<(StreamType& stream, const Matrix<Scalar>& mat) {
   }
   return stream;
 }
+
+// Compile-time version of KernelLayout, used to declare kernel layouts in a
+// way that can be consumed by compile-time logic.
+// See how partial specializations of Kernel use it to declare their layouts.
+// The only reason why this is currently part of the public API is to
+// allow testing various layouts for the Path::kStandardCpp kernel, as a
+// testing-only feature. See Spec::StandardCppKernelLhsLayout.
+template <Order tOrder, int tRows, int tCols>
+struct FixedKernelLayout {
+  static constexpr Order kOrder = tOrder;
+  static constexpr int kRows = tRows;
+  static constexpr int kCols = tCols;
+};
 
 }  // namespace ruy
 

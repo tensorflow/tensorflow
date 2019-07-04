@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -43,6 +45,24 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/utils",
+    ],
+)
+
+py_test(
+    name = "api_py3_test",
+    srcs = ["api_py3_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
+    deps = [
+        ":impl",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/utils",
+        "//third_party/py/numpy",
     ],
 )
 

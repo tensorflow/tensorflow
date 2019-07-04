@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -131,6 +132,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // and current function implementation does not prune stateful and dataset
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+    optimization_options.is_eager_mode = true;
 
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.
@@ -295,23 +298,37 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     if (device_->TraceUsingAnnotations()) {
       // 'ScopedActivity' will trace the OpKernel scheduling time on host.
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       // 'ScopedAnnotation' will trace the OpKernel execution time on device.
       tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       device_->Compute(kernel_.get(), &context);
     }
   }
   if (!context.status().ok()) return context.status();
 
-  outputs->clear();
-  for (int i = 0; i < context.num_outputs(); ++i) {
-    outputs->push_back(Tensor(*context.mutable_output(i)));
+  if (outputs != nullptr) {
+    outputs->clear();
+    for (int i = 0; i < context.num_outputs(); ++i) {
+      outputs->push_back(Tensor(*context.mutable_output(i)));
+    }
   }
   if (stats != nullptr) {
     UpdateStats(&context, step_stats_collector.get(), stats);
@@ -325,10 +342,11 @@ Status KernelAndDeviceFunc::Run(
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
     GraphCollector* graph_collector) {
   FunctionLibraryRuntime::Options opts;
+
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
+  Rendezvous* rendezvous = rendezvous_creator_(opts.step_id);
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
@@ -354,13 +372,17 @@ Status KernelAndDeviceFunc::Run(
   for (const TensorValue& tensor_value : inputs) {
     input_vector.push_back(*tensor_value.tensor);
   }
-
-  pflr_->Run(opts, handle_, input_vector, outputs,
-             [&status, &done](const Status& s) {
-               status = s;
-               done.Notify();
-             });
-  done.WaitForNotification();
+  {
+    profiler::TraceMe activity(
+        [&] { return absl::StrCat("FunctionRun:", name()); },
+        profiler::TraceMeLevel::kInfo);
+    pflr_->Run(opts, handle_, input_vector, outputs,
+               [&status, &done](const Status& s) {
+                 status = s;
+                 done.Notify();
+               });
+    done.WaitForNotification();
+  }
 
   rendezvous->Unref();
   if (step_stats_collector != nullptr) {

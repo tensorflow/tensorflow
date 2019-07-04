@@ -20,13 +20,12 @@ from __future__ import print_function
 
 import collections
 import os
+import platform
 import tempfile
 
 import six as _six
 
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
+from tensorflow.compiler.tf2tensorrt import wrap_py_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -42,6 +41,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import load
@@ -53,21 +53,24 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.lazy_loader import LazyLoader
 
-# Import TRT library. This is fine since we don't import TF-TRT in
-# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
-# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
-# tensorflow/python/BUILD depends on it.
-#
-# We need this import so that when users import this module, they can execute a
-# TRT-converted graph without calling any of the methods in this module.
-trt_ops.load_trt_ops()
-
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
 gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
+
+# Register TRT ops in python, so that when users import this module they can
+# execute a TRT-converted graph without calling any of the methods in this
+# module.
+if wrap_py_utils.is_tensorrt_enabled():
+  if platform.system() == "Windows":
+    raise RuntimeError("Windows platform is not supported")
+
+  # This will call register_op_list() in
+  # tensorflow/python/framework/op_def_registry.py, but it doesn't register
+  # the op or the op kernel in C++ runtime.
+  gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
 
 
 def _to_bytes(s):
@@ -482,8 +485,6 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
-        #
-        # TODO(laigd): In TF 2.0, this options should only affect INT8 mode.
         "is_dynamic_op",
 
         # Max number of cached TRT engines in dynamic TRT ops. If the number of
@@ -511,15 +512,6 @@ TrtConversionParams = collections.namedtuple(
         # Max size for the input batch.
         # This option is deprecated in TF 2.0.
         "max_batch_size",
-
-        # A list of batch sizes used to create cached engines, only used when
-        # is_dynamic_op is True. The length of the list should be <=
-        # maximum_cached_engines, and the dynamic TRT op will use this list to
-        # determine the batch sizes of the cached engines, instead of making the
-        # decision on the fly. This is useful when we know the most common batch
-        # size(s) the application is going to generate.
-        # This option is deprecated in TF 2.0.
-        "cached_engine_batches",
     ])
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
@@ -531,10 +523,8 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     maximum_cached_engines=1,
     use_calibration=True,
     use_function_backup=True,
-    max_batch_size=1,
-    cached_engine_batches=None)
+    max_batch_size=1)
 
-_TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 _TRT_ENGINE_CACHE_CONTAINER_NAME = "TF-TRT-Engine-Cache"
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
@@ -555,13 +545,6 @@ def _check_conversion_params(conversion_params):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
-  if conversion_params.cached_engine_batches:
-    if not isinstance(conversion_params.cached_engine_batches, list):
-      raise TypeError("cached_engine_batches should be a list.")
-    if len(conversion_params.cached_engine_batches
-          ) > conversion_params.maximum_cached_engines:
-      raise ValueError("cached_engine_batches should not contain more than "
-                       "maximum_cached_engines items.")
 
 
 def _check_trt_version_compatibility():
@@ -570,8 +553,8 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  compiled_version = get_linked_tensorrt_version()
-  loaded_version = get_loaded_tensorrt_version()
+  compiled_version = wrap_py_utils.get_linked_tensorrt_version()
+  loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
   tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
   tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
   version_mismatch = False
@@ -632,6 +615,9 @@ def get_tensorrt_rewriter_config(
         conversion_params.rewriter_config_template)
 
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
+  # Add a constfold optimizer to cleanup the unused Const nodes.
+  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
       "minimum_segment_size"].i = conversion_params.minimum_segment_size
@@ -654,9 +640,6 @@ def get_tensorrt_rewriter_config(
     optimizer.parameter_map[
         "max_batch_size"].i = conversion_params.max_batch_size
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
-    if conversion_params.cached_engine_batches:
-      optimizer.parameter_map["cached_engine_batches"].list.i.extend(
-          conversion_params.cached_engine_batches)
   return rewriter_config_with_trt
 
 
@@ -677,7 +660,6 @@ class TrtGraphConverter(GraphConverter):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               cached_engine_batches=None,
                use_calibration=True,
                use_function_backup=True):
     """Initialize the converter.
@@ -709,12 +691,6 @@ class TrtGraphConverter(GraphConverter):
         ops. If the number of cached engines is already at max but none of them
         can serve the input, the TRTEngineOp will fall back to run the TF
         function based on which the TRTEngineOp is created.
-      cached_engine_batches: a list of batch sizes used to create cached
-        engines, only used when is_dynamic_op is True. The length of the list
-        should be <= maximum_cached_engines, and the dynamic TRT op will use
-        this list to determine the batch sizes of the cached engines, instead of
-        making the decision on the fly. This is useful when we know the most
-        common batch size(s) the application is going to generate.
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
@@ -742,6 +718,11 @@ class TrtGraphConverter(GraphConverter):
 
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+    if self._need_calibration and not is_dynamic_op:
+      tf_logging.warn(
+          "INT8 precision mode with calibration is supported with "
+          "dynamic TRT ops only. Disregarding is_dynamic_op parameter.")
+      is_dynamic_op = True
 
     # TODO(laigd): consider provide a mechanism to remove the fallback path
     # after calibration is done.
@@ -750,8 +731,7 @@ class TrtGraphConverter(GraphConverter):
           "Calibration requires enabling fallback to TF function execution.")
 
     # TODO(laigd):
-    # - Verify in int8 mode that maximum_cached_engines and
-    #   cached_engine_batches are set appropriately.
+    # - Verify in int8 mode that maximum_cached_engines is set properly.
     # - If it fails to build the int8 engine it should return error.
     rewriter_config_template = None
     if (session_config and session_config.HasField("graph_options") and
@@ -767,8 +747,7 @@ class TrtGraphConverter(GraphConverter):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         use_function_backup=use_function_backup,
-        max_batch_size=max_batch_size,
-        cached_engine_batches=cached_engine_batches)
+        max_batch_size=max_batch_size)
     _check_conversion_params(self._conversion_params)
 
   def get_rewriter_config(self):
@@ -781,37 +760,32 @@ class TrtGraphConverter(GraphConverter):
     assert not self._calibration_data_collected
 
     # TODO(laigd): a better way would be to use self._calibration_sess to list
-    # all the devices, add one get_serialized_resource_op for each device, and
+    # all the devices, add one get_calibration_data for each device, and
     # fetch each such op for every resource until its found. This can work
     # even when the device of the TRTEngineOp is empty or not fully specified.
 
-    # Maps device name to the corresponding get_serialized_resource_op.
+    # Maps device name to the corresponding get_calibration_data.
     device_to_get_resource_op_map = {}
 
     with self._calibration_graph.as_default():
-      container_input = array_ops.placeholder(dtypes.string)
       resource_name_input = array_ops.placeholder(dtypes.string)
 
       for node in self._converted_graph_def.node:
         if node.op == _TRT_ENGINE_OP_NAME:
-          # Adds the get_serialized_resource_op for the device if not done
-          # before. We only add one such op for each device.
+          # Adds the get_calibration_data op for the device if not done before.
+          # We only add one such op for each device.
           # TODO(laigd): What if the device is empty?????
           if node.device not in device_to_get_resource_op_map:
             with self._calibration_graph.device(node.device):
               serialized_resources_output = (
-                  gen_trt_ops.get_serialized_resource_op(
-                      container_input, resource_name_input))
+                  gen_trt_ops.get_calibration_data_op(resource_name_input))
             device_to_get_resource_op_map[node.device] = (
                 serialized_resources_output)
 
           # Get the calibration resource.
           calibration_result = self._calibration_sess.run(
               device_to_get_resource_op_map[node.device],
-              feed_dict={
-                  container_input: _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
-                  resource_name_input: node.name
-              })
+              feed_dict={resource_name_input: node.name})
           node.attr["calibration_data"].s = calibration_result
 
     self._calibration_data_collected = True
@@ -825,11 +799,37 @@ class TrtGraphConverter(GraphConverter):
     super(TrtGraphConverter, self).save(output_saved_model_dir)
 
 
+def _get_resource_handle(name, device):
+  with ops.device(device):
+    return gen_trt_ops.create_trt_engine_cache_handle(
+        container=_TRT_ENGINE_CACHE_CONTAINER_NAME, resource_name=name)
+
+
+class TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
+  """Resource deleter for destroying TRT engine cache resource."""
+
+  def __init__(self, resource_name, device):
+    super(TRTEngineResourceDeleter, self).__init__()
+    self._resource_name = resource_name
+    self._device = device
+
+  def destroy_resource(self):
+    handle = _get_resource_handle(self._resource_name, self._device)
+    with ops.device(self._device):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True)
+
+
 class TRTEngineResource(tracking.TrackableResource):
   """Class to track the serialized engines resource."""
 
-  def __init__(self, resource_name, filename, maximum_cached_engines):
-    super(TRTEngineResource, self).__init__()
+  def __init__(self,
+               resource_name,
+               filename,
+               maximum_cached_engines,
+               device="GPU"):
+    super(TRTEngineResource, self).__init__(
+        device=device, deleter=TRTEngineResourceDeleter(resource_name, device))
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -837,13 +837,13 @@ class TRTEngineResource(tracking.TrackableResource):
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
-    return gen_trt_ops.create_trt_engine_cache(
-        container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
-        resource_name=self._resource_name,
-        max_cached_engines_count=self._maximum_cached_engines)
+    return _get_resource_handle(self._resource_name, self._resource_device)
 
   def _initialize(self):
-    gen_trt_ops.populate_trt_engine_cache(self.resource_handle, self._filename)
+    gen_trt_ops.populate_trt_engine_cache(
+        self.resource_handle,
+        self._filename,
+        max_cached_engines_count=self._maximum_cached_engines)
 
 
 class TrtGraphConverterV2(object):
@@ -853,8 +853,7 @@ class TrtGraphConverterV2(object):
   precision modes):
 
   ```python
-  TrtConversionParams params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-      precision_mode='FP16')
+  params = DEFAULT_TRT_CONVERSION_PARAMS._replace(precision_mode='FP16')
   converter = TrtGraphConverterV2(
       input_saved_model_dir="my_dir", conversion_params=params)
   converter.convert()
@@ -868,7 +867,7 @@ class TrtGraphConverterV2(object):
   function with some input data:
 
   ```python
-  TrtConversionParams params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+  params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
       precision_mode='FP16',
       # Set this to a large enough number so it can cache all the TRT engines.
       maximum_cached_engines=16)
@@ -908,10 +907,15 @@ class TrtGraphConverterV2(object):
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.
       conversion_params: a TrtConversionParams instance.
+
+    Raises:
+      ValueError: if the combination of the parameters is invalid.
     """
     assert context.executing_eagerly()
     _check_trt_version_compatibility()
+    _check_conversion_params(conversion_params)
 
+    self._conversion_params = conversion_params
     self._input_saved_model_dir = input_saved_model_dir
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
@@ -922,8 +926,10 @@ class TrtGraphConverterV2(object):
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
         conversion_params.use_calibration)
-    self._conversion_params = conversion_params
-    _check_conversion_params(self._conversion_params)
+    if (self._need_calibration and not conversion_params.is_dynamic_op):
+      raise ValueError("INT8 precision mode with calibration is not supported "
+                       "with static TensorRT ops. Set is_dynamic_op to True.")
+
     self._converted = False
 
   def _run_conversion(self, meta_graph_def):
@@ -991,14 +997,6 @@ class TrtGraphConverterV2(object):
     """
     assert self._converted
 
-    @def_function.function
-    def _dump_trt_cache(resource_name, filename):
-      gen_trt_ops.dump_trt_engine_cache(
-          container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
-          resource_name=resource_name,
-          filename=filename,
-          delete_cache_after_dump=True)
-
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
     engine_asset_dir = tempfile.mkdtemp()
@@ -1013,12 +1011,17 @@ class TrtGraphConverterV2(object):
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
       try:
-        _dump_trt_cache(canonical_engine_name, filename)
+        gen_trt_ops.dump_trt_engine_cache(
+            container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
+            resource_name=canonical_engine_name,
+            filename=filename,
+            delete_cache_after_dump=True)
       except errors.NotFoundError:
         # If user haven't run the function to populate the engine, it's fine,
         # and we don't need to track any serialized TRT engines.
         return
 
+      # TODO(laigd): add an option for the user to choose the device.
       resource_map[canonical_engine_name] = TRTEngineResource(
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
@@ -1061,7 +1064,6 @@ def create_inference_graph(
     minimum_segment_size=3,
     is_dynamic_op=False,
     maximum_cached_engines=1,
-    cached_engine_batches=None,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
@@ -1088,12 +1090,6 @@ def create_inference_graph(
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batches: a list of batch sizes used to create cached engines,
-      only used when is_dynamic_op is True. The length of the list should be <=
-      maximum_cached_engines, and the dynamic TRT op will use this list to
-      determine the batch sizes of the cached engines, instead of making the
-      decision on the fly. This is useful when we know the most common batch
-      size(s) the application is going to generate.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -1142,7 +1138,6 @@ def create_inference_graph(
       minimum_segment_size=minimum_segment_size,
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
-      cached_engine_batches=cached_engine_batches,
       use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if output_saved_model_dir:

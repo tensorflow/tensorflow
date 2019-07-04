@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -190,28 +192,42 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
   }
 }
 
+TEST(ThreadPool, Parallelism) {
+  // Test that if we have N threads and schedule N tasks,
+  // all tasks will be scheduled at the same time.
+  // Failure mode for this test will be episodic timeouts (does not terminate).
+  ThreadPool pool(Env::Default(), "test", kNumThreads);
+  for (int iter = 0; iter < 2000; iter++) {
+    absl::Barrier barrier(kNumThreads);
+    absl::BlockingCounter counter(kNumThreads);
+    for (int t = 0; t < kNumThreads; ++t) {
+      pool.Schedule([&]() {
+        barrier.Block();
+        counter.DecrementCount();
+      });
+    }
+    counter.Wait();
+  }
+}
+
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   // Decrement count sequentially until 0.
   int count = iters;
   mutex done_lock;
-  condition_variable done;
   bool done_flag = false;
-  std::function<void()> work = [&pool, &count, &done_lock, &done, &done_flag,
+  std::function<void()> work = [&pool, &count, &done_lock, &done_flag,
                                 &work]() {
     if (count--) {
       pool.Schedule(work);
     } else {
       mutex_lock l(done_lock);
       done_flag = true;
-      done.notify_all();
     }
   };
   work();
   mutex_lock l(done_lock);
-  if (!done_flag) {
-    done.wait(l);
-  }
+  done_lock.Await(Condition(&done_flag));
 }
 BENCHMARK(BM_Sequential);
 
@@ -220,21 +236,17 @@ static void BM_Parallel(int iters) {
   // Decrement count concurrently until 0.
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
-  condition_variable done;
   bool done_flag = false;
   for (int i = 0; i < iters; ++i) {
-    pool.Schedule([&count, &done_lock, &done, &done_flag]() {
+    pool.Schedule([&count, &done_lock, &done_flag]() {
       if (count.fetch_sub(1) == 1) {
         mutex_lock l(done_lock);
         done_flag = true;
-        done.notify_all();
       }
     });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
-    done.wait(l);
-  }
+  done_lock.Await(Condition(&done_flag));
 }
 BENCHMARK(BM_Parallel);
 
@@ -243,25 +255,20 @@ static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
   // Decrement count concurrently until 0.
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
-  condition_variable done;
   bool done_flag = false;
   for (int i = 0; i < iters; ++i) {
-    pool.ParallelFor(
-        total, cost_per_unit,
-        [&count, &done_lock, &done, &done_flag](int64 begin, int64 end) {
-          for (int64 i = begin; i < end; ++i) {
-            if (count.fetch_sub(1) == 1) {
-              mutex_lock l(done_lock);
-              done_flag = true;
-              done.notify_all();
-            }
-          }
-        });
+    pool.ParallelFor(total, cost_per_unit,
+                     [&count, &done_lock, &done_flag](int64 begin, int64 end) {
+                       for (int64 i = begin; i < end; ++i) {
+                         if (count.fetch_sub(1) == 1) {
+                           mutex_lock l(done_lock);
+                           done_flag = true;
+                         }
+                       }
+                     });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
-    done.wait(l);
-  }
+  done_lock.Await(Condition(&done_flag));
 }
 BENCHMARK(BM_ParallelFor)
     ->ArgPair(1 << 10, 1)

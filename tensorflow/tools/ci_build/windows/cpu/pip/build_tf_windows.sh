@@ -135,9 +135,11 @@ run_configure_for_cpu_build
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+  --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
@@ -174,4 +176,5 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
+  --output_filter=^$ \
   ${TEST_TARGET}

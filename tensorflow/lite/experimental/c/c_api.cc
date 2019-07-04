@@ -53,14 +53,14 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
 const char* TFL_Version() { return TFLITE_VERSION_STRING; }
 
 TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
-  auto model = tflite::FlatBufferModel::BuildFromBuffer(
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       static_cast<const char*>(model_data), model_size);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 TFL_Model* TFL_NewModelFromFile(const char* model_path) {
-  auto model = tflite::FlatBufferModel::BuildFromFile(model_path);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(model_path);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }

@@ -31,7 +31,6 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as colle
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.keras.distribute import mnist_multi_worker
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
@@ -39,10 +38,6 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training import rmsprop as rmsprop_v1
-
-
-# TODO(rchao): Move maybe_shard_dataset to shared util.
-maybe_shard_dataset = mnist_multi_worker.maybe_shard_dataset
 
 
 class KerasMultiWorkerOptimizerTest(test_base.IndependentWorkerTestBase,
@@ -56,7 +51,6 @@ class KerasMultiWorkerOptimizerTest(test_base.IndependentWorkerTestBase,
       train_input = [[1]] * 16
       train_label = [[0]] * 16
       ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
-      ds = maybe_shard_dataset(ds)
       # TODO(rchao): Investigate to figure out the reason for having 8 workers
       # instead of 2 as expected.
       return ds.batch(8, drop_remainder=True)

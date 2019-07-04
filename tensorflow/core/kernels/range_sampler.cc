@@ -160,9 +160,11 @@ LogUniformSampler::LogUniformSampler(int64 range)
 int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
   const int64 value =
       static_cast<int64>(exp(rnd->RandDouble() * log_range_)) - 1;
-  CHECK_GE(value, 0);
+  DCHECK_GE(value, 0);
   // Mathematically, value should be <= range_, but might not be due to some
-  // floating point roundoff, so we mod by range_.
+  // floating point roundoff, so we mod by range_.  In practice this case
+  // happens never regardless of the value of range_, including and up to
+  // DBL_MAX.  But we include it as a guarantee of the function's output.
   return value % range_;
 }
 

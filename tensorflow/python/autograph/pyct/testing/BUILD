@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -15,10 +17,10 @@ filegroup(
 )
 
 py_library(
-    name = "test_modules",
+    name = "testing",
     srcs = [
+        "basic_definitions.py",
         "decorators.py",
-        "future_import_module.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

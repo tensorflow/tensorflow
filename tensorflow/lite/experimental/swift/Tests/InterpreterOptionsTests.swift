@@ -20,15 +20,12 @@ class InterpreterOptionsTests: XCTestCase {
   func testInterpreterOptions_InitWithDefaultValues() {
     let options = InterpreterOptions()
     XCTAssertNil(options.threadCount)
-    XCTAssertFalse(options.isErrorLoggingEnabled)
   }
 
   func testInterpreterOptions_InitWithCustomValues() {
     var options = InterpreterOptions()
     options.threadCount = 2
     XCTAssertEqual(options.threadCount, 2)
-    options.isErrorLoggingEnabled = true
-    XCTAssertTrue(options.isErrorLoggingEnabled)
   }
 
   func testInterpreterOptions_Equatable() {
@@ -41,14 +38,6 @@ class InterpreterOptionsTests: XCTestCase {
     XCTAssertEqual(options1, options2)
 
     options2.threadCount = 3
-    XCTAssertNotEqual(options1, options2)
-    options2.threadCount = 2
-
-    options1.isErrorLoggingEnabled = true
-    options2.isErrorLoggingEnabled = true
-    XCTAssertEqual(options1, options2)
-
-    options2.isErrorLoggingEnabled = false
     XCTAssertNotEqual(options1, options2)
   }
 }

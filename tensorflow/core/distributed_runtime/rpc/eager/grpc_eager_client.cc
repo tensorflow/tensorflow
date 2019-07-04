@@ -47,15 +47,49 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
-  CLIENT_METHOD(CloseContext);
   CLIENT_METHOD(RegisterFunction);
   CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 
+  void CloseContextAsync(const CloseContextRequest* request,
+                         CloseContextResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
+        response, std::move(done), nullptr, nullptr);
+
+    if (enqueue_dispatchers_.find(request->context_id()) !=
+        enqueue_dispatchers_.end()) {
+      enqueue_dispatchers_.erase(request->context_id());
+    } else {
+      LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
+                 << " does not seems to exist.";
+    }
+  }
+
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
+    auto it = enqueue_dispatchers_.find(request->context_id());
+    if (enqueue_dispatchers_.find(request->context_id()) ==
+        enqueue_dispatchers_.end()) {
+      auto it_and_bool = enqueue_dispatchers_.emplace(
+          std::piecewise_construct,
+          std::forward_as_tuple(request->context_id()),
+          std::forward_as_tuple(
+              &stub_, cq_, "/tensorflow.eager.EagerService/StreamingEnqueue"));
+      it = it_and_bool.first;
+    }
+
+    it->second.SendNextRequest(*request, response, std::move(done));
+  }
+
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+  std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
+      enqueue_dispatchers_;
 };
 
 class GrpcEagerClientCache : public EagerClientCache {

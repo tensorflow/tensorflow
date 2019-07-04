@@ -56,6 +56,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteInt16";
     case kTfLiteComplex64:
       return "kTfLiteComplex64";
+    case kTfLiteFloat16:
+      return "kTfLiteFloat16";
   }
   return "(invalid)";
 }

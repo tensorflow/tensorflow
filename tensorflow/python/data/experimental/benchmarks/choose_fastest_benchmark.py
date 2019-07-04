@@ -31,7 +31,7 @@ from tensorflow.python.platform import test
 class ChooseFastestBenchmark(test.Benchmark):
   """Benchmarks for static optimizations."""
 
-  def benchmarkChooseFastest(self):
+  def benchmark_choose_fastest(self):
 
     dataset = dataset_ops.Dataset.range(1000**2).repeat()
     options = dataset_ops.Options()
@@ -46,7 +46,7 @@ class ChooseFastestBenchmark(test.Benchmark):
     self._benchmark(batch_map_dataset, "batch_map_dataset")
     self._benchmark(merge_dataset, "merge_dataset")
 
-  def benchmarkChooseFastestFirstNIterations(self):
+  def benchmark_choose_fastest_first_n_iterations(self):
 
     dataset = dataset_ops.Dataset.range(1000**2).repeat()
     options = dataset_ops.Options()
@@ -58,11 +58,11 @@ class ChooseFastestBenchmark(test.Benchmark):
     merge_dataset = optimization._ChooseFastestDataset(  # pylint: disable=protected-access
         [batch_map_dataset, map_batch_dataset])
 
-    self._benchmarkFirstN(map_batch_dataset, "map_batch_dataset")
-    self._benchmarkFirstN(batch_map_dataset, "batch_map_dataset")
-    self._benchmarkFirstN(merge_dataset, "merge_dataset")
+    self._benchmark_first_n(map_batch_dataset, "map_batch_dataset")
+    self._benchmark_first_n(batch_map_dataset, "batch_map_dataset")
+    self._benchmark_first_n(merge_dataset, "merge_dataset")
 
-  def _benchmarkFirstN(self, dataset, name):
+  def _benchmark_first_n(self, dataset, name):
     n = 10  # The default num_experiments for ChooseFastestDataset
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()

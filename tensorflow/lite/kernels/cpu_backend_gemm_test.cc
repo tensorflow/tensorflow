@@ -336,15 +336,13 @@ int BisectReasonableMultiplierExponent(
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
-void ReferenceGemm(const MatrixParams<LhsScalar>& lhs_params,
-                   const LhsScalar* lhs_data,
-                   const MatrixParams<RhsScalar>& rhs_params,
-                   const RhsScalar* rhs_data,
-                   const MatrixParams<DstScalar>& dst_params,
-                   DstScalar* dst_data,
-                   const GemmParams<AccumScalar, DstScalar>& params,
-                   CpuBackendContext* context) {
+          typename DstScalar, QuantizationFlavor quantization_flavor>
+void ReferenceGemm(
+    const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
+    const MatrixParams<RhsScalar>& rhs_params, const RhsScalar* rhs_data,
+    const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
+    const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
+    CpuBackendContext* context) {
   ruy::Matrix<LhsScalar> ruy_lhs;
   ruy::Matrix<RhsScalar> ruy_rhs;
   ruy::Matrix<DstScalar> ruy_dst;
@@ -418,11 +416,18 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   GemmParams<AccumScalar, DstScalar> params;
-  params.bias = bias_data.data();
+  if (use_golden || !std::is_floating_point<AccumScalar>::value ||
+      (random_engine() % 2)) {
+    // cpu_backend_gemm supports bias=null only in the float path. Test that
+    // in 50% of float testcases.
+    params.bias = bias_data.data();
+  }
+  static constexpr std::int32_t kMultiplierFixedpointMin = 1234567890;
+  static constexpr std::int32_t kMultiplierFixedpointMax = 1987654321;
   if (!std::is_floating_point<AccumScalar>::value) {
     // some large int32 value. Not being a multiple of a large
     // power of two helps testing rounding behavior.
-    params.multiplier_fixedpoint = 1234567890;
+    params.multiplier_fixedpoint = kMultiplierFixedpointMin;
     // Now find a suitable value for multiplier_exponent.
     // It needs to be low enough for a substantial amount of dst values
     // to avoid getting clamped.
@@ -451,13 +456,20 @@ void TestSomeGemm(int rows, int depth, int cols,
       lhs_params, lhs_data, rhs_params, rhs_data, dst_params, &dst_data, params,
       expected, &cpu_backend_context);
 
-  if (!std::is_floating_point<AccumScalar>::value) {
-    // Try with per-channel quantized multipliers. Just a naive check
-    // duplicating the same multiplier --- would already catch most bugs.
-    std::vector<AccumScalar> multiplier_fixedpoint_perchannel(
-        rows, params.multiplier_fixedpoint);
-    std::vector<int> multiplier_exponent_perchannel(rows,
-                                                    params.multiplier_exponent);
+  if (!use_golden && !std::is_floating_point<AccumScalar>::value) {
+    // Try with per-channel quantized multipliers.
+    std::vector<AccumScalar> multiplier_fixedpoint_perchannel(rows);
+    std::vector<int> multiplier_exponent_perchannel(rows);
+    for (int i = 0; i < rows; i++) {
+      multiplier_fixedpoint_perchannel[i] =
+          kMultiplierFixedpointMin +
+          (random_engine() %
+           (kMultiplierFixedpointMax + 1 - kMultiplierFixedpointMin));
+      const int exponent_min = params.multiplier_exponent - 2;
+      const int exponent_max = params.multiplier_exponent + 2;
+      multiplier_exponent_perchannel[i] =
+          exponent_min + (random_engine() % (exponent_max + 1 - exponent_min));
+    }
     static constexpr QuantizationFlavor perchannel_flavor =
         std::is_floating_point<AccumScalar>::value
             ? QuantizationFlavor::kFloatingPoint
@@ -470,6 +482,9 @@ void TestSomeGemm(int rows, int depth, int cols,
         multiplier_fixedpoint_perchannel.data();
     params_perchannel.multiplier_exponent_perchannel =
         multiplier_exponent_perchannel.data();
+    ReferenceGemm(lhs_params, lhs_data.data(), rhs_params, rhs_data.data(),
+                  dst_params, expected.data(), params_perchannel,
+                  &cpu_backend_context);
     PerformGemmThenCompareResultsThenAgainWithClamping(
         lhs_params, lhs_data, rhs_params, rhs_data, dst_params, &dst_data,
         params_perchannel, expected, &cpu_backend_context);
@@ -545,7 +560,7 @@ TYPED_TEST(CpuBackendGemmTest, Square) {
 
 TYPED_TEST(CpuBackendGemmTest, SquarePowerOfTwo) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 64; size <= 128; size++) {
+  for (int size = 64; size <= 128; size *= 2) {
     shapes.push_back(std::make_tuple(size, size, size));
   }
   TestRandomGemms<TypeParam>(shapes);
@@ -569,7 +584,7 @@ TYPED_TEST(CpuBackendGemmTest, VectorTimesMatrix) {
 
 TYPED_TEST(CpuBackendGemmTest, MatrixTimesNarrow) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 100; size++) {
+  for (int size = 1; size < 50; size++) {
     shapes.push_back(std::make_tuple(size, size, 2));
     shapes.push_back(std::make_tuple(size, size, 3));
     shapes.push_back(std::make_tuple(size, size, 4));
@@ -589,7 +604,7 @@ TYPED_TEST(CpuBackendGemmTest, Rectangular) {
 
 TYPED_TEST(CpuBackendGemmTest, HighlyRectangular) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size <= 10000; size *= 10) {
+  for (int size = 1; size <= 1000; size *= 10) {
     shapes.push_back(std::make_tuple(size, 10, 10));
     shapes.push_back(std::make_tuple(10, size, 10));
     shapes.push_back(std::make_tuple(10, 10, size));
@@ -607,7 +622,7 @@ TYPED_TEST(CpuBackendGemmTest, InnerProduct) {
 
 TYPED_TEST(CpuBackendGemmTest, OuterProduct) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 200; size++) {
+  for (int size = 1; size < 100; size++) {
     shapes.push_back(std::make_tuple(size, 1, size));
   }
   TestRandomGemms<TypeParam>(shapes);

@@ -51,6 +51,15 @@ Status FindNodesToDecluster(const Graph& graph,
       continue;
     }
 
+    // Assume the benefit of not outputting a larger tensor outweighs the
+    // benefit of this check.
+    // TODO(tpopp): Only apply this if the value being consumed is not output
+    // from the cluster to another consumer.
+    // TODO(tpopp): See if XlaRun can be modified to avoid this issue
+    // completely.
+    if (IsShapeConsumerOp(*n)) {
+      continue;
+    }
     // We assume the only XLA-auto-clusterable operations with side effects are
     // resource variable updates.  We can't execute these twice.
     if (HasResourceInputOrOutput(*n)) {
@@ -344,12 +353,6 @@ Status PartiallyDeclusterGraph(Graph* graph,
 }  // namespace reduce_recompilation
 
 namespace decluster_root_shape_consumers {
-// Returns true if `node` an operator that consumes only the shape of its input,
-// not the data itself.
-bool IsShapeConsumerOp(const Node& node) {
-  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
-         node.type_string() == "Size";
-}
 
 Status PartiallyDeclusterGraph(Graph* graph) {
   std::vector<Node*> reverse_post_order;

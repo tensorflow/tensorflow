@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+#include "tensorflow/core/grappler/utils/canonicalizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -96,18 +97,6 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
-}
-
-Status CompressConstants(GraphDef* graph) {
-  for (int i = 0; i < graph->node_size(); ++i) {
-    NodeDef* node = graph->mutable_node(i);
-    if ((IsConstant(*node) || IsHostConstant(*node)) &&
-        HasNodeAttr(*node, "value")) {
-      AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
-    }
-  }
-  return Status::OK();
 }
 
 // A helper function to decide whether to enable the automatic mixed precision
@@ -373,6 +362,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
 
+  // Constants in the graph are normally compressed after model_pruner.
+  // Do it here if model pruner is disabled.
+  if (cfg_.disable_model_pruning()) {
+    CompressConstants(optimized_graph);
+  }
+
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
     // Don't bother optimizing further if the graph is already tiny.
     if (optimized_graph->node_size() < min_graph_nodes) {
@@ -389,6 +384,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                           reinterpret_cast<uintptr_t>(optimized_graph)),
           *optimized_graph);
     }
+
     for (const auto& optimizer : optimizers) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
@@ -405,6 +401,10 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
       TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
                                       optimized_graph, &optimization_result));
+
+      if (iteration == 0 && optimizer->name() == "model_pruner") {
+        CompressConstants(optimized_graph);
+      }
 
       if (VLOG_IS_ON(4)) {
         DumpGraphDefToFile(
@@ -439,16 +439,15 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   if (fusion_optimizer != nullptr) {
     TF_RETURN_IF_ERROR(RunOptimizer(fusion_optimizer, cluster, &optimized_item,
                                     optimized_graph, &optimization_result));
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
     TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &optimized_item,
                                     optimized_graph, &optimization_result));
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
-
-  // Compress the constants in the final graph.
-  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
 
   bool is_optimized = std::find_if(optimization_result.results.begin(),
                                    optimization_result.results.end(),
@@ -487,7 +486,14 @@ Status MetaOptimizer::RunOptimizer(
   string message;
   if (!status.ok()) {
     optimized_graph->Swap(&optimized_item->graph);
-    if (errors::IsDeadlineExceeded(status)) {
+    if (errors::IsAborted(status)) {
+      // By convention we (ab-)use the Aborted error code to signal that the
+      // optimizer returned without performing any changes to the graph.
+      message = strings::StrCat(optimizer->name(),
+                                " did nothing. time = ", duration_ms, "ms.");
+      // Swallow the non-critical error.
+      status = Status::OK();
+    } else if (errors::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
       LOG(WARNING) << optimizer->name() << " failed: " << message;
@@ -694,7 +700,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   VLOG(1) << "Optimized " << optimized_funcs.size()
-          << " functions: " << str_util::Join(optimized_funcs, ", ");
+          << " functions: " << absl::StrJoin(optimized_funcs, ", ");
 
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile(
@@ -749,11 +755,7 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
   MetaOptimizer optimizer(cpu_device, cfg);
   optimizer.set_deadline_usec(
       DeadlineMicroSeconds(cfg.graph_options().rewrite_options()));
-  Status status = optimizer.Optimize(cluster, item, optimized_graph);
-  if (!status.ok()) {
-    *optimized_graph = item.graph;
-  }
-  return status;
+  return optimizer.Optimize(cluster, item, optimized_graph);
 }
 
 Status OptimizeGraph(
@@ -792,9 +794,7 @@ Status OptimizeGraph(
   }
 
   tensorflow::GraphDef out_graph;
-
   tensorflow::grappler::VirtualCluster cluster(&device_set);
-
   // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
   // proto (which also contain the OptimizerOptions).
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(

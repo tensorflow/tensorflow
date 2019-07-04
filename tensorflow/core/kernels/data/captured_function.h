@@ -88,22 +88,16 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const string& prefix) const;
 
-  // Returns a step ID for use when running an `InstantiatedCapturedFunction`.
-  static int64 generate_step_id() {
-    // Choose a step ID that is guaranteed not to clash with any
-    // Session-generated step ID. DirectSession only generates
-    // non-negative step IDs (contiguous, starting from 0), and
-    // MasterSession generates 56-bit random step IDs whose MSB is
-    // always 0, so a negative random step ID should suffice.
-    return -std::abs(static_cast<int64>(random::New64()));
-  }
-
  private:
   InstantiatedCapturedFunction(
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
       CapturedFunction* captured_func);
+
+  // Determines whether a rendezvous object should be created when running the
+  // instantiated function.
+  bool ShouldCreateRendezvous() const;
 
   friend class CapturedFunction;
 
@@ -165,6 +159,8 @@ class FunctionMetadata {
       : func_(std::move(func)),
         is_multi_device_function_(params.is_multi_device_function),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
+
+  void ValidateMultiDevice();
 
   NameAttrList func_;
   bool is_multi_device_function_ = false;

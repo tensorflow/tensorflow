@@ -177,13 +177,6 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     llvm::Value* source_address) {
   CHECK_EQ(2, computation.num_parameters());
 
-  if (computation.instruction_count() != 3) {
-    // We special-case only computations with one computing instruction for now.
-    // Such computation has exactly three instructions given it has two
-    // parameters.
-    return false;
-  }
-
   HloOpcode root_opcode = computation.root_instruction()->opcode();
   PrimitiveType element_type =
       computation.root_instruction()->shape().element_type();
@@ -191,18 +184,24 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                             element_type == S64 || element_type == U64;
   llvm::Value* source = Load(source_address, "source");
 
-  // kCopy of RHS -> atomic store.
-  if (root_opcode == HloOpcode::kCopy &&
+  // Just passing along RHS -> atomic store.
+  if (computation.instruction_count() == 2 &&
+      root_opcode == HloOpcode::kParameter &&
       (element_type == F32 || is_atomic_integral) &&
-      computation.root_instruction()->operand(0)->opcode() ==
-          HloOpcode::kParameter &&
-      computation.root_instruction()->operand(0)->parameter_number() == 1) {
+      computation.root_instruction()->parameter_number() == 1) {
     llvm::StoreInst* store = Store(source, output_address);
     store->setAtomic(llvm::AtomicOrdering::Unordered);
     // Derive a minimum alignment from the type. The optimizer can increase it
     // later.
     store->setAlignment(ShapeUtil::ByteSizeOfPrimitiveType(element_type));
     return true;
+  }
+
+  if (computation.instruction_count() != 3) {
+    // We special-case only computations with one computing instruction for now.
+    // Such computation has exactly three instructions given it has two
+    // parameters.
+    return false;
   }
 
   if (root_opcode == HloOpcode::kAdd) {
@@ -655,8 +654,8 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 }
 
 Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
-  // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented("AllReduce is not implemented on GPU.");
+  return Unimplemented(
+      "AllReduce cannot be nested inside of fusion, map, etc.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {

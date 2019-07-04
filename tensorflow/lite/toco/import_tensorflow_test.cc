@@ -44,28 +44,29 @@ using ::testing::ElementsAre;
 namespace internal {
 using ConverterType = tensorflow::Status (*)(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model);
+    const ModelFlags& model_flags, Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
 ConverterMapType GetTensorFlowNodeConverterMap();
 ConverterMapType GetTensorFlowNodeConverterMapForFlex();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
-                            Model*, const ConverterMapType&);
+                            const ModelFlags& model_flags, Model*,
+                            const ConverterMapType&);
 }  // namespace internal
 
 namespace {
 
 Status ImportNode(const NodeDef& node, Model* model) {
   const auto converter = internal::GetTensorFlowNodeConverterMap();
-  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
-                                        converter);
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
+                                        ModelFlags(), model, converter);
 }
 
 Status ImportFlexNode(const NodeDef& node, Model* model) {
   // Empty converter => all nodes are flex nodes.
   const auto converter = internal::ConverterMapType();
-  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
-                                        converter);
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
+                                        ModelFlags(), model, converter);
 }
 
 Status ImportNode(const NodeDef& node) {
@@ -170,7 +171,7 @@ TEST(FlexImportTest, ConditionalConst) {
 
         const auto converter = internal::GetTensorFlowNodeConverterMapForFlex();
         return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
-                                              &model, converter);
+                                              ModelFlags(), &model, converter);
       };
 
   EXPECT_TRUE(build_and_import_node("Known", {1, 2, 3}, DT_INT32, 6).ok());

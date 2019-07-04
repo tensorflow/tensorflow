@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Some common SessionRunHook classes."""
+"""Some common SessionRunHook classes.
+
+Note that the symbols that are exported to v1 tf.train namespace are also
+exported to v2 in tf.estimator namespace. See
+https://github.com/tensorflow/estimator/blob/master/tensorflow_estimator/python/estimator/hooks/basic_session_run_hooks.py
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -84,7 +89,11 @@ class _HookTimer(object):
 
 @tf_export(v1=["train.SecondOrStepTimer"])
 class SecondOrStepTimer(_HookTimer):
-  """Timer that triggers at most once every N seconds or once every N steps."""
+  """Timer that triggers at most once every N seconds or once every N steps.
+
+  This symbol is also exported to v2 in tf.estimator namespace. See
+  https://github.com/tensorflow/estimator/blob/master/tensorflow_estimator/python/estimator/hooks/basic_session_run_hooks.py
+  """
 
   def __init__(self, every_secs=None, every_steps=None):
     self.reset()

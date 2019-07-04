@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace cpu {
@@ -111,8 +111,9 @@ class CpuExecutable : public Executable {
   //    storage and the live-out buffer into which the computation writes it
   //    result.
   StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
-                     std::vector<OwningDeviceMemory>>>
-  CreateBufferTable(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+                     std::vector<se::OwningDeviceMemory>>>
+  CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+                    int device_ordinal,
                     absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
@@ -126,7 +127,7 @@ class CpuExecutable : public Executable {
   // The addresses are set according to buffer assignment.
   StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<OwningDeviceMemory> buffers);
+      absl::Span<se::OwningDeviceMemory> buffers);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.

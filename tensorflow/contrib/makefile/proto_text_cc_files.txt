@@ -1,4 +1,5 @@
 tensorflow/core/framework/resource_handle.cc
+tensorflow/core/framework/tensor_shape.cc
 tensorflow/core/lib/core/arena.cc
 tensorflow/core/lib/core/coding.cc
 tensorflow/core/lib/core/status.cc

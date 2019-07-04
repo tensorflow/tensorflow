@@ -544,12 +544,16 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
-      for (int i = 0; i < 2; ++i) {
-        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
-          results[index++] = Eigen::half(f[i]);
-          if (index >= kResultElementCount) {
-            return results;
-          }
+      if (Eigen::numext::abs(f[0]) < kTruncateValue) {
+        results[index++] = Eigen::half(f[0]);
+        if (index >= kResultElementCount) {
+          return results;
+        }
+      }
+      if (Eigen::numext::abs(f[1]) < kTruncateValue) {
+        results[index++] = Eigen::half(f[1]);
+        if (index >= kResultElementCount) {
+          return results;
         }
       }
     }
@@ -586,12 +590,16 @@ class TruncatedNormalDistribution<SingleSampleGenerator, bfloat16> {
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
-      for (int i = 0; i < 2; ++i) {
-        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
-          results[index++] = bfloat16(f[i]);
-          if (index >= kResultElementCount) {
-            return results;
-          }
+      if (Eigen::numext::abs(f[0]) < kTruncateValue) {
+        results[index++] = bfloat16(f[0]);
+        if (index >= kResultElementCount) {
+          return results;
+        }
+      }
+      if (Eigen::numext::abs(f[1]) < kTruncateValue) {
+        results[index++] = bfloat16(f[1]);
+        if (index >= kResultElementCount) {
+          return results;
         }
       }
     }
@@ -629,12 +637,16 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
-      for (int i = 0; i < 2; ++i) {
-        if (Eigen::numext::abs(f[i]) < kTruncateValue) {
-          results[index++] = f[i];
-          if (index >= kResultElementCount) {
-            return results;
-          }
+      if (Eigen::numext::abs(f[0]) < kTruncateValue) {
+        results[index++] = f[0];
+        if (index >= kResultElementCount) {
+          return results;
+        }
+      }
+      if (Eigen::numext::abs(f[1]) < kTruncateValue) {
+        results[index++] = f[1];
+        if (index >= kResultElementCount) {
+          return results;
         }
       }
     }
@@ -671,12 +683,16 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       double d[2];
       BoxMullerDouble(x0, x1, x2, x3, &d[0], &d[1]);
 
-      for (int i = 0; i < 2; ++i) {
-        if (Eigen::numext::abs(d[i]) < kTruncateValue) {
-          results[index++] = d[i];
-          if (index >= kResultElementCount) {
-            return results;
-          }
+      if (Eigen::numext::abs(d[0]) < kTruncateValue) {
+        results[index++] = d[0];
+        if (index >= kResultElementCount) {
+          return results;
+        }
+      }
+      if (Eigen::numext::abs(d[1]) < kTruncateValue) {
+        results[index++] = d[1];
+        if (index >= kResultElementCount) {
+          return results;
         }
       }
     }

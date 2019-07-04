@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 #endif
 
 namespace tensorflow {

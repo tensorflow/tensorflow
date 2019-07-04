@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 syntax = "proto2";
-import "tensorflow/lite/toco/types.proto";
 
 package toco;
+
+import "tensorflow/lite/toco/types.proto";
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
 enum FileFormat {
@@ -37,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 29.
+// Next ID to use: 30.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -205,4 +206,10 @@ message TocoFlags {
   // `force_select_tf_ops` should always be used with `enable_select_tf_ops`.
   // WARNING: Experimental interface, subject to change
   optional bool force_select_tf_ops = 28 [default = false];
+
+  // Boolean indicating whether to convert float32 constant buffers to
+  // float16. This is typically done to reduce model size. Delegates may also
+  // wish to implement kernels on reduced precision floats for performance
+  // gains.
+  optional bool quantize_to_float16 = 29 [default = false];
 }

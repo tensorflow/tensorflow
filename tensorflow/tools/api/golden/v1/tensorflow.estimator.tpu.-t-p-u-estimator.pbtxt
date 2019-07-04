@@ -21,7 +21,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'model_fn\', \'model_dir\', \'config\', \'params\', \'use_tpu\', \'train_batch_size\', \'eval_batch_size\', \'predict_batch_size\', \'batch_axis\', \'eval_on_tpu\', \'export_to_tpu\', \'export_to_cpu\', \'warm_start_from\', \'experimental_export_device_assignment\', \'embedding_config_spec\', \'export_saved_model_api_version\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\', \'True\', \'True\', \'True\', \'None\', \'False\', \'None\', \'ExportSavedModelApiVersion.V1\'], "
+    argspec: "args=[\'self\', \'model_fn\', \'model_dir\', \'config\', \'params\', \'use_tpu\', \'train_batch_size\', \'eval_batch_size\', \'predict_batch_size\', \'batch_axis\', \'eval_on_tpu\', \'export_to_tpu\', \'export_to_cpu\', \'warm_start_from\', \'embedding_config_spec\', \'export_saved_model_api_version\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\', \'True\', \'True\', \'True\', \'None\', \'None\', \'ExportSavedModelApiVersion.V1\'], "
   }
   member_method {
     name: "eval_dir"

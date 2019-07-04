@@ -97,6 +97,12 @@ class ExponentialBuckets : public Buckets {
 }  // namespace
 
 // static
+std::unique_ptr<Buckets> Buckets::Explicit(std::vector<double> bucket_limits) {
+  return std::unique_ptr<Buckets>(
+      new ExplicitBuckets(std::move(bucket_limits)));
+}
+
+// static
 std::unique_ptr<Buckets> Buckets::Explicit(
     std::initializer_list<double> bucket_limits) {
   return std::unique_ptr<Buckets>(new ExplicitBuckets(bucket_limits));

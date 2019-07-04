@@ -94,7 +94,7 @@ void NodeExecStatsWrapper::Done(const string& device) {
   } else {
     text =
         strings::StrCat(memory, node_->name(), " = ", node_->type_string(), "(",
-                        str_util::Join(node_->requested_inputs(), ", "), ")");
+                        absl::StrJoin(node_->requested_inputs(), ", "), ")");
   }
   stats_->set_timeline_label(text);
   step_stats_collector_->Save(device, this);

@@ -21,6 +21,7 @@
 #include "tensorflow/contrib/boosted_trees/resources/decision_tree_ensemble_resource.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
@@ -31,6 +32,8 @@ namespace {
 
 using boosted_trees::learner::LearnerConfig;
 using boosted_trees::learner::LearningRateConfig;
+using boosted_trees::models::DecisionTreeEnsembleResource;
+using boosted_trees::trees::DecisionTreeConfig;
 using boosted_trees::trees::Leaf;
 using boosted_trees::trees::TreeNode;
 using boosted_trees::trees::TreeNodeMetadata;
@@ -193,10 +196,9 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    core::ScopedUnref unref_me(ensemble_resource);
     mutex_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.
@@ -255,8 +257,8 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
 
  private:
   // Helper method to retrieve the bias from the tree ensemble.
-  boosted_trees::trees::Leaf* RetrieveBias(
-      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource,
+  Leaf* RetrieveBias(
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& ensemble_resource,
       int64 logits_dimension) {
     const int32 num_trees = ensemble_resource->num_trees();
     if (num_trees <= 0) {
@@ -319,10 +321,9 @@ class GrowTreeEnsembleOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    core::ScopedUnref unref_me(ensemble_resource);
     mutex_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.
@@ -400,10 +401,9 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Update and retrieve the growable tree.
     // If the tree is fully built and dropout was applied, it also adjusts the
     // weights of dropped and the last tree.
-    boosted_trees::trees::DecisionTreeConfig* const tree_config =
-        UpdateAndRetrieveGrowableTree(ensemble_resource, learning_rate,
-                                      dropout_seed, max_tree_depth,
-                                      weak_learner_type);
+    DecisionTreeConfig* const tree_config = UpdateAndRetrieveGrowableTree(
+        ensemble_resource, learning_rate, dropout_seed, max_tree_depth,
+        weak_learner_type);
     // Split tree nodes.
     switch (weak_learner_type) {
       case LearnerConfig::NORMAL_DECISION_TREE: {
@@ -559,8 +559,7 @@ class GrowTreeEnsembleOp : public OpKernel {
   }
 
   void UpdateTreeWeightsIfDropout(
-      boosted_trees::models::DecisionTreeEnsembleResource* const
-          ensemble_resource,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& ensemble_resource,
       const uint64 dropout_seed) {
     // It is possible that the tree was built with dropout. If it is the case,
     // we need to adjust the tree weight, or bail out.
@@ -609,9 +608,8 @@ class GrowTreeEnsembleOp : public OpKernel {
 
   // Helper method to update the growable tree which is by definition the last
   // tree in the ensemble.
-  boosted_trees::trees::DecisionTreeConfig* UpdateAndRetrieveGrowableTree(
-      boosted_trees::models::DecisionTreeEnsembleResource* const
-          ensemble_resource,
+  DecisionTreeConfig* UpdateAndRetrieveGrowableTree(
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& ensemble_resource,
       const float learning_rate, const uint64 dropout_seed,
       const int32 max_tree_depth, const int32 weak_learner_type) {
     const auto num_trees = ensemble_resource->num_trees();
@@ -719,8 +717,8 @@ class GrowTreeEnsembleOp : public OpKernel {
   // leaf children given the split candidate.
   void SplitTreeNode(
       const int32 node_id, SplitCandidate* split,
-      boosted_trees::trees::DecisionTreeConfig* tree_config,
-      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
+      DecisionTreeConfig* tree_config,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& resource) {
     // No-op if we have no real node.
     CHECK(node_id < tree_config->nodes_size())
         << "Invalid node " << node_id << " to split.";
@@ -761,14 +759,13 @@ class GrowTreeEnsembleOp : public OpKernel {
     (*tree_config->mutable_nodes(node_id)) =
         *split->split_info.mutable_split_node();
     if (learner_config_.constraints().max_number_of_unique_feature_columns()) {
-      ensemble_resource->MaybeAddUsedHandler(split->handler_id);
+      resource->MaybeAddUsedHandler(split->handler_id);
     }
   }
 
   void SplitTreeLayer(
-      SplitCandidate* split,
-      boosted_trees::trees::DecisionTreeConfig* tree_config,
-      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
+      SplitCandidate* split, DecisionTreeConfig* tree_config,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& resource) {
     int depth = 0;
     while (depth < tree_config->nodes_size() &&
            tree_config->nodes(depth).node_case() != TreeNode::kLeaf) {
@@ -903,10 +900,9 @@ class TreeEnsembleStatsOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    core::ScopedUnref unref_me(ensemble_resource);
     tf_shared_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.

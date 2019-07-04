@@ -203,7 +203,7 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 

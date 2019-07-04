@@ -196,6 +196,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
+REGISTER_KERNEL(CPU, uint32);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -398,17 +399,12 @@ void PlaceholderOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
                         PlaceholderOp);
-// The following GPU kernel registration is used to address the situation that
-// a placeholder is added in a GPU device context and soft placement is false.
-// Since a placeholder should never be executed, adding these GPU kernels has
-// no effect on graph execution.
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
+// The following GPU/Default kernel registration is used to address the
+// situation that a placeholder is added in a GPU device context and soft
+// placement is false. Since a placeholder should never be executed, adding
+// these GPU kernels has no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

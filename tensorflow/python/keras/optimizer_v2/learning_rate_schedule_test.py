@@ -142,23 +142,6 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstantEdgeCases(self, serialize):
-    x_int = resource_variable_ops.ResourceVariable(
-        0, dtype=variables.dtypes.int32)
-    boundaries, values = [-1.0, 1.0], [1, 2, 3]
-    with self.assertRaises(ValueError):
-      decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
-          boundaries, values)
-      decayed_lr = _maybe_serialized(decayed_lr, serialize)
-      decayed_lr(x_int)
-
-    x = resource_variable_ops.ResourceVariable(0.0)
-    boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
-    with self.assertRaises(ValueError):
-      decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
-          boundaries, values)
-      decayed_lr = _maybe_serialized(decayed_lr, serialize)
-      decayed_lr(x)
-
     # Test casting boundaries from int32 to int64.
     x_int64 = resource_variable_ops.ResourceVariable(
         0, dtype=variables.dtypes.int64)

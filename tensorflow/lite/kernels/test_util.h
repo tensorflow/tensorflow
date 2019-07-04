@@ -15,12 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <cmath>
 #include <complex>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -250,9 +250,21 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16 = false);
+                        int num_threads, bool allow_fp32_relax_to_fp16);
 
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        int num_threads);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        bool allow_fp32_relax_to_fp16);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
+
+  // Executes inference, asserting success.
   void Invoke();
+
+  // Executes inference *without* asserting success.
+  TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);
@@ -311,8 +323,8 @@ class SingleOpModel {
 
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
-  std::vector<T> ExtractVector(int index) {
-    T* v = interpreter_->typed_tensor<T>(index);
+  std::vector<T> ExtractVector(int index) const {
+    const T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v);
     return std::vector<T>(v, v + GetTensorSize(index));
   }
@@ -334,6 +346,9 @@ class SingleOpModel {
   void SetResolver(std::unique_ptr<OpResolver> resolver) {
     resolver_ = std::move(resolver);
   }
+
+  // Enables NNAPI delegate application during interpreter creation.
+  static void SetForceUseNnapi(bool use_nnapi);
 
  protected:
   int32_t GetTensorSize(int index) const;
@@ -401,7 +416,7 @@ class SingleOpModel {
     } else if (zero_point_double > qmax_double) {
       nudged_zero_point = qmax;
     } else {
-      nudged_zero_point = static_cast<T>(round(zero_point_double));
+      nudged_zero_point = static_cast<T>(std::round(zero_point_double));
     }
 
     // The zero point should always be in the range of quantized value,
@@ -568,15 +583,18 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
 template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
+  if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
+  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }
 
 // Strings have a special implementation that is in test_util.cc
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index);
+std::vector<string> SingleOpModel::ExtractVector(int index) const;
 
 // The TypeUnion struct specializations hold a collection of related types.
 // Each struct holds: 1. a primitive type (e.g. float), 2. a TensorType (e.g.

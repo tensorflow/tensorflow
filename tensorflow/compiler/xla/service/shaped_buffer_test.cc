@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -34,7 +34,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   auto* platform = platforms[0];
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
-  xla::StreamExecutorMemoryAllocator allocator(platform, executors);
+  xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
   auto scoped_buffer = absl::make_unique<xla::ScopedShapedBuffer>(
@@ -43,11 +43,11 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   buffer = nullptr;
 }
 
-class TestAllocator : public DeviceMemoryAllocator {
+class TestAllocator : public se::DeviceMemoryAllocator {
  public:
   TestAllocator()
-      : DeviceMemoryAllocator(PlatformUtil::GetDefaultPlatform().ValueOrDie()) {
-  }
+      : se::DeviceMemoryAllocator(
+            PlatformUtil::GetDefaultPlatform().ValueOrDie()) {}
 
   ~TestAllocator() override {
     if (!allocations_.empty()) {
@@ -56,18 +56,18 @@ class TestAllocator : public DeviceMemoryAllocator {
   }
 
   // Pull in two-arg overload of Allocate.
-  using DeviceMemoryAllocator::Allocate;
+  using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                        bool /*retry_on_failure*/) override {
+  StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64 size, bool /*retry_on_failure*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
-      return OwningDeviceMemory();
+      return se::OwningDeviceMemory();
     }
     void* buf = malloc(size);
     allocations_.insert({device_ordinal, buf});
-    return OwningDeviceMemory(se::DeviceMemoryBase(buf, size), device_ordinal,
-                              this);
+    return se::OwningDeviceMemory(se::DeviceMemoryBase(buf, size),
+                                  device_ordinal, this);
   }
 
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
@@ -120,9 +120,9 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
   sb.buffers().ForEachMutableElement(
       [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
         TF_ASSERT_OK_AND_ASSIGN(
-            OwningDeviceMemory m,
+            se::OwningDeviceMemory m,
             allocator.Allocate(/*device_ordinal=*/0, /*size=*/77));
-        *buffer = m.Forget();
+        *buffer = m.Release();
       });
   ShapeTree<se::DeviceMemoryBase> buffers = sb.buffers();
 
@@ -158,9 +158,9 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
   sb.buffers().ForEachMutableElement(
       [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
         TF_ASSERT_OK_AND_ASSIGN(
-            OwningDeviceMemory m,
+            se::OwningDeviceMemory m,
             allocator.Allocate(/*device_ordinal=*/0, /*size=*/32));
-        *buffer = m.Forget();
+        *buffer = m.Release();
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());

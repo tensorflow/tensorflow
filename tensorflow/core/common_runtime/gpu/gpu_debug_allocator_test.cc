@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -47,7 +48,8 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   for (int s : {8}) {
     std::vector<int64> cpu_array(s);
     memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-    int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+    int64* gpu_array =
+        TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
     se::DeviceMemory<int64> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
     ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
                                                s * sizeof(int64)));
@@ -74,7 +76,8 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+          int64* gpu_array =
+              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
 
           se::DeviceMemory<int64> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
@@ -110,7 +113,8 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+          int64* gpu_array =
+              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
 
           se::DeviceMemory<int64> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
@@ -145,7 +149,7 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
   std::vector<float> cpu_array_result(1024);
 
   // Allocate 1024 floats
-  float* gpu_array = a.Allocate<float>(cpu_array.size());
+  float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
@@ -192,7 +196,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   std::vector<float> cpu_array_result(1024);
 
   // Allocate 1024 floats
-  float* gpu_array = a.Allocate<float>(cpu_array.size());
+  float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
@@ -241,7 +245,7 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
       new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                             platform_gpu_id),
       platform_gpu_id);
-  float* t1 = a.Allocate<float>(1);
+  float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
   a.DeallocateRaw(t1);

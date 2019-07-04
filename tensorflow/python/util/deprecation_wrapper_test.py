@@ -27,9 +27,11 @@ from tensorflow.python.util import deprecation_wrapper
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.compatibility import all_renames_v2
 
+deprecation_wrapper._PER_MODULE_WARNING_LIMIT = 5
+
 
 class MockModule(types.ModuleType):
-  __file__ = 'test.py'
+  pass
 
 
 class DeprecationWrapperTest(test.TestCase):

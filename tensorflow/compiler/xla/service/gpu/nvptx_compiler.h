@@ -53,11 +53,11 @@ class NVPTXCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
@@ -72,13 +72,6 @@ class NVPTXCompiler : public LLVMCompiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
   }
-
-  // The triple that represents our target.
-  static const char* kTargetTriple;
-
-  // The data layout of the emitted module. Copied from computeDataLayout in
-  // NVPTXTargetMachine.cpp.
-  static const char* kDataLayout;
 
  private:
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
