@@ -468,7 +468,7 @@ class BatchNormalizationBase(Layer):
         update_delta = (
             variable - math_ops.cast(value, variable.dtype)) * decay
         if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
+          update_delta = array_ops.where_v2(inputs_size > 0, update_delta,
                                          K.zeros_like(update_delta))
         return state_ops.assign_sub(variable, update_delta, name=scope)
 
@@ -621,8 +621,8 @@ class BatchNormalizationBase(Layer):
     if (ops.executing_eagerly_outside_functions() and
         distribution_strategy_context.has_strategy()):
       inputs_size = array_ops.size(inputs)
-      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
-      variance = array_ops.where(inputs_size > 0, variance,
+      mean = array_ops.where_v2(inputs_size > 0, mean, K.zeros_like(mean))
+      variance = array_ops.where_v2(inputs_size > 0, variance,
                                  K.zeros_like(variance))
     return mean, variance
 
