@@ -19,7 +19,7 @@
 #define MLIR_ANALYSIS_VERIFIER_H
 
 namespace mlir {
-class LogicalResult;
+struct LogicalResult;
 class Operation;
 
 /// Perform (potentially expensive) checks of invariants, used to detect
