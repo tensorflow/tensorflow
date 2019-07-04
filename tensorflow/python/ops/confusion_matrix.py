@@ -116,7 +116,7 @@ def confusion_matrix(labels,
   For example:
 
   ```python
-    tf.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
         [[0 0 0 0 0]
          [0 0 1 0 0]
          [0 0 1 0 0]
@@ -226,7 +226,7 @@ def confusion_matrix_v1(labels,
   For example:
 
   ```python
-    tf.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
         [[0 0 0 0 0]
          [0 0 1 0 0]
          [0 0 1 0 0]

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -36,8 +37,8 @@ namespace gpu {
 namespace gl {
 
 SingleOpModel::SingleOpModel(Operation&& operation,
-                             const std::vector<TensorRefFloat32>& inputs,
-                             const std::vector<TensorRefFloat32>& outputs) {
+                             const std::vector<TensorRef<BHWC>>& inputs,
+                             const std::vector<TensorRef<BHWC>>& outputs) {
   auto node = graph_.NewNode();
   node->operation = std::move(operation);
 
@@ -67,9 +68,9 @@ bool SingleOpModel::PopulateTensor(int index, std::vector<float>&& data) {
   return true;
 }
 
-Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
-                                     const RuntimeOptions& runtime_options,
-                                     const NodeShader& shader) {
+Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
+                             const RuntimeOptions& runtime_options,
+                             const NodeShader& shader) {
   std::unique_ptr<EglEnvironment> env;
   RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env));
 
@@ -100,9 +101,9 @@ Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
   std::unique_ptr<CompiledModel> compiled_model;
-  RETURN_IF_ERROR(Compile(compile_options, graph_, shader,
-                          *NewDefaultWorkgroupsCalculator(gpu_info),
-                          &compiled_model));
+  RETURN_IF_ERROR(Compile(
+      compile_options, graph_, /*tflite_graph_io=*/std::unordered_set<int>(),
+      shader, *NewDefaultWorkgroupsCalculator(gpu_info), &compiled_model));
 
   // Get inference context.
   auto command_queue = NewCommandQueue(gpu_info);
@@ -125,6 +126,10 @@ Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
     outputs_.push_back(std::move(tensor));
   }
   return OkStatus();
+}
+
+Status SingleOpModel::Invoke(const NodeShader& shader) {
+  return Invoke(CompilationOptions(), RuntimeOptions(), shader);
 }
 
 }  // namespace gl

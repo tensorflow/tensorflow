@@ -27,6 +27,10 @@ tf_class {
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_distribute_datasets_from_function"
+    argspec: "args=[\'self\', \'dataset_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_local_results"
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
   }

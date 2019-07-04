@@ -143,11 +143,6 @@ class CheckpointingTests(test.TestCase):
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
-    # The optimizer and Dense layers also save get_config() JSON
-    expected_checkpoint_names.extend([
-        "model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
-        "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"
-    ])
     named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())

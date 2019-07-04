@@ -201,6 +201,17 @@ struct InlineFunctionBodyOptions {
   // If 'true' function inlining will override explicitly specified devices
   // inside function body with the caller node device.
   bool override_device = false;
+  // If 'true' function inlining will fill an empty device annotation inside
+  // function body with the caller node device.
+  // TODO(ezhulenev): Remove this flag. This is mostly legacy-compatibility
+  // mode. We should never explicitly define devices when we inline multi-device
+  // functions. However we do that in 'lower_function_call_op.cc' and
+  // 'function_optimizer' for now.
+  bool initialize_empty_device = false;
+  // If 'true' function inlining will inline functions in implementation
+  // selection group. Normally those functions should not be inlined; they will
+  // be handled by Grappler.
+  bool inline_impl_selection_group_functions = false;
   // Controls if we want to keep a node with the name as the function call node
   // in a graph after function inlining.
   KeepCallerNode keep_caller_node = KeepCallerNode::kDoNotKeep;

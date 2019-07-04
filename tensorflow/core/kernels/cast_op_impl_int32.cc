@@ -25,7 +25,8 @@ CastFunctorType GetCpuCastFromInt32(DataType dst_dtype) {
   return nullptr;
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromInt32(DataType dst_dtype) {
   CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, int32);
   return nullptr;

@@ -1,14 +1,5 @@
 # Description: Operations defined for XRT
 
-licenses(["notice"])  # Apache 2.0
-
-package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler/xrt:__subpackages__",
-    ],
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_py_library",
@@ -19,6 +10,14 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_py",
+)
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow/compiler/xrt:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 xla_proto_library(
@@ -44,16 +43,20 @@ cc_library(
     srcs = [
         "xrt_compilation_cache.cc",
         "xrt_device.cc",
+        "xrt_memory_manager.cc",
         "xrt_state.cc",
         "xrt_util.cc",
     ],
     hdrs = [
         "xrt_compilation_cache.h",
         "xrt_device.h",
+        "xrt_memory_manager.h",
+        "xrt_refptr.h",
         "xrt_state.h",
         "xrt_util.h",
     ],
     deps = [
+        ":xrt_proto",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -66,13 +69,13 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

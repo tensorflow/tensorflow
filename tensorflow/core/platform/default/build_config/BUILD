@@ -65,9 +65,12 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         ":stream_executor_no_cuda",
-        ":cuda",
     ] + if_static(
-        ["//tensorflow/stream_executor/cuda:all_runtime"],
+        [
+            "//tensorflow/stream_executor/cuda:all_runtime",
+            ":cuda",
+        ],
+        ["//tensorflow/stream_executor/cuda:cudart_stub"],
     ) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
@@ -285,21 +288,6 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cudart",
     ],
-)
-
-# Check that libtensorflow_framework.so does not depend on cuda shared libraries.
-check_deps(
-    name = "libtensorflow_cuda_check_deps",
-    disallowed_deps = [
-        ":cuda",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cuda_driver",
-        "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:curand",
-        "@local_config_cuda//cuda:cusolver",
-        "@local_config_cuda//cuda:cusparse",
-    ],
-    deps = ["//tensorflow:libtensorflow_framework.so"],
 )
 
 cc_library(

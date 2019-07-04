@@ -1,0 +1,140 @@
+op {
+  graph_op_name: "LSTMBlockCellGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "x"
+    description: <<END
+The input to the LSTM cell, shape (batch_size, num_inputs).
+END
+  }
+  in_arg {
+    name: "cs_prev"
+    description: <<END
+The previous cell state.
+END
+  }
+  in_arg {
+    name: "h_prev"
+    description: <<END
+The previous h state.
+END
+  }
+  in_arg {
+    name: "w"
+    description: <<END
+The weight matrix.
+END
+  }
+  in_arg {
+    name: "wci"
+    description: <<END
+The weight matrix for input gate peephole connection.
+END
+  }
+  in_arg {
+    name: "wcf"
+    description: <<END
+The weight matrix for forget gate peephole connection.
+END
+  }
+  in_arg {
+    name: "wco"
+    description: <<END
+The weight matrix for output gate peephole connection.
+END
+  }
+  in_arg {
+    name: "b"
+    description: <<END
+The bias vector.
+END
+  }
+  in_arg {
+    name: "i"
+    description: <<END
+The input gate.
+END
+  }
+  in_arg {
+    name: "cs"
+    description: <<END
+The cell state before the tanh.
+END
+  }
+  in_arg {
+    name: "f"
+    description: <<END
+The forget gate.
+END
+  }
+  in_arg {
+    name: "o"
+    description: <<END
+The output gate.
+END
+  }
+  in_arg {
+    name: "ci"
+    description: <<END
+The cell input.
+END
+  }
+  in_arg {
+    name: "co"
+    description: <<END
+The cell after the tanh.
+END
+  }
+  in_arg {
+    name: "cs_grad"
+    description: <<END
+The current gradient of cs.
+END
+  }
+  in_arg {
+    name: "h_grad"
+    description: <<END
+The gradient of h vector.
+END
+  }
+  out_arg {
+    name: "cs_prev_grad"
+    description: <<END
+The gradient of cs to be back-propped.
+END
+  }
+  out_arg {
+    name: "dicfo"
+    description: <<END
+The derivative wrt to [i, cs, f, o].
+END
+  }
+  out_arg {
+    name: "wci_grad"
+    description: <<END
+The gradient for wci to be back-propped.
+END
+  }
+  out_arg {
+    name: "wcf_grad"
+    description: <<END
+The gradient for wcf to be back-propped.
+END
+  }
+  out_arg {
+    name: "wco_grad"
+    description: <<END
+The gradient for wco to be back-propped.
+END
+  }
+  attr {
+    name: "use_peephole"
+    description: <<END
+Whether the cell uses peephole connections.
+END
+  }
+  summary: "Computes the LSTM cell backward propagation for 1 timestep."
+  description: <<END
+This implementation is to be used in conjunction of LSTMBlockCell.
+END
+}

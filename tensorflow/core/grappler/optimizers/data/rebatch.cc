@@ -40,9 +40,11 @@ Status RebatchOptimizer::Init(
 
 namespace {
 
-constexpr char kCastOp[] = "Cast";
-constexpr char kRealDivOp[] = "RealDiv";
+constexpr char kAddOp[] = "Add";
 constexpr char kConstOp[] = "Const";
+constexpr char kIdentityOp[] = "Identity";
+constexpr char kSubOp[] = "Sub";
+constexpr char kTruncateDivOp[] = "TruncateDiv";
 
 constexpr std::array<const char*, 5> kBatchDatasetOps = {
     "BatchDataset",
@@ -59,8 +61,8 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
 
 constexpr std::array<const char*, 17> kPassThroughOps = {
     "CacheDataset",
+    "ExperimentalScanDataset",
     "FilterDataset",
-    "FilterByLastComponentDataset",
     "Identity",
     "MapDataset",
     "ModelDataset",
@@ -74,39 +76,30 @@ constexpr std::array<const char*, 17> kPassThroughOps = {
     "ShuffleDataset",
     "SkipDataset",
     "TakeDataset",
-    "WindowDataset"
-};
+    "WindowDataset"};
 
-constexpr std::array<const char*, 3> kFuncDatasetOps = {
+constexpr std::array<const char*, 4> kFuncDatasetOps = {
+    "ExperimentalGroupByWindowDataset",
     "FlatMapDataset",
     "InterleaveDataset",
-    "ParallelInterleaveDatasetV2"
+    "ParallelInterleaveDatasetV2",
 };
+
+const std::map<string, const char*>* kFuncDatasetOpFuncs =
+    new std::map<string, const char*>({
+        {"ExperimentalGroupByWindowDataset", "reduce_func"},
+        {"FlatMapDataset", "f"},
+        {"InterleaveDataset", "f"},
+        {"ParallelInterleaveDatasetV2", "f"},
+    });
 
 constexpr std::array<const char*, 9> kSourceDatasetOps = {
-    "FixedLengthRecordDataset",
-    "FixedLengthRecordDatasetV2",
-    "GeneratorDataset",
-    "RangeDataset",
-    "SparseTensorsSliceDataset",
-    "TensorDataset",
-    "TensorSliceDataset",
-    "TextLineDataset",
-    "TFRecordDataset"
+    "FixedLengthRecordDataset",  "FixedLengthRecordDatasetV2",
+    "GeneratorDataset",          "RangeDataset",
+    "SparseTensorsSliceDataset", "TensorDataset",
+    "TensorSliceDataset",        "TextLineDataset",
+    "TFRecordDataset",
 };
-
-NodeDef* AddCastNode(const string& input, DataType src_t, DataType dst_t,
-                     MutableGraphView* graph) {
-  NodeDef cast_node;
-  cast_node.set_op(kCastOp);
-  cast_node.add_input(input);
-  graph_utils::SetUniqueGraphNodeName(cast_node.op(), graph->graph(),
-                                      &cast_node);
-  AddNodeAttr("SrcT", src_t, &cast_node);
-  AddNodeAttr("DstT", dst_t, &cast_node);
-
-  return graph->AddNode(std::move(cast_node));
-}
 
 NodeDef* AddBinaryNode(const string& input_x, const string& input_y,
                        const string& op, DataType type,
@@ -121,11 +114,6 @@ NodeDef* AddBinaryNode(const string& input_x, const string& input_y,
   return graph->AddNode(std::move(node));
 }
 
-NodeDef* AddFloatDivNode(const string& input_x, const string& input_y,
-                         MutableGraphView* graph) {
-  return AddBinaryNode(input_x, input_y, kRealDivOp, DT_FLOAT, graph);
-}
-
 template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
                          const std::array<const char*, SIZE>& arr) {
@@ -135,40 +123,66 @@ bool IsDatasetNodeOfType(const NodeDef& node,
   return false;
 }
 
-// Given a "batch" dataset node, modifies the batch_size input to divide the
-// current batch size by num_workers.
+Status UpdateOutputShapes(const string& node_name, int64 num_workers,
+                          MutableGraphView* graph) {
+  NodeDef* node = graph->GetNode(node_name);
+  if (node->op() == kIdentityOp) {
+    return Status::OK();
+  }
+  AttrValue output_shapes = node->attr().at("output_shapes");
+  for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
+    if (shape.dim(0).size() != -1) {
+      shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+    }
+  }
+  (*node->mutable_attr())["output_shapes"] = output_shapes;
+  return Status::OK();
+}
+
+// Given a "batch" dataset node, we replace the `batch_size` input with a new
+// input that corresponds to the original input divided by `num_workers`. If
+// `num_workers` does not divide `batch_size` evenly, the value is rounded up.
 Status MutateBatchSize(const NodeDef& node, int64 num_workers,
                        MutableGraphView* graph) {
-  // TODO(rohanj): Fix up the output_shapes attribute as well. For this Dataset
-  // as well as all the downstream datasets.
-  // For all the batching datasets the batch_size is input number 1.
-  NodeDef* batch_size_node = graph_utils::GetInputNode(node, *graph, 1);
-  // By the time this optimization is run, the batch_size is computed and
-  // is a constant.
-  if (batch_size_node->op() != kConstOp) {
-    return errors::Internal("Batch size node should be a Const. Obtained: ",
-                            batch_size_node->op(), " instead.");
+  // For all the batching datasets the batch_size is input number 1 except for
+  // MapAndBatchDataset.
+  int64 batch_size_arg_index = 1;
+  if (node.op() == "ExperimentalMapAndBatchDataset") {
+    // For MapAndBatch we take the 3rd last input.
+    batch_size_arg_index = node.input_size() - 3;
   }
-  Tensor batch_size_tensor;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(*batch_size_node, "value", &batch_size_tensor));
-  if (!TensorShapeUtils::IsScalar(batch_size_tensor.shape())) {
-    return errors::Internal("Batch size node shape should be scalar");
+  NodeDef* batch_size_node =
+      graph_utils::GetInputNode(node, *graph, batch_size_arg_index);
+  NodeDef* new_batch_size_node;
+  if (batch_size_node->op() == kConstOp) {
+    Tensor batch_size_tensor;
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(*batch_size_node, "value", &batch_size_tensor));
+    if (!TensorShapeUtils::IsScalar(batch_size_tensor.shape())) {
+      return errors::Internal("Batch size node shape should be scalar");
+    }
+    int64 batch_size = batch_size_tensor.scalar<int64>()();
+    batch_size = (batch_size + num_workers - 1) / num_workers;
+    new_batch_size_node =
+        graph_utils::AddScalarConstNode<int64>(batch_size, graph);
+  } else {
+    NodeDef* one_node = graph_utils::AddScalarConstNode<int64>(1, graph);
+    NodeDef* num_workers_node =
+        graph_utils::AddScalarConstNode<int64>(num_workers, graph);
+    NodeDef* numerator_node =
+        AddBinaryNode(batch_size_node->name(), num_workers_node->name(), kAddOp,
+                      DT_INT64, graph);
+    numerator_node = AddBinaryNode(numerator_node->name(), one_node->name(),
+                                   kSubOp, DT_INT64, graph);
+    new_batch_size_node =
+        AddBinaryNode(numerator_node->name(), num_workers_node->name(),
+                      kTruncateDivOp, DT_INT64, graph);
   }
-  int64 batch_size = batch_size_tensor.scalar<int64>()();
-  if (batch_size % num_workers != 0) {
-    return errors::InvalidArgument(
-        "Batch size: ", batch_size,
-        " is not divisible by num_workers: ", num_workers);
-  }
-  batch_size /= num_workers;
-  NodeDef* new_batch_size_node =
-      graph_utils::AddScalarConstNode<int64>(batch_size, graph);
   // We don't call UpdateFanouts here because CSE elimination might lead to
   // multiple nodes sharing the same batch size constant node. This is also
   // why we don't delete batch_size_node as well.
   TF_RETURN_IF_ERROR(graph->UpdateRegularFaninByPort(
-      node.name(), 1, {new_batch_size_node->name(), 0}));
+      node.name(), batch_size_arg_index, {new_batch_size_node->name(), 0}));
   return Status::OK();
 }
 
@@ -187,7 +201,8 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
                            FunctionLibraryDefinition* flib,
                            MutableGraphView* graph) {
   if (IsDatasetNodeOfType(node, kBatchDatasetOps)) {
-    return MutateBatchSize(node, num_workers, graph);
+    TF_RETURN_IF_ERROR(MutateBatchSize(node, num_workers, graph));
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kMultipleInputsDatasetOps)) {
     // For all multiple input datasets, all inputs are datasets themselves.
     for (int i = 0; i < node.input_size(); ++i) {
@@ -195,14 +210,17 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
       TF_RETURN_IF_ERROR(
           RecursivelyHandleOp(*input_node, num_workers, flib, graph));
     }
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kPassThroughOps)) {
     // For all the dataset ops that are pass through, the input dataset is
     // input 0.
     NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
     TF_RETURN_IF_ERROR(
         RecursivelyHandleOp(*input_node, num_workers, flib, graph));
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kFuncDatasetOps)) {
-    const string func_name = node.attr().at("f").func().name();
+    const string func_name =
+        node.attr().at(kFuncDatasetOpFuncs->at(node.op())).func().name();
     const FunctionDef* fdef = flib->Find(func_name);
     GrapplerFunctionItem f_item;
     TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
@@ -226,6 +244,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
 
       // Replace optimized function with a new FunctionDef.
       TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, optimized_func));
+      TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
     } else {
       VLOG(2) << "Failed to optimize dataset function. Error: "
               << s.error_message();
@@ -256,10 +275,10 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
 
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
   TF_RETURN_IF_ERROR(
-      RecursivelyHandleOp(sink_node, num_workers, &flib, &graph));
+      RecursivelyHandleOp(*sink_node, num_workers, &flib, &graph));
   *output->mutable_library() = flib.ToProto();
   return Status::OK();
 }

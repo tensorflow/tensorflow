@@ -52,7 +52,7 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       result = _AccumulatorResultToDict(partition, bucket_ids, grads, hessians)
       self.assertEqual(num_updates, 2)
       self.assertEqual(len(result), 2)
-      # Key is partion, bucket, dimension
+      # Key is partition, bucket, dimension
       self.assertAllClose(result[(1, 2, 0)], [0.2, 0.4])
       self.assertAllClose(result[(2, 3, 0)], [0.3, 0.4])
 
@@ -80,7 +80,7 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       result = _AccumulatorResultToDict(partition, bucket_ids, grads, hessians)
       self.assertEqual(num_updates, 2)
       self.assertEqual(len(result), 3)
-      # Key is partion, bucket, dimension.
+      # Key is partition, bucket, dimension.
       self.assertAllClose(result[(1, 2, 2)], [1.9, -9.8])
       self.assertAllClose(result[(2, 3, 0)], [0.3, 0.4])
       self.assertAllClose(result[(2, 3, 1)], [0.1, 0.2])

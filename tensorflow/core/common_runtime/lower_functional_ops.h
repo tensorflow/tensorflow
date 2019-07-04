@@ -32,10 +32,8 @@ namespace tensorflow {
 class LowerFunctionalOpsPass : public GraphOptimizationPass {
  public:
   LowerFunctionalOpsPass() = default;
-  LowerFunctionalOpsPass(bool lower_function_calls,
-                         bool keep_lowered_nodes_fetchable)
-      : lower_function_calls_(lower_function_calls),
-        keep_lowered_nodes_fetchable_(keep_lowered_nodes_fetchable) {}
+  LowerFunctionalOpsPass(bool keep_lowered_nodes_fetchable)
+      : keep_lowered_nodes_fetchable_(keep_lowered_nodes_fetchable) {}
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -45,10 +43,6 @@ class LowerFunctionalOpsPass : public GraphOptimizationPass {
       "_lower_as_multi_device_function";
 
  private:
-  // TODO(ezhulenev): This is only required until Grappler function optimizer is
-  // not migrated to use function inlining from common_runtime.
-  bool lower_function_calls_ = true;
-
   // If defined use the value to control if functional ops must be fetchable
   // after lowering (we add IdentityN in place of all lowered nodes). If not
   // defined, this option will be inferred automatically from the graph (in

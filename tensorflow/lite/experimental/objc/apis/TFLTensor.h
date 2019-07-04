@@ -29,6 +29,9 @@ typedef NS_ENUM(NSUInteger, TFLTensorDataType) {
   /** 32-bit single precision floating point. */
   TFLTensorDataTypeFloat32,
 
+  /** 16-bit half precision floating point. */
+  TFLTensorDataTypeFloat16,
+
   /** 32-bit signed integer. */
   TFLTensorDataTypeInt32,
 

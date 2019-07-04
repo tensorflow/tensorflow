@@ -19,12 +19,15 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
-namespace grappler {
 class Graph;
+
+namespace grappler {
 class GraphProperties;
 class NodeMap;
 class ScopedAllocatorOptimizer;
@@ -62,6 +65,10 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   // Returns a new, unused scope_id to be assigned to a ScopedAllocator that
   // will allocate num_fields (> 0) separate tensors.
   int NewScopedAllocatorId(int num_fields);
+
+  // Returns a new, unused id to be assigned to an IdentityOp used in this graph
+  // rewrite.
+  Status NewIdentityId(int* id);
 
   NodeMap* node_map() { return node_map_.get(); }
 
@@ -102,6 +109,7 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   std::unordered_map<string, Rewriter*> rewriters_;
   std::vector<Rewriter*> to_delete_;
   int next_sa_id_ = 1;
+  int next_identity_id_ = 1;
   std::unique_ptr<NodeMap> node_map_;
 };
 

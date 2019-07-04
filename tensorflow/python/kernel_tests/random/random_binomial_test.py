@@ -38,7 +38,7 @@ class RandomBinomialTest(test.TestCase):
   def _Sampler(self, num, counts, probs, dtype, seed=None):
 
     def func():
-      rng = stateful_random_ops.Generator(seed=seed).binomial(
+      rng = stateful_random_ops.Generator.from_seed(seed).binomial(
           shape=[10 * num], counts=counts, probs=probs, dtype=dtype)
       ret = array_ops.reshape(rng, [10, num])
       ret = self.evaluate(ret)
@@ -80,11 +80,11 @@ class RandomBinomialTest(test.TestCase):
       self.assertAllEqual(sx(), sy())
 
   def testZeroShape(self):
-    rnd = stateful_random_ops.Generator(seed=12345).binomial([0], [], [])
+    rnd = stateful_random_ops.Generator.from_seed(12345).binomial([0], [], [])
     self.assertEqual([0], rnd.shape.as_list())
 
   def testShape(self):
-    rng = stateful_random_ops.Generator(seed=12345)
+    rng = stateful_random_ops.Generator.from_seed(12345)
     # Scalar parameters.
     rnd = rng.binomial(shape=[10], counts=np.float32(2.), probs=np.float32(0.5))
     self.assertEqual([10], rnd.shape.as_list())
@@ -115,6 +115,16 @@ class RandomBinomialTest(test.TestCase):
         probs=np.float32(0.9))
     self.assertEqual([10], rnd.shape.as_list())
 
+  @test_util.run_v2_only
+  def testCornerCases(self):
+    rng = stateful_random_ops.Generator.from_seed(12345)
+    counts = np.array([5, 5, 5, 0, 0, 0], dtype=np.float32)
+    probs = np.array([0, 1, float("nan"), -10, 10, float("nan")],
+                     dtype=np.float32)
+    expected = np.array([0, 5, float("nan"), 0, 0, 0], dtype=np.float32)
+    result = rng.binomial(
+        shape=[6], counts=counts, probs=probs, dtype=np.float32)
+    self.assertAllEqual(expected, self.evaluate(result))
 
 if __name__ == "__main__":
   test.main()

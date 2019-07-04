@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <type_traits>
+
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 
 namespace ruy {
 
@@ -37,16 +40,14 @@ enum class LoopStructure { kGeneral, kSimple, kAuto };
 enum class ZeroPointSupport { kGeneral, kSymmetric };
 
 // In general we allow all Layout's, even if we may use slow paths for some
-// kinds of layouts. By choosing kPackedLinearRCC, one may opt out of this and
+// kinds of layouts. By choosing kRCC, one may opt out of this and
 // only keep support for the simplest and most efficient combination of
 // Layout's, in exchange for smaller code size. The case covered by
-// kPackedLinearRCC is that where all matrix layouts are linear (no sub-block
-// structure), packed (no striding), and where the storage orders are exactly
-// the following:
+// kRCC is where the storage orders are exactly the following:
 //    - LHS is RowMajor
 //    - RHS is ColMajor
 //    - Destination is ColMajor
-enum class LayoutSupport { kGeneral, kPackedLinearRCC };
+enum class LayoutSupport { kGeneral, kRCC };
 
 // A Spec describes all about a matrix multiplication operation that isn't
 // encoded in the LHS, RHS and destination matrices. Some of that information
@@ -83,9 +84,13 @@ struct BasicSpec {
   // multiplier_fixedpoint_perchannel must be nullptr.
   const int* multiplier_exponent_perchannel = nullptr;
   // min clamp bound of destination values.
-  DstScalar clamp_min = std::numeric_limits<DstScalar>::lowest();
+  DstScalar clamp_min = std::is_floating_point<DstScalar>::value
+                            ? -std::numeric_limits<DstScalar>::infinity()
+                            : std::numeric_limits<DstScalar>::lowest();
   // max clamp bound of destination values.
-  DstScalar clamp_max = std::numeric_limits<DstScalar>::max();
+  DstScalar clamp_max = std::is_floating_point<DstScalar>::value
+                            ? std::numeric_limits<DstScalar>::infinity()
+                            : std::numeric_limits<DstScalar>::max();
   // See above enum LoopStructure
   static constexpr LoopStructure kLoopStructure = LoopStructure::kAuto;
   // See above enum LayoutSupport
@@ -93,6 +98,23 @@ struct BasicSpec {
   // See above enum ZeroPointSupport
   static constexpr ZeroPointSupport kZeroPointSupport =
       ZeroPointSupport::kGeneral;
+  // Testing-only, not meant to be used by actual users:
+  // Used for testing of various kernel layouts.
+  using StandardCppKernelLhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using StandardCppKernelRhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  // The value and even the meaning of this value are empirically
+  // determined. Coarsely speaking, it's compared with the size of source
+  // LHS and RHS operands to determine whether they are big enough to be worth
+  // traversing in a more complicated "cache friendly" order. The current
+  // value is roughly the minimum size of a L1 cache on any CPU that we
+  // currently care about, e.g. ARM Cortex-A53. But we honestly don't even know
+  // the precise extent to which this should be related to L1 cache size.
+  //
+  // A lower value is not necessarily 'safer' from a cache-friendliness
+  // perspective: it means switching sooner (at smaller sizes) to more
+  // complicated traversal orders, which might be adversarial to the CPU's
+  // auto-prefetching or to the TLB.
+  static int cache_friendly_traversal_threshold() { return 32 * 1024; }
 };
 
 }  // namespace ruy

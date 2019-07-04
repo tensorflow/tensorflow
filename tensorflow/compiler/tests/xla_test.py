@@ -25,7 +25,9 @@ import re
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.contrib.compiler import jit
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -199,10 +201,10 @@ class XLATestCase(test.TestCase):
     logging.info('End test case: %s', self._testMethodName)
 
   @contextlib.contextmanager
-  def test_session(self):
-    """Custom implementation of test_session() for XLA tests.
+  def session(self):
+    """Custom implementation of session() for XLA tests.
 
-    We override the standard Tensorflow test_session() since it is too
+    We override the standard Tensorflow session() since it is too
     specific to CPU and GPU tests. In particular, we want to disable soft
     placement and explicitly assign ops to devices under test.
 
@@ -210,8 +212,24 @@ class XLATestCase(test.TestCase):
       A session to use when running a test case.
     """
     graph = ops.Graph()
-    with session.Session(graph=graph) as sess, graph.as_default():
+    config = context.context().config
+
+    # Grappler can constant fold TensorListFromTensor ops into DT_VARIANT
+    # constants which XLA does not understand.  So disable constant folding in
+    # these tests.
+    config.graph_options.rewrite_options.constant_folding = (
+        rewriter_config_pb2.RewriterConfig.OFF)
+    with session.Session(
+        graph=graph, config=config) as sess, graph.as_default():
       yield sess
+
+  def cached_session(self):
+    raise NotImplementedError(
+        'cached_session not supported on XLATestCase, please use session')
+
+  def test_session(self):
+    raise NotImplementedError(
+        'test_session not supported on XLATestCase, please use session')
 
   @contextlib.contextmanager
   def test_scope(self):
@@ -268,6 +286,7 @@ def Benchmark(tf_bench,
       for fetch in fetches:
         targets.append(array_ops.identity(fetch).op)
 
+    # TODO(b/132430685):  Should we allow soft placement here?
     config = config_pb2.ConfigProto(allow_soft_placement=True)
     with session.Session(config=config) as sess:
       sess.run(variables.global_variables_initializer())

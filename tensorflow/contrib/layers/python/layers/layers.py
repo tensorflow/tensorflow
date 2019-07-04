@@ -2922,7 +2922,7 @@ def spatial_softmax(features,
   First computes the softmax over the spatial extent of each channel of a
   convolutional feature map. Then computes the expected 2D position of the
   points of maximal activation for each channel, resulting in a set of
-  feature keypoints [x1, y1, ... xN, yN] for all N channels.
+  feature keypoints [i1, j1, ... iN, jN] for all N channels.
 
   Read more here:
   "Learning visual feature spaces for robotic manipulation with
@@ -2943,7 +2943,7 @@ def spatial_softmax(features,
     feature_keypoints: A `Tensor` with size [batch_size, num_channels * 2];
       the expected 2D locations of each channel's feature keypoint (normalized
       to the range (-1,1)). The inner dimension is arranged as
-      [x1, y1, ... xN, yN].
+      [i1, j1, ... iN, jN].
   Raises:
     ValueError: If unexpected data_format specified.
     ValueError: If num_channels dimension is unspecified.

@@ -25,11 +25,13 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 # TODO(nupurgarg): Add test for Grappler and frozen graph related functions.
-@test_util.run_v1_only("")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class UtilTest(test_util.TensorFlowTestCase):
 
   def testConvertDtype(self):
@@ -50,6 +52,8 @@ class UtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.complex64),
         _types_pb2.COMPLEX64)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.half), _types_pb2.FLOAT16)
     with self.assertRaises(ValueError):
       util.convert_dtype_to_tflite_type(dtypes.bool)
 
@@ -64,11 +68,25 @@ class UtilTest(test_util.TensorFlowTestCase):
       got_name = util.get_tensor_name(out_tensors[i])
       self.assertEqual(got_name, expect_names[i])
 
+  @test_util.enable_control_flow_v2
+  def testRemoveLowerUsingSwitchMerge(self):
+    i = array_ops.placeholder(shape=(), dtype=dtypes.int32)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    control_flow_ops.while_loop(c, b, [i])
+    sess = session.Session()
+    new_graph_def = util._remove_lower_using_switch_merge(sess.graph_def)
+    lower_using_switch_merge_is_removed = False
+    for node in new_graph_def.node:
+      if node.op == "While":
+        if not node.attr["_lower_using_switch_merge"].b:
+          lower_using_switch_merge_is_removed = True
+    self.assertEqual(lower_using_switch_merge_is_removed, True)
 
-@test_util.run_v1_only("")
+
+@test_util.run_v1_only("Incompatible with 2.0.")
 class TensorFunctionsTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_v1_only("b/120545219")
   def testGetTensorsValid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -78,7 +96,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     tensors = util.get_tensors_from_tensor_names(sess.graph, ["Placeholder"])
     self.assertEqual("Placeholder:0", tensors[0].name)
 
-  @test_util.run_v1_only("b/120545219")
   def testGetTensorsInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -90,7 +107,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     self.assertEqual("Invalid tensors 'invalid-input' were found.",
                      str(error.exception))
 
-  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeValid(self):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
@@ -98,7 +114,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     util.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
     self.assertEqual([5, 3, 5], tensor.shape.as_list())
 
-  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeNoneValid(self):
     tensor = array_ops.placeholder(dtype=dtypes.float32)
     self.assertEqual(None, tensor.shape)
@@ -106,7 +121,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     util.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
     self.assertEqual([1, 3, 5], tensor.shape.as_list())
 
-  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeArrayInvalid(self):
     # Tests set_tensor_shape where the tensor name passed in doesn't exist.
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
@@ -131,7 +145,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
                   str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
-  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeEmpty(self):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())

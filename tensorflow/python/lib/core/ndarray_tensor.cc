@@ -27,6 +27,45 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+char const* numpy_type_name(int numpy_type) {
+  switch (numpy_type) {
+#define TYPE_CASE(s) \
+  case s:            \
+    return #s
+
+    TYPE_CASE(NPY_BOOL);
+    TYPE_CASE(NPY_BYTE);
+    TYPE_CASE(NPY_UBYTE);
+    TYPE_CASE(NPY_SHORT);
+    TYPE_CASE(NPY_USHORT);
+    TYPE_CASE(NPY_INT);
+    TYPE_CASE(NPY_UINT);
+    TYPE_CASE(NPY_LONG);
+    TYPE_CASE(NPY_ULONG);
+    TYPE_CASE(NPY_LONGLONG);
+    TYPE_CASE(NPY_ULONGLONG);
+    TYPE_CASE(NPY_FLOAT);
+    TYPE_CASE(NPY_DOUBLE);
+    TYPE_CASE(NPY_LONGDOUBLE);
+    TYPE_CASE(NPY_CFLOAT);
+    TYPE_CASE(NPY_CDOUBLE);
+    TYPE_CASE(NPY_CLONGDOUBLE);
+    TYPE_CASE(NPY_OBJECT);
+    TYPE_CASE(NPY_STRING);
+    TYPE_CASE(NPY_UNICODE);
+    TYPE_CASE(NPY_VOID);
+    TYPE_CASE(NPY_DATETIME);
+    TYPE_CASE(NPY_TIMEDELTA);
+    TYPE_CASE(NPY_HALF);
+    TYPE_CASE(NPY_NTYPES);
+    TYPE_CASE(NPY_NOTYPE);
+    TYPE_CASE(NPY_CHAR);
+    TYPE_CASE(NPY_USERDEF);
+    default:
+      return "not a numpy type";
+  }
+}
+
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
                                    TF_DataType* out_tf_datatype) {
   PyObject* key;
@@ -130,8 +169,8 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         *out_tf_datatype = TF_BFLOAT16;
         break;
       }
-      // TODO(mrry): Support these.
-      return errors::Internal("Unsupported feed type");
+      return errors::Internal("Unsupported numpy type: ",
+                              numpy_type_name(pyarray_type));
   }
   return Status::OK();
 }
@@ -139,28 +178,31 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
 Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
                         PyObject** ptr_owner) {
   *ptr_owner = nullptr;
-  if (!PyUnicode_Check(obj)) {
+  if (PyBytes_Check(obj)) {
     char* buf;
     if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
       return errors::Internal("Unable to get element as bytes.");
     }
     *ptr = buf;
     return Status::OK();
-  }
+  } else if (PyUnicode_Check(obj)) {
 #if (PY_MAJOR_VERSION > 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3))
-  *ptr = PyUnicode_AsUTF8AndSize(obj, len);
-  if (*ptr != nullptr) return Status::OK();
+    *ptr = PyUnicode_AsUTF8AndSize(obj, len);
+    if (*ptr != nullptr) return Status::OK();
 #else
-  PyObject* utemp = PyUnicode_AsUTF8String(obj);
-  char* buf;
-  if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
-    *ptr = buf;
-    *ptr_owner = utemp;
-    return Status::OK();
-  }
-  Py_XDECREF(utemp);
+    PyObject* utemp = PyUnicode_AsUTF8String(obj);
+    char* buf;
+    if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
+      *ptr = buf;
+      *ptr_owner = utemp;
+      return Status::OK();
+    }
+    Py_XDECREF(utemp);
 #endif
-  return errors::Internal("Unable to convert element to UTF-8.");
+    return errors::Internal("Unable to convert element to UTF-8");
+  } else {
+    return errors::Internal("Unsupported object type ", obj->ob_type->tp_name);
+  }
 }
 
 // Iterate over the string array 'array', extract the ptr and len of each string
@@ -177,7 +219,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     }
     Py_ssize_t len;
     const char* ptr;
-    PyObject* ptr_owner;
+    PyObject* ptr_owner = nullptr;
     TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len, &ptr_owner));
     f(ptr, len);
     Py_XDECREF(ptr_owner);
@@ -407,9 +449,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
                PyArray_NBYTES(py_array));
   }
 
-  // PyArray_Return turns rank 0 arrays into numpy scalars
-  *out_ndarray = PyArray_Return(
-      reinterpret_cast<PyArrayObject*>(safe_out_array.release()));
+  *out_ndarray = safe_out_array.release();
   return Status::OK();
 }
 

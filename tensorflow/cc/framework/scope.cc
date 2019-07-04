@@ -275,7 +275,7 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
-      if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
+      if (absl::ConsumePrefix(&s, kColocationGroupPrefix)) {
         current_constraints.emplace(s);
       }
     }
@@ -529,6 +529,25 @@ class InternalScope {
 
 Scope NewInternalScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
   return InternalScope::NewScope(graph, status, refiner);
+}
+
+Status CreateOutputWithScope(string op_name,
+                             absl::Span<const ::tensorflow::Input> inputs,
+                             const Scope& scope, Output* output) {
+  TF_RETURN_IF_ERROR(scope.status());
+  const auto unique_name = scope.GetUniqueNameForOp(op_name);
+  auto builder = ::tensorflow::NodeBuilder(unique_name, op_name);
+  for (auto input : inputs) {
+    TF_RETURN_IF_ERROR(scope.status());
+    builder = builder.Input(input.node());
+  }
+  ::tensorflow::Node* ret;
+  scope.UpdateBuilder(&builder);
+  TF_RETURN_IF_ERROR(scope.status());
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  TF_RETURN_IF_ERROR(scope.status());
+  *output = Output(ret, 0);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

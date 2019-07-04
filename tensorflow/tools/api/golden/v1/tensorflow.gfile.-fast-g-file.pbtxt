@@ -11,10 +11,6 @@ tf_class {
     name: "name"
     mtype: "<type \'property\'>"
   }
-  member {
-    name: "seekable"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'mode\'], varargs=None, keywords=None, defaults=[\'r\'], "
@@ -46,6 +42,10 @@ tf_class {
   member_method {
     name: "seek"
     argspec: "args=[\'self\', \'offset\', \'whence\', \'position\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "seekable"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "size"

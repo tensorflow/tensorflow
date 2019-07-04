@@ -21,7 +21,9 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import mixed_precision
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -64,6 +66,18 @@ class PolicyTest(test.TestCase):
         self.assertEqual(mp_policy.global_policy().name, 'infer')
       self.assertEqual(mp_policy.global_policy().name, 'infer_float32_vars')
     self.assertEqual(mp_policy.global_policy().name, 'infer')
+
+  def test_error_if_graph_rewrite_enabled(self):
+    try:
+      mixed_precision.enable_mixed_precision_graph_rewrite(
+          gradient_descent.SGD(1.))
+      with self.assertRaisesRegexp(
+          ValueError, 'the mixed precision graph rewrite has already been '
+                      'enabled'):
+        mp_policy.set_policy('infer_float32_vars')
+    finally:
+      mixed_precision.disable_mixed_precision_graph_rewrite()
+
 
 if __name__ == '__main__':
   test.main()

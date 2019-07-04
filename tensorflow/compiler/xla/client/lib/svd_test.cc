@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/svd.h"
+
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
@@ -77,11 +78,10 @@ class SVDTest : public ClientLibraryTestBase {
     auto u = result.u;
     auto d = result.d;
 
-    auto zero = Zero(builder, S32);
     if (m > n) {
-      u = DynamicSliceInMinorDims(u, {zero, zero}, {m, n});
+      u = SliceInMinorDims(u, {0, 0}, {m, n});
     } else if (m < n) {
-      v = DynamicSliceInMinorDims(v, {zero, zero}, {n, m});
+      v = SliceInMinorDims(v, {0, 0}, {n, m});
     }
 
     int num_dims = u_shape.rank();
@@ -90,25 +90,6 @@ class SVDTest : public ClientLibraryTestBase {
     broadcast_dims[num_dims - 2] = num_dims - 1;
     return BatchDot(Mul(u, d, broadcast_dims), TransposeInMinorDims(v),
                     PrecisionConfig::HIGHEST);
-  }
-
-  Array3D<float> ExtractTriangularMatrix(const Array3D<float>& matrix,
-                                         bool lower) {
-    Array3D<float> result(matrix);
-    for (int i = 0; i < result.n1(); ++i) {
-      for (int j = 0; j < result.n2(); ++j) {
-        if (lower) {
-          for (int k = j + 1; k < result.n3(); ++k) {
-            result({i, j, k}) = 0.0;
-          }
-        } else {
-          for (int k = 0; k < j; ++k) {
-            result({i, j, k}) = 0.0;
-          }
-        }
-      }
-    }
-    return result;
   }
 
   XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
@@ -203,12 +184,14 @@ XLA_TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_512x128) {
+// Too slow on the interpreter backend.
+XLA_TEST_F(SVDTest,
+           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_512x128)) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 128);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
@@ -220,7 +203,7 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
   Array2D<float> a_val = GenerateRandomMatrix(128, 256);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
@@ -232,43 +215,49 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
   Array2D<float> a_val = GenerateRandomMatrix(256, 128);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x512) {
+// Too slow on the interpreter backend.
+XLA_TEST_F(SVDTest,
+           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 512);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_512x256) {
+// Too slow on the interpreter and CPU backends.
+XLA_TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
+                        Various_Size_Random_Matrix_512x256))) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 256);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
+// Too slow on the CPU, GPU and interpreter backends.
+XLA_TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
+                        Various_Size_Random_Matrix_512x512)))) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 512);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},

@@ -472,7 +472,7 @@ TEST(SparseTensorTest, SparseTensorGroup) {
   // All the hard work is right here!
   for (const auto& g : gi) {
     groups.push_back(g.group());
-    VLOG(1) << "Group: " << str_util::Join(g.group(), ",");
+    VLOG(1) << "Group: " << absl::StrJoin(g.group(), ",");
     VLOG(1) << "Indices: " << g.indices();
     VLOG(1) << "Values: " << g.values<int32>();
 

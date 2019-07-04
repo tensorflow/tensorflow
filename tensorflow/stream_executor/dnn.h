@@ -26,10 +26,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <tuple>
+#include <type_traits>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -70,19 +70,34 @@ inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
   return SetDim(absl::MakeSpan(*data), dim, value);
 }
 
-// tensorflow::int64 is not the same type as tensorflow::protobuf_int64 in
-// open-source. Wrapper function that gives an int64 array slice view of a
-// repeated int64 protobuf field.
-inline absl::Span<const int64> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  return absl::Span<const int64>(reinterpret_cast<const int64*>(v.data()),
-                                 v.size());
+// int64 is not the same type as tensorflow::protobuf_int64 in open-source. This
+// wrapper function gives an int64 array slice view of a repeated int64 protobuf
+// field.
+//
+// T should be a protobuf RepeatedField.
+template <typename T>
+inline absl::Span<const int64> AsInt64Slice(const T& repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field.data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field.data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<const int64>(
+      reinterpret_cast<const int64*>(repeated_field.data()),
+      repeated_field.size());
 }
-
-inline absl::Span<int64> AsInt64Slice(
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* v) {
-  return absl::Span<int64>(reinterpret_cast<int64*>(v->mutable_data()),
-                           v->size());
+template <typename T>
+inline absl::Span<int64> AsInt64Slice(T* repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field->data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field->data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<int64>(
+      reinterpret_cast<int64*>(repeated_field->mutable_data()),
+      repeated_field->size());
 }
 
 // Returns a string representation of the given data layout.
@@ -807,10 +822,22 @@ class ProfileResult {
 //  algorithm: the primary algorithm that should be used.
 //  algorithm_no_scratch: a secondary algorithm that should be used, if the
 //    the allocation for the scratch memory fails.
+//  scrach_size: specify the size of scratch memory in bytes needed for the
+//    algorithm used.
+//
+// On CUDA platform with CUDNN library, algorithm and algorithm_no_scratch
+// would be used. On ROCm platform with MIOpen library, algorithm and
+// scratch_size would be used. The major difference between the two platforms
+// are whether it's possible to get an algorithm without scratch memory. On
+// CUDA + CUDNN it's possible, and algorithm_no_scratch can be used to track
+// such information, whereas on ROCm + MIOpen there is no guarantee to getting
+// one without scratch memory, and scratch_size field is used to track it.
 class AlgorithmConfig {
  public:
   AlgorithmConfig() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
+      : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
@@ -821,9 +848,12 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
+  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
-           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_ &&
+           this->scratch_size_ == other.scratch_size_;
   }
   bool operator!=(const AlgorithmConfig& other) const {
     return !(*this == other);
@@ -833,6 +863,7 @@ class AlgorithmConfig {
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
+  absl::optional<size_t> scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -981,10 +1012,14 @@ class DnnSupport {
   //    Used for inference only; empty for training.
   //  estimated_variance: population variance estimated during training,
   //    used for inference only; empty for training.
+  //  side_input: optional input that is element-wise added to the output of
+  //    batch normalization.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
-  //    of the output.
+  //    of the output and side input.
   //  scale_offset_desc: dimensions of scale and offset.
   //  epsilon: a small floating point number added to the variance of x.
+  //  activation_mode: activation applied to the result of batch normalization
+  //    (or after adding optional side input)
   //  y: output data.
   //  batch_mean: batch mean, to be used to compute the running mean.
   //  batch_variance: batch variance, to be used to compute
@@ -1004,11 +1039,14 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
-      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1021,11 +1059,14 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
-      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1055,7 +1096,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1069,8 +1112,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
-      DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -2037,6 +2081,7 @@ class DnnSupport {
   //  num_layers: the number of layers for a RNN model.
   //  hidden_size: the size of the hidden state.
   //  input_size: the size of the input state.
+  //  cell_size: the size of the cell state
   //  input_mode: an enum to specify whether a linear transformation is added
   //    after the input state. If input_size is different from hidden_size, this
   //    is required.
@@ -2052,7 +2097,8 @@ class DnnSupport {
   //    is no longer in use.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
-                      int batch_size, dnn::RnnInputMode input_mode,
+                      int cell_size, int batch_size,
+                      dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,

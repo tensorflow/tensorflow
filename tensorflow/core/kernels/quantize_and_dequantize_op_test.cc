@@ -153,6 +153,42 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_round_half_up) {
   EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
+// Convert a 1D tensor with signed 8 bits and round_mode half_up, using
+// narrow range quantization.
+TEST_F(QuantizeAndDequantizeTest,
+       Convert_1D_tensor_with_int8_round_half_up_narrow_range) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("signed_input", true)
+          .Attr("num_bits", 8)
+          .Attr("range_given", false)
+          .Attr("round_mode", "HALF_UP")
+          .Attr("narrow_range", true)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({7}),
+                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+
+  // With int8, the tensor is quantized to {-127, -63, 0, 38, 102, 70, 64}.
+  // Scale is: 1/127
+  // Then it is dequantized to {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70.0/127,
+  // 64.0/127}
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
+  test::FillValues<float>(&expected, {-1, -63.0 / 127, 0, 38.0 / 127,
+                                      102.0 / 127, 70.0 / 127, 64.0 / 127});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+}
+
 // Convert a 1D tensor with signed 8 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_V3) {
   TF_ASSERT_OK(
@@ -177,6 +213,40 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_V3) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({6}));
   test::FillValues<float>(&expected,
                           {-1, -0.5, 0, 38.0 / 128, 102.0 / 128, 71.0 / 128});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
+}
+
+// Convert a 1D tensor with signed 8 bits, using narrow range quantization.
+TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_narrow_range_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", false)
+          .Attr("narrow_range", true)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({7}),
+                           {-1, -0.5, 0, 0.3, 0.8, 0.555, 0.50390625});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  // With int8, the tensor is quantized to {-127, -64, 0, 38, 102, 70, 64}.
+  // Scale is: 1/127
+  // Then it is dequantized to {-1, -64.0/127, 0, 38.0/127, 102.0/127, 70.0/127,
+  // 64.0/127}
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({7}));
+  test::FillValues<float>(&expected, {-1, -64.0 / 127, 0, 38.0 / 127,
+                                      102.0 / 127, 70.0 / 127, 64.0 / 127});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 
   // Ensure that the inputs haven't been changed.
@@ -502,8 +572,8 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "Invalid range: input_min 1 > input_max 0"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(),
+                                "Invalid range: input_min 1 > input_max 0"))
       << s;
 }
 
@@ -524,8 +594,8 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
   AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "Invalid range: input_min 1 > input_max 0"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(),
+                                "Invalid range: input_min 1 > input_max 0"))
       << s;
 }
 

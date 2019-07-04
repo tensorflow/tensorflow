@@ -368,10 +368,7 @@ public class Camera2BasicFragment extends Fragment
       classifier.setNumThreads(numThreads);
       if (device.equals(cpu)) {
       } else if (device.equals(gpu)) {
-        if (!GpuDelegateHelper.isGpuDelegateAvailable()) {
-          showToast("gpu not in this build.");
-          classifier = null;
-        } else if (model.equals(mobilenetV1Quant)) {
+        if (model.equals(mobilenetV1Quant)) {
           showToast("gpu requires float model.");
           classifier = null;
         } else {
@@ -405,9 +402,7 @@ public class Camera2BasicFragment extends Fragment
     // Build list of devices
     int defaultModelIndex = 0;
     deviceStrings.add(cpu);
-    if (GpuDelegateHelper.isGpuDelegateAvailable()) {
-      deviceStrings.add(gpu);
-    }
+    deviceStrings.add(gpu);
     deviceStrings.add(nnApi);
 
     deviceView.setAdapter(

@@ -30,7 +30,7 @@ string KeyValueToStr(const std::map<string, string>& kv_map) {
   for (const auto& pair : kv_map) {
     kv_vec.push_back(strings::StrCat(pair.first, "=", pair.second));
   }
-  return str_util::Join(kv_vec, ",");
+  return absl::StrJoin(kv_vec, ",");
 }
 }  // namespace
 
@@ -52,7 +52,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
           tensorflow::error::INVALID_ARGUMENT,
           strings::Printf("E.g. Unknown output type: %s, Valid types: %s\n",
                           output_opt.c_str(),
-                          str_util::Join(output_types, ",").c_str()));
+                          absl::StrJoin(output_types, ",").c_str()));
     }
     *output_type = output_opt;
   } else {
@@ -62,7 +62,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
           tensorflow::error::INVALID_ARGUMENT,
           strings::Printf("E.g. Unknown output type: %s, Valid types: %s\n",
                           output_type->c_str(),
-                          str_util::Join(output_types, ",").c_str()));
+                          absl::StrJoin(output_types, ",").c_str()));
     }
     kv_split = str_util::Split(output_opt.substr(opt_split + 1), ",",
                                str_util::SkipEmpty());
@@ -108,7 +108,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
                           kv[0].c_str(), output_type->c_str()));
     }
     const std::vector<string> kv_without_key(kv.begin() + 1, kv.end());
-    (*output_options)[kv[0]] = str_util::Join(kv_without_key, "=");
+    (*output_options)[kv[0]] = absl::StrJoin(kv_without_key, "=");
   }
 
   for (const string& opt : required_options) {
@@ -202,13 +202,13 @@ string Options::ToString() const {
       min_accelerator_micros, kOptions[7], min_cpu_micros, kOptions[8],
       min_params, kOptions[9], min_float_ops, kOptions[10], min_occurrence,
       kOptions[11], step, kOptions[12], order_by.c_str(), kOptions[13],
-      str_util::Join(account_type_regexes, ",").c_str(), kOptions[14],
-      str_util::Join(start_name_regexes, ",").c_str(), kOptions[15],
-      str_util::Join(trim_name_regexes, ",").c_str(), kOptions[16],
-      str_util::Join(show_name_regexes, ",").c_str(), kOptions[17],
-      str_util::Join(hide_name_regexes, ",").c_str(), kOptions[18],
+      absl::StrJoin(account_type_regexes, ",").c_str(), kOptions[14],
+      absl::StrJoin(start_name_regexes, ",").c_str(), kOptions[15],
+      absl::StrJoin(trim_name_regexes, ",").c_str(), kOptions[16],
+      absl::StrJoin(show_name_regexes, ",").c_str(), kOptions[17],
+      absl::StrJoin(hide_name_regexes, ",").c_str(), kOptions[18],
       (account_displayed_op_only ? "true" : "false"), kOptions[19],
-      str_util::Join(select, ",").c_str(), kOptions[20], output_type.c_str(),
+      absl::StrJoin(select, ",").c_str(), kOptions[20], output_type.c_str(),
       KeyValueToStr(output_options).c_str());
   return s;
 }

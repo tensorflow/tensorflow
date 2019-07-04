@@ -57,7 +57,7 @@ Status PartitionFunctionGraph(
 //  (3) records which `Arg` and `Retval` nodes live in host memory in
 //      `*_alloc_attrs`.
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, std::vector<int>* arg_indices,
+    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs);

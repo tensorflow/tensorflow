@@ -185,6 +185,7 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[1], n_input);
   TF_LITE_ENSURE(context, (input_to_forget_weights->type == kTfLiteFloat32) ||
+                              (input_to_forget_weights->type == kTfLiteInt8) ||
                               (input_to_forget_weights->type == kTfLiteUInt8));
 
   const TfLiteTensor* input_to_input_weights =

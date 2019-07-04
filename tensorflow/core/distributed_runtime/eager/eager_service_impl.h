@@ -104,9 +104,9 @@ class EagerServiceImpl {
   // and the EagerContext).
   class ServerContext : public core::RefCounted {
    public:
-    explicit ServerContext(std::unique_ptr<tensorflow::EagerContext> ctx,
+    explicit ServerContext(tensorflow::EagerContext* ctx,
                            int64 destroy_after_secs, const WorkerEnv* env)
-        : ctx_(std::move(ctx)), env_(env) {
+        : ctx_(ctx), env_(env) {
       destroy_after_micros_ =
           destroy_after_secs * tensorflow::EnvTime::kSecondsToMicros;
       RecordAccess();
@@ -115,9 +115,11 @@ class EagerServiceImpl {
       for (const auto& entry : tensors_) {
         entry.second->Unref();
       }
+
+      ctx_->Unref();
     }
 
-    tensorflow::EagerContext* Context() const { return ctx_.get(); }
+    tensorflow::EagerContext* Context() const { return ctx_; }
 
     void AddOperationOutputs(
         const gtl::ArraySlice<tensorflow::TensorHandle*>& handles,
@@ -179,7 +181,7 @@ class EagerServiceImpl {
                      RemoteTensorHandleInternalEquals>;
 
     // The context for this execution.
-    std::unique_ptr<tensorflow::EagerContext> ctx_;
+    tensorflow::EagerContext* ctx_;
 
     // The state related to the context for this execution.
     mutex tensors_mu_;

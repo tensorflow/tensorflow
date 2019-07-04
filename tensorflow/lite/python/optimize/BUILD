@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 cc_library(
     name = "calibration_wrapper_lib",
@@ -58,6 +57,7 @@ py_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [

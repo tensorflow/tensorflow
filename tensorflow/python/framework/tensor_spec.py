@@ -20,15 +20,17 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import type_spec
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("TensorSpec")
-class TensorSpec(object):
+class TensorSpec(type_spec.BatchableTypeSpec):
   """Describes a tf.Tensor.
 
   Metadata for describing the `tf.Tensor` objects accepted or returned
@@ -97,7 +99,8 @@ class TensorSpec(object):
     Returns:
       True if spec_or_tensor is compatible with self.
     """
-    return (self._dtype.is_compatible_with(spec_or_tensor.dtype) and
+    return (isinstance(spec_or_tensor, (TensorSpec, ops.Tensor)) and
+            self._dtype.is_compatible_with(spec_or_tensor.dtype) and
             self._shape.is_compatible_with(spec_or_tensor.shape))
 
   def __repr__(self):
@@ -108,17 +111,80 @@ class TensorSpec(object):
     return hash((self._shape_tuple, self.dtype))
 
   def __eq__(self, other):
-    return (self._shape_tuple == other._shape_tuple  # pylint: disable=protected-access
-            and self.dtype == other.dtype
-            and self._name == other._name)  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    return (type(self) is type(other) and
+            self._shape_tuple == other._shape_tuple
+            and self._dtype == other._dtype
+            and self._name == other._name)
 
   def __ne__(self, other):
     return not self == other
 
-  def __reduce__(self):
-    return TensorSpec, (self._shape, self._dtype, self._name)
+  value_type = property(lambda self: ops.Tensor)
+
+  def most_specific_compatible_type(self, other):
+    if (type(self) is not type(other)) or (self._dtype != other.dtype):
+      raise ValueError("Types are not compatible: %r vs %r" % (self, other))
+    shape = self._shape.most_specific_compatible_shape(other.shape)
+    name = self._name if self._name == other.name else None
+    return TensorSpec(shape, self._dtype, name)
+
+  def _serialize(self):
+    return (self._shape, self._dtype, self._name)
+
+  _component_specs = property(lambda self: self)
+
+  def _to_components(self, value):
+    try:
+      value = ops.convert_to_tensor(value, self._dtype)
+    except (TypeError, ValueError):
+      raise ValueError("Value %r is not convertible to a tensor with dtype %s "
+                       "and shape %s." % (value, self._dtype, self._shape))
+    if not value.shape.is_compatible_with(self._shape):
+      raise ValueError("Value %r is not convertible to a tensor with dtype %s "
+                       "and shape %s." % (value, self._dtype, self._shape))
+    return value
+
+  def _from_components(self, components):
+    return components
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    # TODO(b/112266545): It would be cleaner to create a new `ensure_shape()`
+    # op here and return that, instead of mutating the input's shape using
+    # `Tensor.set_shape()`. However, that would add extra ops, which could
+    # impact performance. When this bug is resolved, we should be able to add
+    # the `ensure_shape()` ops and optimize them away using contextual shape
+    # information.
+    assert len(tensor_list) == 1
+    tensor_list[0].set_shape(self._shape)
+    return tensor_list[0]
+
+  def _to_batchable_tensor_list(self, value, batched=False):
+    if batched and self._shape.merge_with(value.shape).ndims == 0:
+      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
+    return self._to_components(value)
+
+  def _batch(self, batch_size):
+    return TensorSpec(
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
+        self._dtype)
+
+  def _unbatch(self):
+    if self._shape.ndims == 0:
+      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
+    return TensorSpec(self._shape[1:], self._dtype)
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._shape
+
+  def _to_legacy_output_classes(self):
+    return ops.Tensor
 
 
+# TODO(b/133606651): Should is_compatible_with should check min/max bounds?
 class BoundedTensorSpec(TensorSpec):
   """A `TensorSpec` that specifies minimum and maximum values.
 
@@ -216,3 +282,15 @@ class BoundedTensorSpec(TensorSpec):
   def __reduce__(self):
     return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
                                self._maximum, self._name)
+
+  def _serialize(self):
+    return (self._shape, self._dtype, self._minimum, self._maximum, self._name)
+
+
+pywrap_tensorflow.RegisterType("TensorSpec", TensorSpec)
+
+
+# Note: we do not include Tensor names when constructing TypeSpecs.
+type_spec.register_type_spec_from_value_converter(
+    ops.Tensor,
+    lambda tensor: TensorSpec(tensor.shape, tensor.dtype))

@@ -22,9 +22,10 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column import feature_column_v2_test as fc_test
 from tensorflow.python.feature_column import sequence_feature_column as sfc
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -37,6 +38,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+
+
+def _initialized_session(config=None):
+  sess = session.Session(config=config)
+  sess.run(variables_lib.global_variables_initializer())
+  sess.run(lookup_ops.tables_initializer())
+  return sess
 
 
 class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
@@ -225,7 +233,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
       self.assertCountEqual(
           ('aaa_bbb_shared_embedding:0',),
           tuple([v.name for v in global_vars]))
-      with fc_test._initialized_session() as sess:
+      with _initialized_session() as sess:
         self.assertAllEqual(embedding_values,
                             global_vars[0].eval(session=sess))
         self.assertAllEqual(expected_input_layer,
@@ -735,7 +743,7 @@ class SequenceCategoricalColumnWithIdentityTest(
            'dense_shape': (2, 2, 2)},
        'expected_args': {
            'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
-           'values': (6, 7, 8),
+           'values': np.array((6, 7, 8), dtype=np.int64),
            'dense_shape': (2, 2, 2)}}
       )
   def test_get_sparse_tensors(self, inputs_args, expected_args):
@@ -864,7 +872,7 @@ class SequenceCategoricalColumnWithVocabularyFileTest(
       id_weight_pair = _get_sparse_tensors(column, {'aaa': input_placeholder})
 
       self.assertIsNone(id_weight_pair.weight_tensor)
-      with fc_test._initialized_session() as sess:
+      with _initialized_session() as sess:
         result = id_weight_pair.id_tensor.eval(
             session=sess, feed_dict={input_placeholder: inputs})
         _assert_sparse_tensor_value(
@@ -1157,7 +1165,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
       sequence_length_b = _get_sequence_dense_tensor(
           shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
-      with fc_test._initialized_session() as sess:
+      with _initialized_session() as sess:
         sequence_length_a = sess.run(sequence_length_a)
         self.assertAllEqual(expected_sequence_length_a, sequence_length_a)
         self.assertEqual(np.int64, sequence_length_a.dtype)
@@ -1205,7 +1213,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
       sequence_length_b = _get_sequence_dense_tensor(
           shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
-      with fc_test._initialized_session() as sess:
+      with _initialized_session() as sess:
         self.assertAllEqual(
             expected_sequence_length_a, sequence_length_a.eval(session=sess))
         self.assertAllEqual(
@@ -1529,6 +1537,30 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(
         expected_sequence_length, self.evaluate(sequence_length))
+
+  def test_serialization(self):
+    """Tests that column can be serialized."""
+    def _custom_fn(input_tensor):
+      return input_tensor + 42
+
+    column = sfc.sequence_numeric_column(
+        key='my-key', shape=(2,), default_value=3, dtype=dtypes.int32,
+        normalizer_fn=_custom_fn)
+    configs = serialization.serialize_feature_column(column)
+    column = serialization.deserialize_feature_column(
+        configs, custom_objects={_custom_fn.__name__: _custom_fn})
+    self.assertEqual(column.key, 'my-key')
+    self.assertEqual(column.shape, (2,))
+    self.assertEqual(column.default_value, 3)
+    self.assertEqual(column.normalizer_fn(3), 45)
+    with self.assertRaisesRegex(ValueError,
+                                'Instance: 0 is not a FeatureColumn'):
+      serialization.serialize_feature_column(int())
+
+  def test_parents(self):
+    """Tests parents attribute of column."""
+    column = sfc.sequence_numeric_column(key='my-key')
+    self.assertEqual(column.parents, ['my-key'])
 
 
 if __name__ == '__main__':

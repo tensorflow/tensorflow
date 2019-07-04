@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dump.h"
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -190,6 +191,10 @@ void DumpHloModuleImpl(const HloModule& module,
   if (opts.dump_as_text) {
     DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"), module.ToString(),
                                 opts);
+    if (buffer_assn) {
+      DumpToFileInDirOrStdoutImpl(StrCat(filename, "-buffer-assignment.txt"),
+                                  buffer_assn->ToString(), opts);
+    }
   }
 
   if (opts.dump_as_proto) {

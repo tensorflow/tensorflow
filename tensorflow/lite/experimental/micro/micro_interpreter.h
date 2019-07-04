@@ -53,6 +53,9 @@ class MicroInterpreter {
   ErrorReporter* error_reporter() { return error_reporter_; }
 
  private:
+  TfLiteStatus AllocateInputAndActTensors();
+  TfLiteStatus AllocateTemporaryTensors();
+
   const Model* model_;
   const OpResolver& op_resolver_;
   SimpleTensorAllocator* tensor_allocator_;

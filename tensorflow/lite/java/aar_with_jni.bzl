@@ -23,7 +23,7 @@ EOF
     # .so files and throw away the apk.
     android_binary(
         name = name + "_dummy_app_for_so",
-        aapt_version = "aapt",
+        aapt_version = "aapt2",
         manifest = name + "_generated_AndroidManifest.xml",
         custom_package = "dummy.package.for.so",
         deps = [android_library],

@@ -73,13 +73,13 @@ CpuExecutable::CpuExecutable(
 }
 
 StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
-                   std::vector<OwningDeviceMemory>>>
+                   std::vector<se::OwningDeviceMemory>>>
 CpuExecutable::CreateBufferTable(
-    DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+    se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
     absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
       assignment_->Allocations().size());
-  std::vector<OwningDeviceMemory> owning_buffers(
+  std::vector<se::OwningDeviceMemory> owning_buffers(
       assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -92,6 +92,9 @@ CpuExecutable::CreateBufferTable(
     if (allocation.is_entry_computation_parameter()) {
       unowning_buffers[i] = arguments[allocation.parameter_number()]->buffer(
           allocation.param_shape_index());
+      CHECK_EQ(allocation.size(), unowning_buffers[i].size())
+          << "Size mismatch on param " << allocation.parameter_number()
+          << " at shape index " << allocation.param_shape_index().ToString();
       VLOG(3) << "allocation #" << i << " is a parameter";
       continue;
     }
@@ -113,17 +116,17 @@ CpuExecutable::CreateBufferTable(
     } else {
       TF_ASSIGN_OR_RETURN(owning_buffers[i], memory_allocator->Allocate(
                                                  device_ordinal, buffer_size));
-      unowning_buffers[i] = owning_buffers[i].AsDeviceMemoryBase();
+      unowning_buffers[i] = *owning_buffers[i];
 
       VLOG(3) << "buffer #" << i << " allocated " << buffer_size << " bytes ["
-              << owning_buffers[i].opaque() << "]";
+              << owning_buffers[i]->opaque() << "]";
     }
 
     // Since the output buffer and all the temporary buffers were written into
     // by the JITed code, msan has no way of knowing their memory was
     // initialized. Mark them initialized so that msan doesn't flag loads from
     // these buffers.
-    TF_ANNOTATE_MEMORY_IS_INITIALIZED(owning_buffers[i].opaque(), buffer_size);
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(owning_buffers[i]->opaque(), buffer_size);
   }
 
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
@@ -207,7 +210,7 @@ Status CpuExecutable::ExecuteComputeFunction(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<OwningDeviceMemory> buffers) {
+    absl::Span<se::OwningDeviceMemory> buffers) {
   se::Stream* stream = run_options->stream();
   ScopedShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(),
@@ -216,7 +219,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
   const HloInputOutputAliasConfig& input_output_alias =
       module().input_output_alias_config();
 
-  // Move OwningDeviceMemory values which contain the array(s) of the result
+  // Move se::OwningDeviceMemory values which contain the array(s) of the result
   // into the respective location in ScopedShapedBuffer which is returned to the
   // caller.
   TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
@@ -235,7 +238,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
             const BufferAllocation::Slice slice,
             this->assignment_->GetUniqueSlice(src, buffer_source->index()));
         const BufferAllocation::Index buffer_index = slice.index();
-        OwningDeviceMemory& buffer = buffers[buffer_index];
+        se::OwningDeviceMemory& buffer = buffers[buffer_index];
         if (!slice.allocation()->is_entry_computation_parameter()) {
           // If the buffer coming out of the result is from a parameter, the
           // owning buffer will be null, and that means the caller aliased some
@@ -247,7 +250,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
           // ownership, and hence a buffer coming from there cannot be part of
           // the new ScopedShapedBuffer we create for the result (which assumes
           // ownership).
-          *device_memory = buffer.Forget();
+          *device_memory = buffer.Release();
         } else {
           auto output_alias = input_output_alias.GetAliasedOutput(
               slice.allocation()->parameter_number(),
@@ -294,11 +297,26 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
+  if (hlo_module_) {
+    const HloComputation* entry_comp = hlo_module_->entry_computation();
+    CHECK_EQ(entry_comp->num_parameters(), arguments.size())
+        << "Wrong number of arguments passed when running executable";
+    for (int64 i = 0; i < entry_comp->num_parameters(); ++i) {
+      const Shape& expected_shape =
+          entry_comp->parameter_instruction(i)->shape();
+      const Shape& actual_shape = arguments[i]->on_device_shape();
+      CHECK(expected_shape == actual_shape) << absl::StreamFormat(
+          "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
+          expected_shape.ToString(/*print_layout=*/true),
+          actual_shape.ToString(/*print_layout=*/true));
+    }
+  }
+
   auto* host_stream = dynamic_cast<se::host::HostStream*>(
       run_options->stream()->implementation());
   se::Stream* stream = run_options->stream();
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  std::vector<OwningDeviceMemory> owning_buffers;
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  std::vector<se::OwningDeviceMemory> owning_buffers;
   std::vector<se::DeviceMemoryBase> unowning_buffers;
   TF_ASSIGN_OR_RETURN(
       std::tie(unowning_buffers, owning_buffers),
@@ -326,7 +344,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     CpuExecutable* executable;
     ServiceExecutableRunOptions run_options;
     std::vector<se::DeviceMemoryBase> unowning_buffers;
-    std::shared_ptr<std::vector<OwningDeviceMemory>> buffers;
+    std::shared_ptr<std::vector<se::OwningDeviceMemory>> buffers;
     HloExecutionProfile* hlo_execution_profile;
 
     void operator()() {
@@ -338,7 +356,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   };
   host_stream->EnqueueTask(
       AsyncRunTask{this, *run_options, std::move(unowning_buffers),
-                   std::make_shared<std::vector<OwningDeviceMemory>>(
+                   std::make_shared<std::vector<se::OwningDeviceMemory>>(
                        std::move(owning_buffers)),
                    hlo_execution_profile});
 

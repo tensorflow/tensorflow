@@ -10,4 +10,6 @@ import "tensorflow/compiler/xla/xla_data.proto";
 message ConvInstructionLog {
   xla.HloInstructionProto instruction = 1;
   repeated xla.ShapeProto operand_shapes = 2;
+  uint64 result_address = 3;
+  repeated uint64 operand_addresses = 4;
 }

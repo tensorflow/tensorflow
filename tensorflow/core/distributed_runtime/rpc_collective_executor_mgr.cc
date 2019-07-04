@@ -80,7 +80,7 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
     gks->next_step_id_ = NewRandomStepId();
     done(Status::OK());
   } else {
-    WorkerInterface* wi = worker_cache_->CreateWorker(group_leader_);
+    WorkerInterface* wi = worker_cache_->GetOrCreateWorker(group_leader_);
     GetStepSequenceRequest* req = new GetStepSequenceRequest;
     GetStepSequenceResponse* resp = new GetStepSequenceResponse;
     req->add_graph_key(graph_key);

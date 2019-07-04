@@ -19,11 +19,9 @@ limitations under the License.
 
 namespace toco {
 
-namespace {
-
-::tensorflow::Status ResolveConstantShapeOrRankImpl(
-    Model* model, std::size_t op_index, bool only_for_constant_input,
-    bool* modified) {
+::tensorflow::Status ResolveConstantShapeOrRank::Run(Model* model,
+                                                     std::size_t op_index,
+                                                     bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
@@ -41,10 +39,6 @@ namespace {
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until the input array's shape has been resolved.
-    return ::tensorflow::Status::OK();
-  }
-
-  if (only_for_constant_input && !input_array.buffer) {
     return ::tensorflow::Status::OK();
   }
 
@@ -67,34 +61,9 @@ namespace {
   output_array.mutable_shape()->ReplaceDims(
       {static_cast<int>(output_buffer.data.size())});
 
-  // Delete the input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
-}
-
-}  // namespace
-
-::tensorflow::Status ResolveConstantShapeOrRank::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
-  return ResolveConstantShapeOrRankImpl(model, op_index,
-
-                                        /*only_for_constant_input=*/false,
-                                        modified
-
-  );
-}
-
-::tensorflow::Status ResolveConstantShapeOrRankOnlyForConstantInput::Run(
-    Model* model, std::size_t op_index, bool* modified) {
-  return ResolveConstantShapeOrRankImpl(
-      model, op_index, /*only_for_constant_input=*/true, modified);
 }
 
 }  // namespace toco

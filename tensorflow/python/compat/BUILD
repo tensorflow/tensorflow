@@ -1,8 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "v2_compat",

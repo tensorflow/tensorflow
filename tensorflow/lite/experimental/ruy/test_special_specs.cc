@@ -32,9 +32,16 @@ struct ZeroPointSupportSpec : BasicSpec<AccumScalar, DstScalar> {
 };
 
 template <typename AccumScalar, typename DstScalar>
-struct PackedLinearRCCSpec : BasicSpec<AccumScalar, DstScalar> {
-  static constexpr LayoutSupport kLayoutSupport =
-      LayoutSupport::kPackedLinearRCC;
+struct RCCSpec : BasicSpec<AccumScalar, DstScalar> {
+  static constexpr LayoutSupport kLayoutSupport = LayoutSupport::kRCC;
+};
+
+template <typename AccumScalar, typename DstScalar, typename LhsKernelLayout,
+          typename RhsKernelLayout>
+struct StandardCppKernelLayoutSpec : BasicSpec<AccumScalar, DstScalar> {
+  using StandardCppKernelLhsLayout = LhsKernelLayout;
+  using StandardCppKernelRhsLayout = RhsKernelLayout;
+  static int cache_friendly_traversal_threshold() { return 0; }
 };
 
 using LhsScalar = RUY_TEST_LHSSCALAR;
@@ -117,13 +124,39 @@ TEST(TestSpecialSpecs, ZeroPointSupport) {
       SymmetricZeroPoint<DstScalar>() - 1, ExpectedOutcome::kDeath);
 }
 
-TEST(TestSpecialSpecs, PackedLinearRCC) {
-  using PackedLinearRCCSpec = PackedLinearRCCSpec<AccumScalar, DstScalar>;
-  using PackedLinearRCCTestSet =
-      TestSet<LhsScalar, RhsScalar, PackedLinearRCCSpec>;
-  TestPackedLinearRCC<PackedLinearRCCTestSet>(81, 93, 72);
-  TestLinearAllOrders<PackedLinearRCCTestSet>(81, 93, 72,
-                                              ExpectedOutcome::kDeath);
+TEST(TestSpecialSpecs, RCC) {
+  using RCCSpec = RCCSpec<AccumScalar, DstScalar>;
+  using RCCTestSet = TestSet<LhsScalar, RhsScalar, RCCSpec>;
+  TestRCC<RCCTestSet>(81, 93, 72);
+  TestNonRCC<RCCTestSet>(81, 93, 72, ExpectedOutcome::kDeath);
+}
+
+template <typename LhsKernelLayout, typename RhsKernelLayout>
+void TestStandardCppKernelLayout() {
+  using SpecType =
+      StandardCppKernelLayoutSpec<AccumScalar, DstScalar, LhsKernelLayout,
+                                  RhsKernelLayout>;
+  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
+  for (int size = 1; size < 10; size++) {
+    TestLinearAllOrders<TestSetType>(size, size, size);
+  }
+  TestLinearAllOrders<TestSetType>(87, 34, 56);
+  TestLinearAllOrders<TestSetType>(123, 234, 78);
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutTrivial1x1) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 1>,
+                              FixedKernelLayout<Order::kColMajor, 1, 1>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutSquare4x4) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kRowMajor, 4, 4>,
+                              FixedKernelLayout<Order::kRowMajor, 4, 4>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutRectangular4x8) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 4>,
+                              FixedKernelLayout<Order::kColMajor, 1, 8>>();
 }
 
 }  // namespace ruy

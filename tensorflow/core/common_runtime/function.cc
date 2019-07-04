@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -401,6 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
+    Executor::RendezvousFactory rendezvous_factory = nullptr;
 
     ~Item() {
       delete this->func_graph;
@@ -408,7 +410,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
       delete this->overlay_flr;
     }
   };
-  std::unordered_map<Handle, std::unique_ptr<Item>> items_ GUARDED_BY(mu_);
+  std::unique_ptr<std::unordered_map<Handle, std::unique_ptr<Item>>> items_
+      GUARDED_BY(mu_);
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
@@ -458,6 +461,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
       next_handle_(0),
+      items_(new std::unordered_map<Handle, std::unique_ptr<Item>>),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
@@ -479,7 +483,16 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   }
 }
 
-FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {}
+FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
+  // Deleting the items_ list will delete all the function handles registered in
+  // this object. A function may contains a few sub-functions which have also
+  // been registered in this object. Deleting the parent function will call
+  // ReleaseHandle in this class again for each of the sub-functions. These
+  // circular calls may cause segfault since the items_ may have already been
+  // partially deleted when releasing handles of sub-functions. Explicitly
+  // release items_ here and check it in ReleaseHandle to avoid this.
+  items_.reset();
+}
 
 // An asynchronous op kernel which executes an instantiated function
 // defined in a library.
@@ -498,7 +511,6 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
@@ -511,6 +523,12 @@ class CallOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
+                              ",function_step_id=", opts.step_id, "#");
+        },
+        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
@@ -542,8 +560,8 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   }
 
   tf_shared_lock l(mu_);
-  auto iter = items_.find(local_handle);
-  CHECK(iter != items_.end());
+  auto iter = items_->find(local_handle);
+  CHECK(iter != items_->end());
   return iter->second->func_graph;
 }
 
@@ -720,8 +738,8 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         return errors::Internal("LocalHandle not found for handle ", *handle,
                                 ".");
       }
-      auto item_handle = items_.find(handle_on_device);
-      if (item_handle == items_.end()) {
+      auto item_handle = items_->find(handle_on_device);
+      if (item_handle == items_->end()) {
         return errors::Internal("LocalHandle ", handle_on_device,
                                 " for handle ", *handle,
                                 " not found in items.");
@@ -762,7 +780,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       local_handle = parent_->GetHandleOnDevice(device_name_, *handle);
-      ++items_[local_handle]->instantiation_counter;
+      ++(*items_)[local_handle]->instantiation_counter;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
@@ -773,8 +791,13 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
+      item->rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                    Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      };
       local_handle = next_handle_++;
-      items_.emplace(local_handle, std::unique_ptr<Item>(item));
+      items_->emplace(local_handle, std::unique_ptr<Item>(item));
     }
   }
 
@@ -791,13 +814,15 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   if (h == kInvalidLocalHandle) {
     return parent_->ReleaseHandle(handle);
   }
-
   std::unique_ptr<Item> item_to_delete;
   Status parent_status;
   {
     mutex_lock l(mu_);
-    auto it = items_.find(h);
-    if (it == items_.end()) {
+    // Return directly if all items has already been released.
+    if (items_ == nullptr) return Status::OK();
+
+    auto it = items_->find(h);
+    if (it == items_->end()) {
       return errors::Internal(
           "Inconsistent FunctionLibraryRuntime. Expected to find an item for "
           "handle ",
@@ -812,7 +837,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
       // CallOp or PartitionCallOp, their destructors will release cached
       // function handles, resulting in deadlock here.
       item_to_delete = std::move(item);
-      items_.erase(h);
+      items_->erase(h);
       parent_status = parent_->RemoveHandle(handle);
     }
   }
@@ -924,6 +949,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  params.rendezvous_factory = (*item)->rendezvous_factory;
   Graph* graph = g.get();
   std::unique_ptr<Executor> exec;
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, std::move(g), &exec));
@@ -942,8 +968,8 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(LocalHandle local_handle,
                                                    Item** item) {
   {
     tf_shared_lock l(mu_);
-    auto iter = items_.find(local_handle);
-    if (iter == items_.end()) {
+    auto iter = items_->find(local_handle);
+    if (iter == items_->end()) {
       return errors::Internal("Local function handle ", local_handle,
                               " is not valid. Likely an internal error.");
     }
@@ -1481,6 +1507,27 @@ Status ValidateNoInline(const FunctionBody* fbody) {
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
+// Propagate the debug info of `nodes` in function `func` to the `target` node.
+// If the debug info of any node is missing, its node name and function name
+// is used.
+void PropagateDebugInfoToNode(const string& func,
+                              const std::vector<const Node*>& nodes,
+                              NodeDef* target) {
+  if (nodes.empty() || target->has_experimental_debug_info()) {
+    return;
+  }
+  for (const Node* node : nodes) {
+    const auto& node_def = node->def();
+    if (node_def.has_experimental_debug_info()) {
+      target->mutable_experimental_debug_info()->MergeFrom(
+          node_def.experimental_debug_info());
+    } else {
+      target->mutable_experimental_debug_info()->add_original_node_names(
+          node_def.name());
+      target->mutable_experimental_debug_info()->add_original_func_names(func);
+    }
+  }
+}
 }  // namespace
 
 string InlineFunctionBodyOptions::DebugString() const {
@@ -1501,6 +1548,9 @@ string InlineFunctionBodyOptions::DebugString() const {
       "disable_inlining=", true_false(disable_inlining),
       ", ignore_noinline=", true_false(ignore_noinline),
       ", override_device=", true_false(ignore_noinline),
+      ", initialize_empty_device=", true_false(initialize_empty_device),
+      ", inline_impl_selection_group_functions=",
+      true_false(inline_impl_selection_group_functions),
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs");
@@ -1550,6 +1600,17 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
   if (options.disable_inlining) {
     return errors::InvalidArgument(
         "Function inlining explicitly disabled by 'options.disable_inlining'");
+  }
+
+  if (!options.inline_impl_selection_group_functions) {
+    bool is_impl_selection_group_function =
+        fbody->fdef.attr().find("api_implements") != fbody->fdef.attr().end();
+    if (is_impl_selection_group_function) {
+      return errors::InvalidArgument(
+          "Inlining of implementation selection group function ",
+          fbody->fdef.signature().name(),
+          " is disabled by options.inline_impl_selection_group_functions");
+    }
   }
 
   if (!options.ignore_noinline) {
@@ -1698,16 +1759,22 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
-    ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    if (options.override_device || ndef.device().empty()) {
+
+    if (options.override_device) {
       ndef.set_device(caller->def().device());
     }
-    for (auto& attr : *ndef.mutable_attr()) {
-      if (attr.first == "_class") {
-        attr.second.set_s(
-            strings::StrCat(caller->name(), "/", attr.second.s()));
-      }
+    if (options.initialize_empty_device && ndef.device().empty()) {
+      ndef.set_device(caller->def().device());
     }
+    PropagateDebugInfoToNode(fbody->fdef.signature().name(), {n}, &ndef);
+
+    // Add the function node name as a prefix:
+    //  1) to node name to avoid collisions
+    //  2) to frame name to avoid multiple LoopCond nodes in one frame
+    //  3) to colocation attribute
+    const string prefix = strings::StrCat(caller->name(), "/");
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
     if (options.override_device && !caller->assigned_device_name().empty()) {
@@ -2093,6 +2160,10 @@ void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
   Graph* dst = gbody->graph;
 
   std::vector<Node*> node_map(src.num_node_ids());
+
+  // Copy just the fdef attributes (copy '_noinline' and other similar flags to
+  // the gradient function body).
+  *(gbody->fdef.mutable_attr()) = fbody_->fdef.attr();
 
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();

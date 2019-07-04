@@ -151,7 +151,7 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
                   dtype=data_type).reshape(tensor_in_sizes)
     x2 = np.array([f * 1.0 for f in range(1, total_size_2 + 1)],
                   dtype=data_type).reshape(filter_in_sizes)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       if data_type == np.float32:
         tolerance = 1e-4
       else:
@@ -247,7 +247,7 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
                   dtype=np.float32).reshape(tensor_in_sizes)
     x2 = np.array([f * 1.0 for f in range(1, total_size_2 + 1)],
                   dtype=np.float32).reshape(filter_in_sizes)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(shape=tensor_in_sizes, dtype=np.float32)
       t2 = array_ops.placeholder(shape=filter_in_sizes, dtype=np.float32)
       with self.test_scope():
@@ -321,7 +321,7 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_xla):
-      with self.cached_session():
+      with self.session():
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = array_ops.placeholder(np.float32, shape=filter_sizes)
         t2 = array_ops.placeholder(np.float32, shape=output_sizes)
@@ -361,7 +361,7 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_xla):
-      with self.cached_session():
+      with self.session():
         t0 = array_ops.placeholder(np.float32, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = array_ops.placeholder(np.float32, shape=output_sizes)

@@ -129,10 +129,13 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
-  if (flatbuffer_tensor.quantization()) {
-    result->params.scale = flatbuffer_tensor.quantization()->scale()->Get(0);
-    result->params.zero_point =
-        flatbuffer_tensor.quantization()->zero_point()->Get(0);
+  const auto* src_quantization = flatbuffer_tensor.quantization();
+  if (src_quantization && src_quantization->scale() &&
+      (src_quantization->scale()->size() > 0) &&
+      src_quantization->zero_point() &&
+      (src_quantization->zero_point()->size() > 0)) {
+    result->params.scale = src_quantization->scale()->Get(0);
+    result->params.zero_point = src_quantization->zero_point()->Get(0);
   }
   result->allocation = nullptr;
   if (flatbuffer_tensor.name()) {

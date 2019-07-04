@@ -24,6 +24,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+
 // Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
 // for being fused. Note that further restrictions apply, e.g. Scatter must
 // be the root of an input fusion.
@@ -59,6 +61,12 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
+// Determines whether the combination of `instr1` and `instr2` into a (possibly
+// multi-output) fusion would be "too large" -- i.e., have more operands and
+// outputs than is allowed.
+bool FusionWouldBeTooLarge(const HloInstruction& instr1,
+                           const HloInstruction& instr2);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
@@ -69,9 +77,24 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
 
+// Whether the instructions are compatible for producer-consumer fusion
+// i.e. whether the producer and consumer are loop/input fusible and
+// they are not library calls.
+bool IsProducerConsumerFusible(const HloInstruction& producer,
+                               const HloInstruction& consumer);
+
+// Whether the instructions are producer-consumer fusible with multiple outputs.
+// That is, the root tuple of the multi-output fusion will contain the results
+// of both, the producer and consumer.
+bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
+                                          const HloInstruction& consumer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
+
+// Determines the fusion kind to be used when fusing `producer` and `consumer`.
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
 
 }  // namespace gpu
 }  // namespace xla

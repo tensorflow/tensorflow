@@ -42,7 +42,7 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
   to be explicitly included.  Here's a simple example of how it can be done:
 
   ```python
-    #`model` is an instance of `Model` with `tf.keras.layers.BatchNormalization`
+    # model is an instance of Model that contains BatchNormalization layer.
     update_ops = model.get_updates_for(None) + model.get_updates_for(features)
     train_op = optimizer.minimize(loss)
     train_op = tf.group([train_op, update_ops])

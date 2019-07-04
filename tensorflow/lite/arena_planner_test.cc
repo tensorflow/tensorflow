@@ -137,6 +137,7 @@ class TestGraphInfo : public GraphInfo {
   const TfLiteNode& node(size_t index) const override {
     return graph_->nodes()[index];
   }
+  size_t node_index(size_t index) const override { return index; }
   const std::vector<int>& inputs() const override { return graph_->inputs(); }
   const std::vector<int>& outputs() const override { return graph_->outputs(); }
   const std::vector<int>& variables() const override {

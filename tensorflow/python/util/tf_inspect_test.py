@@ -594,6 +594,28 @@ class TfInspectGetCallArgsTest(test.TestCase):
 
     self.assertEqual({}, tf_inspect.getcallargs(empty))
 
+  def testClashingParameterNames(self):
+
+    def func(positional, func=1, func_and_positional=2, kwargs=3):
+      return positional, func, func_and_positional, kwargs
+
+    kwargs = {}
+    self.assertEqual(
+        tf_inspect.getcallargs(func, 0, **kwargs), {
+            'positional': 0,
+            'func': 1,
+            'func_and_positional': 2,
+            'kwargs': 3
+        })
+    kwargs = dict(func=4, func_and_positional=5, kwargs=6)
+    self.assertEqual(
+        tf_inspect.getcallargs(func, 0, **kwargs), {
+            'positional': 0,
+            'func': 4,
+            'func_and_positional': 5,
+            'kwargs': 6
+        })
+
   def testUnboundFuncWithOneParamPositional(self):
 
     def func(a):
@@ -741,73 +763,6 @@ class TfInspectGetCallArgsTest(test.TestCase):
         'c': 'goodbye'
     }, tf_inspect.getcallargs(decorated, 4, c='goodbye'))
 
-  def testGetSourceNoUnwrapHandlesPlainDecorator(self):
-    def dec(f):
-      def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
-      return wrapper
-
-    @dec
-    def f():
-      return 1
-
-    source = tf_inspect.getsource_no_unwrap(f)
-    self.assertNotIn('dec', source)
-    self.assertIn('wrapper', source)
-    self.assertNotIn('return 1', source)
-
-  def testGetSourceNoUnwrapHandlesFunctoolsDecorator(self):
-    def dec(f):
-      @functools.wraps(f)
-      def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
-      return wrapper
-
-    @dec
-    def f():
-      return 1
-
-    source = tf_inspect.getsource_no_unwrap(f)
-    self.assertNotIn('dec', source)
-    self.assertIn('wrapper', source)
-    self.assertNotIn('return 1', source)
-
-  def testGetSourceNoUnwrapHandlesPlainDecoratorFactory(self):
-    def dec_factory():
-      def dec(f):
-        def wrapper(*args, **kwargs):
-          return f(*args, **kwargs)
-        return wrapper
-      return dec
-
-    @dec_factory()
-    def f():
-      return 1
-
-    source = tf_inspect.getsource_no_unwrap(f)
-    self.assertNotIn('factory', source)
-    self.assertNotIn('dec', source)
-    self.assertIn('wrapper', source)
-    self.assertNotIn('return 1', source)
-
-  def testGetSourceNoUnwrapHandlesFunctoolsDecoratorFactory(self):
-    def dec_factory():
-      def dec(f):
-        @functools.wraps(f)
-        def wrapper(*args, **kwargs):
-          return f(*args, **kwargs)
-        return wrapper
-      return dec
-
-    @dec_factory()
-    def f():
-      return 1
-
-    source = tf_inspect.getsource_no_unwrap(f)
-    self.assertNotIn('factory', source)
-    self.assertNotIn('dec', source)
-    self.assertIn('wrapper', source)
-    self.assertNotIn('return 1', source)
 
 if __name__ == '__main__':
   test.main()

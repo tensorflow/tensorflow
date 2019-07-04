@@ -80,6 +80,8 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+  unsigned global_address_space =
+      llvm_ir::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
     const Literal& literal = constant->literal();
     llvm::Constant* initializer =
@@ -89,11 +91,16 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/initializer,
-        /*Name=*/"");
+        /*Name=*/"", /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
+
     global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
-    llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-        global,
-        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+    llvm::Constant* shape_constant =
+        llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+            global,
+            llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
   };
@@ -295,9 +302,9 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     total += entry.second;
   }
 
-  // Check that the code duplication has at most a factor of 8 (where 8 is an
+  // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  return total > 8 * index_usage_count.size();
+  return total > 15 * index_usage_count.size();
 }
 
 }  // namespace xla

@@ -22,10 +22,13 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -76,6 +79,16 @@ class DropoutLayersTest(keras_parameterized.TestCase):
         kwargs={'rate': 0.5, 'data_format': 'channels_first'},
         input_shape=(2, 3, 4, 4, 5))
 
+  def test_dropout_partial_noise_shape(self):
+    inputs = keras.Input(shape=(5, 10))
+    layer = keras.layers.Dropout(0.5, noise_shape=(None, 1, None))
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    out = model(np.ones((20, 5, 10)), training=True)
+    out_np = keras.backend.get_value(out)
+    # Test that dropout mask is shared across second dim.
+    self.assertAllClose(out_np[:, 0, :], out_np[:, 1, :])
+
 
 @keras_parameterized.run_all_keras_modes
 class LambdaLayerTest(keras_parameterized.TestCase):
@@ -107,12 +120,14 @@ class LambdaLayerTest(keras_parameterized.TestCase):
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertEqual(ld.function(3), 4)
 
     # test with lambda
     ld = keras.layers.Lambda(
         lambda x: keras.backend.concatenate([math_ops.square(x), x]))
     config = ld.get_config()
     ld = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(self.evaluate(ld.function([3])), [9, 3])
 
   def test_lambda_multiple_inputs(self):
     ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
@@ -142,6 +157,11 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     l = keras.layers.Lambda(lambda_fn)
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual((10, 20), output_shape)
+    output_signature = l.compute_output_signature([
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 10)),
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 20))])
+    self.assertAllEqual((10, 20), output_signature.shape)
+    self.assertAllEqual(dtypes.float64, output_signature.dtype)
 
   def test_lambda_output_shape_list_multiple_outputs(self):
 
@@ -184,14 +204,25 @@ class LambdaLayerTest(keras_parameterized.TestCase):
 
   def test_lambda_config_serialization(self):
     # Test serialization with output_shape and output_shape_type
-    layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+    layer = keras.layers.Lambda(
+        lambda x: x + 1,
+        output_shape=(1, 1),
+        mask=lambda i, m: m)
     layer(keras.backend.variable(np.ones((1, 1))))
     config = layer.get_config()
+
     layer = keras.layers.deserialize({
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
+
     layer = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
 
   def test_lambda_with_variable(self):
 
@@ -216,6 +247,29 @@ class LambdaLayerTest(keras_parameterized.TestCase):
 
     self.assertEqual(keras.backend.get_value(train_out), 1.)
     self.assertEqual(keras.backend.get_value(eval_out), 2.)
+
+  def test_lambda_with_mask(self):
+
+    def add_one(inputs):
+      return inputs + 1.0
+
+    def mask(unused_inputs, previous_mask):
+      return previous_mask
+
+    layer = keras.layers.Lambda(add_one, mask=mask)
+    x = np.ones([5, 4, 3])
+    x[:, -1, :] = 0
+    masking = keras.layers.Masking()
+    out = layer(masking(x))
+
+    expected_out = np.full([5, 4, 3], 2.0)
+    expected_out[:, -1, :] = 1.0
+    expected_mask = np.ones([5, 4])
+    expected_mask[:, -1] = 0.0
+
+    self.assertAllClose(self.evaluate(out), expected_out)
+    self.assertIsNotNone(out._keras_mask)
+    self.assertAllClose(self.evaluate(out._keras_mask), expected_mask)
 
 
 class TestStatefulLambda(keras_parameterized.TestCase):
@@ -254,6 +308,25 @@ class CoreLayersTest(keras_parameterized.TestCase):
     self.assertTrue(hasattr(y, '_keras_mask'))
     self.assertTrue(y._keras_mask is not None)
     self.assertAllClose(self.evaluate(y._keras_mask), np.zeros((10,)))
+
+  def test_compute_mask_with_positional_mask_arg(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, mask=None):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        if mask is not None:
+          return array_ops.ones(())
+        else:
+          return array_ops.zeros(())
+
+    x, mask = array_ops.ones((1, 1)), array_ops.ones((1, 1))
+    layer = MyLayer()
+    y = layer(x, mask)
+    # Check that `mask` was correctly sent to `compute_mask`.
+    self.assertEqual(keras.backend.get_value(y._keras_mask), 1)
 
   def test_activation(self):
     # with string argument
@@ -361,6 +434,10 @@ class CoreLayersTest(keras_parameterized.TestCase):
         np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
     layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
     outputs = layer(inputs)
+    output_signature = layer.compute_output_signature(
+        tensor_spec.TensorSpec(dtype='float16', shape=(2, 2)))
+    self.assertEqual(output_signature.dtype, dtypes.float16)
+    self.assertEqual(output_signature.shape, (2, 5))
     self.assertEqual(outputs.dtype, 'float16')
     self.assertEqual(layer.kernel.dtype, 'float32')
 

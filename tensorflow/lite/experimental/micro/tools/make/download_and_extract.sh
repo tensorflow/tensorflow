@@ -81,7 +81,7 @@ download_and_extract() {
 
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
-  curl -Ls "${url}" > ${tempfile}
+  curl -Ls --retry 5 "${url}" > ${tempfile}
 
   # Check that the file was downloaded correctly using a checksum.
   DOWNLOADED_MD5=$(openssl dgst -md5 ${tempfile} | sed 's/.* //g')

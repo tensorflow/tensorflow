@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
@@ -58,9 +62,42 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   return opts;
 }
 
+static std::once_flag flags_init;
 static DebugOptions* flag_values;
 static std::vector<tensorflow::Flag>* flag_objects;
-static std::once_flag flags_init;
+
+// Maps pass -> initial fuel values (parsed when AllocateFlags was run).
+static absl::flat_hash_map<string, int64>* initial_fuel;
+
+// Maps pass -> whether fuel was ever consumed for that pass.
+static absl::node_hash_map<string, std::atomic<bool>>* fuel_ever_consumed;
+
+// Maps pass -> remaining fuel.
+//
+// All threads start off using this global fuel pool, but ResetThreadLocalFuel()
+// switches them to a thread-local fuel pool.
+static absl::node_hash_map<string, std::atomic<int64>>* global_fuel;
+
+// If we're using thread-local fuel, this stores it.
+static thread_local std::unique_ptr<
+    absl::node_hash_map<string, std::atomic<int64>>>
+    thread_fuel;  // NOLINT (global variable with nontrivial destructor)
+
+// Logs a warning if a pass's fuel was never consumed, on the theory that this
+// may be a typo in the flag value.  Called atexit.
+static void WarnIfFuelWasNeverConsumed() {
+  CHECK(fuel_ever_consumed != nullptr);
+  for (const auto& kv : *fuel_ever_consumed) {
+    absl::string_view pass = kv.first;
+    bool was_consumed = kv.second;
+    if (!was_consumed) {
+      LOG(ERROR) << absl::StreamFormat(
+          "Compiler fuel for \"%s\" was never consumed. This may be a typo in "
+          "the --xla_fuel flag you passed.",
+          pass);
+    }
+  }
+}
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
@@ -95,13 +132,22 @@ static void AllocateFlags() {
 
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
-    std::vector<string> disabled_passes =
-        absl::StrSplit(comma_separated_values, ',');
-    for (const auto& passname : disabled_passes) {
+    for (const auto& passname :
+         std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
       flag_values->add_xla_disable_hlo_passes(passname);
     }
     return true;
   };
+
+  // Custom "sub-parser" lambda for xla_enable_hlo_passes_only.
+  auto setter_for_xla_enable_hlo_passes_only =
+      [](string comma_separated_values) {
+        for (const auto& passname :
+             std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
+          flag_values->add_xla_enable_hlo_passes_only(passname);
+        }
+        return true;
+      };
 
   // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
@@ -121,6 +167,54 @@ static void AllocateFlags() {
         return parse_xla_reduce_precision_option(option_proto,
                                                  reduce_precision_option_value);
       };
+
+  // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
+  // locking on the fuel global variables.  This means that it's
+  // illegal/undefined behavior to modify this flag value while the compiler is
+  // running.
+  initial_fuel = new absl::flat_hash_map<string, int64>();
+  fuel_ever_consumed = new absl::node_hash_map<string, std::atomic<bool>>();
+  global_fuel = new absl::node_hash_map<string, std::atomic<int64>>();
+  auto setter_for_xla_fuel = [](string xla_fuel_value) {
+    initial_fuel->clear();
+    global_fuel->clear();
+    fuel_ever_consumed->clear();
+
+    for (const auto& kv : absl::StrSplit(xla_fuel_value, ',')) {
+      std::vector<string> pass_and_fuel = absl::StrSplit(kv, '=');
+      if (pass_and_fuel.size() != 2) {
+        LOG(ERROR) << absl::StreamFormat(
+            "Illegal value for --xla_fuel. Saw %s, but expected token %s to "
+            "have format X=INTEGER.",
+            xla_fuel_value, kv);
+        return false;
+      }
+      const auto& pass = pass_and_fuel[0];
+      const auto& fuel_str = pass_and_fuel[1];
+      int64 fuel;
+      if (!absl::SimpleAtoi(fuel_str, &fuel)) {
+        LOG(ERROR) << absl::StreamFormat(
+            "Illegal value for --xla_fuel. Saw %s, but expected token %s to be "
+            "an integer.",
+            xla_fuel_value, fuel_str);
+        return false;
+      }
+      initial_fuel->emplace(pass, fuel);
+      global_fuel->emplace(pass, fuel);
+      fuel_ever_consumed->emplace(pass, false);
+    }
+
+    // If --xla_fuel was specified, register an atexit handler which logs a
+    // warning if a pass was specified but never consumed any fuel, on the
+    // theory that this is may be a typo.
+    if (!initial_fuel->empty()) {
+      static std::once_flag register_atexit_once;
+      std::call_once(
+          register_atexit_once,
+          +[] { std::atexit(WarnIfFuelWasNeverConsumed); });
+    }
+    return true;
+  };
 
   flag_objects = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
@@ -186,6 +280,12 @@ static void AllocateFlags() {
           "Comma-separated list of hlo passes to be disabled. These names "
           "must exactly match the passes' names; no whitespace around "
           "commas."),
+      tensorflow::Flag(
+          "xla_enable_hlo_passes_only", setter_for_xla_enable_hlo_passes_only,
+          "",
+          "Comma-separated list of hlo passes to be enabled. These names "
+          "must exactly match the passes' names; no whitespace around "
+          "commas. The unspecified passes are all disabled."),
       tensorflow::Flag(
           "xla_disable_all_hlo_passes",
           bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
@@ -314,6 +414,10 @@ static void AllocateFlags() {
               &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
           flag_values->xla_gpu_disable_ptxas_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
+      tensorflow::Flag(
+          "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
+          "Sets compiler fuel, useful for bisecting bugs in passes.  Format "
+          "--xla_fuel=PASS1=NUM1,PASS2=NUM2,..."),
 
       tensorflow::Flag(
           "xla_dump_to", string_setter_for(&DebugOptions::set_xla_dump_to),
@@ -392,6 +496,11 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_allow_excess_precision),
           flag_values->xla_allow_excess_precision(),
           "Allow xla to increase the output precision of an instruction."),
+      tensorflow::Flag(
+          "xla_gpu_force_conv_nchw",
+          bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
+          flag_values->xla_gpu_force_conv_nchw(),
+          "For cuDNN convolutions, always NCHW layouts."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
@@ -405,6 +514,40 @@ void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
 xla::DebugOptions GetDebugOptionsFromFlags() {
   std::call_once(flags_init, &AllocateFlags);
   return *flag_values;
+}
+
+void ResetThreadLocalFuel() {
+  std::call_once(flags_init, &AllocateFlags);
+
+  thread_fuel.reset(new absl::node_hash_map<string, std::atomic<int64>>());
+  CHECK(initial_fuel != nullptr);
+  for (const auto& kv : *initial_fuel) {
+    thread_fuel->emplace(kv.first, kv.second);
+  }
+}
+
+bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
+  std::call_once(flags_init, &AllocateFlags);
+  if (just_ran_out != nullptr) {
+    *just_ran_out = false;
+  }
+  auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
+  if (fuel_pool->empty()) {
+    return true;
+  }
+  auto it = fuel_pool->find(pass);
+  if (it == fuel_pool->end()) {
+    return true;
+  }
+  std::atomic<int64>& remaining_fuel = it->second;
+  std::atomic<bool>& fuel_has_been_consumed = fuel_ever_consumed->at(pass);
+  fuel_has_been_consumed = true;
+
+  int64 remaining = remaining_fuel.fetch_sub(1);
+  if (just_ran_out != nullptr) {
+    *just_ran_out = remaining == 0;
+  }
+  return remaining > 0;
 }
 
 }  // namespace xla

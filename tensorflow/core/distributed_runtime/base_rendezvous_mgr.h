@@ -195,7 +195,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // Active outstanding RecvTensor calls.
   gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
 
-  bool is_initialized_locked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool is_initialized_locked() SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;
   }
 

@@ -209,7 +209,7 @@ class PoolingTest(test.TestCase):
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float64, expected, use_gpu, v2)
 
-    if not use_gpu or test_util.CudaSupportsHalfMatMulAndConv():
+    if not use_gpu or test_util.GpuSupportsHalfMatMulAndConv():
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                           data_format, dtypes.float16, expected, use_gpu, v2)
 
@@ -1412,7 +1412,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
-  @test_util.disable_xla("b/123923733")  # NaNs handled differently
+  @test_util.no_xla_auto_jit("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_1(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
@@ -1487,7 +1487,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
-  @test_util.disable_xla("b/123923733")  # NaNs handled differently
+  @test_util.no_xla_auto_jit("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [

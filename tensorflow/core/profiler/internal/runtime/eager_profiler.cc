@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -89,7 +91,12 @@ std::unique_ptr<ProfilerInterface> CreateEagerProfiler(
 }
 
 auto register_eager_profiler_factory = [] {
-  RegisterProfilerFactory(&CreateEagerProfiler);
+  bool enable;
+  TF_CHECK_OK(
+      ReadBoolFromEnvVar("TF_ENABLE_EAGER_RUNTIME_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateEagerProfiler);
+  }
   return 0;
 }();
 

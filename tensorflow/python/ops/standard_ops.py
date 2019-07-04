@@ -32,6 +32,7 @@ from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import random_grad
+from tensorflow.python.ops import rnn_grad
 from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
@@ -105,6 +106,8 @@ from tensorflow.python.ops.template import *
 from tensorflow.python.ops.tensor_array_ops import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
+from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
+
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order
 

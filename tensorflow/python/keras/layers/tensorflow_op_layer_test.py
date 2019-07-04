@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -264,6 +265,34 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       self.assertTrue(layer.built)
     # Test something that requires Layers to be built.
     model.summary()
+
+
+class InputInEagerTest(test.TestCase):
+  """Tests ops on graph tensors in Eager runtime.
+
+  Input returns graph/symbolic tensors in the Eager runtime (this
+  happens, for example, with tensors returned from Keras layers). These
+  should be routed to the graph-style branch of these ops (b/134715641)
+  """
+
+  def test_identity(self):
+    with context.eager_mode():
+      x = keras.Input(shape=(1,))
+      self.assertTrue(hasattr(x, 'graph'))
+      ident = array_ops.identity(x)
+
+      # This is now a graph tensor, and should be able to continue in graphland
+      self.assertIn('Identity', ident.name)
+
+  def test_size(self):
+    with context.eager_mode():
+      x = keras.Input(shape=(3,))
+      self.assertTrue(hasattr(x, 'graph'))
+      self.assertAllEqual(x.get_shape().as_list(), [None, 3])
+      sz = array_ops.size(x)
+
+      # This is now a graph tensor, and should be able to continue in graphland
+      self.assertIn('Size', sz.name)
 
 
 if __name__ == '__main__':

@@ -37,7 +37,7 @@ tf_class {
   }
   member_method {
     name: "bounding_shape"
-    argspec: "args=[\'self\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'axis\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "consumers"
@@ -45,43 +45,43 @@ tf_class {
   }
   member_method {
     name: "from_nested_row_lengths"
-    argspec: "args=[\'cls\', \'flat_values\', \'nested_row_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'flat_values\', \'nested_row_lengths\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_nested_row_splits"
-    argspec: "args=[\'cls\', \'flat_values\', \'nested_row_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'flat_values\', \'nested_row_splits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_nested_value_rowids"
-    argspec: "args=[\'cls\', \'flat_values\', \'nested_value_rowids\', \'nested_nrows\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'flat_values\', \'nested_value_rowids\', \'nested_nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "from_row_lengths"
-    argspec: "args=[\'cls\', \'values\', \'row_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'values\', \'row_lengths\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_row_limits"
-    argspec: "args=[\'cls\', \'values\', \'row_limits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'values\', \'row_limits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_row_splits"
-    argspec: "args=[\'cls\', \'values\', \'row_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'values\', \'row_splits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_row_starts"
-    argspec: "args=[\'cls\', \'values\', \'row_starts\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'values\', \'row_starts\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_sparse"
-    argspec: "args=[\'cls\', \'st_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'cls\', \'st_input\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "from_tensor"
-    argspec: "args=[\'cls\', \'tensor\', \'lengths\', \'padding\', \'ragged_rank\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'None\'], "
+    argspec: "args=[\'cls\', \'tensor\', \'lengths\', \'padding\', \'ragged_rank\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "from_value_rowids"
-    argspec: "args=[\'cls\', \'values\', \'value_rowids\', \'nrows\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'values\', \'value_rowids\', \'nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "nested_row_lengths"
@@ -89,7 +89,7 @@ tf_class {
   }
   member_method {
     name: "nrows"
-    argspec: "args=[\'self\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
+    argspec: "args=[\'self\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "row_lengths"
@@ -122,6 +122,10 @@ tf_class {
   member_method {
     name: "with_flat_values"
     argspec: "args=[\'self\', \'new_values\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_row_splits_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_values"

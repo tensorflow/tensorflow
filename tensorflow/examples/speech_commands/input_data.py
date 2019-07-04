@@ -458,8 +458,7 @@ class AudioProcessor(object):
           raise Exception(
               'Micro frontend op is currently not available when running'
               ' TensorFlow directly from Python, you need to build and run'
-              ' through Bazel'
-          )
+              ' through Bazel')
         sample_rate = model_settings['sample_rate']
         window_size_ms = (model_settings['window_size_samples'] *
                           1000) / sample_rate
@@ -480,9 +479,9 @@ class AudioProcessor(object):
             tf.expand_dims(tf.expand_dims(self.output_, -1), 0),
             max_outputs=1)
       else:
-        raise ValueError(
-            'Unknown preprocess mode "%s" (should be "mfcc", '
-            ' "average", or "micro")' % (model_settings['preprocess']))
+        raise ValueError('Unknown preprocess mode "%s" (should be "mfcc", '
+                         ' "average", or "micro")' %
+                         (model_settings['preprocess']))
 
       # Merge all the summaries and write them out to /tmp/retrain_logs (by
       # default)

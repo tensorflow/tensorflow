@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import gen_stateless_random_ops
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -43,7 +42,7 @@ def stateless_random_uniform(shape,
                              name=None):
   """Outputs deterministic pseudorandom values from a uniform distribution.
 
-  This is a stateless version of `tf.random_uniform`: if run twice with the
+  This is a stateless version of `tf.random.uniform`: if run twice with the
   same seeds, it will produce the same pseudorandom numbers.  The output is
   consistent across multiple runs on the same hardware (and between CPU
   and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
@@ -89,7 +88,7 @@ def stateless_random_uniform(shape,
     maxval = 1
   with ops.name_scope(name, "stateless_random_uniform",
                       [shape, seed, minval, maxval]) as name:
-    shape = random_ops._ShapeTensor(shape)  # pylint: disable=protected-access
+    shape = tensor_util.shape_tensor(shape)
     minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     if dtype.is_integer:
@@ -110,7 +109,7 @@ def stateless_random_normal(shape,
                             name=None):
   """Outputs deterministic pseudorandom values from a normal distribution.
 
-  This is a stateless version of `tf.random_normal`: if run twice with the
+  This is a stateless version of `tf.random.normal`: if run twice with the
   same seeds, it will produce the same pseudorandom numbers.  The output is
   consistent across multiple runs on the same hardware (and between CPU
   and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
@@ -131,7 +130,7 @@ def stateless_random_normal(shape,
   """
   with ops.name_scope(name, "stateless_random_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = random_ops._ShapeTensor(shape)  # pylint: disable=protected-access
+    shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
@@ -147,7 +146,8 @@ def stateless_truncated_normal(shape,
                                name=None):
   """Outputs deterministic pseudorandom values, truncated normally distributed.
 
-  This is a stateless version of `tf.truncated_normal`: if run twice with the
+  This is a stateless version of `tf.random.truncated_normal`: if run twice with
+  the
   same seeds, it will produce the same pseudorandom numbers.  The output is
   consistent across multiple runs on the same hardware (and between CPU
   and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
@@ -172,7 +172,7 @@ def stateless_truncated_normal(shape,
   """
   with ops.name_scope(name, "stateless_truncated_normal",
                       [shape, seed, mean, stddev]) as name:
-    shape = random_ops._ShapeTensor(shape)  # pylint: disable=protected-access
+    shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     rnd = gen_stateless_random_ops.stateless_truncated_normal(
@@ -190,7 +190,7 @@ def stateless_multinomial(logits,
                           name=None):
   """Draws deterministic pseudorandom samples from a multinomial distribution.
 
-  This is a stateless version of `tf.multinomial`: if run twice with the
+  This is a stateless version of `tf.random.categorical`: if run twice with the
   same seeds, it will produce the same pseudorandom numbers.  The output is
   consistent across multiple runs on the same hardware (and between CPU
   and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
@@ -201,8 +201,8 @@ def stateless_multinomial(logits,
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.stateless_multinomial(
-      tf.log([[10., 10.]]), 5, seed=[7, 17])
+  samples = tf.random.stateless_categorical(
+      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
   ```
 
   Args:
@@ -241,7 +241,7 @@ def stateless_categorical(logits,
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
   samples = tf.random.stateless_categorical(
-      tf.log([[10., 10.]]), 5, seed=[7, 17])
+      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
   ```
 
   Args:

@@ -41,19 +41,21 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
 namespace stream_executor {
 namespace cuda {
 
 string DriverVersionToString(DriverVersion version) {
-  return port::Printf("%d.%d.%d", std::get<0>(version), std::get<1>(version), std::get<2>(version));
+  return absl::StrFormat("%d.%d.%d", std::get<0>(version), std::get<1>(version),
+                         std::get<2>(version));
 }
 
 string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
@@ -65,13 +67,14 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 }
 
 port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
-  std::vector<string> pieces = port::Split(value, '.');
+  std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
-        port::Printf("expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
-                     "for driver version; got \"%s\"",
-                     value.c_str()));
+        absl::StrFormat(
+            "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
+            "for driver version; got \"%s\"",
+            value.c_str()));
   }
 
   int major;
@@ -80,23 +83,23 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
   if (!port::safe_strto32(pieces[0], &major)) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
-        port::Printf("could not parse major version number \"%s\" as an "
-                     "integer from string \"%s\"",
-                     pieces[0].c_str(), value.c_str()));
+        absl::StrFormat("could not parse major version number \"%s\" as an "
+                        "integer from string \"%s\"",
+                        pieces[0], value));
   }
   if (!port::safe_strto32(pieces[1], &minor)) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
-        port::Printf("could not parse minor version number \"%s\" as an "
-                     "integer from string \"%s\"",
-                     pieces[1].c_str(), value.c_str()));
+        absl::StrFormat("could not parse minor version number \"%s\" as an "
+                        "integer from string \"%s\"",
+                        pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !port::safe_strto32(pieces[2], &patch)) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
-        port::Printf("could not parse patch version number \"%s\" as an "
-                     "integer from string \"%s\"",
-                     pieces[2].c_str(), value.c_str()));
+        absl::StrFormat("could not parse patch version number \"%s\" as an "
+                        "integer from string \"%s\"",
+                        pieces[2], value));
   }
 
   DriverVersion result{major, minor, patch};
@@ -177,7 +180,7 @@ void Diagnostician::LogDiagnosticInformation() {
     string library_path = value == nullptr ? "" : value;
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
-    std::vector<string> pieces = port::Split(library_path, ':');
+    std::vector<string> pieces = absl::StrSplit(library_path, ':');
     for (const auto &piece : pieces) {
       if (piece.empty()) {
         continue;
@@ -263,9 +266,9 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       }
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
-      auto stripped_dso_version = port::StripSuffixString(dso_version, ".ld64");
+      auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion> *>(data);
-      *result = cuda::StringToDriverVersion(stripped_dso_version);
+      *result = cuda::StringToDriverVersion(string(stripped_dso_version));
       return 1;
     }
     return 0;
@@ -295,9 +298,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t space_index = version_and_rest.find(" ");
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
-  auto stripped_kernel_version =
-      port::StripSuffixString(kernel_version, ".ld64");
-  return cuda::StringToDriverVersion(stripped_kernel_version);
+  auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
+  return cuda::StringToDriverVersion(string(stripped_kernel_version));
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(

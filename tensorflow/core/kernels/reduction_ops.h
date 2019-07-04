@@ -117,8 +117,6 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
-FIX_MEAN_IDENTITY(complex64)
-FIX_MEAN_IDENTITY(complex128)
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>

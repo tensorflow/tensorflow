@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import tempfile
 
+from tensorflow.python.compat import compat
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.util.tf_export import tf_export
@@ -115,7 +116,7 @@ class StatsAggregatorV1(object):
   aggregator = tf.data.experimental.StatsAggregator()
   # ...
   stats_summary = aggregator.get_summary()
-  tf.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
   ```
 
   Note: This interface is experimental and expected to change. In particular,
@@ -125,18 +126,25 @@ class StatsAggregatorV1(object):
 
   def __init__(self):
     """Creates a `StatsAggregator`."""
-    self._resource = ged_ops.experimental_stats_aggregator_handle()
+    if compat.forward_compatible(2019, 8, 3):
+      self._resource = ged_ops.stats_aggregator_handle()
+    else:
+      self._resource = ged_ops.experimental_stats_aggregator_handle()
 
   def get_summary(self):
     """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
 
-    The returned tensor will contain a serialized `tf.summary.Summary` protocol
+    The returned tensor will contain a serialized `tf.compat.v1.summary.Summary`
+    protocol
     buffer, which can be used with the standard TensorBoard logging facilities.
 
     Returns:
       A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
-    return ged_ops.experimental_stats_aggregator_summary(self._resource)
+    if compat.forward_compatible(2019, 8, 3):
+      return ged_ops.stats_aggregator_summary(self._resource)
+    else:
+      return ged_ops.experimental_stats_aggregator_summary(self._resource)
 
 
 # TODO(b/116314787): Change this to StatsAggregatorV2 when we have stable

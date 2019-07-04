@@ -120,8 +120,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
           'Micro frontend op is currently not available when running TensorFlow'
           ' directly from Python, you need to build and run through Bazel, for'
           ' example'
-          ' `bazel run tensorflow/examples/speech_commands:freeze_graph`'
-      )
+          ' `bazel run tensorflow/examples/speech_commands:freeze_graph`')
     sample_rate = model_settings['sample_rate']
     window_size_ms = (model_settings['window_size_samples'] *
                       1000) / sample_rate

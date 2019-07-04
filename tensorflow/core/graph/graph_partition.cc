@@ -412,7 +412,7 @@ string ControlLoopName(const string& name) {
 
 bool IsControlLoop(const Node* node) {
   const string& name = node->name();
-  return str_util::StartsWith(name, "_cloop");
+  return absl::StartsWith(name, "_cloop");
 }
 
 // An enter node for control flow.

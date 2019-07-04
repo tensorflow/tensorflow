@@ -1,17 +1,22 @@
 # Description:
 #   GPU-platform specific StreamExecutor support code.
 
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 package(
-    default_visibility = ["//tensorflow/stream_executor:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # Filegroup used to collect source files for the dependency check.
@@ -98,6 +103,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -126,6 +132,7 @@ cc_library(
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -24,7 +24,7 @@ from tensorflow.python.keras.applications import keras_modules_injection
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.applications.imagenet_utils.preprocess_input')
+@keras_export('keras.applications.imagenet_utils.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
   return imagenet_utils.decode_predictions(*args, **kwargs)

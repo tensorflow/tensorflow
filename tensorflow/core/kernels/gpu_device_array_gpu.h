@@ -18,7 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_GPU_H_
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 namespace tensorflow {
 

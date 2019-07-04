@@ -36,9 +36,9 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const string& name, const HloModuleConfig& config)
+HloModule::HloModule(const string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
-      config_(config),
+      config_(std::move(config)),
       unique_id_(next_unique_module_id_++) {}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
@@ -137,7 +137,8 @@ void HloModule::ReplaceComputations(
         case HloOpcode::kMap:
         case HloOpcode::kReduce:
         case HloOpcode::kReduceWindow:
-        case HloOpcode::kScatter: {
+        case HloOpcode::kScatter:
+        case HloOpcode::kSort: {
           HloComputation* new_arg = tensorflow::gtl::FindWithDefault(
               replacements, instruction->to_apply(), nullptr);
           if (new_arg != nullptr) {

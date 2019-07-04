@@ -1,13 +1,15 @@
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_proto_library_py",
 )
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_proto_library(
     name = "tpu_embedding_configuration_proto",

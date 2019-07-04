@@ -27,7 +27,6 @@ import sys
 from tensorflow.python.tools.api.generator import doc_srcs
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
-from tensorflow.python.util import tf_inspect
 
 API_ATTRS = tf_export.API_ATTRS
 API_ATTRS_V1 = tf_export.API_ATTRS_V1
@@ -55,13 +54,9 @@ _DEPRECATION_FOOTER = """
 import sys as _sys
 from tensorflow.python.util import deprecation_wrapper as _deprecation_wrapper
 
-_DEPRECATED_TO_CANONICAL = {
-%s
-}
-
 if not isinstance(_sys.modules[__name__], _deprecation_wrapper.DeprecationWrapper):
   _sys.modules[__name__] = _deprecation_wrapper.DeprecationWrapper(
-      _sys.modules[__name__], "%s", _DEPRECATED_TO_CANONICAL)
+      _sys.modules[__name__], "%s")
 """
 
 
@@ -94,51 +89,48 @@ def format_import(source_module_name, source_name, dest_name):
       return 'import %s as %s' % (source_name, dest_name)
 
 
-def contains_deprecation_decorator(decorators):
-  return any(
-      d.decorator_name == 'deprecated' for d in decorators)
+def get_canonical_import(import_set):
+  """Obtain one single import from a set of possible sources of a symbol.
 
+  One symbol might come from multiple places as it is being imported and
+  reexported. To simplify API changes, we always use the same import for the
+  same module, and give preference based on higher priority and alphabetical
+  ordering.
 
-def has_deprecation_decorator(symbol, decorators):
-  """Checks if given object has a deprecation decorator.
-
-  We check if deprecation decorator is in decorators as well as
-  whether symbol is a class whose __init__ method has a deprecation
-  decorator.
   Args:
-    symbol: Unwrapped (i.e. without decorators) Python object.
-    decorators: Decorators originally wrapped around symbol.
+    import_set: (set) Imports providing the same symbol. This is a set of
+      tuples in the form (import, priority). We want to pick an import
+      with highest priority.
 
   Returns:
-    True if symbol has deprecation decorator.
+    A module name to import
   """
-  if contains_deprecation_decorator(decorators):
-    return True
-  if tf_inspect.isfunction(symbol):
-    return False
-  if not tf_inspect.isclass(symbol):
-    return False
-  if not hasattr(symbol, '__init__'):
-    return False
-  init_decorators, _ = tf_decorator.unwrap(symbol.__init__)
-  return contains_deprecation_decorator(init_decorators)
+  # We use the fact that list sorting is stable, so first we convert the set to
+  # a sorted list of the names and then we resort this list to move elements
+  # not in core tensorflow to the end.
+  # Here we sort by priority (higher preferred) and then  alphabetically by
+  # import string.
+  import_list = sorted(
+      import_set,
+      key=lambda imp_and_priority: (-imp_and_priority[1], imp_and_priority[0]))
+  return import_list[0][0]
 
 
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package):
+  def __init__(self, output_package, api_version):
     self._output_package = output_package
+    # Maps API module to API symbol name to set of tuples of the form
+    # (module name, priority).
+    # The same symbol can be imported from multiple locations. Higher
+    # "priority" indicates that import location is preferred over others.
     self._module_imports = collections.defaultdict(
         lambda: collections.defaultdict(set))
-    self._deprecated_module_imports = collections.defaultdict(
-        lambda: collections.defaultdict(set))
-    # Maps deprecated names to canonical names for each module
-    self._deprecation_to_canonical = collections.defaultdict(
-        lambda: collections.defaultdict(dict))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
     self._underscore_names_in_root = []
+    self._api_version = api_version
 
   def _check_already_imported(self, symbol_id, api_name):
     if (api_name in self._dest_import_to_id and
@@ -150,15 +142,15 @@ class _ModuleInitCodeBuilder(object):
     self._dest_import_to_id[api_name] = symbol_id
 
   def add_import(
-      self, symbol_id, dest_module_name, source_module_name, source_name,
+      self, symbol, source_module_name, source_name, dest_module_name,
       dest_name):
     """Adds this import to module_imports.
 
     Args:
-      symbol_id: (number) Unique identifier of the symbol to import.
-      dest_module_name: (string) Module name to add import to.
+      symbol: TensorFlow Python symbol.
       source_module_name: (string) Module to import from.
       source_name: (string) Name of the symbol to import.
+      dest_module_name: (string) Module name to add import to.
       dest_name: (string) Import the symbol using this name.
 
     Raises:
@@ -171,6 +163,7 @@ class _ModuleInitCodeBuilder(object):
     full_api_name = dest_name
     if dest_module_name:
       full_api_name = dest_module_name + '.' + full_api_name
+    symbol_id = -1 if not symbol else id(symbol)
     self._check_already_imported(symbol_id, full_api_name)
 
     if not dest_module_name and dest_name.startswith('_'):
@@ -179,20 +172,13 @@ class _ModuleInitCodeBuilder(object):
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
     # one.
-    self._module_imports[dest_module_name][full_api_name].add(import_str)
-
-  def add_deprecated_endpoint(
-      self, dest_module_name, dest_name, canonical_endpoint):
-    """Adds deprecated alias to deprecated_module_imports.
-
-    Args:
-      dest_module_name: (string) Module name in generated API.
-      dest_name: (string) Name in generated API.
-      canonical_endpoint: (string) Preferred endpoint that should be used
-        instead of the deprecated one.
-    """
-    self._deprecation_to_canonical[dest_module_name][dest_name] = (
-        canonical_endpoint)
+    priority = 0
+    if symbol and hasattr(symbol, '__module__'):
+      # Give higher priority to source module if it matches
+      # symbol's original module.
+      priority = int(source_module_name == symbol.__module__)
+    self._module_imports[dest_module_name][full_api_name].add(
+        (import_str, priority))
 
   def _import_submodules(self):
     """Add imports for all destination modules in self._module_imports."""
@@ -200,8 +186,6 @@ class _ModuleInitCodeBuilder(object):
     # For e.g. if we import 'foo.bar.Value'. Then, we also
     # import 'bar' in 'foo'.
     imported_modules = set(self._module_imports.keys())
-    imported_modules = imported_modules.union(
-        set(self._deprecated_module_imports.keys()))
     for module in imported_modules:
       if not module:
         continue
@@ -216,8 +200,8 @@ class _ModuleInitCodeBuilder(object):
         if submodule_index > 0:
           import_from += '.' + '.'.join(module_split[:submodule_index])
         self.add_import(
-            -1, parent_module, import_from,
-            module_split[submodule_index], module_split[submodule_index])
+            None, import_from, module_split[submodule_index],
+            parent_module, module_split[submodule_index])
 
   def build(self):
     """Get a map from destination module to __init__.py code for that module.
@@ -234,8 +218,9 @@ class _ModuleInitCodeBuilder(object):
     for dest_module, dest_name_to_imports in self._module_imports.items():
       # Sort all possible imports for a symbol and pick the first one.
       imports_list = [
-          sorted(imports)[0]
-          for _, imports in dest_name_to_imports.items()]
+          get_canonical_import(imports)
+          for _, imports in dest_name_to_imports.items()
+      ]
       module_text_map[dest_module] = '\n'.join(sorted(imports_list))
 
     # Expose exported symbols with underscores in root module
@@ -251,13 +236,11 @@ __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
 ''' % underscore_names_str
 
-    for dest_module, deprecated_name_to_canonical_name in (
-        self._deprecation_to_canonical.items()):
-      name_map_str = '\n'.join(
-          '    "%s": "%s",' % (d, c)
-          for d, c in deprecated_name_to_canonical_name.items())
-      footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-          name_map_str, dest_module)
+    if self._api_version == 1:  # Add 1.* deprecations.
+      for dest_module, _ in self._module_imports.items():
+        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+          footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+              dest_module)
 
     return module_text_map, footer_text_map
 
@@ -300,8 +283,7 @@ def add_imports_for_symbol(
     source_name,
     api_name,
     api_version,
-    output_module_prefix='',
-    decorators=None):
+    output_module_prefix=''):
   """Add imports for the given symbol to `module_code_builder`.
 
   Args:
@@ -312,16 +294,13 @@ def add_imports_for_symbol(
     api_name: API name. Currently, must be either `tensorflow` or `estimator`.
     api_version: API version.
     output_module_prefix: Prefix to prepend to destination module.
-    decorators: Tuple of symbol's decorators.
   """
-  names_attr_v2 = API_ATTRS[api_name].names
-  constants_attr_v2 = API_ATTRS[api_name].constants
   if api_version == 1:
     names_attr = API_ATTRS_V1[api_name].names
     constants_attr = API_ATTRS_V1[api_name].constants
   else:
-    names_attr = names_attr_v2
-    constants_attr = constants_attr_v2
+    names_attr = API_ATTRS[api_name].names
+    constants_attr = API_ATTRS[api_name].constants
 
   # If symbol is _tf_api_constants attribute, then add the constants.
   if source_name == constants_attr:
@@ -330,32 +309,17 @@ def add_imports_for_symbol(
         dest_module, dest_name = _get_name_and_module(export)
         dest_module = _join_modules(output_module_prefix, dest_module)
         module_code_builder.add_import(
-            -1, dest_module, source_module_name, name, dest_name)
+            None, source_module_name, name, dest_module, dest_name)
 
   # If symbol has _tf_api_names attribute, then add import for it.
   if (hasattr(symbol, '__dict__') and names_attr in symbol.__dict__):
-    # Get a list of all V2 names if we generate V1 API to check for
-    # deprecations.
-    exports_v2 = []
-    if api_version == 1 and hasattr(symbol, names_attr_v2):
-      exports_v2 = getattr(symbol, names_attr_v2)
-    canonical_endpoint = None
 
     # Generate import statements for symbols.
     for export in getattr(symbol, names_attr):  # pylint: disable=protected-access
       dest_module, dest_name = _get_name_and_module(export)
       dest_module = _join_modules(output_module_prefix, dest_module)
       module_code_builder.add_import(
-          id(symbol), dest_module, source_module_name, source_name, dest_name)
-      # Export is deprecated if it is not in 2.0.
-      if (export not in exports_v2 and
-          not dest_module.startswith(_COMPAT_MODULE_PREFIX) and
-          not has_deprecation_decorator(symbol, decorators)):
-        if not canonical_endpoint:
-          canonical_endpoint = tf_export.get_canonical_name_for_symbol(
-              symbol, api_name, True)
-        module_code_builder.add_deprecated_endpoint(
-            dest_module, dest_name, canonical_endpoint)
+          symbol, source_module_name, source_name, dest_module, dest_name)
 
 
 def get_api_init_text(packages,
@@ -383,7 +347,7 @@ def get_api_init_text(packages,
   """
   if compat_api_versions is None:
     compat_api_versions = []
-  module_code_builder = _ModuleInitCodeBuilder(output_package)
+  module_code_builder = _ModuleInitCodeBuilder(output_package, api_version)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -405,18 +369,16 @@ def get_api_init_text(packages,
           in _SYMBOLS_TO_SKIP_EXPLICITLY):
         continue
       attr = getattr(module, module_contents_name)
-      decorators, attr = tf_decorator.unwrap(attr)
+      _, attr = tf_decorator.unwrap(attr)
 
       add_imports_for_symbol(
           module_code_builder, attr, module.__name__, module_contents_name,
-          api_name, api_version,
-          decorators=decorators)
+          api_name, api_version)
       for compat_api_version in compat_api_versions:
         add_imports_for_symbol(
             module_code_builder, attr, module.__name__, module_contents_name,
             api_name, compat_api_version,
-            _COMPAT_MODULE_TEMPLATE % compat_api_version,
-            decorators=decorators)
+            _COMPAT_MODULE_TEMPLATE % compat_api_version)
 
   return module_code_builder.build()
 

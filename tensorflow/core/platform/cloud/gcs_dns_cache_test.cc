@@ -68,7 +68,7 @@ class GcsDnsCacheTest : public ::testing::Test {
  protected:
   void ResolveNameTest() {
     auto response = GcsDnsCache::ResolveName("www.googleapis.com");
-    EXPECT_LT(1, response.size()) << str_util::Join(response, ", ");
+    EXPECT_LT(1, response.size()) << absl::StrJoin(response, ", ");
   }
 
   void AnnotateRequestTest() {

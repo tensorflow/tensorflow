@@ -260,8 +260,8 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status s = session.Run({create_const}, &outputs);
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "GPU copy from non-DMA string tensor"))
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "GPU copy from non-DMA string tensor"))
       << s.ToString();
 }
 
@@ -367,9 +367,9 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   Status err = session.Run({create_op, identity}, &outputs);
   EXPECT_EQ(err.code(), errors::Code::INVALID_ARGUMENT);
   EXPECT_TRUE(
-      str_util::StrContains(err.error_message(),
-                            "During Variant Host->Device Copy: non-DMA-copy "
-                            "attempted of tensor type: string"))
+      absl::StrContains(err.error_message(),
+                        "During Variant Host->Device Copy: non-DMA-copy "
+                        "attempted of tensor type: string"))
       << err.error_message();
 }
 

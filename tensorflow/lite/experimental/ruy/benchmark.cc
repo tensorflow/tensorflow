@@ -36,7 +36,7 @@ struct BenchmarkShape {
 };
 
 template <typename TestSetType>
-std::vector<TestResult<DstScalar>> BenchmarkPackedLinearRCC(
+std::vector<std::unique_ptr<TestResult<DstScalar>>> BenchmarkRCC(
     const BenchmarkShape& shape) {
   TestSetType test_set;
   test_set.rows = shape.rows;
@@ -53,8 +53,10 @@ std::vector<TestResult<DstScalar>> BenchmarkPackedLinearRCC(
   test_set.rhs_zero_point = SymmetricZeroPoint<RhsScalar>() + asymmetry_rhs;
   test_set.use_specified_zero_points = true;
   test_set.perchannel = GetBoolEnvVarOrFalse("PERCHANNEL");
+  test_set.benchmark_prepack_lhs = GetBoolEnvVarOrFalse("PREPACK_LHS");
+  test_set.benchmark_prepack_rhs = GetBoolEnvVarOrFalse("PREPACK_RHS");
   test_set.Run();
-  return test_set.results;
+  return std::move(test_set.results);
 }
 
 void Benchmark() {
@@ -104,12 +106,12 @@ void Benchmark() {
 
   for (int i = 0; i < shapes.size(); i++) {
     const auto& shape = shapes[i];
-    const auto& results = BenchmarkPackedLinearRCC<TestSetType>(shape);
+    const auto& results = BenchmarkRCC<TestSetType>(shape);
     if (i == 0) {
       if (benchmark_cubic) {
         printf("size");
         for (const auto& result : results) {
-          printf(",%s", PathName(result).c_str());
+          printf(",%s", PathName(*result).c_str());
         }
         printf("\n");
       } else {
@@ -120,27 +122,30 @@ void Benchmark() {
     if (benchmark_cubic) {
       printf("%d", shape.rows);
       for (const auto& result : results) {
-        printf(",%.4g",
-               2.0e-9 * shape.rows * shape.cols * shape.depth / result.latency);
-        if (getenv("RUY_BENCHMARK_PMU")) {
-          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g", result.l1_refill_rate,
-                 result.l2_refill_rate, result.l3_refill_rate,
-                 result.mispred_rate, result.frontend_stall_rate,
-                 result.backend_stall_rate);
+        printf(",%.4g", 2.0e-9 * shape.rows * shape.cols * shape.depth /
+                            result->latency);
+        if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g",
+                 result->l1_refill_rate, result->l2_refill_rate,
+                 result->l3_refill_rate, result->l1tlb_refill_rate,
+                 result->l2tlb_refill_rate, result->mispred_rate,
+                 result->frontend_stall_rate, result->backend_stall_rate);
         }
       }
       printf("\n");
       fflush(stdout);
     } else {
       for (const auto& result : results) {
-        printf("%s,%dx%dx%d,%.4g", PathName(result).c_str(), shape.rows,
-               shape.depth, shape.cols,
-               2.0e-9 * shape.rows * shape.cols * shape.depth / result.latency);
-        if (getenv("RUY_BENCHMARK_PMU")) {
-          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g", result.l1_refill_rate,
-                 result.l2_refill_rate, result.l3_refill_rate,
-                 result.mispred_rate, result.frontend_stall_rate,
-                 result.backend_stall_rate);
+        printf(
+            "%s,%dx%dx%d,%.4g", PathName(*result).c_str(), shape.rows,
+            shape.depth, shape.cols,
+            2.0e-9 * shape.rows * shape.cols * shape.depth / result->latency);
+        if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g",
+                 result->l1_refill_rate, result->l2_refill_rate,
+                 result->l3_refill_rate, result->l1tlb_refill_rate,
+                 result->l2tlb_refill_rate, result->mispred_rate,
+                 result->frontend_stall_rate, result->backend_stall_rate);
         }
         printf("\n");
       }

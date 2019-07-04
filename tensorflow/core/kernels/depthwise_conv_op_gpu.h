@@ -192,7 +192,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.x depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -480,7 +480,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.z depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -656,12 +656,12 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
       kBlockDepth * (tile_pixels + filter_pixels) * sizeof(S);
   const int num_outputs = args.out_rows * args.out_cols * block_count;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+  GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
-                               shared_memory_size, device.stream(), args, input,
-                               filter, output));
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args, input,
+                              filter, output));
   return Status::OK();
 }
 
@@ -744,17 +744,17 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_outputs, device, kernel, 0, 0);
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_outputs, device, kernel, 0, 0);
   // The compile-time constant version runs faster with a single block.
   const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
                                   : device.getNumGpuMultiProcessors();
-  TF_CHECK_OK(CudaLaunchKernel(kernel,
-                               std::min(max_block_count, config.block_count),
-                               config.thread_per_block, 0, device.stream(),
-                               args, input, filter, output, num_outputs));
+  TF_CHECK_OK(GpuLaunchKernel(kernel,
+                              std::min(max_block_count, config.block_count),
+                              config.thread_per_block, 0, device.stream(), args,
+                              input, filter, output, num_outputs));
   return Status::OK();
 }
 
@@ -967,9 +967,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-  TF_CHECK_OK(CudaLaunchKernel(
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
+  TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
   return Status::OK();
@@ -1158,7 +1158,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.z));
   // Holds block plus halo and filter data for blockDim.x depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -1431,7 +1431,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.x));
   // Holds block plus halo and filter data for blockDim.z depths.
-  extern __shared__ __align__(8) unsigned char shared_memory[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
@@ -1611,12 +1611,12 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
                                      " is not supported");
   }
   const int num_out_backprop = args.out_rows * args.out_cols * block_count;
-  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+  GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
-                               shared_memory_size, device.stream(), args,
-                               out_backprop, input, filter_backprop));
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args,
+                              out_backprop, input, filter_backprop));
   return Status::OK();
 }
 
@@ -1715,9 +1715,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_out_backprop, device, kernel, 0, 0);
-  TF_CHECK_OK(CudaLaunchKernel(
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
+  TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));
   return Status::OK();

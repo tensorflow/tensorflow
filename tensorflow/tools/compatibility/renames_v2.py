@@ -116,7 +116,7 @@ renames = {
     'tf.SessionLog':
         'tf.compat.v1.SessionLog',
     'tf.SparseConditionalAccumulator':
-        'tf.sparse.SparseConditionalAccumulator',
+        'tf.compat.v1.SparseConditionalAccumulator',
     'tf.SparseFeature':
         'tf.io.SparseFeature',
     'tf.SparseTensorValue':
@@ -269,6 +269,8 @@ renames = {
         'tf.compat.dimension_at_index',
     'tf.dimension_value':
         'tf.compat.dimension_value',
+    'tf.disable_control_flow_v2':
+        'tf.compat.v1.disable_control_flow_v2',
     'tf.disable_eager_execution':
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
@@ -321,6 +323,8 @@ renames = {
         'tf.math.divide_no_nan',
     'tf.dtypes.as_string':
         'tf.strings.as_string',
+    'tf.enable_control_flow_v2':
+        'tf.compat.v1.enable_control_flow_v2',
     'tf.enable_eager_execution':
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
@@ -355,6 +359,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimator',
     'tf.estimator.tpu.TPUEstimatorSpec':
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
+    'tf.estimator.tpu.experimental.EmbeddingSpec':
+        'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -383,8 +389,12 @@ renames = {
         'tf.signal.fft3d',
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
+    'tf.floor_div':
+        'tf.compat.v1.floor_div',
     'tf.floordiv':
         'tf.math.floordiv',
+    'tf.floormod':
+        'tf.math.floormod',
     'tf.get_collection':
         'tf.compat.v1.get_collection',
     'tf.get_collection_ref':
@@ -441,12 +451,14 @@ renames = {
         'tf.compat.v1.image.resize_bicubic',
     'tf.image.resize_bilinear':
         'tf.compat.v1.image.resize_bilinear',
+    'tf.image.resize_image_with_crop_or_pad':
+        'tf.image.resize_with_crop_or_pad',
     'tf.image.resize_image_with_pad':
         'tf.compat.v1.image.resize_image_with_pad',
     'tf.image.resize_nearest_neighbor':
         'tf.compat.v1.image.resize_nearest_neighbor',
     'tf.image.transpose_image':
-        'tf.compat.v1.image.transpose_image',
+        'tf.image.transpose',
     'tf.initialize_all_tables':
         'tf.compat.v1.initialize_all_tables',
     'tf.initialize_all_variables':
@@ -495,6 +507,8 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
+    'tf.keras.backend.set_session':
+        'tf.compat.v1.keras.backend.set_session',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -603,6 +617,8 @@ renames = {
         'tf.compat.v1.lite.constants.TFLITE',
     'tf.lite.experimental.convert_op_hints_to_stubs':
         'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.get_potentially_supported_ops':
+        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
     'tf.lite.experimental.nn.TFLiteLSTMCell':
         'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
     'tf.lite.experimental.nn.TfLiteRNNCell':
@@ -805,6 +821,8 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mod':
+        'tf.math.mod',
     'tf.model_variables':
         'tf.compat.v1.model_variables',
     'tf.moving_average_variables':
@@ -877,6 +895,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':
@@ -1127,6 +1147,8 @@ renames = {
         'tf.sets.union',
     'tf.space_to_depth':
         'tf.compat.v1.space_to_depth',
+    'tf.sparse.SparseConditionalAccumulator':
+        'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge':
@@ -1233,6 +1255,8 @@ renames = {
         'tf.compat.v1.summary.SummaryDescription',
     'tf.summary.TaggedRunMetadata':
         'tf.compat.v1.summary.TaggedRunMetadata',
+    'tf.summary.all_v2_summary_ops':
+        'tf.compat.v1.summary.all_v2_summary_ops',
     'tf.summary.audio':
         'tf.compat.v1.summary.audio',
     'tf.summary.get_summary_description':
@@ -1297,6 +1321,16 @@ renames = {
         'tf.compat.v1.tpu.core',
     'tf.tpu.cross_replica_sum':
         'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.experimental.AdagradParameters':
+        'tf.compat.v1.tpu.experimental.AdagradParameters',
+    'tf.tpu.experimental.AdamParameters':
+        'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.StochasticGradientDescentParameters':
+        'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
+    'tf.tpu.experimental.embedding_column':
+        'tf.compat.v1.tpu.experimental.embedding_column',
+    'tf.tpu.experimental.shared_embedding_columns':
+        'tf.compat.v1.tpu.experimental.shared_embedding_columns',
     'tf.tpu.initialize_system':
         'tf.compat.v1.tpu.initialize_system',
     'tf.tpu.outside_compilation':
@@ -1423,6 +1457,10 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
+    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
+    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':
@@ -1527,6 +1565,8 @@ renames = {
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
+    'tf.where_v2':
+        'tf.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

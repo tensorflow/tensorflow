@@ -35,7 +35,7 @@ class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -129,11 +129,11 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     self._atol[dtypes.float64] = 1e-10
     self._rtol[dtypes.float64] = 1e-10
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     return [dtypes.float32, dtypes.float64]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
 
@@ -205,7 +205,7 @@ class NonSquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     matrix = linear_operator_test_util.random_normal(shape, dtype=dtype)
 
@@ -234,4 +234,8 @@ class NonSquareLinearOperatorFullMatrixTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorFullMatrixTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorFullMatrixTest)
+  linear_operator_test_util.add_tests(
+      SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest)
   test.main()

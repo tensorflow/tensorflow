@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -17,9 +19,10 @@ filegroup(
 py_library(
     name = "core",
     srcs = [
+        "ag_ctx.py",
         "config.py",
+        "config_lib.py",
         "converter.py",
-        "errors.py",
         "function_wrapping.py",
         "naming.py",
         "unsupported_features_checker.py",
@@ -61,21 +64,6 @@ py_test(
         ":core",
         ":test_lib",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "errors_test",
-    srcs = ["errors_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":core",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
     ],
 )
 

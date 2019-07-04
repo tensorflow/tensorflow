@@ -1,9 +1,15 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
-licenses(["notice"])  # Apache 2.0
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -21,11 +27,6 @@ filegroup(
     ]),
 )
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
-
 cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
@@ -39,6 +40,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
@@ -49,8 +51,8 @@ tf_cc_test(
     srcs = ["alias_analysis_test.cc"],
     deps = [
         ":alias_analysis",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -311,6 +312,29 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // CopyDone forwards its aliased operand.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(copy_done);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(copy_done->operand(0));
+  operand_points_to_set.ForEachElement(
+      [&points_to_set, &operand_points_to_set](
+          const ShapeIndex& src_index,
+          const PointsToSet::BufferList& points_to) {
+        if (src_index == ShapeIndex({0})) {
+          const ShapeIndex target_index = {};
+          *points_to_set.mutable_element(target_index) = points_to;
+
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(src_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        }
+      });
+
   return Status::OK();
 }
 
@@ -754,6 +778,14 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
                                           other_add_operand_index);
+    } else if (user->IsCustomFusion()) {
+      std::vector<int64> operand_indices = user->OperandIndices(operand);
+      return operand_indices.size() == 1 && operand_indices[0] == 0 &&
+             absl::c_any_of(
+                 user->fused_instructions_computation()->instructions(),
+                 [](const HloInstruction* hlo) {
+                   return hlo->opcode() == HloOpcode::kScatter;
+                 });
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||

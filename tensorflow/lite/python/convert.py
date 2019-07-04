@@ -27,21 +27,14 @@ import tempfile as _tempfile
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
+from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
-# Lazy load since some of the performance benchmark skylark rules
-# break dependencies.
-_toco_python = LazyLoader(
-    "tensorflow_wrap_toco", globals(),
-    "tensorflow.lite.toco.python."
-    "tensorflow_wrap_toco")
-del LazyLoader
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -81,6 +74,11 @@ class OpsSet(enum.Enum):
   # WARNING: Experimental interface, subject to change.
   SELECT_TF_OPS = "SELECT_TF_OPS"
 
+  # Convert model using only TensorFlow Lite quantized int8 operations.
+  # Specifying this will throw an error for operations that do not yet have
+  # quantized implementations.
+  TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
+
   def __str__(self):
     return self.value
 
@@ -119,8 +117,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # switch this on.
   if not _toco_from_proto_bin:
     try:
-      model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                           input_data_str)
+      model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
+                                                 toco_flags_str, input_data_str)
       return model_str
     except Exception as e:
       raise ConverterError("TOCO failed: %s" % e)
@@ -196,10 +194,12 @@ def build_toco_convert_protos(input_tensors,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
+                              quantize_to_float16=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
                               target_ops=None,
-                              allow_nonexistent_arrays=False):
+                              allow_nonexistent_arrays=False,
+                              debug_info=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -248,6 +248,8 @@ def build_toco_convert_protos(input_tensors,
       of the converted float model. Model size will be reduced and there will be
       latency improvements (at the cost of accuracy).
       (default False)
+    quantize_to_float16: Boolean indicating whether to convert float buffers
+        to float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
@@ -259,10 +261,12 @@ def build_toco_convert_protos(input_tensors,
       (default set([OpsSet.TFLITE_BUILTINS]))
     allow_nonexistent_arrays: Allow specifying array names that don't exist
       or are unused in the final graph. (default False)
+    debug_info: `GraphDebugInfo` proto containing the stack traces for the
+      original nodes referred by the converted graph.
 
   Returns:
-    model_flags, toco_flags: two protocol buffers describing the conversion
-    process.
+    model_flags, toco_flags, debug_info: three protocol buffers describing the
+    conversion process and debug information.
 
   Raises:
     ValueError:
@@ -284,6 +288,7 @@ def build_toco_convert_protos(input_tensors,
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
   toco.post_training_quantize = post_training_quantize
+  toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
@@ -321,7 +326,7 @@ def build_toco_convert_protos(input_tensors,
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
 
-  return model, toco
+  return model, toco, debug_info
 
 
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
@@ -352,7 +357,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors=[], output_tensors=[], *args, **kwargs)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
@@ -399,7 +404,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors, output_tensors, *args, **kwargs)
   data = toco_convert_protos(model_flags.SerializeToString(),
                              toco_flags.SerializeToString(),

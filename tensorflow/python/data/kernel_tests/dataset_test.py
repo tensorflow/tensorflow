@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -29,12 +31,14 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -47,6 +51,31 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
     self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+
+  def testAsFunctionWithMap(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only works executing eagerly")
+    with ops.device("CPU"):
+      original_dataset = dataset_ops.Dataset.range(5).map(lambda x: x * 2)
+      fn = original_dataset._trace_variant_creation()
+      variant = fn()
+
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
+      self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
+
+  def testAsFunctionWithMapInFlatMap(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only works executing eagerly")
+    with ops.device("CPU"):
+      original_dataset = dataset_ops.Dataset.range(5).flat_map(
+          lambda x: dataset_ops.Dataset.range(5).map(lambda x: x * 2))
+      fn = original_dataset._trace_variant_creation()
+      variant = fn()
+
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
+      self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
   @staticmethod
   def make_apply_fn(dataset):
@@ -165,6 +194,12 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_fn = self.make_interleave_fn(*interleave_fn_args)
     self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
 
+  def testNoWarnings(self):
+    with test.mock.patch.object(warnings, "warn") as mock_log:
+      dataset_fn = self.make_interleave_fn(dataset_ops.Dataset.range(10))
+      dataset_fn(dataset_ops.Dataset.range(10))
+      self.assertEmpty(mock_log.call_args_list)
+
   @parameterized.named_parameters(
       ("Concatenate", lambda x, y: x.concatenate(y),
        lambda: dataset_ops.Dataset.range(0),
@@ -220,16 +255,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Tensor", lambda: constant_op.constant(37.0),
        structure.TensorStructure(dtypes.float32, [])),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1])),
+          indices=[[0]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1])),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
-          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
-       structure.NestedStructure({
-           "a": structure.TensorStructure(dtypes.float32, []),
-           "b": (structure.TensorStructure(dtypes.string, [1]),
-                 structure.TensorStructure(dtypes.string, []))})),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
+      }, {
+          "a":
+              structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.TensorStructure(
+              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+      }),
       ("Dataset", lambda: dataset_ops.Dataset.from_tensor_slices(
           constant_op.constant([1, 2, 3])),
        dataset_ops.DatasetStructure(
@@ -240,18 +277,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
-    dataset_structure = structure.Structure.from_value(dataset)
+    dataset_structure = structure.type_spec_from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
 
-    # TODO(b/110122868): Add a public API to `tf.data.Dataset` for accessing
-    # the element structure.
-    self.assertTrue(expected_element_structure.is_compatible_with(
-        dataset_structure._element_structure))
-    self.assertTrue(dataset_structure._element_structure.is_compatible_with(
-        expected_element_structure))
-
-    self.assertEqual([dtypes.variant], dataset_structure._flat_types)
-    self.assertEqual([tensor_shape.scalar()], dataset_structure._flat_shapes)
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset), expected_element_structure))
+    self.assertEqual([dtypes.variant],
+                     structure.get_flat_tensor_types(dataset_structure))
+    self.assertEqual([tensor_shape.scalar()],
+                     structure.get_flat_tensor_shapes(dataset_structure))
 
     # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
     # and _to_tensor_list().
@@ -307,6 +342,51 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       for foo in dataset:
         self.assertEqual(val, foo.numpy())
         val += 1
+
+  def testDatasetAsFunctionArgument(self):
+
+    @def_function.function
+    def _uses_dataset(d):
+      accumulator = array_ops.zeros([], dtype=dtypes.int64)
+      for value in d:
+        accumulator += value
+      return accumulator
+
+    with ops.device("CPU"):
+      first_dataset = dataset_ops.Dataset.range(10)
+      self.assertEqual(45, self.evaluate(_uses_dataset(first_dataset)))
+      second_dataset = dataset_ops.Dataset.range(11)
+      self.assertEqual(55, self.evaluate(_uses_dataset(second_dataset)))
+      first_concrete = _uses_dataset.get_concrete_function(first_dataset)
+      # The dataset should not be a captured input
+      self.assertEmpty(first_concrete.graph.captures)
+      # The two datasets have the same structure and so should re-use a trace.
+      self.assertIs(first_concrete,
+                    _uses_dataset.get_concrete_function(second_dataset))
+      # With a different structure we should use a different trace.
+      self.assertIsNot(
+          first_concrete,
+          _uses_dataset.get_concrete_function(
+              dataset_ops.Dataset.zip((first_dataset, second_dataset))))
+
+  def testLimitedRetracing(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(ds):
+      trace_count[0] += 1
+      counter = np.int64(0)
+      for elem in ds:
+        counter += elem
+      return counter
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset2 = dataset_ops.Dataset.range(10)
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(dataset)), 10)
+      self.assertEqual(self.evaluate(f(dataset2)), 45)
+      self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":

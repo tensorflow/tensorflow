@@ -22,7 +22,8 @@ limitations under the License.
 %ignoreall
 %unignore tensorflow;
 %unignore tensorflow::IsGoogleCudaEnabled;
-%unignore tensorflow::CudaSupportsHalfMatMulAndConv;
+%unignore tensorflow::IsBuiltWithROCm;
+%unignore tensorflow::GpuSupportsHalfMatMulAndConv;
 %unignore tensorflow::IsMklEnabled;
 %include "tensorflow/core/util/port.h"
 %unignoreall

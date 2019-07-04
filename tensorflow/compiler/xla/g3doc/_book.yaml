@@ -29,6 +29,8 @@ upper_tabs:
         path: /xla/tiled_layout
       - title: Using AOT compilation
         path: /xla/tfcompile
+      - title: Writing custom calls
+        path: /xla/custom_call
       - heading: Tutorials
       - title: XLA compile API
         path: /xla/tutorials/xla_compile

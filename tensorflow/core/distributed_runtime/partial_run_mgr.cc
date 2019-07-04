@@ -15,16 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
 
-namespace tensorflow {
+#include "tensorflow/core/util/ptr_util.h"
 
-namespace {
-// TODO(suharshs): Move this to a common location to allow other part of the
-// repo to use it.
-template <typename T, typename... Args>
-std::unique_ptr<T> MakeUnique(Args&&... args) {
-  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
-}  // namespace
+namespace tensorflow {
 
 bool PartialRunMgr::FindOrCreate(int step_id,
                                  CancellationManager** cancellation_manager) {
@@ -35,8 +28,10 @@ bool PartialRunMgr::FindOrCreate(int step_id,
     return false;
   }
 
-  std::unique_ptr<PartialRunState> partial_run = MakeUnique<PartialRunState>();
-  partial_run->cancellation_manager = MakeUnique<CancellationManager>();
+  std::unique_ptr<PartialRunState> partial_run =
+      tensorflow::MakeUnique<PartialRunState>();
+  partial_run->cancellation_manager =
+      tensorflow::MakeUnique<CancellationManager>();
   *cancellation_manager = partial_run->cancellation_manager.get();
   step_id_to_partial_run_[step_id] = std::move(partial_run);
   return true;

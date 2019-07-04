@@ -221,6 +221,8 @@ class NodeTypeAttrMap {
       return errors::InvalidArgument("NodeTypeAttrMap is already initialized.");
     }
     graph_ = &graph;
+    function_library_.reset(
+        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
@@ -272,10 +274,7 @@ class NodeTypeAttrMap {
  private:
   Status AddNode(const NodeDef& node) {
     const OpDef* op_def_ptr = nullptr;
-    // TODO(benbarsdell): This may fail if node.op() is a function. It will
-    // need to be addressed when we add support for functions.
-    TF_RETURN_IF_ERROR(
-        OpRegistry::Global()->LookUpOpDef(node.op(), &op_def_ptr));
+    TF_RETURN_IF_ERROR(function_library_->LookUpOpDef(node.op(), &op_def_ptr));
     const OpDef& op_def = *op_def_ptr;
     auto& type2io_entry = type2io_[&node];
     auto& io2type_entry = io2type_[&node];
@@ -343,6 +342,7 @@ class NodeTypeAttrMap {
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
   const GraphDef* graph_ = nullptr;  // do not own
+  std::unique_ptr<FunctionLibraryDefinition> function_library_;
 
   typedef absl::flat_hash_set<int> IntSet;
   // Maps a type attr id -> (input port set, output port set)
@@ -1479,35 +1479,37 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
   }
 }
 
-// Forces NextIteration nodes to have the same color as their output Merge node.
+// Forces NextIteration nodes and their output Merge node(s) to have the same
+// color. Specifically, it removes them all from white_set if any of the Merge
+// nodes is not in white_set, otherwise it adds the NextIteration node to
+// white_set.
 Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
     absl::flat_hash_set<int>* white_set) const {
   for (const NodeDef& node : graph_->node()) {
     if (node.op() == "NextIteration") {
       GraphView::OutputPort output_port(&node, 0);
       const auto& fanout = graph_view_.GetFanout(output_port);
-      if (fanout.size() != 1) {
-        return errors::FailedPrecondition(
-            "Expected exactly 1 output from port ", node.name(), ":0, got ",
-            fanout.size());
+      std::vector<int> merge_idxs;
+      merge_idxs.reserve(fanout.size());
+      bool any_merge_is_not_white = false;
+      for (const auto& output : fanout) {
+        const NodeDef& merge_node = *output.node;
+        if (merge_node.op() != "Merge") {
+          return errors::FailedPrecondition(
+              "Expected Merge node after NextIteration, got ", merge_node.op());
+        }
+        const absl::optional<int> maybe_merge_idx =
+            graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
+        if (!maybe_merge_idx.has_value()) {
+          return errors::Internal("Type attribute T of Merge node ",
+                                  merge_node.name(),
+                                  " not found in graph view");
+        }
+        int merge_idx = maybe_merge_idx.value();
+        merge_idxs.push_back(merge_idx);
+        any_merge_is_not_white =
+            any_merge_is_not_white || !white_set->count(merge_idx);
       }
-      const NodeDef& merge_node = *fanout.begin()->node;
-      if (merge_node.op() != "Merge") {
-        return errors::FailedPrecondition(
-            "Expected Merge node after NextIteration, got ", merge_node.op());
-      }
-      const absl::optional<int> maybe_merge_idx =
-          graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
-      if (!maybe_merge_idx.has_value()) {
-        return errors::Internal("Type attribute T of Merge node ",
-                                merge_node.name(), " not found in graph view");
-      }
-      int merge_idx = maybe_merge_idx.value();
-      bool merge_is_white = white_set->count(merge_idx);
-      VLOG(2) << "Painting type T of " << node.op() << " node " << node.name()
-              << " " << (merge_is_white ? "WHITE" : "BLACK")
-              << " to match the color of its output Merge node "
-              << merge_node.name();
       const absl::optional<int> maybe_nextiter_idx =
           graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
       if (!maybe_nextiter_idx.has_value()) {
@@ -1515,10 +1517,25 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
                                 node.name(), " not found in graph view");
       }
       int nextiter_idx = maybe_nextiter_idx.value();
-      if (merge_is_white) {
-        white_set->insert(nextiter_idx);
+      if (any_merge_is_not_white) {
+        for (int merge_idx : merge_idxs) {
+          if (white_set->erase(merge_idx)) {
+            VLOG(2) << "Painting type T of Merge node "
+                    << graph_type_view_.GetNode(merge_idx)->node->name()
+                    << " BLACK to match the color of its sibling Merge nodes "
+                       "with common NextIteration node "
+                    << node.name();
+          }
+        }
+        if (white_set->erase(nextiter_idx)) {
+          VLOG(2) << "Painting type T of NextIteration node " << node.name()
+                  << " BLACK to match the color of its output Merge node(s)";
+        }
       } else {
-        white_set->erase(nextiter_idx);
+        if (white_set->insert(nextiter_idx).second) {
+          VLOG(2) << "Painting type T of NextIteration node " << node.name()
+                  << " WHITE to match the color of its output Merge node(s)";
+        }
       }
     }
   }

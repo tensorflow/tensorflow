@@ -137,6 +137,24 @@ class PyBuiltinsTest(test.TestCase):
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
 
+  def test_eval_in_original_context(self):
+
+    def caller_1(lvl_delta):
+      l = 1  # pylint:disable=unused-variable
+      return py_builtins.eval_in_original_context(eval, ('l',), lvl_delta)
+
+    def caller_2(lvl_delta):
+      l = 2  # pylint:disable=unused-variable
+      return caller_1(lvl_delta)
+
+    def caller_3(lvl_delta):
+      l = 3  # pylint:disable=unused-variable
+      return caller_2(lvl_delta)
+
+    self.assertEqual(caller_3(0), 1)
+    self.assertEqual(caller_3(1), 2)
+    self.assertEqual(caller_3(2), 3)
+
 
 if __name__ == '__main__':
   test.main()

@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -117,7 +117,7 @@ class AttrBuilder {
     return GetNodeAttr(node_def_, attr_name, value);
   }
 
-  tensorflow::Fprint128 CacheKey(const string& device);
+  tensorflow::Fprint128 CacheKey(const StringPiece device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
@@ -126,7 +126,7 @@ class AttrBuilder {
   template <class T>
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
 
-  tensorflow::Fprint128 BuildCacheKeyForDevice(const string& device) const;
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as

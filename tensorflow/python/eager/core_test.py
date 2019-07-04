@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -39,6 +40,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -290,6 +293,18 @@ class TFETest(test_util.TensorFlowTestCase):
       with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
         c = constant + 1.0
     self.assertAllEqual(c, 2.0)
+
+  def testPyFunctionNullContext(self):
+    def simple_fn(unused_handle):
+      return 1.
+
+    @def_function.function
+    def test_fn(v):
+      script_ops.eager_py_func(simple_fn, [v.handle], dtypes.float32)
+      return 1.
+
+    test_var = variables.Variable([2., 3.])
+    self.assertAllEqual(test_fn(test_var), 1.0)
 
   @test_util.run_gpu_only
   def testNumpyForceCPU(self):

@@ -163,7 +163,7 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
-    if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
+    if use_gpu and not test_util.GpuSupportsHalfMatMulAndConv():
       return [dtypes.float32, dtypes.float64]
     else:
       # It is important that float32 comes before float16 here,
@@ -403,7 +403,6 @@ class Conv2DTest(test.TestCase):
         padding,
         expected,
         dilations,
-        gpu_only=True,
         test_grappler_layout_optimizer=test_grappler_layout_optimizer,
         tol=tol,
         fp16_tol=fp16_tol)
@@ -778,7 +777,8 @@ class Conv2DTest(test.TestCase):
             stride_cols=1,
             test_input=test_input,
             data_format=data_format,
-            use_gpu=True)
+            use_gpu=True,
+            max_err=0.005)
 
   @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only
@@ -1428,8 +1428,14 @@ class Conv2DTest(test.TestCase):
                                                 strides,
                                                 padding,
                                                 data_format,
+                                                use_gpu,
                                                 dilations=(1, 1),
                                                 err=2e-5):
+    if use_gpu and not test.is_gpu_available(cuda_only=True):
+      return
+    if not use_gpu and dilations != (1, 1):
+      return  # Non-default dilations is currently not supported on the CPU.
+
     x1 = self._CreateNumpyTensor(filter_sizes)
     x2 = self._CreateNumpyTensor(output_sizes)
     dilations = list(dilations)
@@ -1454,133 +1460,128 @@ class Conv2DTest(test.TestCase):
         padding,
         expected,
         data_format,
-        use_gpu=True,
+        use_gpu=use_gpu,
         err=err,
         dilations=dilations)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding0x0BackpropInput(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 1, 2, 1],
-            strides=[1, 1],
-            padding=[[0, 0], [0, 0]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 1, 2, 1],
+          strides=[1, 1],
+          padding=[[0, 0], [0, 0]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 3, 4, 2],
-            filter_sizes=[2, 2, 2, 3],
-            output_sizes=[1, 1, 2, 3],
-            strides=[2, 2],
-            padding=[[0, 0], [0, 0]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 3, 4, 2],
+          filter_sizes=[2, 2, 2, 3],
+          output_sizes=[1, 1, 2, 3],
+          strides=[2, 2],
+          padding=[[0, 0], [0, 0]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding1x1BackpropInput(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
-
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 2],
-            output_sizes=[1, 3, 4, 2],
-            strides=[1, 1],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format, err=1e-4)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 3, 4, 2],
+          strides=[1, 1],
+          padding=[[1, 1], [1, 1]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-4)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 2, 3, 2],
-            filter_sizes=[1, 1, 2, 1],
-            output_sizes=[1, 4, 3, 1],
-            strides=[1, 2],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 2, 3, 2],
+          filter_sizes=[1, 1, 2, 1],
+          output_sizes=[1, 4, 3, 1],
+          strides=[1, 2],
+          padding=[[1, 1], [1, 1]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 4, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 4, 2, 1],
-            strides=[1, 2],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format,
-            dilations=[2, 2])
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 4, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 4, 2, 1],
+          strides=[1, 2],
+          padding=[[1, 1], [1, 1]],
+          data_format=data_format,
+          dilations=[2, 2], use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding2x2BackpropInput(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
-
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[2, 3, 1, 1],
-            filter_sizes=[2, 1, 1, 1],
-            output_sizes=[2, 2, 5, 1],
-            strides=[3, 1],
-            padding=[[2, 2], [2, 2]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[2, 3, 1, 1],
+          filter_sizes=[2, 1, 1, 1],
+          output_sizes=[2, 2, 5, 1],
+          strides=[3, 1],
+          padding=[[2, 2], [2, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 3, 6, 1],
-            filter_sizes=[3, 2, 1, 1],
-            output_sizes=[1, 3, 4, 1],
-            strides=[1, 2],
-            padding=[[2, 2], [2, 2]],
-            data_format=data_format,
-            dilations=[2, 3])
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 3, 6, 1],
+          filter_sizes=[3, 2, 1, 1],
+          output_sizes=[1, 3, 4, 1],
+          strides=[1, 2],
+          padding=[[2, 2], [2, 2]],
+          data_format=data_format,
+          dilations=[2, 3],
+          use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding_1_8_4_1_BackpropInput(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 10, 8, 1],
-            strides=[1, 1],
-            padding=[[1, 8], [4, 2]],
-            data_format=data_format, err=5e-5)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 10, 8, 1],
+          strides=[1, 1],
+          padding=[[1, 8], [4, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=5e-5)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 5, 3, 1],
-            filter_sizes=[3, 2, 1, 1],
-            output_sizes=[1, 4, 8, 1],
-            strides=[3, 1],
-            padding=[[1, 8], [4, 2]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 5, 3, 1],
+          filter_sizes=[3, 2, 1, 1],
+          output_sizes=[1, 4, 8, 1],
+          strides=[3, 1],
+          padding=[[1, 8], [4, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding_5_0_2_2_BackpropInput(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 3, 3, 1],
-            filter_sizes=[2, 1, 1, 1],
-            output_sizes=[1, 7, 7, 1],
-            strides=[1, 1],
-            padding=[[5, 0], [2, 2]],
-            data_format=data_format,
-            err=5e-5)
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 3, 3, 1],
+          filter_sizes=[2, 1, 1, 1],
+          output_sizes=[1, 7, 7, 1],
+          strides=[1, 1],
+          padding=[[5, 0], [2, 2]],
+          data_format=data_format,
+          err=5e-5,
+          use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropInputExplicitPadding(
-            input_sizes=[1, 4, 2, 1],
-            filter_sizes=[3, 3, 1, 1],
-            output_sizes=[1, 5, 2, 1],
-            strides=[1, 2],
-            padding=[[5, 0], [2, 2]],
-            data_format=data_format,
-            dilations=[2, 1])
+      self._RunAndVerifyBackpropInputExplicitPadding(
+          input_sizes=[1, 4, 2, 1],
+          filter_sizes=[3, 3, 1, 1],
+          output_sizes=[1, 5, 2, 1],
+          strides=[1, 2],
+          padding=[[5, 0], [2, 2]],
+          data_format=data_format,
+          dilations=[2, 1],
+          use_gpu=use_gpu)
 
   def _RunAndVerifyBackpropFilterExplicitPadding(self,
                                                  input_sizes,
@@ -1589,8 +1590,14 @@ class Conv2DTest(test.TestCase):
                                                  strides,
                                                  padding,
                                                  data_format,
+                                                 use_gpu,
                                                  dilations=(1, 1),
                                                  err=1e-5):
+    if use_gpu and not test.is_gpu_available(cuda_only=True):
+      return
+    if not use_gpu and dilations != (1, 1):
+      return  # Non-default dilations is currently not supported on the CPU.
+
     x0 = self._CreateNumpyTensor(input_sizes)
     x2 = self._CreateNumpyTensor(output_sizes)
     dilations = list(dilations)
@@ -1612,135 +1619,127 @@ class Conv2DTest(test.TestCase):
         padding,
         expected,
         data_format,
-        use_gpu=True,
+        use_gpu=use_gpu,
         dilations=dilations,
         err=err)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding0x0BackpropFilter(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 1, 2, 1],
-            strides=[1, 1],
-            padding=[[0, 0], [0, 0]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 1, 2, 1],
+          strides=[1, 1],
+          padding=[[0, 0], [0, 0]],
+          data_format=data_format, use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 3, 4, 2],
-            filter_sizes=[2, 2, 2, 3],
-            output_sizes=[1, 1, 2, 3],
-            strides=[2, 2],
-            padding=[[0, 0], [0, 0]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 3, 4, 2],
+          filter_sizes=[2, 2, 2, 3],
+          output_sizes=[1, 1, 2, 3],
+          strides=[2, 2],
+          padding=[[0, 0], [0, 0]],
+          data_format=data_format, use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding1x1BackpropFilter(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
-
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 2],
-            output_sizes=[1, 3, 4, 2],
-            strides=[1, 1],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format,
-            err=5e-5)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 3, 4, 2],
+          strides=[1, 1],
+          padding=[[1, 1], [1, 1]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=5e-5)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 2, 3, 2],
-            filter_sizes=[1, 1, 2, 1],
-            output_sizes=[1, 4, 3, 1],
-            strides=[1, 2],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 2, 3, 2],
+          filter_sizes=[1, 1, 2, 1],
+          output_sizes=[1, 4, 3, 1],
+          strides=[1, 2],
+          padding=[[1, 1], [1, 1]],
+          use_gpu=use_gpu,
+          data_format=data_format)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 4, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 4, 2, 1],
-            strides=[1, 2],
-            padding=[[1, 1], [1, 1]],
-            data_format=data_format,
-            dilations=[2, 2])
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 4, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 4, 2, 1],
+          strides=[1, 2],
+          padding=[[1, 1], [1, 1]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          dilations=[2, 2])
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding2x2BackpropFilter(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
-
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[2, 3, 1, 1],
-            filter_sizes=[2, 1, 1, 1],
-            output_sizes=[2, 2, 5, 1],
-            strides=[3, 1],
-            padding=[[2, 2], [2, 2]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[2, 3, 1, 1],
+          filter_sizes=[2, 1, 1, 1],
+          output_sizes=[2, 2, 5, 1],
+          strides=[3, 1],
+          padding=[[2, 2], [2, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 3, 6, 1],
-            filter_sizes=[3, 2, 1, 1],
-            output_sizes=[1, 3, 4, 1],
-            strides=[1, 2],
-            padding=[[2, 2], [2, 2]],
-            data_format=data_format,
-            dilations=[2, 3])
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 3, 6, 1],
+          filter_sizes=[3, 2, 1, 1],
+          output_sizes=[1, 3, 4, 1],
+          strides=[1, 2],
+          padding=[[2, 2], [2, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          dilations=[2, 3])
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding_1_8_4_1_BackpropFilter(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 2, 3, 1],
-            filter_sizes=[2, 2, 1, 1],
-            output_sizes=[1, 10, 8, 1],
-            strides=[1, 1],
-            padding=[[1, 8], [4, 2]],
-            data_format=data_format,
-            err=1e-4)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[1, 10, 8, 1],
+          strides=[1, 1],
+          padding=[[1, 8], [4, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-4)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 5, 3, 1],
-            filter_sizes=[3, 2, 1, 1],
-            output_sizes=[1, 4, 8, 1],
-            strides=[3, 1],
-            padding=[[1, 8], [4, 2]],
-            data_format=data_format)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 5, 3, 1],
+          filter_sizes=[3, 2, 1, 1],
+          output_sizes=[1, 4, 8, 1],
+          strides=[3, 1],
+          padding=[[1, 8], [4, 2]],
+          use_gpu=use_gpu,
+          data_format=data_format)
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth1Padding_5_0_2_2_BackpropFilter(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 3, 3, 1],
-            filter_sizes=[2, 1, 1, 1],
-            output_sizes=[1, 7, 7, 1],
-            strides=[1, 1],
-            padding=[[5, 0], [2, 2]],
-            data_format=data_format,
-            err=1e-4)
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 3, 3, 1],
+          filter_sizes=[2, 1, 1, 1],
+          output_sizes=[1, 7, 7, 1],
+          strides=[1, 1],
+          padding=[[5, 0], [2, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-4)
 
-        self._RunAndVerifyBackpropFilterExplicitPadding(
-            input_sizes=[1, 4, 2, 1],
-            filter_sizes=[3, 3, 1, 1],
-            output_sizes=[1, 5, 2, 1],
-            strides=[1, 2],
-            padding=[[5, 0], [2, 2]],
-            data_format=data_format,
-            dilations=[2, 1])
+      self._RunAndVerifyBackpropFilterExplicitPadding(
+          input_sizes=[1, 4, 2, 1],
+          filter_sizes=[3, 3, 1, 1],
+          output_sizes=[1, 5, 2, 1],
+          strides=[1, 2],
+          padding=[[5, 0], [2, 2]],
+          data_format=data_format,
+          use_gpu=use_gpu,
+          dilations=[2, 1])
 
   # Gradient checkers
   def ConstructAndTestGradient(self,
@@ -2106,257 +2105,222 @@ class Conv2DTest(test.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient1x1PaddingStrideOne(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=1,
-            stride_cols=1,
-            padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu,
-            max_err=0.0025)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=5,
+          input_cols=4,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          max_err=0.0025)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient1x1PaddingStrideOne(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=1,
-            stride_cols=1,
-            padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=5,
+          input_cols=4,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient1x1PaddingStrideTwo(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=4,
-            input_cols=5,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=2,
-            stride_cols=2,
-            padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=5,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=2,
+          stride_cols=2,
+          padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient1x1PaddingStrideTwo(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=4,
-            input_cols=5,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=2,
-            stride_cols=2,
-            padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=5,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=2,
+          stride_cols=2,
+          padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient2x2PaddingStrideOne(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=1,
-            stride_cols=1,
-            padding=[[0, 0], [2, 2], [2, 2], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=5,
+          input_cols=4,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding=[[0, 0], [2, 2], [2, 2], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          max_err=0.003)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient2x2PaddingStrideOne(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            in_depth=2,
-            out_depth=3,
-            stride_rows=1,
-            stride_cols=1,
-            padding=[[0, 0], [2, 2], [2, 2], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu,
-            max_err=0.003)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=5,
+          input_cols=4,
+          filter_rows=3,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding=[[0, 0], [2, 2], [2, 2], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          max_err=0.003)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient1_2_3_4PaddingStride3x2(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=8,
-            input_cols=5,
-            filter_rows=4,
-            filter_cols=2,
-            in_depth=3,
-            out_depth=2,
-            stride_rows=3,
-            stride_cols=2,
-            padding=[[0, 0], [1, 2], [3, 4], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=8,
+          input_cols=5,
+          filter_rows=4,
+          filter_cols=2,
+          in_depth=3,
+          out_depth=2,
+          stride_rows=3,
+          stride_cols=2,
+          padding=[[0, 0], [1, 2], [3, 4], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient1_2_3_4PaddingStride3x2(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=8,
-            input_cols=5,
-            filter_rows=4,
-            filter_cols=2,
-            in_depth=3,
-            out_depth=2,
-            stride_rows=3,
-            stride_cols=2,
-            padding=[[0, 0], [1, 2], [3, 4], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=8,
+          input_cols=5,
+          filter_rows=4,
+          filter_cols=2,
+          in_depth=3,
+          out_depth=2,
+          stride_rows=3,
+          stride_cols=2,
+          padding=[[0, 0], [1, 2], [3, 4], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient4_3_2_1PaddingStride2x1(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=3,
-            input_rows=5,
-            input_cols=7,
-            filter_rows=3,
-            filter_cols=2,
-            in_depth=1,
-            out_depth=2,
-            stride_rows=2,
-            stride_cols=1,
-            padding=[[0, 0], [4, 3], [2, 1], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=3,
+          input_rows=5,
+          input_cols=7,
+          filter_rows=3,
+          filter_cols=2,
+          in_depth=1,
+          out_depth=2,
+          stride_rows=2,
+          stride_cols=1,
+          padding=[[0, 0], [4, 3], [2, 1], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient4_3_2_1PaddingStride2x1(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=3,
-            input_rows=5,
-            input_cols=7,
-            filter_rows=3,
-            filter_cols=2,
-            in_depth=1,
-            out_depth=2,
-            stride_rows=2,
-            stride_cols=1,
-            padding=[[0, 0], [4, 3], [2, 1], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=3,
+          input_rows=5,
+          input_cols=7,
+          filter_rows=3,
+          filter_cols=2,
+          in_depth=1,
+          out_depth=2,
+          stride_rows=2,
+          stride_cols=1,
+          padding=[[0, 0], [4, 3], [2, 1], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient0_0_0_5PaddingStride1x2(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=6,
-            input_cols=7,
-            filter_rows=3,
-            filter_cols=4,
-            in_depth=3,
-            out_depth=2,
-            stride_rows=1,
-            stride_cols=2,
-            padding=[[0, 0], [0, 0], [0, 5], [0, 0]],
-            test_input=True,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=6,
+          input_cols=7,
+          filter_rows=3,
+          filter_cols=4,
+          in_depth=3,
+          out_depth=2,
+          stride_rows=1,
+          stride_cols=2,
+          padding=[[0, 0], [0, 0], [0, 5], [0, 0]],
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient0_0_0_5PaddingStride1x2(self):
-    if not test.is_gpu_available(cuda_only=True):
-      return
     for (data_format, use_gpu) in GetTestConfigs():
-      if use_gpu:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=6,
-            input_cols=7,
-            filter_rows=3,
-            filter_cols=4,
-            in_depth=3,
-            out_depth=2,
-            stride_rows=1,
-            stride_cols=2,
-            padding=[[0, 0], [0, 0], [0, 5], [0, 0]],
-            test_input=False,
-            data_format=data_format,
-            use_gpu=use_gpu)
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=6,
+          input_cols=7,
+          filter_rows=3,
+          filter_cols=4,
+          in_depth=3,
+          out_depth=2,
+          stride_rows=1,
+          stride_cols=2,
+          padding=[[0, 0], [0, 0], [0, 5], [0, 0]],
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
   def testShapeFunctionEdgeCases(self):
@@ -2504,31 +2468,29 @@ class Conv2DTest(test.TestCase):
                 strides=[1, 1, 1, 1],
                 padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
-    if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
-        # Negative padding during backprop.
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "nonnegative"):
-          sess.run(
-              nn_ops.conv2d_backprop_input([32, 20, 20, 3],
-                                           array_ops.placeholder(
-                                               dtypes.float32,
-                                               shape=[18, 18, 3, 2]),
-                                           array_ops.placeholder(
-                                               dtypes.float32,
-                                               shape=[32, 3, 2, 2]),
-                                           strides=[1, 1, 1, 1],
-                                           padding=[[0, 0], [-1, 0], [0, 0],
-                                                    [0, 0]]))
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "nonnegative"):
-          sess.run(
-              nn_ops.conv2d_backprop_filter(
-                  array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  [18, 18, 3, 2],
-                  array_ops.placeholder(dtypes.float32, shape=[32, 3, 2, 2]),
-                  strides=[1, 1, 1, 1],
-                  padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+      # Negative padding during backprop.
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "nonnegative"):
+        sess.run(
+            nn_ops.conv2d_backprop_input([32, 20, 20, 3],
+                                         array_ops.placeholder(
+                                             dtypes.float32,
+                                             shape=[18, 18, 3, 2]),
+                                         array_ops.placeholder(
+                                             dtypes.float32,
+                                             shape=[32, 3, 2, 2]),
+                                         strides=[1, 1, 1, 1],
+                                         padding=[[0, 0], [-1, 0], [0, 0],
+                                                  [0, 0]]))
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "nonnegative"):
+        sess.run(
+            nn_ops.conv2d_backprop_filter(
+                array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
+                [18, 18, 3, 2],
+                array_ops.placeholder(dtypes.float32, shape=[32, 3, 2, 2]),
+                strides=[1, 1, 1, 1],
+                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
 
 
 class DepthwiseConv2DTest(test.TestCase):

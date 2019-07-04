@@ -51,7 +51,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   testing::StopTiming();
-  string t = str_util::Uppercase(device);
+  string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);
@@ -59,8 +59,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
   CHECK(device_) << "Could not create a " << device << " device";
 
-  pool_ = new thread::ThreadPool(options->env, "blocking",
-                                 port::NumSchedulableCPUs());
+  pool_ =
+      new thread::ThreadPool(options->env, "blocking", port::MaxParallelism());
 
   auto runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);

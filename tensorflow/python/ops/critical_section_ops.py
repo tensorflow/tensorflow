@@ -124,7 +124,7 @@ class CriticalSection(object):
   will not ensure serial execution:
 
   ```python
-  v = tf.get_variable("v", initializer=0.0, use_resource=True)
+  v = tf.compat.v1.get_variable("v", initializer=0.0, use_resource=True)
   def accumulate(up):
     x = v.read_value()
     with tf.control_dependencies([x]):

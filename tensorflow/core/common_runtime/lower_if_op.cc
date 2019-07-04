@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/lower_if_op.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -89,9 +89,9 @@ class CondBuilder {
   Node* then_call_node_;
   Node* else_call_node_;
   // Merge node that has inputs from [pivot_t, pivot_f] and control edges from
-  // [^then_call_node_, ^else_call_node_]. This node will guarantee that if
-  // then/else branch functions do not have outputs, they still will be executed
-  // for the side effects.
+  // [^then_call_node_, ^else_call_node_]. This node will guarantee that even
+  // when then/else branch functions do not have outputs, they still will be
+  // executed for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
   const FunctionLibraryDefinition& flib_;

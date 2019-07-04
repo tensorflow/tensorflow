@@ -72,16 +72,8 @@ namespace toco {
   concatenation_op->outputs = {tf_concat_op->outputs[0]};
   auto depth_concat_it = model->operators.emplace(concat_it, concatenation_op);
   CHECK_EQ(depth_concat_it->get(), concatenation_op);
-  // Update invalidated iterator
-  concat_it = depth_concat_it + 1;
-  CHECK_EQ(concat_it->get(), tf_concat_op);
 
-  // Remove the axis array if it is not used by anything else.
-  if (CountOpsWithInput(*model, axis_name) == 1) {
-    model->EraseArray(axis_name);
-  }
-  // Remove the TensorFlowConcat op
-  model->operators.erase(concat_it);
+  DeleteOpAndArrays(model, tf_concat_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

@@ -39,6 +39,7 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// LINT.IfChange
 enum TfLiteGlObjectType {
   TFLITE_GL_OBJECT_TYPE_FASTEST = 0,
   TFLITE_GL_OBJECT_TYPE_TEXTURE = 1,
@@ -74,6 +75,7 @@ struct TFL_CAPI_EXPORT TfLiteGpuDelegateOptions {
   const uint8_t* metadata;  // Internal.
   TfLiteGlCompileOptions compile_options;
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu/GpuDelegate.java)
 
 // Creates a new delegate instance that need to be destroyed with
 // TfLiteGpuDelegateDelete when delegate is no longer used by TFLite.
@@ -88,7 +90,7 @@ TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options);
 
 // Destroys a delegate created with `TfLiteGpuDelegateCreate` call.
-void TfLiteGpuDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void TfLiteGpuDelegateDelete(TfLiteDelegate* delegate);
 
 // Binds GL shader storage object to an input or an output tensor in the
 // initialized delegate.  Bound buffer should have sufficient storage to

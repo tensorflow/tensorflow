@@ -229,7 +229,7 @@ class TransferManager {
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
-      const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+      const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
       int device_ordinal);
 
   // The given ShapedBuffer holds a handle to allocated memory, but it is not

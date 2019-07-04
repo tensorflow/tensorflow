@@ -15,7 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1274,7 +1275,7 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
   opts.config.set_use_per_session_threads(true);
   opts.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   testing::UseRealTime();
   test::Benchmark(device, g, &opts).Run(iters);
   testing::ItemsProcessed(batch_size * node_depth * iters);
@@ -1322,7 +1323,7 @@ static void BM_TopK(int iters, int rows, int cols, int k, int num_threads,
   opts.config.set_use_per_session_threads(true);
   opts.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   testing::UseRealTime();
   testing::StartTiming();
   test::Benchmark(device, g, &opts).Run(iters);

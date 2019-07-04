@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
 #include "tensorflow/core/lib/monitoring/mobile_counter.h"
 #else
@@ -49,7 +53,7 @@ namespace monitoring {
 // This class is thread-safe.
 class CounterCell {
  public:
-  CounterCell(int64 value) : value_(value) {}
+  explicit CounterCell(int64 value) : value_(value) {}
   ~CounterCell() {}
 
   // Atomically increments the value by step.

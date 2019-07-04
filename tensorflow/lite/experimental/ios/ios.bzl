@@ -1,10 +1,7 @@
 """TensorFlow Lite Build Configurations for iOS"""
 
 # Current version of the TensorFlow Lite iOS libraries.
-TFL_IOS_BUILD_VERSION = "0.1.0"
-
-# Git commit that was used to build the TensorFlow Lite iOS libraries. See Swift and ObjC podspecs.
-TFL_IOS_GIT_COMMIT = "2b96dde"
+TFL_IOS_BUILD_VERSION = "0.2.0"
 
 TFL_MINIMUM_OS_VERSION = "9.0"
 

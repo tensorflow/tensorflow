@@ -72,7 +72,7 @@ Status CreatePHWC4BufferFromTensor(const TensorFloat32& tensor,
 
 // Creates read-write buffer for the given tensor shape, where data layout is
 // supposed to be PHWC4.
-Status CreatePHWC4BufferFromTensorRef(const TensorRefFloat32& tensor_ref,
+Status CreatePHWC4BufferFromTensorRef(const TensorRef<BHWC>& tensor_ref,
                                       GlBuffer* gl_buffer);
 
 // Copies data from a buffer that holds data in PHWC4 layout to the given

@@ -38,7 +38,9 @@ void GraphOptimizer::Optimize(
     std::unique_ptr<Graph>* graph,
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
-    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn) {
+    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
+    bool inline_multi_device_functions,
+    bool inline_impl_selection_group_functions) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -89,12 +91,20 @@ void GraphOptimizer::Optimize(
     if (opts_.do_function_inlining()) {
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.override_device = true;
-      // GraphOptimizer is running:
-      //   (1) After partitioning when executing with a Session API.
-      //   (2) For a single device function body after instantiation.
-      // We can't inline multi-device functions in these cases, because it might
-      // lead to multiple device assignments.
-      expand_inline_opts.multi_device_options.disable_inlining = true;
+      if (!inline_multi_device_functions) {
+        // GraphOptimizer is running:
+        //   (1) After partitioning when executing with a Session API.
+        //   (2) For a single device function body after instantiation.
+        // We can't inline multi-device functions in these cases, because it
+        // might lead to multiple device assignments.
+        expand_inline_opts.multi_device_options.disable_inlining = true;
+      }
+      if (inline_impl_selection_group_functions) {
+        expand_inline_opts.native_options
+            .inline_impl_selection_group_functions = true;
+        expand_inline_opts.multi_device_options
+            .inline_impl_selection_group_functions = true;
+      }
 
       bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
       if (was_mutated) {
@@ -119,7 +129,9 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               std::unique_ptr<Graph>* graph,
                               const Options& options) {
   Optimize(runtime, env, device, graph, options.shape_map,
-           options.cse_consider_fn, options.cf_consider_fn);
+           options.cse_consider_fn, options.cf_consider_fn,
+           options.inline_multi_device_functions,
+           options.inline_impl_selection_group_functions);
 }
 
 }  // end namespace tensorflow

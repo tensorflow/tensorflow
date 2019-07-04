@@ -19,10 +19,31 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#endif
+
+#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/model.h"
+
 namespace tflite {
 namespace evaluation {
+std::string StripTrailingSlashes(const std::string& path);
+
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output);
+
+TfLiteStatus GetSortedFileNames(const std::string& directory,
+                                std::vector<std::string>* result);
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
+
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
+#if defined(__ANDROID__)
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
+    FlatBufferModel* model, TfLiteGpuDelegateOptions* options);
+#endif
+
 }  // namespace evaluation
 }  // namespace tflite
 

@@ -22,7 +22,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 // Needed for CUDA_VERSION macro.
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -62,7 +62,7 @@ class AutoMixedPrecisionLists {
 
     auto list = gtl::FlatSet<string> {
 #if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
-      "BatchMatMul",
+      "BatchMatMul", "BatchMatMulV2",
 #endif
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",
@@ -118,6 +118,8 @@ class AutoMixedPrecisionLists {
         "FloorDiv",
         "FusedBatchNormV2",
         "FusedBatchNormGradV2",
+        "FusedBatchNormV3",
+        "FusedBatchNormGradV3",
         "Inv",
         "LeakyRelu",
         "LeakyReluGrad",
