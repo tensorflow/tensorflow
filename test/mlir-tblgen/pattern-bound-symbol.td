@@ -65,7 +65,7 @@ def : Pattern<(OpA:$res_a $operand, $attr),
 // CHECK:   auto res_c = rewriter.create<OpC>(
 // CHECK:     /*operand=*/res_b
 // CHECK:   auto vOpD0 = rewriter.create<OpD>(
-// CHECK:     /*input1=*/res_b,
-// CHECK:     /*input2=*/res_c,
+// CHECK:     /*input1=*/res_b.getOperation()->getResult(0),
+// CHECK:     /*input2=*/res_c.getOperation()->getResult(0),
 // CHECK:     /*input3=*/s.res_a->getResult(0),
 // CHECK:     /*attr=*/s.attr

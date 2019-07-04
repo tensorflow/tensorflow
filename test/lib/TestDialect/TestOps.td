@@ -232,6 +232,80 @@ def : Pat<(I32EnumAttrOp I32Case5), (I32EnumAttrOp I32Case10)>;
 def : Pat<(I64EnumAttrOp I64Case5), (I64EnumAttrOp I64Case10)>;
 
 //===----------------------------------------------------------------------===//
+// Test Patterns (Multi-result Ops)
+//===----------------------------------------------------------------------===//
+
+def MultiResultOpKind1: I64EnumAttrCase<"kind1", 1>;
+def MultiResultOpKind2: I64EnumAttrCase<"kind2", 2>;
+def MultiResultOpKind3: I64EnumAttrCase<"kind3", 3>;
+def MultiResultOpKind4: I64EnumAttrCase<"kind4", 4>;
+
+def MultiResultOpEnum: I64EnumAttr<
+  "Multi-result op kinds", "", [
+    MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
+    MultiResultOpKind4
+  ]>;
+
+def ThreeResultOp : TEST_Op<"three_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs I32:$result1, F32:$result2, F32:$result3);
+}
+
+def AnotherThreeResultOp : TEST_Op<"another_three_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs I32:$result1, F32:$result2, F32:$result3);
+}
+
+def TwoResultOp : TEST_Op<"two_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs I32:$result1, F32:$result2);
+
+  let builders = [
+    OpBuilder<
+      "Builder *builder, OperationState *state, IntegerAttr kind",
+      [{
+        auto i32 = builder->getIntegerType(32);
+        auto f32 = builder->getF32Type();
+        state->types.assign({i32, f32});
+        state->addAttribute("kind", kind);
+      }]>
+  ];
+}
+
+def AnotherTwoResultOp : TEST_Op<"another_two_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs F32:$result1, F32:$result2);
+}
+
+def OneResultOp : TEST_Op<"one_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs F32:$result1);
+}
+
+def AnotherOneResultOp : TEST_Op<"another_one_result"> {
+  let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs I32:$result1);
+}
+
+// Test using multi-result op as a whole
+def : Pat<(ThreeResultOp MultiResultOpKind1),
+          (AnotherThreeResultOp MultiResultOpKind1)>;
+
+// Test using multi-result op as a whole for partial replacement
+def : Pattern<(ThreeResultOp MultiResultOpKind2),
+              [(TwoResultOp MultiResultOpKind2),
+               (OneResultOp MultiResultOpKind2)]>;
+def : Pattern<(ThreeResultOp MultiResultOpKind3),
+              [(AnotherOneResultOp MultiResultOpKind3),
+               (AnotherTwoResultOp MultiResultOpKind3)]>;
+
+// Test using results separately in a multi-result op
+def : Pattern<(ThreeResultOp MultiResultOpKind4),
+              [(TwoResultOp:$res1__0 MultiResultOpKind4),
+               (OneResultOp MultiResultOpKind4),
+               (TwoResultOp:$res2__1 MultiResultOpKind4)]>;
+
+//===----------------------------------------------------------------------===//
 // Test op regions
 //===----------------------------------------------------------------------===//
 

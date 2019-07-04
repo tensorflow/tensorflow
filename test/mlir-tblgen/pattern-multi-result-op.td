@@ -24,20 +24,6 @@ def OneResultOp : NS_Op<"one_result_op", []> {
   let results = (outs I32:$r1);
 }
 
-def a : Pattern<(ThreeResultOp $input), [
-        (OneResultOp $input),
-        (OneResultOp $input),
-        (OneResultOp $input)
-      ]>;
-
-// CHECK-LABEL: struct a
-
-// CHECK: void rewrite(
-// CHECK: 	auto vOneResultOp0 = rewriter.create<OneResultOp>(
-// CHECK: 	auto vOneResultOp1 = rewriter.create<OneResultOp>(
-// CHECK: 	auto vOneResultOp2 = rewriter.create<OneResultOp>(
-// CHECK: 	rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1, vOneResultOp2});
-
 def b : Pattern<(ThreeResultOp $input), [
         (OneResultOp (OneResultOp:$interm $input)),
         (OneResultOp $interm),
@@ -57,7 +43,7 @@ def b : Pattern<(ThreeResultOp $input), [
 // CHECK-NEXT:     /*input=*/interm
 // CHECK:        auto vOneResultOp3 = rewriter.create<OneResultOp>(
 // CHECK-NEXT:     /*input=*/vOneResultOp2
-// CHECK:        rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1, vOneResultOp3});
+// CHECK:        rewriter.replaceOp(op, {vOneResultOp0.getOperation()->getResult(0), vOneResultOp1.getOperation()->getResult(0), vOneResultOp3.getOperation()->getResult(0)});
 
 // Test more result patterns than needed for replacement
 // ---
@@ -80,4 +66,4 @@ def c : Pattern<(TwoResultOp $input), [
 // CHECK:      auto vOneResultOp0 = rewriter.create<OneResultOp>(
 // CHECK-NEXT:   /*input=*/interm
 // CHECK:      auto vOneResultOp1 = rewriter.create<OneResultOp>(
-// CHECK:      rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1});
+// CHECK:      rewriter.replaceOp(op, {vOneResultOp0.getOperation()->getResult(0), vOneResultOp1.getOperation()->getResult(0)});

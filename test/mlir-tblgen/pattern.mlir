@@ -49,3 +49,43 @@ func @verifyI64EnumAttr() -> i32 {
   %0 = "test.i64_enum_attr"() {attr = 5: i64} : () -> i32
   return %0 : i32
 }
+
+//===----------------------------------------------------------------------===//
+// Test Multi-result Ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @useMultiResultOpToReplaceWhole
+func @useMultiResultOpToReplaceWhole() -> (i32, f32, f32) {
+  // CHECK: %0:3 = "test.another_three_result"()
+  // CHECK: return %0#0, %0#1, %0#2
+  %0:3 = "test.three_result"() {kind = 1} : () -> (i32, f32, f32)
+  return %0#0, %0#1, %0#2 : i32, f32, f32
+}
+
+// CHECK-LABEL: @useMultiResultOpToReplacePartial1
+func @useMultiResultOpToReplacePartial1() -> (i32, f32, f32) {
+  // CHECK: %0:2 = "test.two_result"()
+  // CHECK: %1 = "test.one_result"()
+  // CHECK: return %0#0, %0#1, %1
+  %0:3 = "test.three_result"() {kind = 2} : () -> (i32, f32, f32)
+  return %0#0, %0#1, %0#2 : i32, f32, f32
+}
+
+// CHECK-LABEL: @useMultiResultOpToReplacePartial2
+func @useMultiResultOpToReplacePartial2() -> (i32, f32, f32) {
+  // CHECK: %0 = "test.another_one_result"()
+  // CHECK: %1:2 = "test.another_two_result"()
+  // CHECK: return %0, %1#0, %1#1
+  %0:3 = "test.three_result"() {kind = 3} : () -> (i32, f32, f32)
+  return %0#0, %0#1, %0#2 : i32, f32, f32
+}
+
+// CHECK-LABEL: @useMultiResultOpResultsSeparately
+func @useMultiResultOpResultsSeparately() -> (i32, f32, f32) {
+  // CHECK: %0:2 = "test.two_result"()
+  // CHECK: %1 = "test.one_result"()
+  // CHECK: %2:2 = "test.two_result"()
+  // CHECK: return %0#0, %1, %2#1
+  %0:3 = "test.three_result"() {kind = 4} : () -> (i32, f32, f32)
+  return %0#0, %0#1, %0#2 : i32, f32, f32
+}
