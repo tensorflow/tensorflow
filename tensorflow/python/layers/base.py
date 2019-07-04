@@ -457,7 +457,7 @@ class Layer(base_layer.Layer):
           # In order to support DistributionStrategy, we move regularization
           # in the following `add_regularizer` merge_fn. Regularization should
           # be declared according to variable type. For example, we should call
-          # regularizer on all repilcas when it is a `MirroredVariable`.
+          # regularizer on all replicas when it is a `MirroredVariable`.
           # However, `MirroredVariable` is created when first replica thread is
           # called, which makes regularizer statements on other replica
           # thread ignored because of the `existing_variabale` check. Therefore,
