@@ -1833,7 +1833,7 @@ bool HloParser::ParseSharding(OpSharding* sharding) {
       }
     } while (EatIfPresent(TokKind::kComma));
   }
-  sharding->set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+  sharding->set_type(OpSharding::TUPLE);
 
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
 }
@@ -1915,13 +1915,13 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
       return Error(loc,
                    "replicated shardings should not have any devices assigned");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+    sharding->set_type(OpSharding::REPLICATED);
   } else if (maximal) {
     if (devices.size() != 1) {
       return Error(loc,
                    "maximal shardings should have exactly one device assigned");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    sharding->set_type(OpSharding::MAXIMAL);
     sharding->add_tile_assignment_devices(devices[0]);
   } else {
     if (devices.size() <= 1) {
@@ -1934,7 +1934,7 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
           "non-maximal shardings must have a tile assignment list including "
           "dimensions");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    sharding->set_type(OpSharding::OTHER);
     for (int64 dim : tile_assignment_dimensions) {
       sharding->add_tile_assignment_dimensions(dim);
     }
