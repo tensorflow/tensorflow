@@ -118,6 +118,12 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     // the back of the vector.
     HloInstruction* producer = defs_before_uses.back();
     defs_before_uses.pop_back();
+    // Never multi-output fuse constants.  To the extent that we want to fuse
+    // constants, that should be handled by the regular fusion pass.
+    if (producer->opcode() == HloOpcode::kConstant) {
+      VLOG(3) << producer->name() << " is a constant.";
+      continue;
+    }
     for (HloInstruction* consumer : producer->users()) {
       VLOG(3) << "Looking at producer " << producer->name()
               << " and its consumer " << consumer->name();
@@ -131,12 +137,6 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
         VLOG(3) << producer->name() << " and " << consumer->name()
                 << " are not fusible.";
-        continue;
-      }
-      // Never multi-output fuse constants.  To the extent that we want to fuse
-      // constants, that should be handled by the regular fusion pass.
-      if (producer->opcode() == HloOpcode::kConstant) {
-        VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
       // Do not fuse a producer if the other operands of the fusion are
