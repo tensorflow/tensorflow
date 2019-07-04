@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
 namespace tensorflow {
 
@@ -1033,8 +1034,16 @@ Status EagerExecute(EagerOperation* op,
 
   bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
 
+  std::unique_ptr<tensorflow::EagerOperation> out_op;
+  TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
+      EagerOpRewriteRegistry::PRE_EXECUTION, op, &out_op));
+
   if (op_is_local) {
-    return EagerLocalExecute(op, retvals, num_retvals);
+    if (out_op) {
+      return EagerLocalExecute(out_op.get(), retvals, num_retvals);
+    } else {
+      return EagerLocalExecute(op, retvals, num_retvals);
+    }
   }
 
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
@@ -1050,7 +1059,11 @@ Status EagerExecute(EagerOperation* op,
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
-  return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  if (out_op) {
+    return EagerRemoteExecute(out_op.get(), retvals->data(), num_retvals);
+  } else {
+    return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  }
 #endif  // !IS_MOBILE_PLATFORM
 }
 

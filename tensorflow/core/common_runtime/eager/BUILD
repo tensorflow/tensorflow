@@ -242,6 +242,7 @@ cc_library(
         ":context",
         ":copy_to_device_node",
         ":eager_executor",
+        ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
@@ -262,6 +263,24 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
         ],
     }),
+)
+
+cc_library(
+    name = "eager_op_rewrite_registry",
+    srcs = ["eager_op_rewrite_registry.cc"],
+    hdrs = ["eager_op_rewrite_registry.h"],
+    deps = [":eager_operation"],
+)
+
+tf_cc_test(
+    name = "eager_op_rewrite_registry_test",
+    srcs = ["eager_op_rewrite_registry_test.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_library(
