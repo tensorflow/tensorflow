@@ -173,7 +173,7 @@ class Exporter {
 std::string Exporter::UniqueName(llvm::StringRef prefix) {
   // Keep incrementing the counter until we find a unique name.
   std::string name = prefix;
-  auto& prefix_count = name_to_count_[name];
+  int64& prefix_count = name_to_count_[name];
   int64 val = prefix_count;
   while (val != 0) {
     name = (prefix + llvm::Twine(prefix_count)).str();
