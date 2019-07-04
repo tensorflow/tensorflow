@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -305,9 +305,13 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
   //   weights_data:   input data buffer of weights
   //   diff_src_data:      output data buffer of diff_src
   //   diff_weights_data:  output data buffer of diff_weights
+  //   res_space_data:     output data buffer or reserved_space_3.
+  //                       TODO: reserved_space_3: temp mem to hold
+  //                          intermediate results is not implemented
+  //                          on CPU as of now.
   void Execute(const T* src_data, const U* mean_data, const U* variance_data,
                const T* diff_dst_data, const U* weights_data, T* diff_src_data,
-               U* diff_weights_data) {
+               U* diff_weights_data, U* res_space_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.mean_mem->set_data_handle(
@@ -497,7 +501,10 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, typename T, typename U>
+//  Adding a third parameter to the template to support FusedBatchNormV3
+//  with MKL. This is different from default where the classes are
+//  derived. Moves enabling to compile-time rather than runtime.
+template <typename Device, typename T, typename U, bool reserved_space>
 class MklFusedBatchNormOp : public OpKernel {
  public:
   explicit MklFusedBatchNormOp(OpKernelConstruction* context)
@@ -588,9 +595,10 @@ class MklFusedBatchNormOp : public OpKernel {
       Tensor* batch_variance_tensor = nullptr;
       Tensor* saved_mean_tensor = nullptr;
       Tensor* saved_variance_tensor = nullptr;
+      Tensor* reserved_space_tensor = nullptr;
       AllocateTFOutputs(context, scale_tensor.shape(), &batch_mean_tensor,
                         &batch_variance_tensor, &saved_mean_tensor,
-                        &saved_variance_tensor);
+                        &saved_variance_tensor, &reserved_space_tensor);
 
       if (is_training_)
         SetMeanVariance(*batch_mean_tensor, *batch_variance_tensor);
@@ -756,16 +764,18 @@ class MklFusedBatchNormOp : public OpKernel {
     Tensor* batch_variance_tensor = nullptr;
     Tensor* saved_mean_tensor = nullptr;
     Tensor* saved_variance_tensor = nullptr;
+    Tensor* reserved_space_tensor = nullptr;
     AllocateTFOutputs(context, tf_shape_scale, &batch_mean_tensor,
                       &batch_variance_tensor, &saved_mean_tensor,
-                      &saved_variance_tensor);
+                      &saved_variance_tensor, &reserved_space_tensor);
   }
 
   void AllocateTFOutputs(OpKernelContext* context, TensorShape tf_shape_scale,
                          Tensor** batch_mean_tensor,
                          Tensor** batch_variance_tensor,
                          Tensor** saved_mean_tensor,
-                         Tensor** saved_variance_tensor) {
+                         Tensor** saved_variance_tensor,
+                         Tensor** reserved_space_tensor) {
     CHECK_NOTNULL(batch_mean_tensor);
     CHECK_NOTNULL(batch_variance_tensor);
     CHECK_NOTNULL(saved_mean_tensor);
@@ -775,6 +785,7 @@ class MklFusedBatchNormOp : public OpKernel {
     const size_t kBatchVarianceIndex = 2;
     const size_t kSavedMeanIndex = 3;
     const size_t kSavedVarianceIndex = 4;
+    const size_t kReservedSpaceIndex = 5;
 
     // allocate batch mean output tensor
     MklDnnShape mkl_shape_batch_mean;
@@ -818,10 +829,29 @@ class MklFusedBatchNormOp : public OpKernel {
     // set NAN variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
     std::fill_n(saved_variance_data, num_elements, static_cast<U>(NAN));
+
+    // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
+    // TODO: This parameter functionality is not implemented on CPU.
+    //       It is used to hold intermediate results. So the allocated
+    //       memory is filled with NANs.
+    if (reserved_space) {
+      DCHECK(reserved_space_tensor != nullptr);
+
+      MklDnnShape mkl_shape_reserved_space;
+      mkl_shape_reserved_space.SetMklTensor(false);
+      AllocateOutputSetMklShape(context, kReservedSpaceIndex,
+                                reserved_space_tensor, tf_shape_scale,
+                                mkl_shape_reserved_space);
+      DCHECK((*reserved_space_tensor) != nullptr);
+      // set NAN variance value in case of empty input tensor
+      auto saved_reserved_space_data =
+          (*reserved_space_tensor)->flat<U>().data();
+      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(NAN));
+    }
   }
 };
 
-template <typename Device, typename T, typename U>
+template <typename Device, typename T, typename U, bool reserved_space>
 class MklFusedBatchNormGradOp : public OpKernel {
  public:
   explicit MklFusedBatchNormGradOp(OpKernelConstruction* context)
@@ -843,6 +873,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       const size_t kScaleIndex = 2;     // index of scale tensor
       const size_t kMeanIndex = 3;      // index of saved_mean tensor
       const size_t kVarianceIndex = 4;  // index of saved_variance tensor
+      const size_t kReSpaceIndex = 5;   // index of reserved space 3 tensor
 
       const Tensor& diff_dst_tensor = MklGetInput(context, kDiffDstIndex);
       const Tensor& src_tensor = MklGetInput(context, kSrcIndex);
@@ -850,6 +881,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       const Tensor& saved_mean_tensor = MklGetInput(context, kMeanIndex);
       const Tensor& saved_variance_tensor =
           MklGetInput(context, kVarianceIndex);
+      const Tensor temp;
+      const Tensor& reserved_space_tensor =
+          (reserved_space) ? MklGetInput(context, kReSpaceIndex) : temp;
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, kSrcIndex, &dnn_shape_src);
@@ -1014,9 +1048,16 @@ class MklFusedBatchNormGradOp : public OpKernel {
       U* weights_data = weights_data_tf;
       T* diff_src_data = static_cast<T*>(diff_src_tensor->flat<T>().data());
       U* diff_weights_data = static_cast<U*>(diff_weights.GetAllocatedBuffer());
+
+      U* res_space_data = nullptr;
+      if (reserved_space) {
+        res_space_data = static_cast<U*>(
+            const_cast<U*>(reserved_space_tensor.flat<U>().data()));
+      }
       // Execute
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
-                      weights_data, diff_src_data, diff_weights_data);
+                      weights_data, diff_src_data, diff_weights_data,
+                      res_space_data);
 
       // allocate output TF tensors: diff_scale and diff_shift
       Tensor* diff_scale_tensor = nullptr;
@@ -1125,7 +1166,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
           .Device(DEVICE_CPU)                                  \
           .TypeConstraint<T>("T")                              \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormOp<CPUDevice, T, T>);
+      MklFusedBatchNormOp<CPUDevice, T, T, false>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
@@ -1138,7 +1179,7 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
           .TypeConstraint<T>("T")                              \
           .TypeConstraint<U>("U")                              \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormOp<CPUDevice, T, U>);
+      MklFusedBatchNormOp<CPUDevice, T, U, false>);
 
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
@@ -1150,7 +1191,7 @@ REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
           .Device(DEVICE_CPU)                                  \
           .TypeConstraint<T>("T")                              \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormGradOp<CPUDevice, T, T>);
+      MklFusedBatchNormGradOp<CPUDevice, T, T, false>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
@@ -1163,11 +1204,40 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
           .TypeConstraint<T>("T")                              \
           .TypeConstraint<U>("U")                              \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormGradOp<CPUDevice, T, U>);
+      MklFusedBatchNormGradOp<CPUDevice, T, U, false>);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU
+
+// TODO: FusedBatchNormV3 has an additional output that is used to
+//       hold intermediate results. This parameter functionality is
+//       not implemented on CPU.
+#define REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(T, U)              \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormV3")                             \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, true>);
+
+REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_V3_CPU
+
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(T, U)         \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormGradV3")                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, U, true>);
+
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU
 
 }  // namespace tensorflow
 
