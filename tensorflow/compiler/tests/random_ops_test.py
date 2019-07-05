@@ -121,7 +121,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       self._testRngIsNotConstant(rng, dtype)
 
   def testTruncatedNormalIsInRange(self):
-    count = 1000000
+    count = 10000000
 
     # There is no double precision float kernel for truncated normal
     for dtype in self._random_types() & self.float_types - {np.float64}:
