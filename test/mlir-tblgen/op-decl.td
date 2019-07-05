@@ -99,6 +99,19 @@ def NS_DOp : NS_Op<"op_with_two_operands", []> {
 // CHECK-LABEL: NS::DOp declarations
 // CHECK: OpTrait::NOperands<2>::Impl
 
+// Check that default builders can be suppressed.
+// ---
+
+def NS_SkipDefaultBuildersOp : NS_Op<"skip_default_builders", []> {
+  let skipDefaultBuilders = 1;
+  let builders = [OpBuilder<"Value *val">];
+}
+
+// CHECK-LABEL: NS::SkipDefaultBuildersOp declarations
+// CHECK:     class SkipDefaultBuildersOp
+// CHECK-NOT:   static void build(Builder
+// CHECK:       static void build(Value
+
 // Check leading underscore in op name
 // ---
 

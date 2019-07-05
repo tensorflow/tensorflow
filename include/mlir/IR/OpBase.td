@@ -1082,8 +1082,9 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // Define the hooks used for building, parsing, printing, verification.
 
   // Custom builder.
-  // In addtion to the custom builder provided here, two default builders
-  // are generated, with the following signatures:
+  // In addition to the custom builder provided here, and unless
+  // skipDefaultBuilders is set, two default builders are generated, with the
+  // following signatures:
   //
   // ```c++
   // static void build(Builder *, OperationState *tblgen_state,
@@ -1100,6 +1101,10 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   //                   ArrayRef<NamedAttribute> attributes);
   // ```
   list<OpBuilder> builders = ?;
+
+  // Avoid generating default build functions.  Custom builders must be
+  // provided.
+  bit skipDefaultBuilders = 0;
 
   // Custom parser.
   code parser = ?;

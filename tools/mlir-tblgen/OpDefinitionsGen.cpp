@@ -884,6 +884,13 @@ void OpEmitter::genBuilder() {
           method.body() << body;
       }
     }
+    if (op.skipDefaultBuilders()) {
+      if (!listInit || listInit->empty())
+        PrintFatalError(
+            op.getLoc(),
+            "default builders are skipped and no custom builders provided");
+      return;
+    }
   }
 
   int numResults = op.getNumResults();
