@@ -1638,8 +1638,9 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
 ////////////////////////////////////////////////////////////////////////////////
 // StdForOp.
 ////////////////////////////////////////////////////////////////////////////////
+
 // Check that if a "block" has a terminator, it is an `TerminatorOp`.
-static LogicalResult checkHasTerminator(OpState &op, Block &block) {
+static LogicalResult checkHasStdTerminator(OpState &op, Block &block) {
   if (block.empty() || isa<StdTerminatorOp>(block.back()))
     return success();
 
@@ -1650,11 +1651,7 @@ static LogicalResult checkHasTerminator(OpState &op, Block &block) {
          << StdTerminatorOp::getOperationName() << "'";
 }
 
-// Insert `cf.terminator` at the end of the StdForOp only region's only block
-// if it does not have a terminator already.  If a new `cf.terminator` is
-// inserted, the location is specified by `loc`. If the region is empty,
-// insert a new block first.
-static void ensureTerminator(Region &region, Builder &builder, Location loc) {
+void mlir::ensureStdTerminator(Region &region, Builder &builder, Location loc) {
   impl::ensureRegionTerminator<StdTerminatorOp>(region, builder, loc);
 }
 
@@ -1665,7 +1662,7 @@ void StdForOp::build(Builder *builder, OperationState *result, Value *lb,
   Block *body = new Block();
   body->addArgument(IndexType::get(builder->getContext()));
   bodyRegion->push_back(body);
-  ensureTerminator(*bodyRegion, *builder, result->location);
+  ensureStdTerminator(*bodyRegion, *builder, result->location);
 }
 
 LogicalResult StdForOp::verify() {
@@ -1694,7 +1691,7 @@ LogicalResult StdForOp::verify() {
       !body->getArgument(0)->getType().isIndex())
     return emitOpError("expected body to have a single index argument for "
                        "the induction variable");
-  if (failed(checkHasTerminator(*this, *body)))
+  if (failed(checkHasStdTerminator(*this, *body)))
     return failure();
   return success();
 }
@@ -1731,7 +1728,7 @@ ParseResult StdForOp::parse(OpAsmParser *parser, OperationState *result) {
   if (parser->parseRegion(*body, inductionVariable, indexType))
     return failure();
 
-  ensureTerminator(*body, builder, result->location);
+  ensureStdTerminator(*body, builder, result->location);
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
@@ -1752,6 +1749,81 @@ StdForOp getStdForInductionVarOwner(Value *val) {
   assert(ivArg->getOwner() && "unlinked block argument");
   auto *containingInst = ivArg->getOwner()->getContainingOp();
   return dyn_cast_or_null<StdForOp>(containingInst);
+}
+
+//===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(IfOp op) {
+  // Verify that the entry block of each child region does not have arguments.
+  for (auto &region : op.getOperation()->getRegions()) {
+    if (region.empty())
+      continue;
+
+    // TODO(riverriddle) We currently do not allow multiple blocks in child
+    // regions.
+    if (std::next(region.begin()) != region.end())
+      return op.emitOpError("expected one block per 'then' or 'else' regions");
+    if (failed(checkHasStdTerminator(op, region.front())))
+      return failure();
+
+    for (auto &b : region)
+      if (b.getNumArguments() != 0)
+        return op.emitOpError(
+            "requires that child entry blocks have no arguments");
+  }
+  return success();
+}
+
+static ParseResult parseIfOp(OpAsmParser *parser, OperationState *result) {
+  // Create the regions for 'then'.
+  result->regions.reserve(2);
+  Region *thenRegion = result->addRegion();
+  Region *elseRegion = result->addRegion();
+
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType cond;
+  Type i1Type = builder.getIntegerType(1);
+  if (parser->parseOperand(cond) ||
+      parser->resolveOperand(cond, i1Type, result->operands))
+    return failure();
+
+  // Parse the 'then' region.
+  if (parser->parseRegion(*thenRegion, {}, {}))
+    return failure();
+  ensureStdTerminator(*thenRegion, parser->getBuilder(), result->location);
+
+  // If we find an 'else' keyword then parse the 'else' region.
+  if (!parser->parseOptionalKeyword("else")) {
+    if (parser->parseRegion(*elseRegion, {}, {}))
+      return failure();
+    ensureStdTerminator(*elseRegion, parser->getBuilder(), result->location);
+  }
+
+  // Parse the optional attribute list.
+  if (parser->parseOptionalAttributeDict(result->attributes))
+    return failure();
+
+  return success();
+}
+
+static void print(OpAsmPrinter *p, IfOp op) {
+  *p << IfOp::getOperationName() << " " << *op.condition();
+  p->printRegion(op.thenRegion(),
+                 /*printEntryBlockArgs=*/false,
+                 /*printBlockTerminators=*/false);
+
+  // Print the 'else' regions if it exists and has a block.
+  auto &elseRegion = op.elseRegion();
+  if (!elseRegion.empty()) {
+    *p << " else";
+    p->printRegion(elseRegion,
+                   /*printEntryBlockArgs=*/false,
+                   /*printBlockTerminators=*/false);
+  }
+
+  p->printOptionalAttrDict(op.getAttrs());
 }
 
 //===----------------------------------------------------------------------===//

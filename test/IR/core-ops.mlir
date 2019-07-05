@@ -437,7 +437,7 @@ func @std_for(%arg0 : index, %arg1 : index, %arg2 : index) {
   }
   return
 }
-// CHECK-LABEL: func @std_for(%arg0: index, %arg1: index, %arg2: index) {
+// CHECK-LABEL: func @std_for(
 //  CHECK-NEXT:   std.for %i0 = %arg0 to %arg1 step %arg2 {
 //  CHECK-NEXT:     std.for %i1 = %arg0 to %arg1 step %arg2 {
 //  CHECK-NEXT:       %0 = cmpi "slt", %i0, %i1 : index
@@ -445,3 +445,27 @@ func @std_for(%arg0 : index, %arg1 : index, %arg2 : index) {
 //  CHECK-NEXT:       %2 = cmpi "sge", %i0, %i1 : index
 //  CHECK-NEXT:       %3 = select %2, %i0, %i1 : index
 //  CHECK-NEXT:       std.for %i2 = %1 to %3 step %i1 {
+
+func @std_if(%arg0: i1, %arg1: f32) {
+  std.if %arg0 {
+    %0 = addf %arg1, %arg1 : f32
+  }
+  return
+}
+// CHECK-LABEL: func @std_if(
+//  CHECK-NEXT:   std.if %arg0 {
+//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32
+
+func @std_if_else(%arg0: i1, %arg1: f32) {
+  std.if %arg0 {
+    %0 = addf %arg1, %arg1 : f32
+  } else {
+    %1 = addf %arg1, %arg1 : f32
+  }
+  return
+}
+// CHECK-LABEL: func @std_if_else(
+//  CHECK-NEXT:   std.if %arg0 {
+//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32
+//  CHECK-NEXT:   } else {
+//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32

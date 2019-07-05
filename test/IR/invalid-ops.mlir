@@ -771,3 +771,43 @@ func @std_for_single_index_argument(%arg0: index) {
   ) : (index, index, index) -> ()
   return
 }
+
+// -----
+
+func @std_if_not_i1(%arg0: index) {
+  // expected-error@+1 {{operand #0 must be 1-bit integer}}
+  "std.if"(%arg0) : (index) -> ()
+  return
+}
+
+// -----
+
+func @std_if_more_than_2_regions(%arg0: i1) {
+  // expected-error@+1 {{op has incorrect number of regions: expected 2}}
+  "std.if"(%arg0) ({}, {}, {}): (i1) -> ()
+  return
+}
+
+// -----
+
+func @std_if_not_one_block_per_region(%arg0: i1) {
+  // expected-error@+1 {{region #0 ('thenRegion') failed to verify constraint: region with 1 blocks}}
+  "std.if"(%arg0) ({
+    ^bb0:
+      "std.terminator"() : () -> ()
+    ^bb1:
+      "std.terminator"() : () -> ()
+  }, {}): (i1) -> ()
+  return
+}
+
+// -----
+
+func @std_if_illegal_block_argument(%arg0: i1) {
+  // expected-error@+1 {{requires that child entry blocks have no arguments}}
+  "std.if"(%arg0) ({
+    ^bb0(%0 : index):
+      "std.terminator"() : () -> ()
+  }, {}): (i1) -> ()
+  return
+}

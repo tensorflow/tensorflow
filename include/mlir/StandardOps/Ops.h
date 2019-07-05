@@ -24,6 +24,7 @@
 #define MLIR_STANDARDOPS_OPS_H
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
@@ -355,6 +356,12 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 ParseResult parseDimAndSymbolList(OpAsmParser *parser,
                                   SmallVector<Value *, 4> &operands,
                                   unsigned &numDims);
+
+// Insert `std.terminator` at the end of the only region's only block if it does
+// not have a terminator already.  If a new `std.terminator` is inserted, the
+// location is specified by `loc`. If the region is empty, insert a new block
+// first.
+void ensureStdTerminator(Region &region, Builder &builder, Location loc);
 
 /// The "std.for" operation represents a loop nest taking 3 SSA value as
 /// operands that represent the lower bound, upper bound and step respectively.

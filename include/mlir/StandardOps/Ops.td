@@ -609,6 +609,46 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
+// TODO(ntv): Default generated builder creates IR that does not verify. Atm it
+// is the responsibility of each caller to call ensureStdTerminator on the
+// then and else regions.
+def IfOp : Std_Op<"if"> {
+  let summary = "if-then-else operation";
+  let description = [{
+    The "std.if" operation represents an if-then-else construct for
+    conditionally executing two regions of code. The operand to an if operation
+    is a boolean value. The operation produces no results. For example:
+
+       std.if %b  {
+         ...
+       } else {
+         ...
+       }
+
+    The 'else' block is optional, and may be omitted. For
+    example:
+
+       std.if %b  {
+         ...
+       }
+  }];
+  let arguments = (ins I1:$condition);
+  let regions = (region SizedRegion<1>:$thenRegion, AnyRegion:$elseRegion);
+
+  let extraClassDeclaration = [{
+    OpBuilder getThenBodyBuilder() {
+      assert(!thenRegion().empty() && "Unexpected empty 'then' region.");
+      Block &body = thenRegion().front();
+      return OpBuilder(&body, std::prev(body.end()));
+    }
+    OpBuilder getElseBodyBuilder() {
+      assert(!elseRegion().empty() && "Unexpected empty 'else' region.");
+      Block &body = elseRegion().front();
+      return OpBuilder(&body, std::prev(body.end()));
+    }
+  }];
+}
+
 def IndexCastOp : CastOp<"index_cast">, Arguments<(ins AnyType:$in)> {
   let summary = "cast between index and integer types";
   let description = [{
