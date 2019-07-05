@@ -49,7 +49,7 @@ TEST_F(GpuUnrollingTest, DoNotUnroll) {
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
   auto hlo_module =
-      ParseAndReturnUnverifiedModule(kAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -69,7 +69,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   debug_options.set_xla_gpu_max_kernel_unroll_factor(8);
   config.set_debug_options(debug_options);
   auto hlo_module =
-      ParseAndReturnUnverifiedModule(kAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -89,7 +89,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   auto hlo_module =
-      ParseAndReturnUnverifiedModule(kAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -121,7 +121,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
       ROOT add = f32[2,2]{1,0} add(p0, p1)
     })";
   auto hlo_module =
-      ParseAndReturnUnverifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -165,7 +165,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
                                                    calls=fused_computation
     })";
   auto hlo_module =
-      ParseAndReturnUnverifiedModule(kMultiOutputFusionModule, config)
+      ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config)
           .ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),

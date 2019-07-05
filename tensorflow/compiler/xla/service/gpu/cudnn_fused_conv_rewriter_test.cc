@@ -32,7 +32,7 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
     return backend()
         .compiler()
         ->RunHloPasses(
-            ParseAndReturnUnverifiedModule(hlo_string, GetModuleConfigForTest())
+            ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest())
                 .ConsumeValueOrDie(),
             backend().default_stream_executor(), backend().memory_allocator())
         .ConsumeValueOrDie()
@@ -294,11 +294,10 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
   const string optimized_hlo_string =
       backend()
           .compiler()
-          ->RunHloPasses(ParseAndReturnUnverifiedModule(
-                             kHloString, GetModuleConfigForTest())
-                             .ConsumeValueOrDie(),
-                         backend().default_stream_executor(),
-                         backend().memory_allocator())
+          ->RunHloPasses(
+              ParseAndReturnVerifiedModule(kHloString, GetModuleConfigForTest())
+                  .ConsumeValueOrDie(),
+              backend().default_stream_executor(), backend().memory_allocator())
           .ConsumeValueOrDie()
           ->ToString();
   EXPECT_THAT(

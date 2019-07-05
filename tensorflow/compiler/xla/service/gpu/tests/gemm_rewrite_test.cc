@@ -70,7 +70,7 @@ class GemmRewriteTest : public GpuCodegenTest {
       const std::string& hlo) {
     HloModuleConfig config;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnUnverifiedModule(hlo, config));
+                        ParseAndReturnVerifiedModule(hlo, config));
     return backend().compiler()->RunHloPasses(
         std::move(module), backend().default_stream_executor(),
         backend().default_stream_executor()->GetAllocator());
