@@ -350,7 +350,7 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -388,7 +388,7 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -415,7 +415,7 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),

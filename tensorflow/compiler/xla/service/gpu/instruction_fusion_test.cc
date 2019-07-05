@@ -145,7 +145,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
 
 // Tests that broadcasts fused into a fusion with a reduce root.
 TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     add {
@@ -174,7 +174,7 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     add {
@@ -197,7 +197,7 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     add {
@@ -227,7 +227,7 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
     ENTRY entry {
       p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
@@ -246,7 +246,7 @@ TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -268,7 +268,7 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
 }
 
 TEST_F(InstructionFusionTest, AddIntoBitcast) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -290,7 +290,7 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
 }
 
 TEST_F(InstructionFusionTest, DontFuseGTE) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY DontFuseGTE {
     p0 = (f32[10], f32[10]) parameter(0)
@@ -308,7 +308,7 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   Add {
     lhs = f32[] parameter(0)
@@ -339,7 +339,7 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
 // is *not* duplicated and fused into both reduces, because we say that integer
 // division is not cheap.
 TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   Add {
     lhs = s32[] parameter(0)
@@ -364,7 +364,7 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY NoOutputFusion {
     alpha = f32[] constant(3)
@@ -418,7 +418,7 @@ static StatusOr<const HloInstruction*> FindHloInstruction(
 TEST_F(InstructionFusionTest, MultiOutputFusion) {
   // sub --> add --> tuple
   //  \---------------/
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -438,7 +438,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseScalarConstant) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
 
   ENTRY FuseScalarConstant {
@@ -492,7 +492,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoScatter) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     add {
@@ -531,7 +531,7 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
 }
 
 TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     add {
@@ -561,7 +561,7 @@ TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
 }
 
 TEST_F(InstructionFusionTest, FuseReverse) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
 
     ENTRY Reverse {

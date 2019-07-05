@@ -215,7 +215,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(text));
+                          ParseAndReturnUnverifiedModule(text));
   ASSERT_FALSE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module_copy,
@@ -237,7 +237,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(text));
+                          ParseAndReturnUnverifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module_copy,
@@ -274,7 +274,7 @@ ENTRY ReduceR3ToR2.v3 {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(text));
+                          ParseAndReturnUnverifiedModule(text));
 
   // Perform various transformations on the graph:
   //

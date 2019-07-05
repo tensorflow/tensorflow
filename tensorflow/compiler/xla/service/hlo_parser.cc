@@ -4222,7 +4222,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
 
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
   auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
   HloParser parser(str);
@@ -4230,11 +4230,18 @@ StatusOr<std::unique_ptr<HloModule>> ParseHloString(
   return std::move(module);
 }
 
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
+    absl::string_view str) {
+  return ParseAndReturnUnverifiedModule(str, HloModuleConfig());
+}
+
+StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+    absl::string_view str, const HloModuleConfig& config) {
+  return ParseAndReturnUnverifiedModule(str, config);
+}
+
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"_", HloModuleConfig());
-  HloParser parser(str);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
-  return std::move(module);
+  return ParseAndReturnUnverifiedModule(str);
 }
 
 Status ParseHloString(absl::string_view str, HloModule* module) {

@@ -208,7 +208,7 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
 }
 
 TEST_F(HloReachabilityTest, ReplaceInstructions) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
     HloModule test
 
     ENTRY entry {
