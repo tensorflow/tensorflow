@@ -23,6 +23,7 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
     Variadic<F32>:$s
   );
 
+  let regions = (region AnyRegion:$someRegion);
   let builders = [OpBuilder<"Value *val">];
   let parser = [{ foo }];
   let printer = [{ bar }];
@@ -59,6 +60,7 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:   Operation::operand_range b();
 // CHECK:   Operation::result_range getODSResults(unsigned index);
 // CHECK:   Value *r();
+// CHECK:   Region &someRegion();
 // CHECK:   APInt attr1();
 // CHECK:   Optional< APFloat > attr2();
 // CHECK:   static void build(Value *val);

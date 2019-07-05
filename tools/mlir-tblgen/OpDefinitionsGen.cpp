@@ -469,6 +469,9 @@ private:
   // Generates getters for named results.
   void genNamedResultGetters();
 
+  // Generates getters for named regions.
+  void genNamedRegionGetters();
+
   // Generates builder method for the operation.
   void genBuilder();
 
@@ -536,6 +539,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genOpNameGetter();
   genNamedOperandGetters();
   genNamedResultGetters();
+  genNamedRegionGetters();
   genAttrGetters();
   genBuilder();
   genParser();
@@ -717,6 +721,17 @@ void OpEmitter::genNamedResultGetters() {
     } else {
       auto &m = opClass.newMethod("Value *", result.name);
       m.body() << "return *getODSResults(" << i << ").begin();";
+    }
+  }
+}
+
+void OpEmitter::genNamedRegionGetters() {
+  unsigned numRegions = op.getNumRegions();
+  for (unsigned i = 0; i < numRegions; ++i) {
+    const auto &region = op.getRegion(i);
+    if (!region.name.empty()) {
+      auto &m = opClass.newMethod("Region &", region.name);
+      m.body() << formatv("return this->getOperation()->getRegion({0});", i);
     }
   }
 }
