@@ -56,14 +56,15 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
 
 // Allowed activation function cases
 // These should match the ActivationFunctionType enum in TFLite schema.
-def TFL_AF_None  : EnumAttrCase<"NONE">;
-def TFL_AF_Relu  : EnumAttrCase<"RELU">;
-def TFL_AF_Relu1 : EnumAttrCase<"RELU_N1_TO_1">;
-def TFL_AF_Relu6 : EnumAttrCase<"RELU6">;
-def TFL_AF_Tanh  : EnumAttrCase<"TANH">;
-def TFL_AF_Sign  : EnumAttrCase<"SIGN_BIT">;
+def TFL_AF_None  : StrEnumAttrCase<"NONE">;
+def TFL_AF_Relu  : StrEnumAttrCase<"RELU">;
+def TFL_AF_Relu1 : StrEnumAttrCase<"RELU_N1_TO_1">;
+def TFL_AF_Relu6 : StrEnumAttrCase<"RELU6">;
+def TFL_AF_Tanh  : StrEnumAttrCase<"TANH">;
+def TFL_AF_Sign  : StrEnumAttrCase<"SIGN_BIT">;
 
-def TFL_AFAttr : EnumAttr<"ActivationFunctionType", "fused activation enum", [
+def TFL_AFAttr : StrEnumAttr<
+    "ActivationFunctionType", "fused activation enum", [
       TFL_AF_None,  TFL_AF_Relu, TFL_AF_Relu1,
       TFL_AF_Relu6, TFL_AF_Tanh, TFL_AF_Sign
     ]>;
@@ -74,10 +75,10 @@ def TFL_AFAttr : EnumAttr<"ActivationFunctionType", "fused activation enum", [
 
 // Allowed padding cases
 // These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : EnumAttrCase<"SAME">;
-def TFL_PAD_Valid : EnumAttrCase<"VALID">;
+def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
+def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
 
-def TFL_PaddingAttr : EnumAttr<"Padding", "padding enum", [
+def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
       TFL_PAD_Same, TFL_PAD_Valid
     ]>;
 
@@ -479,12 +480,12 @@ def TFL_DepthwiseConv2DOp :
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
 }
 
-def TFL_FCWO_Default  : EnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : EnumAttrCase<"SHUFFLED4x16INT8">;
+def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
+def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
 
 def TFL_FullyConnectedOptionsWeightFormatAttr :
-    EnumAttr<"FullyConectedOptionsWeightsFormat",
-             "fully connected options weights format", [
+    StrEnumAttr<"FullyConectedOptionsWeightsFormat",
+                "fully connected options weights format", [
       TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
     ]>;
 
@@ -541,6 +542,30 @@ def TFL_GatherOp : TFL_Op<"gather", [
   );
 
   let hasOptions = 1;
+}
+
+// Same type check of lhs and rhs is handled by the Broadcastable trait.
+def TFL_LessEqualOp : TFL_Op<"less_equal", [Broadcastable, NoSideEffect]> {
+  let summary = "Less_equal operator";
+
+  let description = [{
+    Element-wise less_equal operation.
+  }];
+
+  let arguments = (
+    // TODO(haoliang): missing Uint8
+      ins TensorOf<[F32, I32, I64, I8]>:$lhs,
+      TensorOf<[F32, I32, I64, I8]>:$rhs);
+
+  let results = (outs TFL_BoolTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
+
+  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+
+  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let hasOptions = 0;
 }
 
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [Broadcastable, NoSideEffect]> {
@@ -707,6 +732,45 @@ size 1.
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+}
+
+def TFL_SqueezeOp: TFL_Op<"squeeze", [NoSideEffect,
+                                      TFL_SameOperandsAndResultsScale]> {
+  let summary = "Removes dimensions of size 1 from the shape of a tensor.";
+
+  let description = [{
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`axis`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+  }];
+
+  let arguments = (ins
+    AnyTensor:$input,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$squeeze_dims
+  );
+
+  let results = (outs
+    AnyTensor:$output
+  );
+
+  let hasOptions = 1;
+
+  let customOption = "SqueezeOptions";
 }
 
 def TFL_FillOp: TFL_Op<"fill", [NoSideEffect]> {
@@ -1753,6 +1817,51 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   let results = (outs
     TensorOf<[F32, I16, I32, I64]>:$output
   );
+}
+
+def TFL_SplitOp : TFL_Op<"split", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+    Splits the `value` tensor along `split_dim` into a number of sub-tensors
+    with same shape as the original one, except for `split_dim`. Same as
+    tf.Split.
+  }];
+
+  let arguments = (ins
+    I32Tensor:$split_dim,
+    TensorOf<[F32, I16, I32, I64]>:$value,
+    I32Attr:$num_splits
+  );
+
+  let results = (outs
+    Variadic<TensorOf<[F32, I16, I32, I64]>>:$outputs
+  );
+
+  let hasOptions = 1;
+}
+
+def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+    Splits the `value` tensor along `split_dim` into a number of sub-tensors
+    with same shape as the original one, except for `split_dim`. The grouping
+    of the resultant sub-tensors is decided by `size-splits`. Same as tf.SplitV.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I16, I32, I64]>:$value,
+    I32Tensor:$size_splits,
+    I32Tensor:$split_dim,
+    I32Attr:$num_splits
+  );
+
+  let results = (outs
+    Variadic<TensorOf<[F32, I16, I32, I64]>>:$outputs
+  );
+
+  let hasOptions = 1;
 }
 
 def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [NoSideEffect]> {

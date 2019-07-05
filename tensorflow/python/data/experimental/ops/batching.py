@@ -242,7 +242,7 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape
-    self._structure = structure.SparseTensorStructure(
+    self._element_spec = structure.SparseTensorStructure(
         dataset_ops.get_legacy_output_types(input_dataset),
         tensor_shape.vector(None).concatenate(self._row_shape))
 
@@ -255,8 +255,8 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
                                                      variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 class _MapAndBatchDataset(dataset_ops.UnaryDataset):
@@ -285,12 +285,12 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
       # pylint: disable=g-long-lambda
-      self._structure = nest.map_structure(
+      self._element_spec = nest.map_structure(
           lambda component_spec: component_spec._batch(
               tensor_util.constant_value(self._batch_size_t)),
           self._map_func.output_structure)
     else:
-      self._structure = nest.map_structure(
+      self._element_spec = nest.map_structure(
           lambda component_spec: component_spec._batch(None),
           self._map_func.output_structure)
     # pylint: enable=protected-access
@@ -309,5 +309,5 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
     return [self._map_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec

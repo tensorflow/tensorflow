@@ -122,6 +122,11 @@ $(PRJDIR)$(2)/arduino/src/third_party/%: tensorflow/lite/experimental/micro/tool
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< > $$@
 
+$(PRJDIR)$(2)/arduino/src/third_party/%.cpp: tensorflow/lite/experimental/micro/tools/make/downloads/%.cc third_party_downloads
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< > $$@
+
 $(PRJDIR)$(2)/arduino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h third_party_downloads
 	@mkdir -p $$(dir $$@)
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \

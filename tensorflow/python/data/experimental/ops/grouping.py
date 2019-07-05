@@ -299,8 +299,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
       wrapped_func = dataset_ops.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
-          input_structure=(self._state_structure,
-                           input_dataset._element_structure),  # pylint: disable=protected-access
+          input_structure=(self._state_structure, input_dataset.element_spec),
           add_to_graph=False)
 
       # Extract and validate class information from the returned values.
@@ -355,7 +354,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         input_structure=self._state_structure)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return self._finalize_func.output_structure
 
   def _functions(self):
@@ -416,7 +415,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
     nested_dataset = dataset_ops.DatasetStructure(
-        input_dataset._element_structure)  # pylint: disable=protected-access
+        input_dataset.element_spec)
     input_structure = (structure.TensorStructure(dtypes.int64,
                                                  []), nested_dataset)
     self._reduce_func = dataset_ops.StructuredFunctionWrapper(
@@ -426,12 +425,12 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         self._reduce_func.output_structure, dataset_ops.DatasetStructure):
       raise TypeError("`reduce_func` must return a `Dataset` object.")
     # pylint: disable=protected-access
-    self._structure = (
-        self._reduce_func.output_structure._element_structure)
+    self._element_spec = (
+        self._reduce_func.output_structure._element_spec)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _functions(self):
     return [self._key_func, self._reduce_func, self._window_size_func]

@@ -830,6 +830,7 @@ cc_test(
     name = "unidirectional_sequence_lstm_test",
     size = "small",
     srcs = ["unidirectional_sequence_lstm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1312,6 +1313,7 @@ cc_test(
     name = "neg_test",
     size = "small",
     srcs = ["neg_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1370,6 +1372,7 @@ cc_test(
     name = "expand_dims_test",
     size = "small",
     srcs = ["expand_dims_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1426,12 +1429,14 @@ cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_googletest//:gtest",
     ],
 )

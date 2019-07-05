@@ -769,8 +769,8 @@ Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
 
 // Layout agnostic transposer.
 
-bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
-                                   absl::Span<const int> permutation) {
+inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
+                                          absl::Span<const int> permutation) {
   Tensor tensor;
   if (!GetValueAttrIfConstPermTransposeNode(node, &tensor)) {
     return false;
@@ -788,9 +788,9 @@ bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
   return true;
 }
 
-bool IsValidDataFormatNode(const utils::MutableNodeView& node,
-                           absl::string_view src_format,
-                           absl::string_view dst_format) {
+inline bool IsValidDataFormatNode(const utils::MutableNodeView& node,
+                                  absl::string_view src_format,
+                                  absl::string_view dst_format) {
   if (!IsDataFormatOp(node)) {
     return false;
   }
@@ -803,6 +803,19 @@ bool IsValidDataFormatNode(const utils::MutableNodeView& node,
     return false;
   }
   return true;
+}
+
+inline bool IsLayoutOptimizerAddedDstToSrcTranspose(
+    const TransposeContext& context, const utils::MutableNodeView& node) {
+  return node.node_index() >= context.num_nodes &&
+         IsValidConstPermTransposeNode(node, context.dst_to_src);
+}
+
+inline bool IsLayoutOptimizerAddedDstToSrcTransform(
+    const TransposeContext& context, const utils::MutableNodeView& node) {
+  return node.node_index() >= context.num_nodes &&
+         (IsValidConstPermTransposeNode(node, context.dst_to_src) ||
+          IsValidDataFormatNode(node, context.dst_format, context.src_format));
 }
 
 bool LayoutAgnosticOpTransposer::IsAfterDstToSrcTransform(
@@ -821,9 +834,7 @@ bool LayoutAgnosticOpTransposer::IsAfterDstToSrcTransform(
   while (!queue.empty()) {
     utils::MutableNodeView* current_node = queue.front();
     queue.pop_front();
-    if (IsValidConstPermTransposeNode(*current_node, context.dst_to_src) ||
-        IsValidDataFormatNode(*current_node, context.dst_format,
-                              context.src_format)) {
+    if (IsLayoutOptimizerAddedDstToSrcTransform(context, *current_node)) {
       return true;
     }
     // We only continue searching if the path is connected through
@@ -854,8 +865,8 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
     if (IsFanoutPortDimsN(*regular_fanin_node, regular_fanin_port, 4) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
-         IsValidConstPermTransposeNode(*regular_fanin_node,
-                                       context.dst_to_src))) {
+         IsLayoutOptimizerAddedDstToSrcTranspose(context,
+                                                 *regular_fanin_node))) {
       ports.push_back(i);
     }
   }
@@ -1081,8 +1092,8 @@ bool MergeTransposer::IsEveryFaninAfterDstToSrcTransform(
     if (IsFanoutPortDimsN(*regular_fanin_node, regular_fanin.index(), 4) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
-         IsValidConstPermTransposeNode(*regular_fanin_node,
-                                       context.dst_to_src))) {
+         IsLayoutOptimizerAddedDstToSrcTranspose(context,
+                                                 *regular_fanin_node))) {
       continue;
     }
     return false;

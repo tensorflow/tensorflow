@@ -6,8 +6,10 @@ This directory contains:
 2. Code for the TF-lite dialect [MLIR](https://github.com/tensorflow/mlir).
 
 ## API:
-The API for converting TensorFlow models to TensorFlow Lite is
-tf.lite.TFLiteConverterV2.
+
+The API for converting TensorFlow models to TensorFlow Lite will be through
+`tf.lite.TFLiteConverter`. All the conversion code is open sourced, and
+the API will be integrated soon.
 
 ### The conversion process from TensorFlow to TensorFlow Lite includes the following major passes:
 

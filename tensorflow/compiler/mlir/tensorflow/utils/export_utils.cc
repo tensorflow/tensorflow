@@ -51,8 +51,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 
-using stream_executor::port::StatusOr;
-
 namespace tensorflow {
 namespace {
 // Converts a location to the debug information for the node def.

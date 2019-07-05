@@ -107,14 +107,20 @@ ResourceMgr::ResourceMgr(const string& default_container)
 ResourceMgr::~ResourceMgr() { Clear(); }
 
 void ResourceMgr::Clear() {
-  mutex_lock l(mu_);
-  for (const auto& p : containers_) {
+  // We do the deallocation outside of the lock to avoid a potential deadlock
+  // in case any of the destructors access the resource manager.
+  std::unordered_map<string, Container*> tmp_containers;
+  {
+    mutex_lock l(mu_);
+    tmp_containers = std::move(containers_);
+  }
+  for (const auto& p : tmp_containers) {
     for (const auto& q : *p.second) {
       q.second->Unref();
     }
     delete p.second;
   }
-  containers_.clear();
+  tmp_containers.clear();
 }
 
 string ResourceMgr::DebugString() const {

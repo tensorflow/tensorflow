@@ -5648,6 +5648,62 @@ inline void HardSwish(const HardSwishParams& params,
   }
 }
 
+template <typename T>
+inline void IntegerExponentPow(const ArithmeticParams& params,
+                               const RuntimeShape& unextended_base_shape,
+                               const T* base_data, const int exponent,
+                               const RuntimeShape& unextended_output_shape,
+                               T* output_data) {
+  TFLITE_DCHECK_GE(exponent, 1);
+  if (exponent == 1) {
+    // copy data over.
+    std::memcpy(output_data, base_data,
+                unextended_base_shape.FlatSize() * sizeof(T));
+  } else {
+    IntegerExponentPow(params, unextended_base_shape, base_data, exponent / 2,
+                       unextended_output_shape, output_data);
+    Mul(params, unextended_base_shape, output_data, unextended_base_shape,
+        output_data, unextended_output_shape, output_data);
+    if (exponent % 2 == 1) {
+      Mul(params, unextended_base_shape, base_data, unextended_base_shape,
+          output_data, unextended_output_shape, output_data);
+    }
+  }
+}
+
+template <typename T>
+inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
+                           const T* input1_data,
+                           const RuntimeShape& unextended_input2_shape,
+                           const T* input2_data,
+                           const RuntimeShape& unextended_output_shape,
+                           T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PowBroadcast");
+
+  if (unextended_input2_shape.FlatSize() == 1) {
+    static const float epsilon = 1e-5;
+    const T exponent = input2_data[0];
+    const int int_exponent = static_cast<int>(std::round(exponent));
+    if ((std::abs(input2_data[0] - int_exponent) < epsilon) &&
+        (int_exponent >= 1)) {
+      ArithmeticParams params;
+      if (std::is_same<T, float>::value) {
+        params.float_activation_max = std::numeric_limits<float>::max();
+        params.float_activation_min = std::numeric_limits<float>::lowest();
+      } else if (std::is_same<T, int>::value) {
+        params.quantized_activation_max = std::numeric_limits<int>::max();
+        params.quantized_activation_min = std::numeric_limits<int>::lowest();
+      }
+      IntegerExponentPow(params, unextended_input1_shape, input1_data,
+                         int_exponent, unextended_output_shape, output_data);
+      return;
+    }
+  }
+  reference_ops::BroadcastPow4DSlow(unextended_input1_shape, input1_data,
+                                    unextended_input2_shape, input2_data,
+                                    unextended_output_shape, output_data);
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

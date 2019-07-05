@@ -396,7 +396,10 @@ cuda_py_test(
         "//tensorflow/python/training/tracking:tracking",
     ],
     shard_count = 10,
-    tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
+    tags = [
+        "no_mac",  # TODO(b/124822121): Re-enable this test.
+        "nogpu",  # TODO(b/136560979): flaky
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

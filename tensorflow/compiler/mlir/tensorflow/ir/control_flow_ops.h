@@ -28,17 +28,16 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 
 namespace mlir {
-
 namespace TFControlFlow {
 
 class TFControlFlowDialect : public Dialect {
  public:
   explicit TFControlFlowDialect(MLIRContext *context);
 
-  /// Parse a type registered to this dialect.
+  // Parses a type registered to this dialect.
   Type parseType(StringRef tyData, Location loc) const override;
 
-  /// Print a type registered to this dialect.
+  // Prints a type registered to this dialect.
   void printType(Type type, raw_ostream &os) const override;
 };
 
@@ -56,33 +55,33 @@ class TFControlType : public Type::TypeBase<TFControlType, Type> {
     return Base::get(context, TensorFlowControlTypes::Control);
   }
 
-  /// Support method to enable LLVM-style type casting.
+  // Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) {
     return kind == TensorFlowControlTypes::Control;
   }
 };
 
-/// The "_tf.Enter" operation forwards its input to Tensorflow while loop. Each
-/// tensor needs its own _tf.Enter to be made available inside the while loop.
-///
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// This is defined in Tensorflow as:
-///
-/// REGISTER_OP("Enter")
-///    .Input("data: T")
-///    .Output("output: T")
-///    .Attr("T: type")
-///    .Attr("frame_name: string")
-///    .Attr("is_constant: bool = false")
-///    .Attr("parallel_iterations: int = 10")
+// The "_tf.Enter" operation forwards its input to Tensorflow while loop. Each
+// tensor needs its own _tf.Enter to be made available inside the while loop.
 //
-/// For example:
-///   %1 = "_tf.Enter"(%0#0) {T: "tfdtype$DT_INT32", frame_name:
-///        "while/while_context",} : (tensor<i32>) -> (tensor<*xi32>)
-///
-/// Note: Additional result corresponds to the control output.
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// This is defined in Tensorflow as:
+//
+// REGISTER_OP("Enter")
+//    .Input("data: T")
+//    .Output("output: T")
+//    .Attr("T: type")
+//    .Attr("frame_name: string")
+//    .Attr("is_constant: bool = false")
+//    .Attr("parallel_iterations: int = 10")
+//
+// For example:
+//   %1 = "_tf.Enter"(%0#0) {T: "tfdtype$DT_INT32", frame_name:
+//        "while/while_context",} : (tensor<i32>) -> (tensor<*xi32>)
+//
+// Note: Additional result corresponds to the control output.
 class EnterOp
     : public Op<EnterOp, OpTrait::AtLeastNOperands<1>::Impl,
                 OpTrait::NResults<2>::Impl, OpTrait::HasNoSideEffect> {
@@ -97,23 +96,23 @@ class EnterOp
   LogicalResult verify();
 };
 
-/// The "_tf.Merge" operation takes a list of input operands and returns a value
-/// of the operand type along with the index of the first match encountered.
-///
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// This is defined in TensorFlow as:
-///
-/// REGISTER_OP("Merge")
-///    .Input("inputs: N * T")
-///    .Output("output: T")
-///    .Output("value_index: int32")
-///
-/// For example:
-///   %2 = _tf.Merge %0, %1, %2, %3 : tensor<??xf32>
-///
-/// Note: Additional result corresponds to the control output.
+// The "_tf.Merge" operation takes a list of input operands and returns a value
+// of the operand type along with the index of the first match encountered.
+//
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// This is defined in TensorFlow as:
+//
+// REGISTER_OP("Merge")
+//    .Input("inputs: N * T")
+//    .Output("output: T")
+//    .Output("value_index: int32")
+//
+// For example:
+//   %2 = _tf.Merge %0, %1, %2, %3 : tensor<??xf32>
+//
+// Note: Additional result corresponds to the control output.
 class MergeOp : public Op<MergeOp, OpTrait::VariadicOperands,
                           OpTrait::NResults<3>::Impl> {
  public:
@@ -124,37 +123,37 @@ class MergeOp : public Op<MergeOp, OpTrait::VariadicOperands,
   LogicalResult verify();
 };
 
-/// The "_tf.NextIteration.source" and "_tf.NextIteration.sink" operations form
-/// a logical pair. Together, they represent NextIteration op in Tensorflow.
-///
-/// Tensorflow NextIteration operation forwards its input to the next iteration
-/// of a while loop. Each loop variable needs its own NextIteration op.
+// The "_tf.NextIteration.source" and "_tf.NextIteration.sink" operations form
+// a logical pair. Together, they represent NextIteration op in Tensorflow.
 //
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// NextIteration op is broken into _tf.NextIteration.sink and
-/// _tf.NextIteration.source because NextIteration is a back-edge in Tensorflow
-/// graph, which would form a data flow cycle if expressed naively in a basic
-/// block. _tf.NextIteration.source takes no input but returns results while
-/// _tf.NextIteration.sink takes input but doesn't return anything. When
-/// optimizing these ops, they are paired by op names and considered as a
-/// single op.
-///
-/// This is defined in Tensorflow as:
-///
-/// REGISTER_OP("NextIteration")
-///    .Input("data: T")
-///    .Output("output: T")
-///    .Attr("T: type")
-///
-/// For example:
-///   %11 = "_tf.NextIteration.source"() {name: "while/NextIteration", T:
-///         "tfdtype$DT_INT32", id: 0} : () -> (tensor<*xi32>, _tf.control)
-///   "_tf.NextIteration.sink"(%10#0) {name: "while/NextIteration", T:
-///         "tfdtype$DT_INT32", id: 0} : (tensor<*xi32>) -> ()
-///
-/// Note: Additional result corresponds to the control output.
+// Tensorflow NextIteration operation forwards its input to the next iteration
+// of a while loop. Each loop variable needs its own NextIteration op.
+//
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// NextIteration op is broken into _tf.NextIteration.sink and
+// _tf.NextIteration.source because NextIteration is a back-edge in Tensorflow
+// graph, which would form a data flow cycle if expressed naively in a basic
+// block. _tf.NextIteration.source takes no input but returns results while
+// _tf.NextIteration.sink takes input but doesn't return anything. When
+// optimizing these ops, they are paired by op names and considered as a
+// single op.
+//
+// This is defined in Tensorflow as:
+//
+// REGISTER_OP("NextIteration")
+//    .Input("data: T")
+//    .Output("output: T")
+//    .Attr("T: type")
+//
+// For example:
+//   %11 = "_tf.NextIteration.source"() {name: "while/NextIteration", T:
+//         "tfdtype$DT_INT32", id: 0} : () -> (tensor<*xi32>, _tf.control)
+//   "_tf.NextIteration.sink"(%10#0) {name: "while/NextIteration", T:
+//         "tfdtype$DT_INT32", id: 0} : (tensor<*xi32>) -> ()
+//
+// Note: Additional result corresponds to the control output.
 class NextIterationSourceOp
     : public Op<NextIterationSourceOp, OpTrait::NResults<2>::Impl> {
  public:
@@ -179,23 +178,23 @@ class NextIterationSinkOp
   LogicalResult verify();
 };
 
-/// The "_tf.LoopCond" operation forwards a boolean value as loop condition of
-/// Tensorflow while loops.
-///
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// This is defined in Tensorflow as:
-///
-/// REGISTER_OP("LoopCond")
-///    .Input("input: bool")
-///    .Output("output: bool")
-///
-/// For example:
-///   %5 = "_tf.LoopCond"(%4#0) {device: "", name: "while/LoopCond"} :
-///        (tensor<*xi1>) -> (i1, !_tf.control)
-///
-/// Note: Additional result corresponds to the control output.
+// The "_tf.LoopCond" operation forwards a boolean value as loop condition of
+// Tensorflow while loops.
+//
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// This is defined in Tensorflow as:
+//
+// REGISTER_OP("LoopCond")
+//    .Input("input: bool")
+//    .Output("output: bool")
+//
+// For example:
+//   %5 = "_tf.LoopCond"(%4#0) {device: "", name: "while/LoopCond"} :
+//        (tensor<*xi1>) -> (i1, !_tf.control)
+//
+// Note: Additional result corresponds to the control output.
 class LoopCondOp
     : public Op<LoopCondOp, OpTrait::AtLeastNOperands<1>::Impl,
                 OpTrait::NResults<2>::Impl, OpTrait::HasNoSideEffect> {
@@ -209,24 +208,24 @@ class LoopCondOp
   LogicalResult verify();
 };
 
-/// The "_tf.Switch" operation takes a data operand and a boolean predicate
-/// condition, and returns two values matching the type of the data predicate.
-///
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// This is defined in TensorFlow as:
-///
-/// REGISTER_OP("Switch")
-///    .Input("data: T")
-///    .Input("pred: bool")
-///    .Output("output_false: T")
-///    .Output("output_true: T")
-///
-/// For example:
-///   %2 = _tf.Switch %0, %1 : tensor<??xf32>
-///
-/// Note: Additional result corresponds to the control output.
+// The "_tf.Switch" operation takes a data operand and a boolean predicate
+// condition, and returns two values matching the type of the data predicate.
+//
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// This is defined in TensorFlow as:
+//
+// REGISTER_OP("Switch")
+//    .Input("data: T")
+//    .Input("pred: bool")
+//    .Output("output_false: T")
+//    .Output("output_true: T")
+//
+// For example:
+//   %2 = _tf.Switch %0, %1 : tensor<??xf32>
+//
+// Note: Additional result corresponds to the control output.
 class SwitchOp : public Op<SwitchOp, OpTrait::AtLeastNOperands<2>::Impl,
                            OpTrait::NResults<3>::Impl> {
  public:
@@ -243,24 +242,24 @@ class SwitchOp : public Op<SwitchOp, OpTrait::AtLeastNOperands<2>::Impl,
   LogicalResult verify();
 };
 
-/// The "_tf.Exit" operation forwards a value from an while loop to its consumer
-/// outside of loop. Each returned tensor needs its own _tf.Exit.
-///
-/// More details can be found in Tensorflow Controlflow white paper:
-/// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
-///
-/// This is defined in Tensorflow as:
-///
-/// REGISTER_OP("Exit")
-///    .Input("data: T")
-///    .Output("output: T")
-///    .Attr("T: type")
+// The "_tf.Exit" operation forwards a value from an while loop to its consumer
+// outside of loop. Each returned tensor needs its own _tf.Exit.
 //
-/// For example:
-///  %1 = "_tf.Exit"(%0#0) {T: "tfdtype$DT_INT32",} : (tensor<*xi32>) ->
-///       (tensor<*xi32>, !_tf.control)
-///
-/// Note: Additional result corresponds to the control output.
+// More details can be found in Tensorflow Controlflow white paper:
+// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+//
+// This is defined in Tensorflow as:
+//
+// REGISTER_OP("Exit")
+//    .Input("data: T")
+//    .Output("output: T")
+//    .Attr("T: type")
+//
+// For example:
+//  %1 = "_tf.Exit"(%0#0) {T: "tfdtype$DT_INT32",} : (tensor<*xi32>) ->
+//       (tensor<*xi32>, !_tf.control)
+//
+// Note: Additional result corresponds to the control output.
 class ExitOp : public Op<ExitOp, OpTrait::AtLeastNOperands<1>::Impl,
                          OpTrait::NResults<2>::Impl, OpTrait::HasNoSideEffect> {
  public:
@@ -273,7 +272,7 @@ class ExitOp : public Op<ExitOp, OpTrait::AtLeastNOperands<1>::Impl,
   LogicalResult verify();
 };
 
-}  // end namespace TFControlFlow
-}  // end namespace mlir
+}  // namespace TFControlFlow
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_CONTROL_FLOW_OPS_H_

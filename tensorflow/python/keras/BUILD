@@ -69,6 +69,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
     ],
@@ -153,6 +154,16 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "casting_utils",
+    srcs = ["engine/casting_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
     ],
 )
 
@@ -247,6 +258,7 @@ py_library(
     deps = [
         ":backend",
         ":base_layer_utils",
+        ":casting_utils",
         ":constraints",
         ":engine_utils",
         ":regularizers",
@@ -269,7 +281,10 @@ py_library(
 
 py_library(
     name = "base_preprocessing_layer",
-    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs = [
+        "engine/base_preprocessing_layer.py",
+        "engine/base_preprocessing_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
@@ -1468,7 +1483,7 @@ tf_py_test(
 
 tf_py_test(
     name = "feature_columns_integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/feature_columns_integration_test.py"],
     additional_deps = [
         ":keras",
@@ -1477,7 +1492,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
     ],
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+    ],
 )
 
 tf_py_test(

@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/c/kernels.h"
+
 #include <memory>
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
@@ -52,6 +56,44 @@ void TF_DeleteKernelBuilder(TF_KernelBuilder* builder) {
     delete builder->cc_builder;
     delete builder;
   }
+}
+
+namespace tensorflow {
+namespace {
+
+#define CASE(type)                                               \
+  case DataTypeToEnum<type>::value: {                            \
+    kernel_builder->cc_builder->TypeConstraint<type>(attr_name); \
+    break;                                                       \
+  }
+
+void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
+                       const DataType dtype, TF_Status* status) {
+  // This needs to be under tensorflow:: namespace so that
+  // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
+  switch (dtype) {
+    TF_CALL_ALL_TYPES(CASE);
+    default:
+      status->status = errors::Unimplemented("Unexpected type ", dtype);
+      return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+#undef CASE
+}  // namespace
+}  // namespace tensorflow
+
+void TF_KernelBuilder_TypeConstraint(TF_KernelBuilder* kernel_builder,
+                                     const char* attr_name,
+                                     const TF_DataType type,
+                                     TF_Status* status) {
+  tensorflow::DataType dtype = static_cast<tensorflow::DataType>(type);
+  tensorflow::AddTypeConstraint(kernel_builder, attr_name, dtype, status);
+}
+
+void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
+                                 const char* arg_name) {
+  kernel_builder->cc_builder->HostMemory(arg_name);
 }
 
 namespace tensorflow {
@@ -188,6 +230,7 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   }
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
+DEFINE_TF_GETATTR(Int32, tensorflow::int32, int32_t)
 
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);

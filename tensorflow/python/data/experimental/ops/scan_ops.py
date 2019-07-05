@@ -49,7 +49,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
           scan_func,
           self._transformation_name(),
           input_structure=(self._state_structure,
-                           input_dataset._element_structure),  # pylint: disable=protected-access
+                           input_dataset.element_spec),
           add_to_graph=False)
       if not (
           isinstance(wrapped_func.output_types, collections.Sequence) and
@@ -91,7 +91,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
       old_state_shapes = nest.map_structure(
           lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
           self._state_structure)
-      self._structure = structure.convert_legacy_structure(
+      self._element_spec = structure.convert_legacy_structure(
           output_types, output_shapes, output_classes)
 
       flat_state_shapes = nest.flatten(old_state_shapes)
@@ -135,8 +135,8 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     return [self._scan_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _transformation_name(self):
     return "tf.data.experimental.scan()"

@@ -380,6 +380,10 @@ typedef struct {
   // Outputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* outputs;
 
+  // intermediate tensors to this node expressed as indices into the simulator's
+  // tensors.
+  TfLiteIntArray* intermediates;
+
   // Temporary tensors uses during the computations. This usually contains no
   // tensors, but ops are allowed to change that if they need scratch space of
   // any sort.

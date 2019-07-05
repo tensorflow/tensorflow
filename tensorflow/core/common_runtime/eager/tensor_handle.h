@@ -125,9 +125,11 @@ class TensorHandle : public core::RefCounted {
 
   Status TensorValue(tensorflow::TensorValue* t);
 
-  tensorflow::Device* device() const { return device_; }
-  tensorflow::Device* op_device() const { return op_device_; }
-  tensorflow::Device* resource_device() const { return resource_device_; }
+  Device* device() const { return device_; }
+  Device* op_device() const { return op_device_; }
+  Device* resource_device() const { return resource_device_; }
+
+  Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
 
@@ -169,12 +171,14 @@ class TensorHandle : public core::RefCounted {
                       tensorflow::Tensor* output);
 
   // Warning: can return nullptr for CPU tensors.
+  // TODO(b/136608821): Move away from nullptr
   EagerContext* Context() { return ctx_; }
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
   const DataType dtype;
 
+  // TODO(b/136608821): Move away from nullptr
   bool OnHostCPU() const {
     return device_ == nullptr ||
            (ctx_ != nullptr && ctx_->HostCPU() == device_);
@@ -197,7 +201,7 @@ class TensorHandle : public core::RefCounted {
   // done and the handle is "ready".
   Status WaitReady();
 
-  // TODO(ashankar): device_ == nullptr iff local CPU
+  // TODO(b/136608821): device_ == nullptr iff local CPU
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
   // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are

@@ -148,15 +148,17 @@ class KinesisDatasetOp : public DatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::string stream = "";
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<std::string>(ctx, "stream", &stream));
+    OP_REQUIRES_OK(
+        ctx, data::ParseScalarArgument<std::string>(ctx, "stream", &stream));
     std::string shard = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "shard", &shard));
+    OP_REQUIRES_OK(
+        ctx, data::ParseScalarArgument<std::string>(ctx, "shard", &shard));
     bool read_indefinitely = true;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "read_indefinitely",
-                                                  &read_indefinitely));
+    OP_REQUIRES_OK(ctx, data::ParseScalarArgument<bool>(
+                            ctx, "read_indefinitely", &read_indefinitely));
     int64 interval = -1;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "interval", &interval));
+    OP_REQUIRES_OK(
+        ctx, data::ParseScalarArgument<int64>(ctx, "interval", &interval));
     OP_REQUIRES(ctx, (interval > 0),
                 errors::InvalidArgument(
                     "Interval value should be large than 0, got ", interval));

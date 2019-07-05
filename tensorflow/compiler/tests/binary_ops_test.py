@@ -452,22 +452,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
               [1.5, -1.5j, -0.2142857, -2j, (2 + 3j) / (4 - 6j), 2],
               dtype=dtype))
 
-      # Test inf/nan scenarios.
-      self._testBinary(
-          gen_math_ops.real_div,
-          np.array([4 + 3j, 4, 3j, -4, -4j, 2 - 3j], dtype=dtype),
-          np.array([0, 0, 0, 0, 0, 0], dtype=dtype),
-          expected=np.array(
-              [
-                  dtype(1 + 1j) / 0,
-                  dtype(1) / 0,
-                  dtype(1j) / 0,
-                  dtype(-1) / 0,
-                  dtype(-1j) / 0,
-                  dtype(1 - 1j) / 0
-              ],
-              dtype=dtype))
-
       self._testBinary(
           math_ops.pow,
           dtype(3 + 2j),

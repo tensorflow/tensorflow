@@ -1157,7 +1157,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       AddStrictInputSemantics(n, graph.get());
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
 
-      if (n->type_string() == "If") {
+      if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
       } else if (n->type_string() == "Case") {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));

@@ -631,11 +631,13 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
     fail(s);
     return;
   }
+
   CollectiveExecutor::Handle ce_handle(
       env_->collective_executor_mgr->FindOrCreate(step_id), true);
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
   rma->buf_rendezvous()->ConsumeBuf(
-      request->buf_rendezvous_key(),
+      request->buf_rendezvous_key(), request->src_device(),
+      request->src_incarnation(),
       [this, request, rendezvous_done](const Status& status,
                                        BufRendezvous::Hook* hook) {
         Status s = status;

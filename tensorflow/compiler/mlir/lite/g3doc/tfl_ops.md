@@ -542,6 +542,22 @@ Element-wise Leaky ReLU operator
 ### Results:
 1. `output`: tensor of any type values
 
+## tfl.less_equal (TFL::LessEqualOp)
+Less_equal operator
+
+### Description:
+
+Element-wise less_equal operation.
+
+### Operands:
+1. `lhs`: tensor of 32-bit float or 32-bit integer or 64-bit integer or 8-bit integer values
+1. `rhs`: tensor of 32-bit float or 32-bit integer or 64-bit integer or 8-bit integer values
+
+### Attributes:
+
+### Results:
+1. `output`: tensor of 1-bit integer values
+
 ## tfl.less (TFL::LessOp)
 Less operator
 
@@ -1231,6 +1247,49 @@ This operation reshapes space dimensions into the "batch" dimension 0
 ### Results:
 1. `output`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
 
+## tfl.split (TFL::SplitOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+Splits the `value` tensor along `split_dim` into a number of sub-tensors
+with same shape as the original one, except for `split_dim`. Same as
+tf.Split.
+
+### Operands:
+1. `split_dim`: tensor of 32-bit integer values
+1. `value`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_splits` | `IntegerAttr` | 32-bit integer attribute attribute |
+
+### Results:
+1. `outputs`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
+## tfl.split_v (TFL::SplitVOp)
+Splits a tensor into `num_split` tensors along one dimension.
+
+### Description:
+
+Splits the `value` tensor along `split_dim` into a number of sub-tensors
+with same shape as the original one, except for `split_dim`. The grouping
+of the resultant sub-tensors is decided by `size-splits`. Same as tf.SplitV.
+
+### Operands:
+1. `value`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+1. `size_splits`: tensor of 32-bit integer values
+1. `split_dim`: tensor of 32-bit integer values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `num_splits` | `IntegerAttr` | 32-bit integer attribute attribute |
+
+### Results:
+1. `outputs`: tensor of 32-bit float or 16-bit integer or 32-bit integer or 64-bit integer values
+
 ## tfl.sqrt (TFL::SqrtOp)
 Square root operator
 
@@ -1273,6 +1332,41 @@ Element-wise squared difference operation.
 1. `rhs`: tensor of any type values
 
 ### Attributes:
+
+### Results:
+1. `output`: tensor of any type values
+
+## tfl.squeeze (TFL::SqueezeOp)
+Removes dimensions of size 1 from the shape of a tensor.
+
+### Description:
+
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`axis`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+
+### Operands:
+1. `input`: tensor of any type values
+
+### Attributes:
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `squeeze_dims` | `ArrayAttr` | 64-bit integer array attribute attribute |
 
 ### Results:
 1. `output`: tensor of any type values

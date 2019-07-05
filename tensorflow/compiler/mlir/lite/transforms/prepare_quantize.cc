@@ -37,7 +37,7 @@ struct PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
 };
 
 void PrepareQuantizePass::runOnFunction() {
-  ApplyQuantizationParamsPropagation(&getFunction());
+  ApplyQuantizationParamsPropagation(getFunction());
 }
 
 }  // namespace

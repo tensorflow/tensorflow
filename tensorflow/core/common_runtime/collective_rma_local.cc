@@ -40,10 +40,19 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
                          "called with peer_is_local=false"));
     return;
   }
+
+  Device* from_device;
+  Status status = dev_mgr_->LookupDevice(peer_device, &from_device);
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
+
   buf_rendezvous_.ConsumeBuf(
-      key, [to_tensor, to_device_ctx, to_device, to_alloc_attr,
-            dev_to_dev_stream_index,
-            done](const Status& s, BufRendezvous::Hook* hook) {
+      key, from_device->name(), from_device->attributes().incarnation(),
+      [to_tensor, to_device_ctx, to_device, to_alloc_attr,
+       dev_to_dev_stream_index,
+       done](const Status& s, BufRendezvous::Hook* hook) {
         if (!s.ok()) {
           done(s);
           delete hook;

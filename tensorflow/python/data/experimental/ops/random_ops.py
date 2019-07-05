@@ -39,7 +39,7 @@ class RandomDatasetV2(dataset_ops.DatasetSource):
     super(RandomDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.int64, [])
 
 
