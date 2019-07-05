@@ -619,7 +619,7 @@ def IfOp : Std_Op<"if"> {
     conditionally executing two regions of code. The operand to an if operation
     is a boolean value. The operation produces no results. For example:
 
-       std.if %b  {
+       if %b  {
          ...
        } else {
          ...
@@ -628,7 +628,7 @@ def IfOp : Std_Op<"if"> {
     The 'else' block is optional, and may be omitted. For
     example:
 
-       std.if %b  {
+       if %b  {
          ...
        }
   }];
@@ -664,6 +664,40 @@ def IndexCastOp : CastOp<"index_cast">, Arguments<(ins AnyType:$in)> {
   }];
 
   let hasFolder = 0;
+}
+
+def ForOp : Std_Op<"for"> {
+  let summary = "for operation";
+  let description = [{
+    The "std.for" operation represents a loop nest taking 3 SSA value as
+    operands that represent the lower bound, upper bound and step respectively.
+    The operation defines an SSA value for its induction variable. It has one
+    region capturing the loop body. The induction variable is represented as an
+    argument of this region. This SSA value always has type index, which is the
+    size of the machine word. The step is a value of type index, required to be
+    positive.
+    The lower and upper bounds specify a half-open range: the range includes the
+    lower bound but does not include the upper bound.
+
+    The body region must contain exactly one block that terminates with
+    "std.terminator".  Calling ForOp::build will create such region and
+    insert the terminator, so will the parsing even in cases when it is absent
+    from the custom format. For example:
+
+       for %iv = %lb to %ub step %step {
+         ... // body
+       }
+  }];
+  let arguments = (ins Index:$lowerBound, Index:$upperBound, Index:$step);
+  let regions = (region SizedRegion<1>:$region);
+
+  let extraClassDeclaration = [{
+    Block *body() { return &region().front(); }
+    Value *getInductionVar() { return body()->getArgument(0); }
+    OpBuilder getBodyBuilder() {
+      return OpBuilder(body(), std::prev(body()->end()));
+    }
+  }];
 }
 
 def LoadOp : Std_Op<"load"> {
@@ -919,7 +953,7 @@ def TensorCastOp : CastOp<"tensor_cast"> {
   }];
 }
 
-def StdTerminatorOp :
+def TerminatorOp :
     Std_Op<"terminator", [NativeOpTrait<"IsTerminator">]> {
   let summary = "cf terminator operation";
   let description = [{

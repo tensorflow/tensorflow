@@ -703,7 +703,7 @@ func @index_cast_float_to_index(%arg0: f32) {
 // -----
 
 func @std_for_lb(%arg0: f32, %arg1: index) {
-  // expected-error@+1 {{lower bound operand must be an index}}
+  // expected-error@+1 {{operand #0 must be index}}
   "std.for"(%arg0, %arg1, %arg1) : (f32, index, index) -> ()
   return
 }
@@ -711,7 +711,7 @@ func @std_for_lb(%arg0: f32, %arg1: index) {
 // -----
 
 func @std_for_ub(%arg0: f32, %arg1: index) {
-  // expected-error@+1 {{upper bound operand must be an index}}
+  // expected-error@+1 {{operand #1 must be index}}
   "std.for"(%arg1, %arg0, %arg1) : (index, f32, index) -> ()
   return
 }
@@ -719,7 +719,7 @@ func @std_for_ub(%arg0: f32, %arg1: index) {
 // -----
 
 func @std_for_step(%arg0: f32, %arg1: index) {
-  // expected-error@+1 {{step operand must be an index}}
+  // expected-error@+1 {{operand #2 must be index}}
   "std.for"(%arg1, %arg1, %arg0) : (index, index, f32) -> ()
   return
 }
@@ -729,14 +729,14 @@ func @std_for_step(%arg0: f32, %arg1: index) {
 func @std_for_step_nonnegative(%arg0: index) {
   // expected-error@+2 {{constant step operand must be nonnegative}}
   %c0 = constant 0 : index
-  "std.for"(%arg0, %arg0, %c0) : (index, index, index) -> ()
+  "std.for"(%arg0, %arg0, %c0) ({^bb0:}) : (index, index, index) -> ()
   return
 }
 
 // -----
 
 func @std_for_one_region(%arg0: index) {
-  // expected-error@+1 {{operation expected to have exactly one region}}
+  // expected-error@+1 {{incorrect number of regions: expected 1 but found 2}}
   "std.for"(%arg0, %arg0, %arg0) (
     {"std.terminator"() : () -> ()},
     {"std.terminator"() : () -> ()}
@@ -747,7 +747,7 @@ func @std_for_one_region(%arg0: index) {
 // -----
 
 func @std_for_single_block(%arg0: index) {
-  // expected-error@+1 {{expected body region to have a single block}}
+  // expected-error@+1 {{region #0 ('region') failed to verify constraint: region with 1 blocks}}
   "std.for"(%arg0, %arg0, %arg0) (
     {
     ^bb1:

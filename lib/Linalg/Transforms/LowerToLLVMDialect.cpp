@@ -754,7 +754,8 @@ static void lowerLinalgForToCFG(Function &f) {
   // Collect all the For operations. We do this as a prepass to avoid
   // invalidating the walker with our rewrite.
   SmallVector<linalg::ForOp, 8> instsToRewrite;
-  f.walk<ForOp>([&](ForOp op) { instsToRewrite.push_back(op); });
+  f.walk<linalg::ForOp>(
+      [&](linalg::ForOp op) { instsToRewrite.push_back(op); });
 
   for (auto forOp : llvm::reverse(instsToRewrite)) {
     auto *op = forOp.getOperation();

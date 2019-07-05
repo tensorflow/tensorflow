@@ -42,14 +42,14 @@ using namespace mlir::linalg;
 ////////////////////////////////////////////////////////////////////////////////
 // Check that if a "block" has a terminator, it is an `TerminatorOp`.
 static LogicalResult checkHasTerminator(OpState &op, Block &block) {
-  if (block.empty() || isa<TerminatorOp>(block.back()))
+  if (block.empty() || isa<linalg::TerminatorOp>(block.back()))
     return success();
 
   return op.emitOpError("expects regions to end with '" +
-                        TerminatorOp::getOperationName() + "'")
+                        linalg::TerminatorOp::getOperationName() + "'")
              .attachNote()
          << "in custom textual format, the absence of terminator implies '"
-         << TerminatorOp::getOperationName() << "'";
+         << linalg::TerminatorOp::getOperationName() << "'";
 }
 
 // Insert `linalg.terminator` at the end of the ForOp only region's only block
@@ -57,7 +57,7 @@ static LogicalResult checkHasTerminator(OpState &op, Block &block) {
 // inserted, the location is specified by `loc`. If the region is empty, insert
 // a new block first.
 static void ensureTerminator(Region &region, Builder &builder, Location loc) {
-  impl::ensureRegionTerminator<TerminatorOp>(region, builder, loc);
+  impl::ensureRegionTerminator<linalg::TerminatorOp>(region, builder, loc);
 }
 
 void mlir::linalg::ForOp::build(Builder *builder, OperationState *result,

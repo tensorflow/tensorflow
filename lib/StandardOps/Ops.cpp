@@ -81,7 +81,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<DmaStartOp, DmaWaitOp, StdForOp,
+  addOperations<DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -1636,77 +1636,53 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// StdForOp.
+// ForOp.
 ////////////////////////////////////////////////////////////////////////////////
 
-// Check that if a "block" has a terminator, it is an `TerminatorOp`.
-static LogicalResult checkHasStdTerminator(OpState &op, Block &block) {
-  if (block.empty() || isa<StdTerminatorOp>(block.back()))
+// Check that if a "block" is not empty, it has a `TerminatorOp` terminator.
+static LogicalResult checkHasTerminator(OpState &op, Block &block) {
+  if (block.empty() || isa<TerminatorOp>(block.back()))
     return success();
 
   return op.emitOpError("expects regions to end with '" +
-                        StdTerminatorOp::getOperationName() + "'")
+                        TerminatorOp::getOperationName() + "'")
              .attachNote()
          << "in custom textual format, the absence of terminator implies '"
-         << StdTerminatorOp::getOperationName() << "'";
+         << TerminatorOp::getOperationName() << "'";
 }
 
 void mlir::ensureStdTerminator(Region &region, Builder &builder, Location loc) {
-  impl::ensureRegionTerminator<StdTerminatorOp>(region, builder, loc);
+  impl::ensureRegionTerminator<TerminatorOp>(region, builder, loc);
 }
 
-void StdForOp::build(Builder *builder, OperationState *result, Value *lb,
-                     Value *ub, Value *step) {
-  result->addOperands({lb, ub, step});
-  Region *bodyRegion = result->addRegion();
-  Block *body = new Block();
-  body->addArgument(IndexType::get(builder->getContext()));
-  bodyRegion->push_back(body);
-  ensureStdTerminator(*bodyRegion, *builder, result->location);
-}
-
-LogicalResult StdForOp::verify() {
-  if (!getLowerBound()->getType().isa<IndexType>())
-    return emitOpError("lower bound operand must be an index");
-  if (!getUpperBound()->getType().isa<IndexType>())
-    return emitOpError("upper bound operand must be an index");
-  if (!getStep()->getType().dyn_cast<IndexType>())
-    return emitOpError("step operand must be an index");
-  if (auto cst = dyn_cast_or_null<ConstantIndexOp>(getStep()->getDefiningOp()))
+LogicalResult verify(ForOp op) {
+  if (auto cst = dyn_cast_or_null<ConstantIndexOp>(op.step()->getDefiningOp()))
     if (cst.getValue() <= 0)
-      return emitOpError("constant step operand must be nonnegative");
+      return op.emitOpError("constant step operand must be nonnegative");
 
-  if (std::next(getOperation()->getRegions().begin()) !=
-      getOperation()->getRegions().end())
-    return emitOpError("operation expected to have exactly one region");
-
-  auto &bodyRegion = getOperation()->getRegion(0);
-  // The body region must contain a single basic block.
-  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
-    return emitOpError("expected body region to have a single block");
   // Check that the body defines as single block argument for the induction
   // variable.
-  auto *body = getBody();
+  auto *body = op.body();
   if (body->getNumArguments() != 1 ||
       !body->getArgument(0)->getType().isIndex())
-    return emitOpError("expected body to have a single index argument for "
-                       "the induction variable");
-  if (failed(checkHasStdTerminator(*this, *body)))
+    return op.emitOpError("expected body to have a single index argument for "
+                          "the induction variable");
+  if (failed(checkHasTerminator(op, *body)))
     return failure();
   return success();
 }
 
-void StdForOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getInductionVar() << " = "
-     << *getLowerBound() << " to " << *getUpperBound() << " step "
-     << *getStep();
-  p->printRegion(getRegion(),
+static void print(OpAsmPrinter *p, ForOp op) {
+  *p << op.getOperationName() << " " << *op.getInductionVar() << " = "
+     << *op.lowerBound() << " to " << *op.upperBound() << " step "
+     << *op.step();
+  p->printRegion(op.region(),
                  /*printEntryBlockArgs=*/false,
                  /*printBlockTerminators=*/false);
-  p->printOptionalAttrDict(getAttrs());
+  p->printOptionalAttrDict(op.getAttrs());
 }
 
-ParseResult StdForOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseForOp(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   OpAsmParser::OperandType inductionVariable, lb, ub, step;
   // Parse the induction variable followed by '='.
@@ -1737,18 +1713,13 @@ ParseResult StdForOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-OpBuilder StdForOp::getBodyBuilder() {
-  Block *body = getBody();
-  return OpBuilder(body, std::prev(body->end()));
-}
-
-StdForOp getStdForInductionVarOwner(Value *val) {
+ForOp getForOpInductionVarOwner(Value *val) {
   auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg)
-    return StdForOp();
+    return ForOp();
   assert(ivArg->getOwner() && "unlinked block argument");
   auto *containingInst = ivArg->getOwner()->getContainingOp();
-  return dyn_cast_or_null<StdForOp>(containingInst);
+  return dyn_cast_or_null<ForOp>(containingInst);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1756,7 +1727,7 @@ StdForOp getStdForInductionVarOwner(Value *val) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verify(IfOp op) {
-  // Verify that the entry block of each child region does not have arguments.
+  // Verify that the entry of each child region does not have arguments.
   for (auto &region : op.getOperation()->getRegions()) {
     if (region.empty())
       continue;
@@ -1765,7 +1736,7 @@ static LogicalResult verify(IfOp op) {
     // regions.
     if (std::next(region.begin()) != region.end())
       return op.emitOpError("expected one block per 'then' or 'else' regions");
-    if (failed(checkHasStdTerminator(op, region.front())))
+    if (failed(checkHasTerminator(op, region.front())))
       return failure();
 
     for (auto &b : region)
