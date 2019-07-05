@@ -25,6 +25,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_RELU:
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_ARG_MAX:
       property.inputs = {{0, {}}};
       // ArgMax has no quantizable output.

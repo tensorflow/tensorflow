@@ -22,6 +22,9 @@ namespace internal {
 const char* kConvModelWithMinus128Plus127Weights =
     "single_conv_weights_min_minus_127_max_plus_127.bin";
 
+const char* kReluModel =
+    "relu.bin";
+
 const char* kConvModelWith0Plus10Weights =
     "single_conv_weights_min_0_max_plus_10.bin";
 

@@ -1316,6 +1316,21 @@ class ReduceProd
   }
 };
 
+class Relu : public SimpleOperator<ReluOperator> {
+ public:
+  explicit Relu() : SimpleOperator("RELU", OperatorType::kRelu) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class ReduceAny
     : public BuiltinOperator<TensorFlowAnyOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
@@ -2549,11 +2564,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
   ops.push_back(
       MakeUnique<SimpleOperator<RoundOperator>>("ROUND", OperatorType::kRound));
-  ops.push_back(
-      MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
   ops.push_back(MakeUnique<Relu6>());
+  ops.push_back(MakeUnique<Relu>());
   ops.push_back(
       MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
   ops.push_back(MakeUnique<Logistic>());

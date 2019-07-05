@@ -28,6 +28,7 @@ namespace internal {
 // This means all bias computations should result in 1.0 scale.
 extern const char* kConvModelWithMinus128Plus127Weights;
 
+extern const char* kReluModel;
 // Test model with single convolution where all weights are integers between
 // [0, 10] weights are randomly distributed. It is not guaranteed that min max
 // for weights are going to appear in each channel.
