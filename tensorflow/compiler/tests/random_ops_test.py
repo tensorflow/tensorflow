@@ -128,6 +128,8 @@ class RandomOpsTest(xla_test.XLATestCase):
 
       # TODO: CPU backend doesn't produce a valid distribution. Remove this
       # check when it does.
+      # TODO(sanjay): remove the check for XLA_GPU if the tests work on the
+      # GPU backend.
       if (self.device in ["XLA_GPU", "XLA_CPU"
                           ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
