@@ -108,15 +108,15 @@ TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 // instead of the device policy used to construct the context. This has no
 // effect on the device policy used by other program threads.
 TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalDevicePlacementPolicy(
-    TFE_Context*, TFE_ContextDevicePlacementPolicy);
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy);
 
 // Returns the device placement policy to be used by this context in the current
 // thread.
 TF_CAPI_EXPORT extern TFE_ContextDevicePlacementPolicy
-TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
+TFE_ContextGetDevicePlacementPolicy(TFE_Context* ctx);
 
 // Overrides the execution mode (sync/async) for the current thread.
-TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
+TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char enable,
                                                         TF_Status* status);
 
