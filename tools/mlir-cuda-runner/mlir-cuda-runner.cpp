@@ -120,12 +120,8 @@ public:
   // Convert the kernel arguments to an LLVM type, preserve the rest.
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
-    auto launchOp = dyn_cast<gpu::LaunchFuncOp>(rewriter.clone(*op));
-
-    for (auto operand : llvm::enumerate(operands))
-      launchOp.setOperand(operand.index(), operand.value());
-
-    return rewriter.replaceOp(op, llvm::None), this->matchSuccess();
+    rewriter.clone(*op)->setOperands(operands);
+    return rewriter.replaceOp(op, llvm::None), matchSuccess();
   }
 };
 } // end anonymous namespace
