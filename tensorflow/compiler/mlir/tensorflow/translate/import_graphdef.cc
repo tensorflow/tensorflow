@@ -671,6 +671,8 @@ StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
     }
     case AttrValue::kFunc:
       return errors::Unknown("kFunc type should be handled separately!");
+    case AttrValue::VALUE_NOT_SET:
+      return builder_->getUnitAttr();
     // kPlaceholder is not implemented.
     default:
       return errors::Unimplemented(

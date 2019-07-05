@@ -110,6 +110,11 @@ Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
+  value->clear_value();
+  return Status::OK();
+}
+
 Status ConvertAttribute(const mlir::FunctionAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue());
   return Status::OK();
@@ -243,6 +248,10 @@ Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
       case mlir::StandardAttributes::OpaqueElements:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
+        break;
+      case mlir::StandardAttributes::Unit:
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
         break;
       // AffineMap and Type kinds are not implemented.
       default:
