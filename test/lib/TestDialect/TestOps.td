@@ -33,20 +33,6 @@ class TEST_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TEST_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// Test 'verifyUnusedValue'
-//===----------------------------------------------------------------------===//
-
-def VUVTwoResultOp : TEST_Op<"vuv_two_result_op", []> {
-  let arguments = (ins I32:$input);
-  let results = (outs I32:$r1, I32:$r2);
-}
-
-def VUVFoldTwoResultOp : Pattern<(VUVTwoResultOp $input), [
-        (verifyUnusedValue),
-        (replaceWithValue $input)
-      ]>;
-
-//===----------------------------------------------------------------------===//
 // Test Types
 //===----------------------------------------------------------------------===//
 
@@ -138,6 +124,18 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Test Regions
+//===----------------------------------------------------------------------===//
+
+def TwoRegionOp : TEST_Op<"two_region_op", []> {
+  let regions = (region AnyRegion, AnyRegion);
+}
+
+def SizedRegionOp : TEST_Op<"sized_region_op", []> {
+  let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
+}
+
+//===----------------------------------------------------------------------===//
 // Test Traits
 //===----------------------------------------------------------------------===//
 
@@ -206,10 +204,6 @@ def OpB : TEST_Op<"op_b"> {
 // Test named pattern.
 def TestNamedPatternRule : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 
-// Test with constant attr.
-def OpC : TEST_Op<"op_c">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
-def : Pat<(OpC $input), (OpB $input, ConstantAttr<I32Attr, "17">:$attr)>;
-
 // Test with fused location.
 def : Pat<(OpA (OpA $input, $attr), $bttr), (OpB $input, $bttr)>;
 
@@ -225,6 +219,33 @@ def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
 def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 
+//===----------------------------------------------------------------------===//
+// Test Patterns (Attributes)
+
+// Test matching against op attributes.
+def OpAttrMatch1 : TEST_Op<"match_op_attribute1"> {
+  let arguments = (ins
+    I32Attr:$required_attr,
+    OptionalAttr<I32Attr>:$optional_attr,
+    DefaultValuedAttr<I32Attr, "42">:$default_valued_attr,
+    I32Attr:$more_attr
+  );
+  let results = (outs I32:$output);
+}
+def OpAttrMatch2 : TEST_Op<"match_op_attribute2"> {
+  let arguments = OpAttrMatch1.arguments;
+  let results = (outs I32:$output);
+}
+def MoreConstraint : AttrConstraint<
+    CPred<"$_self.cast<IntegerAttr>().getInt() == 4">, "more constraint">;
+def : Pat<(OpAttrMatch1 $required, $optional, $default_valued,
+                        MoreConstraint:$more),
+          (OpAttrMatch2 $required, $optional, $default_valued, $more)>;
+
+// Test with constant attr.
+def OpC : TEST_Op<"op_c">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def : Pat<(OpC $input), (OpB $input, ConstantAttr<I32Attr, "17">:$attr)>;
+
 // Test string enum attribute in rewrites.
 def : Pat<(StrEnumAttrOp StrCaseA), (StrEnumAttrOp StrCaseB)>;
 // Test integer enum attribute in rewrites.
@@ -233,7 +254,6 @@ def : Pat<(I64EnumAttrOp I64Case5), (I64EnumAttrOp I64Case10)>;
 
 //===----------------------------------------------------------------------===//
 // Test Patterns (Multi-result Ops)
-//===----------------------------------------------------------------------===//
 
 def MultiResultOpKind1: I64EnumAttrCase<"kind1", 1>;
 def MultiResultOpKind2: I64EnumAttrCase<"kind2", 2>;
@@ -306,16 +326,18 @@ def : Pattern<(ThreeResultOp MultiResultOpKind4),
                (TwoResultOp:$res2__1 MultiResultOpKind4)]>;
 
 //===----------------------------------------------------------------------===//
-// Test op regions
+// Test Directives
 //===----------------------------------------------------------------------===//
 
-def TwoRegionOp : TEST_Op<"two_region_op", []> {
-  let regions = (region AnyRegion, AnyRegion);
+// Test 'verifyUnusedValue'
+def VUVTwoResultOp : TEST_Op<"vuv_two_result_op", []> {
+  let arguments = (ins I32:$input);
+  let results = (outs I32:$r1, I32:$r2);
 }
-
-def SizedRegionOp : TEST_Op<"sized_region_op", []> {
-  let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
-}
+def VUVFoldTwoResultOp : Pattern<(VUVTwoResultOp $input), [
+        (verifyUnusedValue),
+        (replaceWithValue $input)
+      ]>;
 
 //===----------------------------------------------------------------------===//
 // Test Legalization

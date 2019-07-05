@@ -1,13 +1,5 @@
 // RUN: mlir-opt -test-patterns -mlir-print-debuginfo %s | FileCheck %s
 
-// CHECK-LABEL: verifyConstantAttr
-func @verifyConstantAttr(%arg0 : i32) -> i32 {
-  %0 = "test.op_c"(%arg0) : (i32) -> i32 loc("a")
-
-  // CHECK: "test.op_b"(%arg0) {attr = 17 : i32} : (i32) -> i32 loc("a")
-  return %0 : i32
-}
-
 // CHECK-LABEL: verifyFusedLocs
 func @verifyFusedLocs(%arg0 : i32) -> i32 {
   %0 = "test.op_a"(%arg0) {attr = 10 : i32} : (i32) -> i32 loc("a")
@@ -28,6 +20,49 @@ func @verifyBenefit(%arg0 : i32) -> i32 {
   // CHECK: "test.op_b"(%arg0) {attr = 34 : i32}
   return %0 : i32
 }
+
+//===----------------------------------------------------------------------===//
+// Test Attributes
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: succeedMatchOpAttr
+func @succeedMatchOpAttr() -> i32 {
+  // CHECK: "test.match_op_attribute2"() {default_valued_attr = 3 : i32, more_attr = 4 : i32, optional_attr = 2 : i32, required_attr = 1 : i32}
+  %0 = "test.match_op_attribute1"() {required_attr = 1: i32, optional_attr = 2: i32, default_valued_attr = 3: i32, more_attr = 4: i32} : () -> (i32)
+  return %0: i32
+}
+
+// CHECK-LABEL: succeedMatchMissingOptionalAttr
+func @succeedMatchMissingOptionalAttr() -> i32 {
+  // CHECK: "test.match_op_attribute2"() {default_valued_attr = 3 : i32, more_attr = 4 : i32, required_attr = 1 : i32}
+  %0 = "test.match_op_attribute1"() {required_attr = 1: i32, default_valued_attr = 3: i32, more_attr = 4: i32} : () -> (i32)
+  return %0: i32
+}
+
+// CHECK-LABEL: succeedMatchMissingDefaultValuedAttr
+func @succeedMatchMissingDefaultValuedAttr() -> i32 {
+  // CHECK: "test.match_op_attribute2"() {default_valued_attr = 42 : i32, more_attr = 4 : i32, optional_attr = 2 : i32, required_attr = 1 : i32}
+  %0 = "test.match_op_attribute1"() {required_attr = 1: i32, optional_attr = 2: i32, more_attr = 4: i32} : () -> (i32)
+  return %0: i32
+}
+
+// CHECK-LABEL: failedMatchAdditionalConstraintNotSatisfied
+func @failedMatchAdditionalConstraintNotSatisfied() -> i32 {
+  // CHECK: "test.match_op_attribute1"()
+  %0 = "test.match_op_attribute1"() {required_attr = 1: i32, optional_attr = 2: i32, more_attr = 5: i32} : () -> (i32)
+  return %0: i32
+}
+
+// CHECK-LABEL: verifyConstantAttr
+func @verifyConstantAttr(%arg0 : i32) -> i32 {
+  // CHECK: "test.op_b"(%arg0) {attr = 17 : i32} : (i32) -> i32 loc("a")
+  %0 = "test.op_c"(%arg0) : (i32) -> i32 loc("a")
+  return %0 : i32
+}
+
+//===----------------------------------------------------------------------===//
+// Test Enum Attributes
+//===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: verifyStrEnumAttr
 func @verifyStrEnumAttr() -> i32 {
