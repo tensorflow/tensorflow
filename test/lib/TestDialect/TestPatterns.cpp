@@ -21,6 +21,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 using namespace mlir;
 
+// Native function for testing NativeCodeCall
+static Value *chooseOperand(Value *input1, Value *input2, BoolAttr choice) {
+  return choice.getValue() ? input1 : input2;
+}
+
 namespace {
 #include "TestPatterns.inc"
 } // end anonymous namespace

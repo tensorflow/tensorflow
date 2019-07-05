@@ -21,6 +21,26 @@ func @verifyBenefit(%arg0 : i32) -> i32 {
   return %0 : i32
 }
 
+// CHECK-LABEL: verifyNativeCodeCall
+func @verifyNativeCodeCall(%arg0: i32, %arg1: i32) -> (i32, i32) {
+  // CHECK: %0 = "test.native_code_call2"(%arg0) {attr = [42, 24]} : (i32) -> i32
+  // CHECK:  return %0, %arg1
+  %0 = "test.native_code_call1"(%arg0, %arg1) {choice = true, attr1 = 42, attr2 = 24} : (i32, i32) -> (i32)
+  %1 = "test.native_code_call1"(%arg0, %arg1) {choice = false, attr1 = 42, attr2 = 24} : (i32, i32) -> (i32)
+  return %0, %1: i32, i32
+}
+
+// CHECK-LABEL: verifyAllAttrConstraintOf
+func @verifyAllAttrConstraintOf() -> (i32, i32, i32) {
+  // CHECK: "test.all_attr_constraint_of2"
+  %0 = "test.all_attr_constraint_of1"() {attr = [0, 1]} : () -> (i32)
+  // CHECK: "test.all_attr_constraint_of1"
+  %1 = "test.all_attr_constraint_of1"() {attr = [0, 2]} : () -> (i32)
+  // CHECK: "test.all_attr_constraint_of1"
+  %2 = "test.all_attr_constraint_of1"() {attr = [-1, 1]} : () -> (i32)
+  return %0, %1, %2: i32, i32, i32
+}
+
 //===----------------------------------------------------------------------===//
 // Test Attributes
 //===----------------------------------------------------------------------===//

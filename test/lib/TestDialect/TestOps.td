@@ -219,6 +219,59 @@ def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
 def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 
+// Test NativeCodeCall.
+def OpNativeCodeCall1 : TEST_Op<"native_code_call1"> {
+  let arguments = (ins
+    I32:$input1, I32:$input2,
+    BoolAttr:$choice,
+    I64Attr:$attr1, I64Attr:$attr2
+  );
+  let results = (outs I32:$output);
+}
+def OpNativeCodeCall2 : TEST_Op<"native_code_call2"> {
+  let arguments = (ins I32:$input, I64ArrayAttr:$attr);
+  let results = (outs I32:$output);
+}
+// Native code call to invoke a C++ function
+def CreateOperand: NativeCodeCall<"chooseOperand($0, $1, $2)">;
+// Native code call to invoke a C++ expression
+def CreateArraryAttr: NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
+// Test that we can use NativeCodeCall to create operand and attribute.
+// This pattern chooses between $input1 and $input2 according to $choice and
+// it combines $attr1 and $attr2 into an array attribute.
+def : Pat<(OpNativeCodeCall1 $input1, $input2,
+                             ConstBoolAttrTrue:$choice, $attr1, $attr2),
+          (OpNativeCodeCall2 (CreateOperand $input1, $input2, $choice),
+                             (CreateArraryAttr $attr1, $attr2))>;
+// Note: the following is just for testing purpose.
+// Should use the replaceWithValue directive instead.
+def UseOpResult: NativeCodeCall<"$0">;
+// Test that we can use NativeCodeCall to create result.
+def : Pat<(OpNativeCodeCall1 $input1, $input2,
+                             ConstBoolAttrFalse, $attr1, $attr2),
+          (UseOpResult $input2)>;
+
+// Test AllAttrConstraintsOf.
+def OpAllAttrConstraint1 : TEST_Op<"all_attr_constraint_of1"> {
+  let arguments = (ins I64ArrayAttr:$attr);
+  let results = (outs I32:$output);
+}
+def OpAllAttrConstraint2 : TEST_Op<"all_attr_constraint_of2"> {
+  let arguments = (ins I64ArrayAttr:$attr);
+  let results = (outs I32:$output);
+}
+def Constraint0 : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().getValue()[0]."
+          "cast<IntegerAttr>().getInt() == 0">,
+    "[0] == 0">;
+def Constraint1 : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().getValue()[1]."
+          "cast<IntegerAttr>().getInt() == 1">,
+    "[1] == 1">;
+def : Pat<(OpAllAttrConstraint1
+            AllAttrConstraintsOf<[Constraint0, Constraint1]>:$attr),
+          (OpAllAttrConstraint2 $attr)>;
+
 //===----------------------------------------------------------------------===//
 // Test Patterns (Attributes)
 
