@@ -174,7 +174,7 @@ private:
 };
 
 /// This class acts as an owning reference to a module, and will automatically
-/// destory the held module if valid.
+/// destroy the held module if valid.
 class OwningModuleRef {
 public:
   OwningModuleRef(std::nullptr_t = nullptr) {}
