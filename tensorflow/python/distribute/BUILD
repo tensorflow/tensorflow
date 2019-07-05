@@ -868,7 +868,6 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":mirrored_strategy",
@@ -921,7 +920,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":single_loss_example",
@@ -982,11 +980,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        # Failure due to Rccl Op does not support eager mode, should remove when
-        # PR400 is submitted
-        "no_rocm",
         "no_cuda",
-        "no_pip",  # b/131691139
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1118,7 +1112,6 @@ distribute_py_test(
     main = "keras_experimental_saved_model_test.py",
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
-        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",
