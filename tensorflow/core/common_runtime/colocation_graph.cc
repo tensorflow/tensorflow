@@ -1050,7 +1050,7 @@ Status ColocationGraph::GetDevicesForNode(
 
           return errors::InvalidArgument(
               errors::FormatNodeNameForError(node->name()),
-              "was explicitly assigned to ", node->requested_device(),
+              " was explicitly assigned to ", node->requested_device(),
               " but available devices are [ ",
               absl::StrJoin(device_names, ", "), " ]. Make sure ",
               "the device specification refers to a valid device.", gpu_msg);
