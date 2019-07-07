@@ -191,7 +191,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
 }
 
 Status ZlibOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(Z_FULL_FLUSH));
+  TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
   TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
   return file_->Flush();
 }
