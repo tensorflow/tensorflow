@@ -558,7 +558,7 @@ static Type getCheckedI1SameShape(Builder *build, Type type) {
     return i1Type;
   if (auto tensorType = type.dyn_cast<RankedTensorType>())
     return build->getTensorType(tensorType.getShape(), i1Type);
-  if (auto tensorType = type.dyn_cast<UnrankedTensorType>())
+  if (type.isa<UnrankedTensorType>())
     return build->getTensorType(i1Type);
   if (auto vectorType = type.dyn_cast<VectorType>())
     return build->getVectorType(vectorType.getShape(), i1Type);
