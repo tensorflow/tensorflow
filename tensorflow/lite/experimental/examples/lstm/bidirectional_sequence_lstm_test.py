@@ -86,8 +86,8 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
-        tf.random_normal([self.num_units * 2, self.n_classes]))
-    out_bias = tf.Variable(tf.random_normal([self.n_classes]))
+        tf.random.normal([self.num_units * 2, self.n_classes]))
+    out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     # input image placeholder
     x = tf.placeholder(
