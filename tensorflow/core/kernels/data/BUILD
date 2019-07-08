@@ -1123,6 +1123,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.cc"],
+    hdrs = ["dataset_ops.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
