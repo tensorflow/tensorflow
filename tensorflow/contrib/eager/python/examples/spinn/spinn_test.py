@@ -45,14 +45,14 @@ def _generate_synthetic_snli_data_batch(sequence_length,
                                         vocab_size):
   """Generate a fake batch of SNLI data for testing."""
   with tf.device("cpu:0"):
-    labels = tf.random_uniform([batch_size], minval=1, maxval=4, dtype=tf.int64)
-    prem = tf.random_uniform(
+    labels = tf.random.uniform([batch_size], minval=1, maxval=4, dtype=tf.int64)
+    prem = tf.random.uniform(
         (sequence_length, batch_size), maxval=vocab_size, dtype=tf.int64)
     prem_trans = tf.constant(np.array(
         [[3, 3, 2, 3, 3, 3, 2, 2, 2, 3, 3, 3,
           2, 3, 3, 2, 2, 3, 3, 3, 2, 2, 2, 2,
           3, 2, 2]] * batch_size, dtype=np.int64).T)
-    hypo = tf.random_uniform(
+    hypo = tf.random.uniform(
         (sequence_length, batch_size), maxval=vocab_size, dtype=tf.int64)
     hypo_trans = tf.constant(np.array(
         [[3, 3, 2, 3, 3, 3, 2, 2, 2, 3, 3, 3,
@@ -168,9 +168,9 @@ class SpinnTest(test_util.TensorFlowTestCase):
       right_in = []
       tracking = []
       for _ in range(batch_size):
-        left_in.append(tf.random_normal((1, size * 2)))
-        right_in.append(tf.random_normal((1, size * 2)))
-        tracking.append(tf.random_normal((1, tracker_size * 2)))
+        left_in.append(tf.random.normal((1, size * 2)))
+        right_in.append(tf.random.normal((1, size * 2)))
+        tracking.append(tf.random.normal((1, tracker_size * 2)))
 
       out = reducer(left_in, right_in, tracking=tracking)
       self.assertEqual(batch_size, len(out))
@@ -210,7 +210,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       bufs = []
       buf = []
       for _ in range(buffer_length):
-        buf.append(tf.random_normal((batch_size, size * 2)))
+        buf.append(tf.random.normal((batch_size, size * 2)))
       bufs.append(buf)
       self.assertEqual(1, len(bufs))
       self.assertEqual(buffer_length, len(bufs[0]))
@@ -219,7 +219,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       stacks = []
       stack = []
       for _ in range(stack_size):
-        stack.append(tf.random_normal((batch_size, size * 2)))
+        stack.append(tf.random.normal((batch_size, size * 2)))
       stacks.append(stack)
       self.assertEqual(1, len(stacks))
       self.assertEqual(3, len(stacks[0]))
@@ -251,7 +251,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       s = spinn.SPINN(config)
 
       # Create some fake data.
-      buffers = tf.random_normal((sequence_length, 1, config.d_proj))
+      buffers = tf.random.normal((sequence_length, 1, config.d_proj))
       transitions = tf.constant(
           [[3], [3], [2], [3], [3], [3], [2], [2], [2], [3], [3], [3],
            [2], [3], [3], [2], [2], [3], [3], [3], [2], [2], [2], [2],
@@ -274,7 +274,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       config = _test_spinn_config(d_embed, d_out)
 
       # Create fake embedding matrix.
-      embed = tf.random_normal((vocab_size, d_embed))
+      embed = tf.random.normal((vocab_size, d_embed))
 
       model = spinn.SNLIClassifier(config, embed)
       trainer = spinn.SNLIClassifierTrainer(model, config.lr)
@@ -446,7 +446,7 @@ class EagerSpinnSNLIClassifierBenchmark(test.Benchmark):
       d_embed = 200
       d_out = 4
 
-      embed = tf.random_normal((vocab_size, d_embed))
+      embed = tf.random.normal((vocab_size, d_embed))
 
       config = _test_spinn_config(d_embed, d_out)
       model = spinn.SNLIClassifier(config, embed)
