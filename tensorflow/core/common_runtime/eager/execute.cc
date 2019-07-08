@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -33,12 +34,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
 namespace tensorflow {
 
@@ -63,6 +67,16 @@ namespace {
 // Copied here because we don't currently compile XLA on windows. So, can't
 // depend on it directly.
 const char* const kXlaCompileAttr = "_XlaCompile";
+
+// Using absl::StrJoin with lambda does not work in tf-lite builds.
+std::vector<string> DevicesToString(const std::vector<Device*> devices) {
+  std::vector<string> v;
+  v.reserve(devices.size());
+  for (Device* d : devices) {
+    v.push_back(d->name());
+  }
+  return v;
+}
 
 // Initializes the step stats if needed.
 void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
@@ -78,9 +92,6 @@ void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
 int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
                          Device* device) {
   // Find the current device's index.
-  if (device == nullptr) {
-    device = ctx->HostCPU();
-  }
   for (int i = 0; i < ctx->devices()->size(); ++i) {
     if (ctx->devices()->at(i) == device ||
         ctx->devices()->at(i)->name() == device->name()) {
@@ -91,25 +102,35 @@ int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
   return 0;
 }
 
+const char* kUnspecifiedDeviceName = "<unspecified>";
+
+const char* DeviceNameOrUnspecified(Device* device) {
+  return (device == nullptr) ? kUnspecifiedDeviceName : device->name().c_str();
+}
+
+const string DeviceNameOrUnspecified(const DeviceNameUtils::ParsedName& name) {
+  return DeviceNameUtils::HasSomeDetails(name)
+             ? DeviceNameUtils::ParsedNameToString(name)
+             : kUnspecifiedDeviceName;
+}
+
 // This function expects *handle to point to an existing tensor handle. The
 // function will update the *handle to be pointed to the existing input tensor
 // handle or else the newly copied tensor handle. The existing handle will have
 // a Ref added, vs the new handle has a Ref due to being newly constructed.
 //
-// `op_device_name` is passed in explicitly because `op->device()` might be
+// `op_device` is passed in explicitly because `op->device()` might be
 // unset and we might have selected some specific device to run this op on.
-Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
-                                      const string& op_device_name, int i,
-                                      const Device* expected_input_device,
+Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
+                                      int i, Device* expected_input_device,
                                       RunMetadata* run_metadata,
                                       TensorHandle** result) {
   tensorflow::TensorHandle* handle = op->Inputs()[i];
   EagerContext* ctx = op->EagerContext();
-  Device* handle_device = handle->device();
-  const Device* actual_device =
-      handle_device == nullptr ? ctx->HostCPU() : handle_device;
+  Device* handle_device = handle->DeviceOrHostCPU(ctx);
+  const string& op_device_name = DeviceNameOrUnspecified(op_device);
 
-  if (expected_input_device == actual_device) {
+  if (expected_input_device == handle_device) {
     // No copy was done, so the result is just the original handle with a Ref
     handle->Ref();
     *result = handle;
@@ -132,7 +153,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
           " cannot compute ",
           op->Name(), " as input #", i, " was expected to be on ",
           expected_input_device->name(), " but is actually on ",
-          actual_device->name(), " (operation running on ", op_device_name, ")",
+          handle_device->name(), " (operation running on ", op_device_name, ")",
           " Tensors can be copied explicitly using:"
           " `with tf.device(device_name): x = tf.identity(x)`"
           " or transparently copied by using"
@@ -141,7 +162,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
     case DEVICE_PLACEMENT_WARN:
       LOG(WARNING) << "before computing " << op->Name() << " input #" << i
                    << " was expected to be on " << expected_input_device->name()
-                   << " but is actually on " << actual_device->name()
+                   << " but is actually on " << handle_device->name()
                    << " (operation running on " << op_device_name
                    << "). This triggers a copy which can be a performance "
                       "bottleneck.";
@@ -153,9 +174,8 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
   // trigger a copy.
   auto pre_time_nanos = Env::Default()->NowNanos();
   TensorHandle* result_handle = nullptr;
-  Status status =
-      EagerCopyToDevice(handle, ctx, expected_input_device->name().c_str(),
-                        ctx->MirrorTensors(), &result_handle);
+  Status status = EagerCopyToDevice(handle, ctx, expected_input_device,
+                                    ctx->MirrorTensors(), &result_handle);
   if (run_metadata != nullptr) {
     auto* step_stats = run_metadata->mutable_step_stats();
     MaybeInitializeStepStats(step_stats, ctx);
@@ -177,7 +197,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
   if (!status.ok()) {
     if (result_handle != nullptr) result_handle->Unref();
     return errors::Internal("Failed copying input tensor from ",
-                            actual_device->name(), " to ",
+                            handle_device->name(), " to ",
                             expected_input_device->name(), " in order to run ",
                             op->Name(), ": ", status.error_message());
   }
@@ -190,20 +210,19 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
 // `op_device_name` the name of the device on which the op will run, if any.
 // For functions running using function library runtime, the device can be
 // unspecified.
-Status ValidateInputTypeAndPlacement(EagerContext* ctx,
-                                     const string& op_device_name,
-                                     EagerOperation* op,
-                                     const KernelAndDevice* kernel,
-                                     RunMetadata* run_metadata) {
+Status ValidateInputTypeAndPlacement(
+    EagerContext* ctx, EagerOperation* op,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    RunMetadata* run_metadata) {
   if (kernel->num_inputs() != op->Inputs().size()) {
     return errors::InvalidArgument("expected ", kernel->num_inputs(),
                                    " inputs, got ", op->Inputs().size());
   }
   for (int i = 0; i < op->Inputs().size(); ++i) {
-    const Device* expected_device = kernel->InputDevice(i);
+    Device* expected_device = kernel->InputDevice(i);
     TensorHandle* handle = nullptr;
     TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-        op, op_device_name, i, expected_device, run_metadata, &handle));
+        op, kernel->device(), i, expected_device, run_metadata, &handle));
     op->UpdateInput(i, handle);
     // Unref handle since it has a ref as an input now
     handle->Unref();
@@ -217,24 +236,67 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx,
   return Status::OK();
 }
 
-Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  PrioritizedDeviceTypeVector final_devices;
+Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
+                    Device** device) {
+  std::vector<Device*> final_devices;
+  PrioritizedDeviceTypeVector supported_devs;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
-      ctx->prioritized_device_type_list(), ndef, &final_devices));
-  if (final_devices.empty()) {
-    return errors::Internal("Could not find valid device for node.\nNode: ",
+      ctx->prioritized_device_type_list(), ndef, &supported_devs));
+  if (supported_devs.empty()) {
+    return errors::Internal("Could not find valid device for node.\nNode:",
                             FormatNodeDefForError(ndef),
                             "\nAll kernels registered for op ", ndef.op(),
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
-  for (Device* d : *ctx->devices()) {
-    if (d->device_type() == final_devices[0].first.type_string()) {
-      *device = d;
-      return Status::OK();
+
+  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
+    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceName(),
+                                                   &final_devices);
+
+    if (!final_devices.empty()) {
+      final_devices = ColocationGraph::FilterSupportedDevices(
+          final_devices, supported_devs, /*default_device=*/nullptr);
+    }
+
+    if (final_devices.empty() && ctx->AllowSoftPlacement()) {
+      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceName();
+      soft_device_name.type.clear();
+      soft_device_name.has_type = false;
+      soft_device_name.has_id = false;
+      // TODO(fishx): Soft placement logic picks up another task if the
+      // requested does not exist.
+      ctx->pflr()->device_set()->FindMatchingDevices(soft_device_name,
+                                                     &final_devices);
+      if (!final_devices.empty()) {
+        final_devices = ColocationGraph::FilterSupportedDevices(
+            final_devices, supported_devs, /*default_device=*/nullptr);
+      }
+    }
+    if (final_devices.empty()) {
+      return errors::InvalidArgument(
+          "Could not satisfy device specification '", op->GetDeviceName(),
+          "'. All available devices [",
+          absl::StrJoin(DevicesToString(ctx->pflr()->device_set()->devices()),
+                        ", "),
+          "]. Eager operation: ", op->DebugString());
+    }
+  } else {
+    // TODO(fishx): Allow setting default device in eager context.
+    final_devices = ColocationGraph::FilterSupportedDevices(
+        ctx->pflr()->device_set()->devices(), supported_devs,
+        /*default_device=*/nullptr);
+    if (final_devices.empty()) {
+      return errors::InvalidArgument(
+          "No OpKernel registered to suppport this eager operation:",
+          op->DebugString());
     }
   }
-  return errors::Unknown("Could not find a device for node ",
-                         FormatNodeDefForError(ndef));
+
+  VLOG(1) << "Placer place op [" << op->Name()
+          << "] on device: " << final_devices[0]->name();
+  op->SetDevice(final_devices[0]);
+  *device = final_devices[0];
+  return Status::OK();
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -266,7 +328,7 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
 
-bool IsMultiDevice(const FunctionDef* fdef, const string& op_device) {
+bool IsMultiDevice(const FunctionDef* fdef) {
   if (fdef == nullptr) {
     // Primitive op.
     return false;
@@ -340,9 +402,10 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
-Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
-                            const EagerContext* ctx, bool* compile_with_xla) {
-  if (!op->is_function() || device == nullptr) {
+Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
+                            bool* compile_with_xla) {
+  if (!op->is_function() ||
+      !DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
     *compile_with_xla = false;
     return Status::OK();
   }
@@ -358,7 +421,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
 
   // Does FunctionDef have an explicit request to compile or not?
   const FunctionDef* function_def =
-      ctx->func_lib(device)->GetFunctionLibraryDefinition()->Find(op->Name());
+      ctx->pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
@@ -372,11 +435,12 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
-      device->device_type() == "XLA_CPU") {
+  if (op->GetDeviceName().type == "TPU" ||
+      op->GetDeviceName().type == "XLA_GPU" ||
+      op->GetDeviceName().type == "XLA_CPU") {
     VLOG(2) << "Compiling " << op->Name()
             << " with XLA because it is running on an XLA device "
-            << device->device_type();
+            << op->GetDeviceName().type;
     *compile_with_xla = true;
   } else {
     *compile_with_xla = false;
@@ -405,18 +469,15 @@ Status EagerLocalExecute(EagerOperation* op,
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
-  const string unspecified_device_name("<unspecified>");
   EagerContext* ctx = op->EagerContext();
   TF_RETURN_IF_ERROR(ctx->GetStatus());
   Device* device = op->Device();
 
-  const string& maybe_unspecified_device_name =
-      device == nullptr ? unspecified_device_name : device->name();
-  Fprint128 cache_key =
-      op->MutableAttrs()->CacheKey(maybe_unspecified_device_name);
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(
+      DeviceNameOrUnspecified(op->GetDeviceName()));
 
-  bool is_multi_device_function = IsMultiDevice(
-      ctx->FindFunctionDef(op->Name()), maybe_unspecified_device_name);
+  bool is_multi_device_function =
+      IsMultiDevice(ctx->FindFunctionDef(op->Name()));
 
   std::vector<Device*> input_dev_ptrs;
   // `input_tensor_shapes` contains (potentially a subset of) non DT_RESOURCE
@@ -428,7 +489,7 @@ Status EagerLocalExecute(EagerOperation* op,
   if (is_multi_device_function) {
     input_dev_ptrs.reserve(op->Inputs().size());
     // All inputs need to be on local devices.
-    // TODO(nareshmodi): This is a limitation of the current code base (but
+    // TODO(b/122851476): This is a limitation of the current code base (but
     // should be possible to get around).
     // Code changes will need to be made to pass input objects to the
     // function library runtime instead of just "Tensor"s.
@@ -440,7 +501,7 @@ Status EagerLocalExecute(EagerOperation* op,
       if (input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
-            input, ctx, device == nullptr ? "" : device->name().c_str(),
+            input, ctx, device == nullptr ? ctx->HostCPU() : device,
             ctx->MirrorTensors(), &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
@@ -449,10 +510,11 @@ Status EagerLocalExecute(EagerOperation* op,
       }
 
       // Get device for this input, and add it to 'cache_key'.
-      Device* device;
-      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &device));
-      input_dev_ptrs.push_back(device);
-      cache_key = FingerprintCat128(cache_key, Fingerprint128(device->name()));
+      Device* input_device;
+      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
+      input_dev_ptrs.push_back(input_device);
+      cache_key =
+          FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
 
       // If input is normal tensor, get its shape and add it to 'cache_key';
       // If input is a ResourceHandle, get its resource handle dtypes and shapes
@@ -493,10 +555,9 @@ Status EagerLocalExecute(EagerOperation* op,
   core::RefCountPtr<KernelAndDevice> kernel = ctx->GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
-            << maybe_unspecified_device_name;
+            << DeviceNameOrUnspecified(op->Device());
     bool compile_with_xla;
-    TF_RETURN_IF_ERROR(
-        ShouldCompileWithXLA(op, device, ctx, &compile_with_xla));
+    TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
     if (compile_with_xla) {
       // Note that it is not ideal, but currently correct, to set this
       // attribute after computing the kernel cache key above.
@@ -509,14 +570,12 @@ Status EagerLocalExecute(EagerOperation* op,
     bool run_function_with_flr = is_multi_device_function && !compile_with_xla;
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-    if (!run_function_with_flr && device == nullptr) {
-      TF_RETURN_IF_ERROR(SelectDevice(ndef, ctx, &device));
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SelectDevice(op, ndef, ctx, &device));
     }
-    const string& device_name =
-        device == nullptr ? unspecified_device_name : device->name();
     if (ctx->LogDevicePlacement() || VLOG_IS_ON(1)) {
       string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
-                                   device_name);
+                                   DeviceNameOrUnspecified(device));
       if (!logging::LogToListeners(msg)) {
         LOG(INFO) << msg;
       }
@@ -576,11 +635,8 @@ Status EagerLocalExecute(EagerOperation* op,
                                    *num_retvals);
   }
   *num_retvals = output_dtypes_size;
-  const string& device_name = kernel->device() == nullptr
-                                  ? unspecified_device_name
-                                  : kernel->device()->name();
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(
-      ctx, device_name, op, kernel.get(),
+      ctx, op, kernel,
       ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr));
 
   std::unique_ptr<NodeExecStats> maybe_stats;
@@ -658,7 +714,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(nareshmodi): this is currently slow, but can be fixed by making
+  // TODO(b/110044833): this is currently slow, but can be fixed by making
   // tensor handles aware of more than one device.
   TensorHandle* actual_handle;
   if (tensor_handle_device != nullptr &&
@@ -748,9 +804,18 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                           int* num_retvals) {
   EagerContext* ctx = op->EagerContext();
 
-  eager::EagerClient* eager_client;
+  // TODO(fishx): Remove following code when lazy tensor copy is ready.
+  if (op->Device() == nullptr) {
+    tensorflow::Device* device = nullptr;
+    string device_name =
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceName());
+    TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
+    op->SetDevice(device);
+  }
+
+  eager::EagerClient* eager_client = nullptr;
   uint64 context_id = ctx->GetContextId();
-  TF_RETURN_IF_ERROR(ctx->GetClient(op->Device(), &eager_client));
+  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceName(), &eager_client));
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   eager::EnqueueResponse response;
@@ -776,9 +841,9 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       // correctly determined after the kernel is selected/instantiated, since
       // the op might have its inputs on host memory.
       TensorHandle* handle = nullptr;
-      TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-          op, op->Device()->name(), i, remote_cpu_device,
-          /* run_metadata= */ nullptr, &handle));
+      TF_RETURN_IF_ERROR(
+          MaybeCopyInputToExpectedDevice(op, op->Device(), i, remote_cpu_device,
+                                         /* run_metadata= */ nullptr, &handle));
       op->UpdateInput(i, handle);
       input = handle;
       input_device = remote_cpu_device;
@@ -845,7 +910,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           &retvals[i]));
     }
   }
-
   return Status::OK();
 }
 #endif  // IS_MOBILE_PLATFORM
@@ -918,8 +982,7 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
       // ineligible for CPU pinning.
       break;
     } else if (all_inputs_eligible_for_cpu_pinning) {
-      Device* input_device = tensor_handle->device();
-      input_device = input_device == nullptr ? ctx->HostCPU() : input_device;
+      Device* input_device = tensor_handle->DeviceOrHostCPU(ctx);
       VLOG(2) << "for op " << op->Name() << " input " << i << " "
               << DataTypeString(tensor_handle->dtype)
               << " input device = " << input_device->name()
@@ -969,15 +1032,24 @@ Status EagerExecute(EagerOperation* op,
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
-  bool op_is_local = op->EagerContext()->IsLocal(op->Device());
+  bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
+
+  std::unique_ptr<tensorflow::EagerOperation> out_op;
+  TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
+      EagerOpRewriteRegistry::PRE_EXECUTION, op, &out_op));
 
   if (op_is_local) {
-    return EagerLocalExecute(op, retvals, num_retvals);
+    if (out_op) {
+      return EagerLocalExecute(out_op.get(), retvals, num_retvals);
+    } else {
+      return EagerLocalExecute(op, retvals, num_retvals);
+    }
   }
 
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
-                                 op->Device()->name());
+    string msg = strings::StrCat(
+        "Executing op ", op->Name(), " on task ",
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceName()));
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -987,7 +1059,11 @@ Status EagerExecute(EagerOperation* op,
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
-  return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  if (out_op) {
+    return EagerRemoteExecute(out_op.get(), retvals->data(), num_retvals);
+  } else {
+    return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  }
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -1336,33 +1412,25 @@ string GetUniqueWireID() {
 
 }  // namespace
 
-Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, bool mirror,
-                         TensorHandle** result) {
+Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* device,
+                         bool mirror, TensorHandle** result) {
   profiler::TraceMe activity("EagerCopyToDevice",
                              profiler::TraceMeLevel::kInfo);
-  Device* send_device = h->device();
-
-  if (send_device == nullptr) {
-    send_device = ctx->HostCPU();
-  }
+  Device* send_device = h->DeviceOrHostCPU(ctx);
 
   bool sender_is_local = ctx->IsLocal(send_device);
 
-  Device* recv_device;
-  TF_RETURN_IF_ERROR(ctx->FindDeviceFromName(device_name, &recv_device));
-
-  bool recver_is_local = ctx->IsLocal(recv_device);
+  bool recver_is_local = ctx->IsLocal(device);
 
   if (sender_is_local && recver_is_local) {
-    return LocalEagerCopyToDevice(h, ctx, recv_device, result);
+    return LocalEagerCopyToDevice(h, ctx, device, result);
   } else {
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
     if (mirror) {
-      if (h->HasRemoteMirror(recv_device)) {
+      if (h->HasRemoteMirror(device)) {
         h->Ref();
         *result = h;
         return Status::OK();
@@ -1370,13 +1438,12 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     }
 
     if (ctx->UseSendTensorRPC() && sender_is_local && !recver_is_local) {
-      return EagerRemoteSendTensor(ctx, h, recv_device, mirror, result);
+      return EagerRemoteSendTensor(ctx, h, device, mirror, result);
     } else {
       string wire_id = GetUniqueWireID();
-      TF_RETURN_IF_ERROR(
-          ExecuteSend(ctx, send_device, h, wire_id, recv_device));
+      TF_RETURN_IF_ERROR(ExecuteSend(ctx, send_device, h, wire_id, device));
 
-      return ExecuteRecv(ctx, recv_device, h->dtype, wire_id, send_device,
+      return ExecuteRecv(ctx, device, h->dtype, wire_id, send_device,
                          mirror ? h : nullptr, result);
     }
 #endif  // !IS_MOBILE_PLATFORM

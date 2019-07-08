@@ -219,8 +219,14 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
       item, cluster, src_format_, dst_format_, target_device_, &context));
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+  if (context.graph.node_size() > context.num_nodes) {
+    TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
+    TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+    // TODO(lyandy): Remove sorting once other optimizers are migrated to using
+    // `utils::GraphView`.
+    TF_RETURN_IF_ERROR(
+        context.graph_view->SortTopologically(/*ignore_cycles=*/false, {}));
+  }
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
   *output = context.graph;

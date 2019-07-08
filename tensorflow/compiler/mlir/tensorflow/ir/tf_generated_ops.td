@@ -1570,6 +1570,33 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
+  let summary = [{
+Computes the product of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TF_NumberTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Use QuantizeAndDequantizeV2 instead.";
 
@@ -2260,6 +2287,48 @@ precise description.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$split_dim,
+    TF_Tensor:$value,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
+  let summary = "Splits a tensor into `num_split` tensors along one dimension.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$value,
+    TF_I32OrI64Tensor:$size_splits,
+    I32Tensor:$split_dim,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {

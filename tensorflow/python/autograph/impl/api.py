@@ -211,7 +211,7 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
           status=ag_ctx.Status.ENABLED, options=optional_features):
         try:
           return converted_call(
-              f, None,
+              f,
               converter.ConversionOptions(
                   recursive=recursive,
                   force_conversion=force_conversion,
@@ -382,31 +382,10 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
-def converted_call(f, owner, options, args, kwargs):
+def converted_call(f, options, args, kwargs):
   """Compiles a function call inline. For internal use only."""
-  if owner is not None:
-    if not isinstance(f, str):
-      raise ValueError(
-          'When owner is specified, the function name must be specified as'
-          ' a string: {}'.format(f))
-    owner_attr = f
-
-    # Special case when the owner is a 'super' object. In that case lookups of
-    # dynamic attributes won't work. See
-    # inspect_utils.SuperWrapperForDynamicAttrs.
-    if isinstance(owner, super):
-      owner = inspect_utils.SuperWrapperForDynamicAttrs(owner)
-
-    f = getattr(owner, f)
-
-  if logging.has_verbosity(1):
-    if owner is not None:
-      composite_desc = '("{}" attr of {})'.format(owner_attr, owner)
-    else:
-      composite_desc = ''
-
-    logging.log(1, 'Converted call: %s %s\n    args: %s\n    kwargs: %s\n', f,
-                composite_desc, args, kwargs)
+  logging.log(1, 'Converted call: %s\n    args: %s\n    kwargs: %s\n', f, args,
+              kwargs)
 
   if inspect_utils.isbuiltin(f):
     if f is eval:

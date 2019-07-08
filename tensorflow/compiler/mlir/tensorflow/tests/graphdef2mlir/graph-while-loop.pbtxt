@@ -203,7 +203,7 @@ versions {
   producer: 27
 }
 
-# CHECK:       func @main() loc(unknown) {
+# CHECK:       func @main() {
 # CHECK-NEXT:    %0:2 = "_tf.NextIteration.source"() {T = "tfdtype$DT_INT32", device = "", name = "while/NextIteration"} : () -> (tensor<*xi32>, !_tf.control) loc("while/NextIteration")
 # CHECK-NEXT:    %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control) loc("Const")
 # CHECK-NEXT:    %2:2 = "_tf.Enter"(%1#0) {T = "tfdtype$DT_INT32", device = "", frame_name = "while/while_context", is_constant = false, name = "while/Enter", parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>, !_tf.control) loc("while/Enter")

@@ -2349,13 +2349,22 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
       wrap::rocblas_hgemm_strided_batched, stream,
       false, /* pointer_mode_host */
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+<<<<<<< HEAD
       reinterpret_cast<const rocblas_half*>(&alpha_half),
       reinterpret_cast<const rocblas_half*>(GpuMemory(a)), lda, stride_a,
       reinterpret_cast<const rocblas_half*>(GpuMemory(b)), ldb, stride_b,
       reinterpret_cast<const rocblas_half*>(&beta_half),
       reinterpret_cast<rocblas_half*>(GpuMemoryMutable(c)), ldc, stride_c,
+=======
+      reinterpret_cast<const rocblas_half *>(&alpha_half),
+      reinterpret_cast<const rocblas_half *>(GpuMemory(a)), lda, stride_a,
+      reinterpret_cast<const rocblas_half *>(GpuMemory(b)), ldb, stride_b,
+      reinterpret_cast<const rocblas_half *>(&beta_half),
+      reinterpret_cast<rocblas_half *>(GpuMemoryMutable(c)), ldc, stride_c,
+>>>>>>> upstream/master
       batch_count);
 }
+
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,

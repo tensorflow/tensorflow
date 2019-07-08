@@ -22,23 +22,28 @@ limitations under the License.
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-namespace mlir {
-namespace {
-#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_optimize.inc"
-}  // namespace
 
-/// Canonicalize operations in functions.
+namespace mlir {
+namespace TF {
+namespace {
+
+#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_optimize.inc"
+
+// Canonicalize operations in functions.
 struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
-    auto& func = getFunction();
+    auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
     applyPatternsGreedily(func, std::move(patterns));
   }
 };
 
-FunctionPassBase* createTFOptimizePass() { return new TFOptimizePass(); }
+}  // namespace
+
+FunctionPassBase* CreateTFOptimizePass() { return new TFOptimizePass(); }
 
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 
+}  // namespace TF
 }  // namespace mlir

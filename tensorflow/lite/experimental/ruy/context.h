@@ -60,7 +60,7 @@ struct Context final {
   }
 
   void EnsureNPerThreadStates(int thread_count) {
-    while (per_thread_states.size() < thread_count) {
+    while (per_thread_states.size() < static_cast<std::size_t>(thread_count)) {
       per_thread_states.emplace_back(new PerThreadState);
     }
   }

@@ -77,7 +77,11 @@ namespace functor {
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \
+<<<<<<< HEAD
       TF_CHECK_OK(GpuLaunchKernel(                                            \
+=======
+      TF_CHECK_OK(GpuLaunchKernel(                                             \
+>>>>>>> upstream/master
           ReduceSliceDeviceKernel##reduceop<T, Index>, config.block_count,     \
           config.thread_per_block, 0, d.stream(), config, indices_width,       \
           bound, beginning<T>(), indices.data(), data.data(), output.data())); \

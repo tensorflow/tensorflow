@@ -685,6 +685,8 @@ class CheckpointLoadStatus(_LoadStatus):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -845,6 +847,8 @@ class InitializationOnlyStatus(_LoadStatus):
   def __init__(self, graph_view, restore_uid):
     self._restore_uid = restore_uid
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
 
   def assert_consumed(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
@@ -920,6 +924,9 @@ class NameBasedSaverStatus(_LoadStatus):
   def __init__(self, checkpoint, graph_view):
     self._checkpoint = checkpoint
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
+
 
   def assert_consumed(self):
     """Raises an exception if any variables/objects are unmatched."""

@@ -42,6 +42,10 @@ struct DatasetDebugStringParams {
   std::vector<string> args;
 };
 
+struct IteratorPrefixParams {
+  int op_version = 1;
+};
+
 // Merge the given args in the format of "(arg1, arg2, ..., argn)".
 //
 // e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)"; ArgsToString({}) -> "".
@@ -83,8 +87,19 @@ string DatasetDebugString(const string& dataset_type,
 // Returns a string that identifies the sequence of iterators leading up to
 // the iterator of this dataset.
 //
-// e.g. IteratorPrefix("Map", "Iterator::range") -> "Iterator::Range::Map".
+// e.g. IteratorPrefix("Map", "Iterator::Range") -> "Iterator::Range::Map".
 string IteratorPrefix(const string& dataset_type, const string& prefix);
+
+// Returns a string that identifies the sequence of iterators leading up to
+// the iterator of this dataset.
+//
+// e.g.
+// IteratorPrefixParams params;
+// params.op_version = 2;
+// IteratorPrefix(BatchDatasetOp::KDatasetType, "Iterator::Range", params) ->
+// "Iterator::Range::BatchV2".
+string IteratorPrefix(const string& dataset_type, const string& prefix,
+                      const IteratorPrefixParams& params);
 
 }  // namespace name_utils
 }  // namespace data

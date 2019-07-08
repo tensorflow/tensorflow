@@ -291,10 +291,14 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
     // ROCm TODO: add support __vmaxs4 on ROCm
     context->SetStatus(errors::Internal(
         "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+<<<<<<< HEAD
 #endif
+=======
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master
   }
 };
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class MaxPoolingV2Op : public OpKernel {

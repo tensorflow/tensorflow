@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 
 namespace mlir {
-namespace tensorflow {
+namespace TF {
 
 LogicalResult ConstantFoldFallbackHook(
     Operation* inst, ArrayRef<Attribute> operands,
@@ -59,8 +59,8 @@ LogicalResult ConstantFoldFallbackHook(
     inputs.push_back(input.cast<ElementsAttr>());
   }
 
-  return ::tensorflow::EvaluateOperation(inst, inputs, ctx, &results);
+  return tensorflow::EvaluateOperation(inst, inputs, ctx, &results);
 }
 
-}  // namespace tensorflow
+}  // namespace TF
 }  // namespace mlir

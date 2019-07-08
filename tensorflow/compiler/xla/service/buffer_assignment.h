@@ -154,7 +154,7 @@ class BufferAllocation {
 
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
-  const absl::flat_hash_map<const BufferValue*, OffsetSize>& assigned_buffers()
+  const absl::flat_hash_map<const HloValue*, OffsetSize>& assigned_buffers()
       const {
     return assigned_buffers_;
   }
@@ -208,7 +208,7 @@ class BufferAllocation {
   // GetSlice returns the Slice of contiguous memory that holds the value
   // described by the given 'buffer'.
   // REQUIRES: 'buffer' must be assigned to this allocation.
-  Slice GetSlice(const BufferValue& buffer) const;
+  Slice GetSlice(const HloValue& buffer) const;
 
   string ToString() const;
   BufferAllocationProto ToProto() const;
@@ -252,7 +252,7 @@ class BufferAllocation {
   // reached at multiple points, the set of logical buffers live at the earliest
   // maximal point is returned. The vector is stably sorted by
   // BufferValue::Index.
-  const std::vector<const BufferValue*>& PeakMemoryLogicalBuffers() const {
+  const std::vector<const HloValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
 
@@ -277,7 +277,7 @@ class BufferAllocation {
   friend class BufferAssignment;
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const BufferValue& buffer, int64 offset, int64 size);
+  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
 
   void set_entry_computation_parameter(int64 parameter_number,
                                        ShapeIndex param_shape_index,
@@ -335,13 +335,13 @@ class BufferAllocation {
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
-  absl::flat_hash_map<const BufferValue*, OffsetSize> assigned_buffers_;
+  absl::flat_hash_map<const HloValue*, OffsetSize> assigned_buffers_;
 
   int64 fragmentation_bytes_ = 0;
   std::vector<HeapSimulatorTrace> heap_traces_;
 
   // Set of buffers live at the point of peak memory usage for this allocation.
-  std::vector<const BufferValue*> peak_buffers_;
+  std::vector<const HloValue*> peak_buffers_;
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
@@ -363,13 +363,13 @@ class BufferAssignment {
   }
 
   // Returns whether the given buffer has been assigned an allocation.
-  bool HasAllocation(const BufferValue& value) const;
+  bool HasAllocation(const HloValue& value) const;
 
   bool HasAllocation(const HloBuffer& buffer) const;
 
   // Returns the allocation that a particular LogicalBuffer has been assigned
   // to. CHECKs if buffer has not been assigned an allocation.
-  const BufferAllocation& GetAssignedAllocation(const BufferValue& value) const;
+  const BufferAllocation& GetAssignedAllocation(const HloValue& value) const;
 
   const BufferAllocation& GetAssignedAllocation(
       const HloBuffer& hlo_buffer) const;
@@ -505,15 +505,11 @@ class BufferAssignment {
   void AddAssignment(BufferAllocation* allocation, const HloBuffer& buffer,
                      int64 offset, int64 size);
 
-  void AddAssignment(BufferAllocation* allocation, const BufferValue& value,
+  void AddAssignment(BufferAllocation* allocation, const HloValue& value,
                      int64 offset, int64 size);
 
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
-
-  // Convenience function which returns the PointsToSet for the given
-  // instruction. Extracted from the liveness object.
-  const PointsToSet& GetPointsToSet(const HloInstruction* instruction) const;
 
   // Mutable accessors for allocations.
   BufferAllocation* GetMutableAssignedAllocation(const HloBuffer& buffer);
@@ -540,7 +536,7 @@ class BufferAssignment {
   int64 temp_allocation_total_size_ = 0;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
-  absl::flat_hash_map<const BufferValue*, BufferAllocation::Index>
+  absl::flat_hash_map<const HloValue*, BufferAllocation::Index>
       allocation_index_for_value_;
 
   const HloModule* module_;
@@ -611,20 +607,8 @@ class BufferAssigner {
       const std::vector<const HloComputation*>& computations,
       bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
-                          absl::flat_hash_set<const BufferValue*>>*
+                          absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
-      BufferAssignment* assignment);
-
-  // Converts a HloValueSet to LogicalBufferSet, this is needed for buffer
-  // assignment, which uses dataflow analysis, to talk to heap simulator that
-  // still uses tuple-points-to analysis.
-  BufferValueFlatSet HloValueSetToLogicalBufferSet(
-      const absl::flat_hash_set<const BufferValue*>& hlo_value_set,
-      const TuplePointsToAnalysis& points_to_analysis);
-
-  // Creates sets of buffer values that must be aliased with each other (e.g.,
-  // while init and loop body parameter).
-  std::vector<BufferValueFlatSet> BuildMustAliasLogicalBufferSet(
       BufferAssignment* assignment);
 
   // Promotes operations (DUS, scatter) to be done in place: If an operation can
@@ -635,7 +619,7 @@ class BufferAssigner {
   Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
-                          absl::flat_hash_set<const BufferValue*>>*
+                          absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
       std::vector<BufferAllocation::Index>* allocation_indices,
       BufferAssignment* assignment);
@@ -647,7 +631,7 @@ class BufferAssigner {
   // assuming all global computations are sequentially ordered.
   Status AssignBuffersWithSequentialOrdering(
       const absl::flat_hash_map<const HloComputation*,
-                                absl::flat_hash_set<const BufferValue*>>&
+                                absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment);
 
@@ -665,9 +649,9 @@ class BufferAssigner {
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
-                      absl::flat_hash_set<const BufferValue*>,
+                      absl::flat_hash_set<const HloValue*>,
                       LogicalBuffer::Color::Hasher>
-  SplitBuffersByColor(const absl::flat_hash_set<const BufferValue*>& buffers);
+  SplitBuffersByColor(const absl::flat_hash_set<const HloValue*>& buffers);
 
   // If true, allocate buffers for constant instructions.
   bool allocate_buffers_for_constants_;

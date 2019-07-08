@@ -231,7 +231,11 @@ void LSTMBlockCellFpropWithCUDA(
     typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
     typename TTypes<T>::Matrix h, int batch_size, int cell_size,
     int input_size) {
+<<<<<<< HEAD
   const cudaStream_t& cu_stream = GetGpuStream(ctx);
+=======
+  const auto& cu_stream = GetGpuStream(ctx);
+>>>>>>> upstream/master
 
   // Concatenate xh = [x, h].
   //
@@ -242,8 +246,13 @@ void LSTMBlockCellFpropWithCUDA(
   const int grid_dim =
       Eigen::divup(batch_size * (cell_size + input_size), block_dim);
   TF_CHECK_OK(GpuLaunchKernel(concat_xh<T>, grid_dim, block_dim, 0, cu_stream,
+<<<<<<< HEAD
                                xh.data(), x.data(), h_prev.data(), batch_size,
                                cell_size, input_size));
+=======
+                              xh.data(), x.data(), h_prev.data(), batch_size,
+                              cell_size, input_size));
+>>>>>>> upstream/master
 
   // states1 = xh * w
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
@@ -370,7 +379,11 @@ void LSTMBlockCellBpropWithCUDA(
     typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,
     typename TTypes<T>::Vec wco_grad, const int batch_size, const int cell_size,
     const bool use_peephole) {
+<<<<<<< HEAD
   const cudaStream_t& cu_stream = GetGpuStream(ctx);
+=======
+  const auto& cu_stream = GetGpuStream(ctx);
+>>>>>>> upstream/master
 
   dim3 block_dim_2d(std::min(batch_size, 8), 32);
   dim3 grid_dim_2d(Eigen::divup(batch_size, static_cast<int>(block_dim_2d.x)),

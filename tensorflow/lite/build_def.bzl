@@ -115,10 +115,12 @@ def tflite_jni_binary(
     linkopts = linkopts + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+            "-Wl,-install_name,@rpath/" + name,
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            "-Wl,-soname," + name,
         ],
     })
     native.cc_binary(
@@ -353,17 +355,7 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return [
-            # TODO(b/135758082): L2Norm is broken in future forward
-            # compatibility horizon
-            "l2norm",
-            # TODO(b/135756979): Eye/MatrixDiag is broken in future
-            # forward compatibility horizon
-            "matrix_diag",
-            "matrix_set_diag",
-            "eye",
-        ]
-
+        return []
     return []
 
 def generated_test_conversion_modes():

@@ -40,7 +40,7 @@ class FusionMergerTest : public HloTestBase {};
 //                   Tuple
 //
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule MergeSharedFusionInstruction
 
 comp.3 {
@@ -106,7 +106,7 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule BytesTransferredThresholdExeceeded
 
 comp.2 {
@@ -154,7 +154,7 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule BytesTransferredThresholdNotExeceeded
 
 comp.2 {
@@ -197,7 +197,7 @@ ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
 // Check that we're willing to merge f1_computation into f2_computation, even
 // though f2 is an input fusion node.
 TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
@@ -231,7 +231,7 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
 }
 
 TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
@@ -265,7 +265,7 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
 
 // TODO(b/119692968): Remove this test once fusion emitter is fixed.
 TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     %fused_computation (param_0.10: f32[6]) -> f32[1] {

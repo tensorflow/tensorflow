@@ -45,6 +45,8 @@ class IteratorGetDeviceOp : public OpKernel {
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
+                        IteratorGetDeviceOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalIteratorGetDevice").Device(DEVICE_CPU),
     IteratorGetDeviceOp);

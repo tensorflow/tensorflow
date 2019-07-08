@@ -47,6 +47,7 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import casting_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
@@ -696,7 +697,10 @@ class Layer(module.Module):
 
           if not self.dynamic:
             try:
-              with base_layer_utils.autocast_context_manager(
+              # We do not directly pass self.weights, because we do not want
+              # to include weights of any layers in self.layers.
+              with casting_utils.autocast_context_manager(
+                  self._trainable_weights + self._non_trainable_weights,
                   input_list,
                   self._mixed_precision_policy.should_cast_variables):
                 # Add auto_control_deps in V2 when they are not already added by
@@ -752,8 +756,11 @@ class Layer(module.Module):
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          with base_layer_utils.autocast_context_manager(
-              input_list, self._mixed_precision_policy.should_cast_variables):
+          # We do not directly pass self.weights, because we do not want
+          # to include weights of any layers in self.layers.
+          with casting_utils.autocast_context_manager(
+              self._trainable_weights + self._non_trainable_weights, input_list,
+              self._mixed_precision_policy.should_cast_variables):
             outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)

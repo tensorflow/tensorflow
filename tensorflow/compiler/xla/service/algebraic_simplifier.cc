@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -2711,6 +2712,65 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       break;
     default:
       break;
+  }
+
+  // If M < N, then {0, ..., M} % N ==> {0, ..., M}.
+  //
+  // Currently this only covers the case when N is a broadcasted constant
+  // scalar.  We could also cover the case when N is a non-broadcasted constant
+  // with the same value repeated.
+  HloInstruction* iota;
+  HloInstruction* divisor;
+  if (Match(remainder,
+            m::Remainder(m::Iota(&iota),
+                         m::Broadcast(m::ConstantEffectiveScalar(&divisor))))) {
+    // The iota counts {0, ..., iota_upper_bound - 1}.  (Actually this is
+    // conservative; the iota may overflow and count up to a smaller value than
+    // this.  But that's OK for our purposes here.)
+    int64 iota_upper_bound = iota->shape().dimensions(
+        Cast<HloIotaInstruction>(iota)->iota_dimension());
+    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+        std::vector<int64>(0, divisor->shape().dimensions_size()));
+    if (divisor_val.ok() && divisor_val.ValueOrDie() >= iota_upper_bound) {
+      return ReplaceInstruction(remainder, iota);
+    }
+  }
+
+  // (X + N) % N = X % N, so long as X + N does not overflow.
+  //
+  // We don't have range tracking in XLA that would let us know whether X + N
+  // overflows, so for now we only do this simplification when X is an iota.  We
+  // could add other operations where it's easy to see a range, such as
+  // remainder, convert, etc., though at some point we'd probably want a
+  // range-tracking analysis.
+  HloInstruction* bcast;
+  HloInstruction* addend;
+  if (Match(
+          remainder,
+          m::Remainder(
+              m::AddAnyOrder(m::Iota(&iota),
+                             m::Broadcast(m::ConstantEffectiveScalar(&addend))),
+              m::Broadcast(&bcast, m::ConstantEffectiveScalar(&divisor)))) &&
+      addend == divisor) {
+    // The iota counts {0, ...iota_upper_bound - 1}, with the same caveat above
+    // that iota_upper_bound is conservative, and the true upper bound may be
+    // smaller.
+    int64 iota_upper_bound = iota->shape().dimensions(
+        Cast<HloIotaInstruction>(iota)->iota_dimension());
+    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+        std::vector<int64>(0, divisor->shape().dimensions_size()));
+    if (divisor_val.ok()) {
+      // Check whether divisor_val + iota_upper_bound - 1 overflows.
+      absl::optional<int64> max_val =
+          OverflowSafeAdd(divisor_val.ValueOrDie(), iota_upper_bound);
+      if (max_val.has_value() &&
+          FitsInIntegralType(*max_val, iota->shape().element_type())) {
+        return ReplaceWithNewInstruction(
+            remainder,
+            HloInstruction::CreateBinary(remainder->shape(),
+                                         HloOpcode::kRemainder, iota, bcast));
+      }
+    }
   }
 
   return Status::OK();

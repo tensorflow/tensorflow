@@ -94,14 +94,13 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context;
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
-  std::unique_ptr<mlir::Module> module(
-      mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.
-  mlir::Function* main = module->getNamedFunction("main");
+  mlir::Function main = module->getNamedFunction("main");
   QCHECK(main) << "No 'main' function specified.";
-  if (main->getType().getNumInputs() != 0)
+  if (main.getType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";
 
   // Convert to flatbuffer.
@@ -124,7 +123,7 @@ int main(int argc, char** argv) {
 
   // Print the resulting outputs.
   // TODO(jpienaar): Allow specifying output stream/file.
-  QCHECK(interpreter->outputs().size() == main->getType().getNumResults());
+  QCHECK(interpreter->outputs().size() == main.getType().getNumResults());
   for (int index : interpreter->outputs()) {
     const auto& out = *interpreter->tensor(index);
     // Print name if named.

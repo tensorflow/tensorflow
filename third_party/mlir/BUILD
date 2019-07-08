@@ -57,7 +57,6 @@ cc_library(
         "include/mlir/IR/DialectHooks.h",
         "include/mlir/IR/DialectSymbolRegistry.def",
         "include/mlir/IR/Function.h",
-        "include/mlir/IR/FunctionGraphTraits.h",
         "include/mlir/IR/Identifier.h",
         "include/mlir/IR/IntegerSet.h",
         "include/mlir/IR/Location.h",
@@ -70,6 +69,7 @@ cc_library(
         "include/mlir/IR/OperationSupport.h",
         "include/mlir/IR/PatternMatch.h",
         "include/mlir/IR/Region.h",
+        "include/mlir/IR/RegionGraphTraits.h",
         "include/mlir/IR/StandardTypes.h",
         "include/mlir/IR/StorageUniquerSupport.h",
         "include/mlir/IR/SymbolTable.h",
@@ -96,6 +96,7 @@ cc_library(
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [
+        "include/mlir/Analysis/Verifier.h",
         "include/mlir/Pass/AnalysisManager.h",
         "include/mlir/Pass/Pass.h",
         "include/mlir/Pass/PassInstrumentation.h",
@@ -132,6 +133,7 @@ cc_library(
         ":IR",
         ":StandardOps",
         ":Support",
+        ":TransformUtils",
         ":VectorOps",
         "@llvm//:support",
     ],
@@ -405,6 +407,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":StandardOps",
         ":Support",
     ],
 )
@@ -608,15 +611,14 @@ gentbl(
     tbl_outs = [
         (
             "-gen-rewriters",
-            "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
+            "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.td",
+    td_file = "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/StandardOps/Ops.td",
+        ":StdOpsTdFiles",
     ],
 )
 
@@ -665,13 +667,16 @@ cc_library(
 cc_library(
     name = "SPIRVConversions",
     srcs = [
-        "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
-        "lib/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
     ],
     hdrs = [
         "include/mlir/SPIRV/Passes.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "lib/Conversion/StandardToSPIRV",
+    ],
     deps = [
         ":IR",
         ":Pass",
@@ -844,6 +849,9 @@ cc_library(
     srcs = [
         "lib/Conversion/AffineToGPU/AffineToGPUPass.cpp",
     ],
+    hdrs = [
+        "include/mlir/Conversion/AffineToGPU/AffineToGPUPass.h",
+    ],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -905,6 +913,7 @@ cc_library(
         "include/mlir/Analysis/SliceAnalysis.h",
         "include/mlir/Analysis/Utils.h",
         "include/mlir/Analysis/VectorAnalysis.h",
+        "include/mlir/Analysis/Verifier.h",
     ],
     includes = ["include"],
     deps = [
@@ -1064,15 +1073,15 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
-        ":ViewFunctionGraph",
+        ":ViewRegionGraph",
         "@llvm//:support",
     ],
 )
 
 cc_library(
-    name = "ViewFunctionGraph",
-    srcs = ["lib/Transforms/ViewFunctionGraph.cpp"],
-    hdrs = ["include/mlir/Transforms/ViewFunctionGraph.h"],
+    name = "ViewRegionGraph",
+    srcs = ["lib/Transforms/ViewRegionGraph.cpp"],
+    hdrs = ["include/mlir/Transforms/ViewRegionGraph.h"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1089,6 +1098,7 @@ cc_library(
     hdrs = ["include/mlir/Support/TranslateClParser.h"],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":IR",
         ":Parser",
         ":Support",
@@ -1160,18 +1170,6 @@ cc_binary(
         "@llvm//:support",
         "@local_config_mlir//test:TestDialect",
         "@local_config_mlir//test:TestTransforms",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
     ],
 )
 

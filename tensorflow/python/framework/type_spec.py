@@ -497,7 +497,7 @@ def _type_spec_from_value(value):
   # type spec that captures the type accurately (unlike the `convert_to_tensor`
   # fallback).
   if isinstance(value, list) and value:
-    subspecs = [type_spec_from_value(v) for v in value]
+    subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
       merged_subspec = subspecs[0]
       try:

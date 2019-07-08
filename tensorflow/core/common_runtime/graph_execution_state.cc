@@ -90,29 +90,32 @@ GraphExecutionState::~GraphExecutionState() {
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
-  std::unique_ptr<GraphExecutionState> ret;
-  const GraphDef* borrowed_graph_def;
   if (options.session_options->config.graph_options().place_pruned_graph() ||
       !options.session_options->config.experimental()
            .optimize_for_static_graph()) {
-    ret = absl::WrapUnique(new GraphExecutionState(
+    auto ret = absl::WrapUnique(new GraphExecutionState(
         absl::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
-    borrowed_graph_def = ret->original_graph_def_.get();
-  } else {
-    ret = absl::WrapUnique(
-        new GraphExecutionState(nullptr, std::move(flib_def), options));
-    borrowed_graph_def = &graph_def;
-  }
 
-  if (!ret->session_options_->config.graph_options().place_pruned_graph()) {
-    // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
-    // pass an empty BuildGraphOptions (that isn't going to be used when
-    // place_pruned_graph is false).
+    // When place_pruned_graph is true, a different Graph* will be initialized
+    // each time we prune the original graph, so there is no need to
+    // construct a Graph* in this case.
+    if (!options.session_options->config.graph_options().place_pruned_graph()) {
+      auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+      TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *ret->original_graph_def_,
+                                                base_graph.get()));
+      TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
+    }
+    *out_state = std::move(ret);
+  } else {
+    auto ret = absl::WrapUnique(
+        new GraphExecutionState(nullptr, std::move(flib_def), options));
+    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(
-        ret->InitBaseGraph(borrowed_graph_def, BuildGraphOptions()));
+        ConvertGraphDefToGraph({}, std::move(graph_def), base_graph.get()));
+    TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
+    *out_state = std::move(ret);
   }
-  *out_state = std::move(ret);
   return Status::OK();
 }
 
@@ -151,7 +154,16 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&temp, *flib_def, 0));
   auto ret = absl::WrapUnique(
       new GraphExecutionState(nullptr, std::move(flib_def), options));
-  TF_RETURN_IF_ERROR(ret->InitBaseGraph(&temp, subgraph_options));
+
+  auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph({}, std::move(temp), base_graph.get()));
+
+  // Rewrite the graph before placement.
+  ret->rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
+  TF_RETURN_IF_ERROR(ret->PruneGraph(subgraph_options, base_graph.get(),
+                                     ret->rewrite_metadata_.get()));
+  TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
   return Status::OK();
@@ -250,15 +262,15 @@ Status GraphExecutionState::Extend(
                               std::move(flib_def), combined_options));
 
   if (!session_options_->config.graph_options().place_pruned_graph()) {
-    // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
-    // pass an empty BuildGraphOptions (that isn't going to be used
-    // when place_pruned_graph is false).
-    TF_RETURN_IF_ERROR(new_execution_state->InitBaseGraph(
-        new_execution_state->original_graph_def_.get(), BuildGraphOptions()));
+    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        {}, *new_execution_state->original_graph_def_, base_graph.get()));
+    TF_RETURN_IF_ERROR(
+        new_execution_state->InitBaseGraph(std::move(base_graph)));
   }
   *out = std::move(new_execution_state);
 
-  // TODO(mrry): This is likely to be used for non-throughput-sensitive
+  // NOTE(mrry): Extend() is likely to be used for non-throughput-sensitive
   // interactive workloads, but in future we may want to transfer other
   // parts of the placement and/or cost model.
   return Status::OK();
@@ -583,19 +595,7 @@ Status GraphExecutionState::PruneGraph(
   return Status::OK();
 }
 
-Status GraphExecutionState::InitBaseGraph(const GraphDef* graph_def,
-                                          const BuildGraphOptions& options) {
-  std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
-  GraphConstructorOptions opts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
-  if (session_options_ &&
-      session_options_->config.graph_options().place_pruned_graph()) {
-    // Rewrite the graph before placement.
-    rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
-    TF_RETURN_IF_ERROR(
-        PruneGraph(options, new_graph.get(), rewrite_metadata_.get()));
-  }
-
+Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
   // Save stateful placements before placing.
   RestoreStatefulNodes(new_graph.get());
 

@@ -764,9 +764,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("MapAndBatchDataset").Device(DEVICE_CPU),
+                        MapAndBatchDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMapAndBatchDataset").Device(DEVICE_CPU),
     MapAndBatchDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("MapAndBatchDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalMapAndBatchDataset");
 
 }  // namespace

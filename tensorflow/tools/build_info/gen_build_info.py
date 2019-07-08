@@ -24,8 +24,8 @@ def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
 
   Args:
     filename: filename to write to.
-    build_config: A string that represents the config used in this build (e.g.
-      "cuda").
+    is_config_cuda: Whether this build is using CUDA.
+    is_config_rocm: Whether this build is using ROCm.
     key_value_list: A list of "key=value" strings that will be added to the
       module as additional fields.
 
@@ -38,7 +38,11 @@ def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
 
   build_config_rocm_bool = "False"
   build_config_cuda_bool = "False"
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> upstream/master
   if is_config_rocm == "True":
     build_config_rocm_bool = "True"
   elif is_config_cuda == "True":
@@ -91,22 +95,41 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument(
     "--is_config_cuda",
+<<<<<<< HEAD
     type=str,
     help="'True' for CUDA GPU builds, 'False' otherwise.")
 
 parser.add_argument(
     "--is_config_rocm",
     type=str,
+=======
+    type=str,
+    help="'True' for CUDA GPU builds, 'False' otherwise.")
+
+parser.add_argument(
+    "--is_config_rocm",
+    type=str,
+>>>>>>> upstream/master
     help="'True' for ROCm GPU builds, 'False' otherwise.")
 
 parser.add_argument("--raw_generate", type=str, help="Generate build_info.py")
 
-parser.add_argument("--key_value", type=str, nargs="*",
-                    help="List of key=value pairs.")
+parser.add_argument(
+    "--key_value", type=str, nargs="*", help="List of key=value pairs.")
 
 args = parser.parse_args()
 
+<<<<<<< HEAD
 if args.raw_generate is not None and args.is_config_cuda is not None and args.is_config_rocm is not None:
   write_build_info(args.raw_generate, args.is_config_cuda, args.is_config_rocm, args.key_value)
 else:
   raise RuntimeError("--raw_generate, --is_config_cuda and --is_config_rocm must be used")
+=======
+if (args.raw_generate is not None) and (args.is_config_cuda is not None) and (
+    args.is_config_rocm is not None):
+  write_build_info(args.raw_generate, args.is_config_cuda, args.is_config_rocm,
+                   args.key_value)
+else:
+  raise RuntimeError(
+      "--raw_generate, --is_config_cuda and --is_config_rocm must be used")
+>>>>>>> upstream/master

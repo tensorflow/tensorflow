@@ -2534,6 +2534,12 @@ void ExecutorState::Finish() {
       // TODO(b/124523000): Always call Finish in a separate thread, so even if
       // StartCancel blocks the current thread's execution, we won't encounter
       // deadlocks caused by inter-op thread exhaustion.
+      if (rendezvous_) {
+        rendezvous_->StartAbort(status);
+      }
+      if (collective_executor_) {
+        collective_executor_->StartAbort(status);
+      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
       }

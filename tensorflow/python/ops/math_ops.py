@@ -144,6 +144,15 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
   Note that in case of ties the identity of the return value is not guaranteed.
 
+  For example:
+  ```python
+  A=tf.constant([2,20,30,3,6]) # Constant 1-D Tensor
+  tf.math.argmax(A) # output 2 as index 2 (A[2]) is maximum in tensor A
+  B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
+  tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
+  tf.math.argmax(B,1) # [2, 2, 1]
+  ```
+   
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,

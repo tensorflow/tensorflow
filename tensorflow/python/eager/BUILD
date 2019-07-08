@@ -68,6 +68,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
 
@@ -81,6 +82,27 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
     ],
+)
+
+py_library(
+    name = "cancellation",
+    srcs = ["cancellation.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "cancellation_test",
+    size = "small",
+    srcs = ["cancellation_test.py"],
+    additional_deps = [
+        ":cancellation",
+        ":test",
+    ],
+    tags = ["no_pip"],
 )
 
 py_library(
@@ -700,5 +722,18 @@ cuda_py_test(
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+cuda_py_test(
+    name = "device_placement_test",
+    size = "small",
+    srcs = ["device_placement_test.py"],
+    additional_deps = [
+        ":context",
+        ":def_function",
+        ":test",
+        ":remote",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )

@@ -98,6 +98,7 @@ __global__ void elemwise_accum(T* out, const T* in, const size_t N) {
 // Synchronously accumulate tensors on the GPU, using a different stream than
 // the default and than TensorFlow to avoid synchronizing on operations
 // unrelated to the allreduce.
+<<<<<<< HEAD
 #define GENERATE_ACCUMULATE(type)                                          \
   template <>                                                              \
   void AccumulateTensorData<GPUDevice, type>(type * dst, type * src,       \
@@ -106,6 +107,16 @@ __global__ void elemwise_accum(T* out, const T* in, const size_t N) {
     TF_CHECK_OK(GpuLaunchKernel(elemwise_accum<type>, 32, 256, 0, stream, \
                                  dst, src, size));                         \
     cudaStreamSynchronize(stream);                                         \
+=======
+#define GENERATE_ACCUMULATE(type)                                              \
+  template <>                                                                  \
+  void AccumulateTensorData<GPUDevice, type>(type * dst, type * src,           \
+                                             size_t size) {                    \
+    auto stream = CudaStreamForMPI();                                          \
+    TF_CHECK_OK(GpuLaunchKernel(elemwise_accum<type>, 32, 256, 0, stream, dst, \
+                                src, size));                                   \
+    cudaStreamSynchronize(stream);                                             \
+>>>>>>> upstream/master
   };
 GENERATE_ACCUMULATE(int);
 GENERATE_ACCUMULATE(long long);

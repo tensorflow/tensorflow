@@ -88,6 +88,8 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+        {"If", NC_IF},
+        {"StatelessIf", NC_IF},
         // Not using the constants defined in FunctionLibraryDefinition for the
         // 4 ops below because android inference library does not link
         // tf.function related files.

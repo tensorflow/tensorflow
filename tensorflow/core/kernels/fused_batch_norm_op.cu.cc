@@ -43,9 +43,15 @@ void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           int channels, T* inv_variance) {
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
   TF_CHECK_OK(GpuLaunchKernel(VarianceToInvVarianceKernel<T>,
+<<<<<<< HEAD
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count,
                                variance, epsilon, inv_variance));
+=======
+                              config.block_count, config.thread_per_block, 0,
+                              d.stream(), config.virtual_thread_count, variance,
+                              epsilon, inv_variance));
+>>>>>>> upstream/master
 }
 
 template <class T>
@@ -66,9 +72,15 @@ void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           int channels, T* variance) {
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
   TF_CHECK_OK(GpuLaunchKernel(InvVarianceToVarianceKernel<T>,
+<<<<<<< HEAD
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count, epsilon,
                                sample_size, variance));
+=======
+                              config.block_count, config.thread_per_block, 0,
+                              d.stream(), config.virtual_thread_count, epsilon,
+                              sample_size, variance));
+>>>>>>> upstream/master
 }
 
 template <class T>

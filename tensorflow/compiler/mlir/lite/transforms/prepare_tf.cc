@@ -351,7 +351,7 @@ class ConvertTFDepthwiseConv2dNative
 
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   TFL::populateWithGenerated(&getContext(), &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.

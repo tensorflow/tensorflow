@@ -1661,7 +1661,7 @@ TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
   auto buffers = RunBufferAssignment(module.get());
 
   const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
-  const std::vector<const BufferValue*>& peak_buffers =
+  const std::vector<const HloValue*>& peak_buffers =
       mul_buffer.PeakMemoryLogicalBuffers();
   ASSERT_EQ(peak_buffers.size(), 1);
   EXPECT_EQ(peak_buffers[0]->instruction(), sub);
@@ -1708,13 +1708,13 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
   ASSERT_EQ(buffer.assigned_buffers().size(), 4);
 
-  const std::vector<const BufferValue*>& peak_buffers =
+  const std::vector<const HloValue*>& peak_buffers =
       buffer.PeakMemoryLogicalBuffers();
 
   // The peak live set should be concat and its inputs.
   ASSERT_EQ(peak_buffers.size(), 3);
   std::vector<const HloInstruction*> peak_instructions;
-  for (const BufferValue* logical_buffer : peak_buffers) {
+  for (const HloValue* logical_buffer : peak_buffers) {
     peak_instructions.push_back(logical_buffer->instruction());
   }
   EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
