@@ -637,6 +637,21 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "SPIRVOpUtilsIncGen",
+    tbl_outs = [
+        (
+            "-gen-spirv-op-utils",
+            "include/mlir/SPIRV/SPIRVOpUtils.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/SPIRV/SPIRVBase.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "SPIRVDialect",
     srcs = [
@@ -658,6 +673,7 @@ cc_library(
         ":IR",
         ":Parser",
         ":SPIRVOpsIncGen",
+        ":SPIRVOpUtilsIncGen",
         ":Support",
         "@llvm//:support",
     ],
@@ -1249,7 +1265,7 @@ cc_binary(
         "tools/mlir-tblgen/OpDocGen.cpp",
         "tools/mlir-tblgen/ReferenceImplGen.cpp",
         "tools/mlir-tblgen/RewriterGen.cpp",
-        "tools/mlir-tblgen/SPIRVSerializationGen.cpp",
+        "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     includes = ["include"],
