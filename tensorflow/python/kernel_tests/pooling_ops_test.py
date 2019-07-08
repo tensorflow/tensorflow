@@ -1014,7 +1014,7 @@ class PoolingTest(test.TestCase):
           output_sizes,
           x_init_value=x_init_value,
           delta=1e-2)
-    tf_logging.info("%s gradient error = " % func_name, err)
+    tf_logging.info("%s gradient error = %.4f" % (func_name, err))
     self.assertLess(err, err_tolerance)
 
   def _ConstructAndTestSecondGradient(self,
@@ -1091,7 +1091,7 @@ class PoolingTest(test.TestCase):
           input_sizes,
           x_init_value=x_init_value,
           delta=1e-2)
-    tf_logging.info("%s second-order gradient error = " % func_name, err)
+    tf_logging.info("%s second-order gradient error = %.4f" % (func_name, err))
     self.assertLess(err, err_tolerance)
 
   def _testMaxPoolGradValidPadding1_1(self, data_format, use_gpu):
