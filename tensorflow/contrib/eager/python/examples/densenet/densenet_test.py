@@ -46,9 +46,9 @@ class DensenetTest(tf.test.TestCase):
                               pool_initial=False, include_top=True)
 
     if data_format == 'channels_last':
-      rand_input = tf.random_uniform((batch_size, 32, 32, 3))
+      rand_input = tf.random.uniform((batch_size, 32, 32, 3))
     else:
-      rand_input = tf.random_uniform((batch_size, 3, 32, 32))
+      rand_input = tf.random.uniform((batch_size, 3, 32, 32))
     output_shape = model(rand_input).shape
     self.assertEqual(output_shape, (batch_size, output_classes))
 
@@ -69,9 +69,9 @@ class DensenetTest(tf.test.TestCase):
                               pool_initial=False, include_top=True)
 
     if data_format == 'channels_last':
-      rand_input = tf.random_uniform((batch_size, 32, 32, 3))
+      rand_input = tf.random.uniform((batch_size, 32, 32, 3))
     else:
-      rand_input = tf.random_uniform((batch_size, 3, 32, 32))
+      rand_input = tf.random.uniform((batch_size, 3, 32, 32))
     output_shape = model(rand_input).shape
     self.assertEqual(output_shape, (batch_size, output_classes))
 
@@ -92,18 +92,18 @@ class DensenetTest(tf.test.TestCase):
                               pool_initial=True, include_top=True)
 
     if data_format == 'channels_last':
-      rand_input = tf.random_uniform((batch_size, 32, 32, 3))
+      rand_input = tf.random.uniform((batch_size, 32, 32, 3))
     else:
-      rand_input = tf.random_uniform((batch_size, 3, 32, 32))
+      rand_input = tf.random.uniform((batch_size, 3, 32, 32))
     output_shape = model(rand_input).shape
     self.assertEqual(output_shape, (batch_size, output_classes))
 
   def test_regularization(self):
     if tf.test.is_gpu_available():
-      rand_input = tf.random_uniform((10, 3, 32, 32))
+      rand_input = tf.random.uniform((10, 3, 32, 32))
       data_format = 'channels_first'
     else:
-      rand_input = tf.random_uniform((10, 32, 32, 3))
+      rand_input = tf.random.uniform((10, 32, 32, 3))
       data_format = 'channels_last'
     weight_decay = 1e-4
 
@@ -163,8 +163,8 @@ def random_batch(batch_size, data_format):
   shape = (batch_size,) + shape
 
   num_classes = 1000
-  images = tf.random_uniform(shape)
-  labels = tf.random_uniform(
+  images = tf.random.uniform(shape)
+  labels = tf.random.uniform(
       [batch_size], minval=0, maxval=num_classes, dtype=tf.int32)
   one_hot = tf.one_hot(labels, num_classes)
 
