@@ -54,10 +54,10 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
     for batch_size in [64, 128, 256]:
       # Generate some random data.
       burn_batches, measure_batches = (3, 100)
-      burn_images = [tf.random_normal([batch_size, 784])
+      burn_images = [tf.random.normal([batch_size, 784])
                      for _ in range(burn_batches)]
       burn_dataset = tf.data.Dataset.from_tensor_slices(burn_images)
-      measure_images = [tf.random_normal([batch_size, 784])
+      measure_images = [tf.random.normal([batch_size, 784])
                         for _ in range(measure_batches)]
       measure_dataset = tf.data.Dataset.from_tensor_slices(measure_images)
 
@@ -97,13 +97,13 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
 
         num_burn, num_iters = (30, 1000)
         for _ in range(num_burn):
-          noise = tf.random_uniform(shape=[batch_size, NOISE_DIM],
+          noise = tf.random.uniform(shape=[batch_size, NOISE_DIM],
                                     minval=-1., maxval=1.)
           generator(noise)
 
         start = time.time()
         for _ in range(num_iters):
-          noise = tf.random_uniform(shape=[batch_size, NOISE_DIM],
+          noise = tf.random.uniform(shape=[batch_size, NOISE_DIM],
                                     minval=-1., maxval=1.)
           generator(noise)
         self._report('generate', start, num_iters, batch_size)
