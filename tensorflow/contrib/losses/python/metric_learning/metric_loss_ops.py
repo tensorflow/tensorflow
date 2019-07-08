@@ -216,7 +216,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
   # negatives_inside: largest D_an.
   negatives_inside = array_ops.tile(
       masked_maximum(pdist_matrix, adjacency_not), [1, batch_size])
-  semi_hard_negatives = array_ops.where(
+  semi_hard_negatives = array_ops.where_v2(
       mask_final, negatives_outside, negatives_inside)
 
   loss_mat = math_ops.add(margin, pdist_matrix - semi_hard_negatives)
@@ -550,7 +550,7 @@ def get_cluster_assignment(pairwise_distances, centroid_ids):
   constraint_vect = math_ops.reduce_sum(
       array_ops.transpose(constraint_one_hot), axis=0)
 
-  y_fixed = array_ops.where(mask, constraint_vect, predictions)
+  y_fixed = array_ops.where_v2(mask, constraint_vect, predictions)
   return y_fixed
 
 
@@ -853,7 +853,7 @@ def update_all_medoids(pairwise_distances, predictions, labels, chosen_ids,
     mask = math_ops.equal(
         math_ops.cast(predictions, dtypes.int64),
         math_ops.cast(iteration, dtypes.int64))
-    this_cluster_ids = array_ops.where(mask)
+    this_cluster_ids = array_ops.where_v2(mask)
 
     pairwise_distances_subset = array_ops.transpose(
         array_ops.gather(
@@ -934,7 +934,7 @@ def compute_gt_cluster_score(pairwise_distances, labels):
   def func_body(iteration, gt_cluster_score):
     """Per each cluster, compute the average travel distance."""
     mask = math_ops.equal(labels, unique_class_ids[iteration])
-    this_cluster_ids = array_ops.where(mask)
+    this_cluster_ids = array_ops.where_v2(mask)
     pairwise_distances_subset = array_ops.transpose(
         array_ops.gather(
             array_ops.transpose(
