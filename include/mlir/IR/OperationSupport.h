@@ -142,6 +142,11 @@ public:
     return opProperties & static_cast<OperationProperties>(property);
   }
 
+  /// Returns if the operation has a particular trait.
+  template <template <typename T> class Trait> bool hasTrait() const {
+    return hasRawTrait(ClassID::getID<Trait>());
+  }
+
   /// Look up the specified operation in the specified MLIRContext and return a
   /// pointer to it if present.  Otherwise, return a null pointer.
   static const AbstractOperation *lookup(StringRef opName,
@@ -153,7 +158,7 @@ public:
     return AbstractOperation(
         T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
         T::parseAssembly, T::printAssembly, T::verifyInvariants, T::foldHook,
-        T::getCanonicalizationPatterns);
+        T::getCanonicalizationPatterns, T::hasTrait);
   }
 
 private:
@@ -166,15 +171,20 @@ private:
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
                                 SmallVectorImpl<OpFoldResult> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
-                                          MLIRContext *context))
+                                          MLIRContext *context),
+      bool (&hasTrait)(ClassID *traitID))
       : name(name), dialect(dialect), classof(classof),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
-        opProperties(opProperties) {}
+        opProperties(opProperties), hasRawTrait(hasTrait) {}
 
   /// The properties of the operation.
   const OperationProperties opProperties;
+
+  /// This hook returns if the operation contains the trait corresponding
+  /// to the given ClassID.
+  bool (&hasRawTrait)(ClassID *traitID);
 };
 
 class OperationName {

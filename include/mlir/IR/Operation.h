@@ -458,6 +458,13 @@ public:
   LogicalResult fold(ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results);
 
+  /// Returns if the operation was registered with a particular trait, e.g.
+  /// hasTrait<OperandsAreIntegerLike>().
+  template <template <typename T> class Trait> bool hasTrait() {
+    auto *absOp = getAbstractOperation();
+    return absOp ? absOp->hasTrait<Trait>() : false;
+  }
+
   //===--------------------------------------------------------------------===//
   // Operation Walkers
   //===--------------------------------------------------------------------===//

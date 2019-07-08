@@ -79,8 +79,14 @@ inline void interleaveComma(const Container &c, raw_ostream &os) {
 
 /// A special type used to provide an address for a given class that can act as
 /// a unique identifier during pass registration.
+/// Note: We specify an explicit alignment here to allow use with PointerIntPair
+/// and other utilities/data structures that require a known pointer alignment.
 struct alignas(8) ClassID {
   template <typename T> static ClassID *getID() {
+    static ClassID id;
+    return &id;
+  }
+  template <template <typename T> class Trait> static ClassID *getID() {
     static ClassID id;
     return &id;
   }

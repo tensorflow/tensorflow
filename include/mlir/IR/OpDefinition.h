@@ -891,6 +891,12 @@ private:
       return 0;
     }
   };
+
+  /// Returns true if this operation contains the trait for the given classID.
+  static bool hasTrait(ClassID *traitID) {
+    return llvm::is_contained(llvm::makeArrayRef({ClassID::getID<Traits>()...}),
+                              traitID);
+  }
 };
 
 // These functions are out-of-line implementations of the methods in BinaryOp,
