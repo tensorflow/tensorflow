@@ -45,7 +45,7 @@ class LinearRegressionTest(tf.test.TestCase):
     super(LinearRegressionTest, self).tearDown()
 
   def testSyntheticDataset(self):
-    true_w = tf.random_uniform([3, 1])
+    true_w = tf.random.uniform([3, 1])
     true_b = [1.0]
     batch_size = 10
     num_batches = 2
@@ -87,8 +87,8 @@ class EagerLinearRegressionBenchmark(tf.test.Benchmark):
     num_batches = 200
     batch_size = 64
     dataset = linear_regression.synthetic_dataset(
-        w=tf.random_uniform([3, 1]),
-        b=tf.random_uniform([1]),
+        w=tf.random.uniform([3, 1]),
+        b=tf.random.uniform([1]),
         noise_level=0.01,
         batch_size=batch_size,
         num_batches=num_batches)
