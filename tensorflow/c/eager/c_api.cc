@@ -589,6 +589,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       tensor = *src;
     } else {
       tensorflow::EagerContext* ctx = handle->Context();
+      CHECK_NE(ctx, nullptr);
       status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
       if (!status->status.ok()) return nullptr;
     }
