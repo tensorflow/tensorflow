@@ -351,7 +351,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
-  def DISABLED_test_implementation_mode_LSTM(self, implementation_mode):
+  def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -552,7 +552,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_1, y_2)
     self.assertAllClose(y_2, y_3)
 
-  def DISABLED_test_return_sequences_LSTM(self):
+  def test_return_sequences_LSTM(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
