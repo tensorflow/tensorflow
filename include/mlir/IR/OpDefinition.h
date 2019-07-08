@@ -897,6 +897,9 @@ private:
     return llvm::is_contained(llvm::makeArrayRef({ClassID::getID<Traits>()...}),
                               traitID);
   }
+
+  /// Allow access to 'hasTrait'.
+  friend AbstractOperation;
 };
 
 // These functions are out-of-line implementations of the methods in BinaryOp,
