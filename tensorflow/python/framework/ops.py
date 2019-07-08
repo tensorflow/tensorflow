@@ -935,16 +935,6 @@ class _EagerTensorBase(Tensor):
       raise TypeError("Scalar tensor has no `len()`")
     return self._shape_tuple()[0]
 
-  def _cpu_nograd(self):
-    """A copy of this Tensor with contents backed by host memory.
-
-    The copy cannot be differentiated through.
-
-    Returns:
-      A CPU-memory backed Tensor object with the same contents as this Tensor.
-    """
-    return self._copy_nograd(context.context(), "CPU:0")
-
   @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
