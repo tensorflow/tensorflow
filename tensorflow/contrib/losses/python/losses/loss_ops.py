@@ -150,7 +150,7 @@ def _num_present(losses, weights, per_batch=False):
     num_per_batch = math_ops.div(
         math_ops.cast(array_ops.size(losses), dtypes.float32),
         math_ops.cast(batch_size, dtypes.float32))
-    num_per_batch = array_ops.where(
+    num_per_batch = array_ops.where_v2(
         math_ops.equal(weights, 0), 0.0, num_per_batch)
     num_per_batch = math_ops.multiply(
         array_ops.ones(array_ops.reshape(batch_size, [1])), num_per_batch)
@@ -595,7 +595,7 @@ def mean_pairwise_squared_error(predictions,
 
     loss = _scale_losses(term1 - term2, weights)
 
-    mean_loss = array_ops.where(
+    mean_loss = array_ops.where_v2(
         math_ops.reduce_sum(num_present_per_batch) > 0,
         loss,
         array_ops.zeros_like(loss),
