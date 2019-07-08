@@ -2,12 +2,13 @@ load("@local_config_mlir//:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
