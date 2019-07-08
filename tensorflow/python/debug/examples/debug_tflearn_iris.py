@@ -35,11 +35,11 @@ def main(_):
   # debugger, not how to use machine learning to solve the Iris classification
   # problem.
   def training_input_fn():
-    return ({"features": tf.random_normal([128, 4])},
-            tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
+    return ({"features": tf.random.normal([128, 4])},
+            tf.random.uniform([128], minval=0, maxval=3, dtype=tf.int32))
   def test_input_fn():
-    return ({"features": tf.random_normal([32, 4])},
-            tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
+    return ({"features": tf.random.normal([32, 4])},
+            tf.random.uniform([32], minval=0, maxval=3, dtype=tf.int32))
   feature_columns = [
       tf.feature_column.numeric_column("features", shape=(4,))]
 
