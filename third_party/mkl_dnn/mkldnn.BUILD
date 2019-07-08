@@ -3,6 +3,7 @@ exports_files(["LICENSE"])
 load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
+    "if_mkl_v1_open_source_only",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -64,7 +65,12 @@ cc_library(
         "src/cpu/rnn/*.cpp",
         "src/cpu/rnn/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + [":mkldnn_version_h"],
+    ]) + if_mkl_v1_open_source_only([
+        "src/cpu/jit_utils/jit_utils.cpp",
+        "src/cpu/jit_utils/jit_utils.hpp",
+    ]) + [":mkldnn_version_h"] + if_mkl_v1_open_source_only([
+        ":mkldnn_config_h",
+    ]),
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",
@@ -73,70 +79,7 @@ cc_library(
     ] + if_mkl_open_source_only([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
-    ]) + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "-fopenmp",  # only works with gcc
-        ],
-        # TODO(ibiryukov): enable openmp with clang by including libomp as a
-        # dependency.
-        ":clang_linux_x86_64": [],
-        "//conditions:default": [],
-    }),
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-        "src/cpu/xbyak",
-    ],
-    nocopts = "-fno-exceptions",
-    visibility = ["//visibility:public"],
-    deps = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "@mkl_linux//:mkl_headers",
-            "@mkl_linux//:mkl_libs_linux",
-        ],
-        "@org_tensorflow//tensorflow:macos": [
-            "@mkl_darwin//:mkl_headers",
-            "@mkl_darwin//:mkl_libs_darwin",
-        ],
-        "@org_tensorflow//tensorflow:windows": [
-            "@mkl_windows//:mkl_headers",
-            "@mkl_windows//:mkl_libs_windows",
-        ],
-        "//conditions:default": [],
-    }),
-)
-
-cc_library(
-    name = "mkl_dnn_v1",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/common/*.hpp",
-        "src/cpu/*.cpp",
-        "src/cpu/*.hpp",
-        "src/cpu/gemm/*.cpp",
-        "src/cpu/gemm/*.hpp",
-        "src/cpu/gemm/f32/*.cpp",
-        "src/cpu/gemm/f32/*.hpp",
-        "src/cpu/gemm/s8x8s32/*.cpp",
-        "src/cpu/gemm/s8x8s32/*.hpp",
-        "src/cpu/jit_utils/*.cpp",  # newly added
-        "src/cpu/jit_utils/*.hpp",  # newly added
-        "src/cpu/rnn/*.cpp",
-        "src/cpu/rnn/*.hpp",
-        "src/cpu/xbyak/*.h",
-    ]) + [
-        ":mkldnn_version_h",
-        ":mkldnn_config_h",  # newly added
-    ],
-    hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
-        "-DUSE_MKL",
-        "-DUSE_CBLAS",
-    ] + if_mkl_open_source_only([
+    ]) + if_mkl_v1_open_source_only([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ]) + select({

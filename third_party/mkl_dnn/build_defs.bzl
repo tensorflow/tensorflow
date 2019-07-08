@@ -1,5 +1,7 @@
 def if_mkl_open_source_only(if_true, if_false = []):
-    """Shorthand for select()'ing on whether we're building with
+    """Returns `if_true` if MKL-DNN v0.x is used.
+
+    Shorthand for select()'ing on whether we're building with
     MKL-DNN v0.x open source library only, without depending on MKL binary form.
 
     Returns a select statement which evaluates to if_true if we're building
@@ -13,7 +15,9 @@ def if_mkl_open_source_only(if_true, if_false = []):
     })
 
 def if_mkl_v1_open_source_only(if_true, if_false = []):
-    """Shorthand for select()'ing on whether we're building with
+    """Returns `if_true` if MKL-DNN v1.x is used.
+
+    Shorthand for select()'ing on whether we're building with
     MKL-DNN v1.x open source library only, without depending on MKL binary form.
 
     Returns a select statement which evaluates to if_true if we're building
