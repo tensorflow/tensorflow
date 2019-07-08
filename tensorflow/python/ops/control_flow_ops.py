@@ -3254,7 +3254,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
       branch_fns, default, branch_index)
   with ops.name_scope(name, "case", [branch_index]):
     if context.executing_eagerly():
-      branch_index = array_ops.where(
+      branch_index = array_ops.where_v2(
           math_ops.less(branch_index, 0)
           | math_ops.greater_equal(branch_index, len(branch_fns)),
           len(branch_fns) - 1, branch_index)
