@@ -87,7 +87,7 @@ public:
       return nullptr;
     }
 
-    return std::move(theModule);
+    return theModule;
   }
 
 private:
