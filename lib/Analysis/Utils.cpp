@@ -482,13 +482,6 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
   return nullptr;
 }
 
-// Returns the MemRef accessed by load or store 'op'.
-static Value *getLoadOrStoreMemRef(Operation *op) {
-  if (auto loadOp = dyn_cast<AffineLoadOp>(op))
-    return loadOp.getMemRef();
-  return cast<AffineStoreOp>(op).getMemRef();
-}
-
 // Adds loop IV bounds to 'cst' for loop IVs not found in 'ivs'.
 LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value *, 8> &ivs,
                                      FlatAffineConstraints *cst) {
