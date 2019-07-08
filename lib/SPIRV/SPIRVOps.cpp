@@ -26,8 +26,6 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/SPIRV/SPIRVTypes.h"
 
-#include "mlir/SPIRV/SPIRVTypes.h"
-
 namespace mlir {
 namespace spirv {
 #include "mlir/SPIRV/SPIRVOpUtils.inc"
@@ -41,6 +39,8 @@ static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kBindingAttrName[] = "binding";
 static constexpr const char kDescriptorSetAttrName[] = "descriptor_set";
 static constexpr const char kValueAttrName[] = "value";
+static constexpr const char kValuesAttrName[] = "values";
+static constexpr const char kFnNameAttrName[] = "fn";
 
 //===----------------------------------------------------------------------===//
 // Common utility functions
@@ -84,7 +84,6 @@ static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser,
   return success();
 }
 
-template <typename LoadStoreOpTy>
 static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
                                                OperationState *state) {
   // Parse an optional list of attributes staring with '['
@@ -198,14 +197,6 @@ static void printNoIOOp(Operation *op, OpAsmPrinter *printer) {
   printer->printOptionalAttrDict(op->getAttrs());
 }
 
-// Verifies that the given op can only be placed in a `spv.module`.
-static LogicalResult verifyModuleOnly(Operation *op) {
-  if (!llvm::isa_and_nonnull<spirv::ModuleOp>(op->getParentOp()))
-    return op->emitOpError("can only be used in a 'spv.module' block");
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
@@ -270,6 +261,120 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.EntryPoint
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseEntryPointOp(OpAsmParser *parser,
+                                     OperationState *state) {
+  spirv::ExecutionModel execModel;
+  SmallVector<OpAsmParser::OperandType, 0> identifiers;
+  SmallVector<Type, 0> idTypes;
+
+  Attribute fn;
+  auto loc = parser->getCurrentLocation();
+
+  if (parseEnumAttribute(execModel, parser, state) ||
+      parser->parseAttribute(fn, kFnNameAttrName, state->attributes) ||
+      parser->parseTrailingOperandList(identifiers) ||
+      parser->parseOptionalColonTypeList(idTypes) ||
+      parser->resolveOperands(identifiers, idTypes, loc, state->operands)) {
+    return failure();
+  }
+  if (!fn.isa<FunctionAttr>()) {
+    return parser->emitError(loc, "expected function attribute");
+  }
+  state->addTypes(
+      spirv::EntryPointType::get(parser->getBuilder().getContext()));
+  return success();
+}
+
+static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter *printer) {
+  *printer << spirv::EntryPointOp::getOperationName() << " \""
+           << stringifyExecutionModel(entryPointOp.execution_model()) << "\" @"
+           << entryPointOp.fn();
+  if (!entryPointOp.getNumOperands()) {
+    return;
+  }
+  *printer << ", ";
+  mlir::interleaveComma(entryPointOp.getOperands(), printer->getStream(),
+                        [&](Value *a) { printer->printOperand(a); });
+  *printer << " : ";
+  mlir::interleaveComma(entryPointOp.getOperands(), printer->getStream(),
+                        [&](const Value *a) { *printer << a->getType(); });
+}
+
+static LogicalResult verify(spirv::EntryPointOp entryPointOp) {
+  // Verify that all the interface ops are created from VariableOp
+  for (auto interface : entryPointOp.interface()) {
+    if (!llvm::isa_and_nonnull<spirv::VariableOp>(interface->getDefiningOp())) {
+      return entryPointOp.emitOpError("interface operands to entry point must "
+                                      "be generated from a variable op");
+    }
+    // Before version 1.4 the variables can only have storage_class of Input or
+    // Output.
+    // TODO: Add versioning so that this can be avoided for 1.4
+    auto storageClass =
+        interface->getType().cast<spirv::PointerType>().getStorageClass();
+    switch (storageClass) {
+    case spirv::StorageClass::Input:
+    case spirv::StorageClass::Output:
+      break;
+    default:
+      return entryPointOp.emitOpError("invalid storage class '")
+             << stringifyStorageClass(storageClass)
+             << "' for interface variables";
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.ExecutionMode
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseExecutionModeOp(OpAsmParser *parser,
+                                        OperationState *state) {
+  OpAsmParser::OperandType entryPointInfo;
+  spirv::ExecutionMode execMode;
+  if (parser->parseOperand(entryPointInfo) ||
+      parser->resolveOperand(entryPointInfo,
+                             spirv::EntryPointType::get(state->getContext()),
+                             state->operands) ||
+      parseEnumAttribute(execMode, parser, state)) {
+    return failure();
+  }
+
+  SmallVector<int32_t, 4> values;
+  Type i32Type = parser->getBuilder().getIntegerType(32);
+  while (!parser->parseOptionalComma()) {
+    SmallVector<NamedAttribute, 1> attr;
+    Attribute value;
+    if (parser->parseAttribute(value, i32Type, "value", attr)) {
+      return failure();
+    }
+    values.push_back(value.cast<IntegerAttr>().getInt());
+  }
+  state->addAttribute(kValuesAttrName,
+                      parser->getBuilder().getI32ArrayAttr(values));
+  return success();
+}
+
+static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
+  *printer << spirv::ExecutionModeOp::getOperationName() << " ";
+  printer->printOperand(execModeOp.entry_point());
+  *printer << " \"" << stringifyExecutionMode(execModeOp.execution_mode())
+           << "\"";
+  auto values = execModeOp.values();
+  if (!values) {
+    return;
+  }
+  *printer << ", ";
+  mlir::interleaveComma(
+      values.getValue().cast<ArrayAttr>(), printer->getStream(),
+      [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+}
+
+//===----------------------------------------------------------------------===//
 // spv.LoadOp
 //===----------------------------------------------------------------------===//
 
@@ -280,7 +385,7 @@ static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *state) {
   Type elementType;
   if (parseEnumAttribute(storageClass, parser, state) ||
       parser->parseOperand(ptrInfo) ||
-      parseMemoryAccessAttributes<spirv::LoadOp>(parser, state) ||
+      parseMemoryAccessAttributes(parser, state) ||
       parser->parseOptionalAttributeDict(state->attributes) ||
       parser->parseColon() || parser->parseType(elementType)) {
     return failure();
@@ -396,14 +501,38 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
+  llvm::StringMap<FuncOp> funcNames;
+  llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
+      entryPoints;
 
   for (auto &op : body) {
-    if (op.getDialect() == dialect)
+    if (op.getDialect() == dialect) {
+      // For EntryPoint op, check that the function name is one of the specified
+      // func ops already specified, and that the function and execution model
+      // is not duplicated in EntryPointOps
+      if (auto entryPointOp = llvm::dyn_cast<spirv::EntryPointOp>(op)) {
+        auto it = funcNames.find(entryPointOp.fn());
+        if (it == funcNames.end()) {
+          return entryPointOp.emitError("function '")
+                 << entryPointOp.fn() << "' not found in 'spv.module'";
+        }
+        auto funcOp = it->second;
+        auto key = std::pair<FuncOp, spirv::ExecutionModel>(
+            funcOp, entryPointOp.execution_model());
+        auto entryPtIt = entryPoints.find(key);
+        if (entryPtIt != entryPoints.end()) {
+          return entryPointOp.emitError("duplicate of a previous EntryPointOp");
+        }
+        entryPoints[key] = entryPointOp;
+      }
       continue;
+    }
 
     auto funcOp = llvm::dyn_cast<FuncOp>(op);
     if (!funcOp)
       return op.emitError("'spv.module' can only contain func and spv.* ops");
+
+    funcNames[funcOp.getName()] = funcOp;
 
     if (funcOp.isExternal())
       return op.emitError("'spv.module' cannot contain external functions");
@@ -452,8 +581,8 @@ static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *state) {
   Type elementType;
   if (parseEnumAttribute(storageClass, parser, state) ||
       parser->parseOperandList(operandInfo, 2) ||
-      parseMemoryAccessAttributes<spirv::StoreOp>(parser, state) ||
-      parser->parseColon() || parser->parseType(elementType)) {
+      parseMemoryAccessAttributes(parser, state) || parser->parseColon() ||
+      parser->parseType(elementType)) {
     return failure();
   }
 

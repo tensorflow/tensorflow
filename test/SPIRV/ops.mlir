@@ -1,6 +1,147 @@
 // RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
+// spv.EntryPoint
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   // CHECK: {{%.*}} = spv.EntryPoint "GLCompute" @do_nothing
+   %2 = spv.EntryPoint "GLCompute" @do_nothing
+}
+
+spv.module "Logical" "VulkanKHR" {
+   %2 = spv.Variable : !spv.ptr<f32, Input>
+   %3 = spv.Variable : !spv.ptr<f32, Output>
+   func @do_something(%arg0 : !spv.ptr<f32, Input>, %arg1 : !spv.ptr<f32, Output>) -> () {
+     %1 = spv.Load "Input" %arg0 : f32
+     spv.Store "Output" %arg1, %1 : f32
+     spv.Return
+   }
+   // CHECK: {{%.*}} = spv.EntryPoint "GLCompute" @do_something, {{%.*}}, {{%.*}} : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+   %4 = spv.EntryPoint "GLCompute" @do_something, %2, %3 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   // expected-error @+1 {{custom op 'spv.EntryPoint' expected function attribute}}
+   %4 = spv.EntryPoint "GLCompute" "do_nothing"
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   // expected-error @+1 {{function 'do_something' not found in 'spv.module'}}
+   %4 = spv.EntryPoint "GLCompute" @do_something
+}
+
+/// TODO(ravishankarm) : Add a test that verifies an error is thrown
+/// when interface entries of EntryPointOp are not
+/// spv.Variables. There is currently no other op that has a spv.ptr
+/// return type
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     // expected-error @+1 {{'spv.EntryPoint' op failed to verify that op can only be used in a 'spv.module' block}}
+     %2 = spv.EntryPoint "GLCompute" @do_something
+   }
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %5 = spv.EntryPoint "GLCompute" @do_nothing
+   // expected-error @+1 {{duplicate of a previous EntryPointOp}}
+   %6 = spv.EntryPoint "GLCompute" @do_nothing
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %5 = spv.EntryPoint "GLCompute" @do_nothing
+   // expected-error @+1 {{custom op 'spv.EntryPoint' invalid execution_model attribute specification: "ContractionOff"}}
+   %6 = spv.EntryPoint "ContractionOff" @do_nothing
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   %2 = spv.Variable : !spv.ptr<f32, Workgroup>
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   // expected-error @+1 {{'spv.EntryPoint' op invalid storage class 'Workgroup'}}
+   %6 = spv.EntryPoint "GLCompute" @do_nothing, %2 : !spv.ptr<f32, Workgroup>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.ExecutionMode
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %7 = spv.EntryPoint "GLCompute" @do_nothing
+   // CHECK: spv.ExecutionMode {{%.*}} "ContractionOff"
+   spv.ExecutionMode %7 "ContractionOff"
+}
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %8 = spv.EntryPoint "GLCompute" @do_nothing
+   // CHECK: spv.ExecutionMode {{%.*}} "LocalSizeHint", 3, 4, 5
+   spv.ExecutionMode %8 "LocalSizeHint", 3, 4, 5
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   // expected-note @+1{{prior use here}}
+   %2 = spv.Variable : !spv.ptr<f32, Input>
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %8 = spv.EntryPoint "GLCompute" @do_nothing
+   // expected-error @+1 {{use of value '%2' expects different type than prior uses: '!spv.entrypoint' vs '!spv.ptr<f32, Input>'}}
+   spv.ExecutionMode %2 "LocalSizeHint", 3, 4, 5
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+   func @do_nothing() -> () {
+     spv.Return
+   }
+   %8 = spv.EntryPoint "GLCompute" @do_nothing
+   // expected-error @+1 {{custom op 'spv.ExecutionMode' invalid execution_mode attribute specification: "GLCompute"}}
+   spv.ExecutionMode %8 "GLCompute", 3, 4, 5
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.FMul
 //===----------------------------------------------------------------------===//
 

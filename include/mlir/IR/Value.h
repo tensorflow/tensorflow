@@ -50,12 +50,12 @@ public:
 
   ~Value() {}
 
-  Kind getKind() { return typeAndKind.getInt(); }
+  Kind getKind() const { return typeAndKind.getInt(); }
 
-  Type getType() { return typeAndKind.getPointer(); }
+  Type getType() const { return typeAndKind.getPointer(); }
 
   /// Utility to get the associated MLIRContext that this value is defined in.
-  MLIRContext *getContext() { return getType().getContext(); }
+  MLIRContext *getContext() const { return getType().getContext(); }
 
   /// Mutate the type of this Value to be of the specified type.
   ///

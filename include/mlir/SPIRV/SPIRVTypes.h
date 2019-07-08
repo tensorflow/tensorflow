@@ -22,6 +22,7 @@
 #ifndef MLIR_SPIRV_SPIRVTYPES_H_
 #define MLIR_SPIRV_SPIRVTYPES_H_
 
+#include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
@@ -43,6 +44,7 @@ struct StructTypeStorage;
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
+  EntryPoint,
   Image,
   Pointer,
   RuntimeArray,
@@ -63,6 +65,19 @@ public:
   Type getElementType() const;
 
   int64_t getElementCount() const;
+};
+
+// SPIR-V type for return of EntryPointOp. The EntryPointOp returns a value that
+// can be used in other ops (like ExecutionModeOp) to refer to the
+// EntryPointOp. The type of the return value contains no other information
+class EntryPointType
+    : public Type::TypeBase<EntryPointType, Type, DefaultTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::EntryPoint; }
+
+  static Type get(MLIRContext *context);
 };
 
 // SPIR-V image type

@@ -90,7 +90,7 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   let builders = [OpBuilder<"Builder *, OperationState *state">];
 }
 
-def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {
+def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator, ModuleOnly]> {
   let summary = "The pseudo op that ends a SPIR-V module";
 
   let description = [{
@@ -107,7 +107,7 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {
   let parser = [{ return parseNoIOOp(parser, result); }];
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
-  let verifier = [{ return verifyModuleOnly(*this); }];
+  let verifier = [{ return success(); }];
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {

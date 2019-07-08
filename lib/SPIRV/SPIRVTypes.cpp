@@ -61,6 +61,14 @@ Type ArrayType::getElementType() const { return getImpl()->elementType; }
 int64_t ArrayType::getElementCount() const { return getImpl()->elementCount; }
 
 //===----------------------------------------------------------------------===//
+// EntryPointType
+//===----------------------------------------------------------------------===//
+
+Type EntryPointType::get(MLIRContext *context) {
+  return Base::get(context, TypeKind::EntryPoint);
+}
+
+//===----------------------------------------------------------------------===//
 // ImageType
 //===----------------------------------------------------------------------===//
 

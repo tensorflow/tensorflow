@@ -35,6 +35,104 @@ include "mlir/SPIRV/SPIRVBase.td"
 include "mlir/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
+def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
+  let summary = [{
+    Declare an entry point, its execution model, and its interface.
+  }];
+
+  let description = [{
+    Execution Model is the execution model for the entry point and its
+    static call tree. See Execution Model.
+
+    Entry Point must be the Result <id> of an OpFunction instruction.
+
+    Name is a name string for the entry point. A module cannot have
+    two OpEntryPoint instructions with the same Execution Model and
+    the same Name string.
+
+    Interface is a list of <id> of global OpVariable
+    instructions. These declare the set of global variables from a
+    module that form the interface of this entry point. The set of
+    Interface <id> must be equal to or a superset of the global
+    OpVariable Result <id> referenced by the entry point’s static call
+    tree, within the interface’s storage classes. Before version 1.4,
+    the interface’s storage classes are limited to the Input and
+    Output storage classes. Starting with version 1.4, the interface’s
+    storage classes are all storage classes used in declaring all
+    global variables referenced by the entry point’s call tree.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    execution-model ::= "Vertex" | "TesellationControl" |
+                        <and other SPIR-V execution models...>
+
+    entry-point-op ::= ssa-id ` = spv.EntryPoint ` execution-model fn-name
+                       (ssa-use ( `, ` ssa-use)* ` : `
+                        pointer-type ( `, ` pointer-type)* )?
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.EntryPoint "GLCompute" "foo"
+    %3 = spv.EntryPoint "Kernel" "foo", %1, %2 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ExecutionModelAttr:$execution_model,
+    FunctionAttr:$fn,
+    Variadic<SPV_AnyPtr>:$interface
+  );
+
+  let results = (outs SPV_EntryPoint:$id);
+
+  let opcode = 15;
+}
+
+def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
+  let summary = "Declare an execution mode for an entry point.";
+
+  let description = [{
+    Entry Point must be the Entry Point <id> operand of an
+    OpEntryPoint instruction.
+
+    Mode is the execution mode. See Execution Mode.
+
+    This instruction is only valid when the Mode operand is an
+    execution mode that takes no Extra Operands, or takes Extra
+    Operands that are not <id> operands.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    execution-mode ::= "Invocations" | "SpacingEqual" |
+                       <and other SPIR-V execution modes...>
+
+    execution-mode-op ::= `spv.ExecutionMode ` ssa-use execution-mode
+                          (integer-literal (`, ` integer-literal)* )?
+    ```
+
+    For example:
+
+    ```
+    spv.ExecutionMode %7 "ContractionOff"
+    spv.ExecutionMode %8 "LocalSizeHint", 3, 4, 5
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_EntryPoint:$entry_point,
+    SPV_ExecutionModeAttr:$execution_mode,
+    OptionalAttr<I32ArrayAttr>:$values
+  );
+
+  let verifier = [{ return success(); }];
+
+  let opcode = 16;
+}
 
 def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Floating-point multiplication of Operand 1 and Operand 2";

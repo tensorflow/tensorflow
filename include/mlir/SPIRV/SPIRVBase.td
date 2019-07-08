@@ -96,6 +96,10 @@ class SPV_ScalarOrVectorOf<Type type> :
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
 
+def SPV_IsEntryPointType :
+    CPred<"$_self.isa<::mlir::spirv::EntryPointType>()">;
+def SPV_EntryPoint : Type<SPV_IsEntryPointType, "SPIR-V entry point type">;
+
 //===----------------------------------------------------------------------===//
 // SPIR-V enum definitions
 //===----------------------------------------------------------------------===//
@@ -132,6 +136,119 @@ def SPV_DimAttr :
     ]> {
   let returnType = "::mlir::spirv::Dim";
   let convertFromStorage = "static_cast<::mlir::spirv::Dim>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_EM_Invocations                      : I32EnumAttrCase<"Invocations", 0>;
+def SPV_EM_SpacingEqual                     : I32EnumAttrCase<"SpacingEqual", 1>;
+def SPV_EM_SpacingFractionalEven            : I32EnumAttrCase<"SpacingFractionalEven", 2>;
+def SPV_EM_SpacingFractionalOdd             : I32EnumAttrCase<"SpacingFractionalOdd", 3>;
+def SPV_EM_VertexOrderCw                    : I32EnumAttrCase<"VertexOrderCw", 4>;
+def SPV_EM_VertexOrderCcw                   : I32EnumAttrCase<"VertexOrderCcw", 5>;
+def SPV_EM_PixelCenterInteger               : I32EnumAttrCase<"PixelCenterInteger", 6>;
+def SPV_EM_OriginUpperLeft                  : I32EnumAttrCase<"OriginUpperLeft", 7>;
+def SPV_EM_OriginLowerLeft                  : I32EnumAttrCase<"OriginLowerLeft", 8>;
+def SPV_EM_EarlyFragmentTests               : I32EnumAttrCase<"EarlyFragmentTests", 9>;
+def SPV_EM_PointMode                        : I32EnumAttrCase<"PointMode", 10>;
+def SPV_EM_Xfb                              : I32EnumAttrCase<"Xfb", 11>;
+def SPV_EM_DepthReplacing                   : I32EnumAttrCase<"DepthReplacing", 12>;
+def SPV_EM_DepthGreater                     : I32EnumAttrCase<"DepthGreater", 14>;
+def SPV_EM_DepthLess                        : I32EnumAttrCase<"DepthLess", 15>;
+def SPV_EM_DepthUnchanged                   : I32EnumAttrCase<"DepthUnchanged", 16>;
+def SPV_EM_LocalSize                        : I32EnumAttrCase<"LocalSize", 17>;
+def SPV_EM_LocalSizeHint                    : I32EnumAttrCase<"LocalSizeHint", 18>;
+def SPV_EM_InputPoints                      : I32EnumAttrCase<"InputPoints", 19>;
+def SPV_EM_InputLines                       : I32EnumAttrCase<"InputLines", 20>;
+def SPV_EM_InputLinesAdjacency              : I32EnumAttrCase<"InputLinesAdjacency", 21>;
+def SPV_EM_Triangles                        : I32EnumAttrCase<"Triangles", 22>;
+def SPV_EM_InputTrianglesAdjacency          : I32EnumAttrCase<"InputTrianglesAdjacency", 23>;
+def SPV_EM_Quads                            : I32EnumAttrCase<"Quads", 24>;
+def SPV_EM_Isolines                         : I32EnumAttrCase<"Isolines", 25>;
+def SPV_EM_OutputVertices                   : I32EnumAttrCase<"OutputVertices", 26>;
+def SPV_EM_OutputPoints                     : I32EnumAttrCase<"OutputPoints", 27>;
+def SPV_EM_OutputLineStrip                  : I32EnumAttrCase<"OutputLineStrip", 28>;
+def SPV_EM_OutputTriangleStrip              : I32EnumAttrCase<"OutputTriangleStrip", 29>;
+def SPV_EM_VecTypeHint                      : I32EnumAttrCase<"VecTypeHint", 30>;
+def SPV_EM_ContractionOff                   : I32EnumAttrCase<"ContractionOff", 31>;
+def SPV_EM_Initializer                      : I32EnumAttrCase<"Initializer", 33>;
+def SPV_EM_Finalizer                        : I32EnumAttrCase<"Finalizer", 34>;
+def SPV_EM_SubgroupSize                     : I32EnumAttrCase<"SubgroupSize", 35>;
+def SPV_EM_SubgroupsPerWorkgroup            : I32EnumAttrCase<"SubgroupsPerWorkgroup", 36>;
+def SPV_EM_SubgroupsPerWorkgroupId          : I32EnumAttrCase<"SubgroupsPerWorkgroupId", 37>;
+def SPV_EM_LocalSizeId                      : I32EnumAttrCase<"LocalSizeId", 38>;
+def SPV_EM_LocalSizeHintId                  : I32EnumAttrCase<"LocalSizeHintId", 39>;
+def SPV_EM_PostDepthCoverage                : I32EnumAttrCase<"PostDepthCoverage", 4446>;
+def SPV_EM_DenormPreserve                   : I32EnumAttrCase<"DenormPreserve", 4459>;
+def SPV_EM_DenormFlushToZero                : I32EnumAttrCase<"DenormFlushToZero", 4460>;
+def SPV_EM_SignedZeroInfNanPreserve         : I32EnumAttrCase<"SignedZeroInfNanPreserve", 4461>;
+def SPV_EM_RoundingModeRTE                  : I32EnumAttrCase<"RoundingModeRTE", 4462>;
+def SPV_EM_RoundingModeRTZ                  : I32EnumAttrCase<"RoundingModeRTZ", 4463>;
+def SPV_EM_StencilRefReplacingEXT           : I32EnumAttrCase<"StencilRefReplacingEXT", 5027>;
+def SPV_EM_OutputLinesNV                    : I32EnumAttrCase<"OutputLinesNV", 5269>;
+def SPV_EM_OutputPrimitivesNV               : I32EnumAttrCase<"OutputPrimitivesNV", 5270>;
+def SPV_EM_DerivativeGroupQuadsNV           : I32EnumAttrCase<"DerivativeGroupQuadsNV", 5289>;
+def SPV_EM_DerivativeGroupLinearNV          : I32EnumAttrCase<"DerivativeGroupLinearNV", 5290>;
+def SPV_EM_OutputTrianglesNV                : I32EnumAttrCase<"OutputTrianglesNV", 5298>;
+def SPV_EM_PixelInterlockOrderedEXT         : I32EnumAttrCase<"PixelInterlockOrderedEXT", 5366>;
+def SPV_EM_PixelInterlockUnorderedEXT       : I32EnumAttrCase<"PixelInterlockUnorderedEXT", 5367>;
+def SPV_EM_SampleInterlockOrderedEXT        : I32EnumAttrCase<"SampleInterlockOrderedEXT", 5368>;
+def SPV_EM_SampleInterlockUnorderedEXT      : I32EnumAttrCase<"SampleInterlockUnorderedEXT", 5369>;
+def SPV_EM_ShadingRateInterlockOrderedEXT   : I32EnumAttrCase<"ShadingRateInterlockOrderedEXT", 5370>;
+def SPV_EM_ShadingRateInterlockUnorderedEXT : I32EnumAttrCase<"ShadingRateInterlockUnorderedEXT", 5371>;
+
+def SPV_ExecutionModeAttr :
+    I32EnumAttr<"ExecutionMode", "valid SPIR-V ExecutionMode", [
+      SPV_EM_Invocations, SPV_EM_SpacingEqual, SPV_EM_SpacingFractionalEven,
+      SPV_EM_SpacingFractionalOdd, SPV_EM_VertexOrderCw, SPV_EM_VertexOrderCcw,
+      SPV_EM_PixelCenterInteger, SPV_EM_OriginUpperLeft, SPV_EM_OriginLowerLeft,
+      SPV_EM_EarlyFragmentTests, SPV_EM_PointMode, SPV_EM_Xfb, SPV_EM_DepthReplacing,
+      SPV_EM_DepthGreater, SPV_EM_DepthLess, SPV_EM_DepthUnchanged, SPV_EM_LocalSize,
+      SPV_EM_LocalSizeHint, SPV_EM_InputPoints, SPV_EM_InputLines,
+      SPV_EM_InputLinesAdjacency, SPV_EM_Triangles, SPV_EM_InputTrianglesAdjacency,
+      SPV_EM_Quads, SPV_EM_Isolines, SPV_EM_OutputVertices, SPV_EM_OutputPoints,
+      SPV_EM_OutputLineStrip, SPV_EM_OutputTriangleStrip, SPV_EM_VecTypeHint,
+      SPV_EM_ContractionOff, SPV_EM_Initializer, SPV_EM_Finalizer,
+      SPV_EM_SubgroupSize, SPV_EM_SubgroupsPerWorkgroup,
+      SPV_EM_SubgroupsPerWorkgroupId, SPV_EM_LocalSizeId, SPV_EM_LocalSizeHintId,
+      SPV_EM_PostDepthCoverage, SPV_EM_DenormPreserve, SPV_EM_DenormFlushToZero,
+      SPV_EM_SignedZeroInfNanPreserve, SPV_EM_RoundingModeRTE,
+      SPV_EM_RoundingModeRTZ, SPV_EM_StencilRefReplacingEXT, SPV_EM_OutputLinesNV,
+      SPV_EM_OutputPrimitivesNV, SPV_EM_DerivativeGroupQuadsNV,
+      SPV_EM_DerivativeGroupLinearNV, SPV_EM_OutputTrianglesNV,
+      SPV_EM_PixelInterlockOrderedEXT, SPV_EM_PixelInterlockUnorderedEXT,
+      SPV_EM_SampleInterlockOrderedEXT, SPV_EM_SampleInterlockUnorderedEXT,
+      SPV_EM_ShadingRateInterlockOrderedEXT, SPV_EM_ShadingRateInterlockUnorderedEXT
+    ]> {
+  let returnType = "::mlir::spirv::ExecutionMode";
+  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionMode>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_EM_Vertex                 : I32EnumAttrCase<"Vertex", 0>;
+def SPV_EM_TessellationControl    : I32EnumAttrCase<"TessellationControl", 1>;
+def SPV_EM_TessellationEvaluation : I32EnumAttrCase<"TessellationEvaluation", 2>;
+def SPV_EM_Geometry               : I32EnumAttrCase<"Geometry", 3>;
+def SPV_EM_Fragment               : I32EnumAttrCase<"Fragment", 4>;
+def SPV_EM_GLCompute              : I32EnumAttrCase<"GLCompute", 5>;
+def SPV_EM_Kernel                 : I32EnumAttrCase<"Kernel", 6>;
+def SPV_EM_TaskNV                 : I32EnumAttrCase<"TaskNV", 5267>;
+def SPV_EM_MeshNV                 : I32EnumAttrCase<"MeshNV", 5268>;
+def SPV_EM_RayGenerationNV        : I32EnumAttrCase<"RayGenerationNV", 5313>;
+def SPV_EM_IntersectionNV         : I32EnumAttrCase<"IntersectionNV", 5314>;
+def SPV_EM_AnyHitNV               : I32EnumAttrCase<"AnyHitNV", 5315>;
+def SPV_EM_ClosestHitNV           : I32EnumAttrCase<"ClosestHitNV", 5316>;
+def SPV_EM_MissNV                 : I32EnumAttrCase<"MissNV", 5317>;
+def SPV_EM_CallableNV             : I32EnumAttrCase<"CallableNV", 5318>;
+
+def SPV_ExecutionModelAttr :
+    I32EnumAttr<"ExecutionModel", "valid SPIR-V ExecutionModel", [
+      SPV_EM_Vertex, SPV_EM_TessellationControl, SPV_EM_TessellationEvaluation,
+      SPV_EM_Geometry, SPV_EM_Fragment, SPV_EM_GLCompute, SPV_EM_Kernel,
+      SPV_EM_TaskNV, SPV_EM_MeshNV, SPV_EM_RayGenerationNV, SPV_EM_IntersectionNV,
+      SPV_EM_AnyHitNV, SPV_EM_ClosestHitNV, SPV_EM_MissNV, SPV_EM_CallableNV
+    ]> {
+  let returnType = "::mlir::spirv::ExecutionModel";
+  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -302,6 +419,17 @@ def SPV_SamplerUseAttr:
       [SPV_ISUI_SamplerUnknown, SPV_ISUI_NeedSampler, SPV_ISUI_NoSampler]> {
   let cppNamespace = "::mlir::spirv";
 }
+
+//===----------------------------------------------------------------------===//
+// SPIR-V OpTrait definitions
+//===----------------------------------------------------------------------===//
+
+// Check that an op can only be used with SPIR-V ModuleOp
+def IsModuleOnlyPred :
+  CPred<"llvm::isa_and_nonnull<spirv::ModuleOp>($_op.getParentOp())">;
+
+def ModuleOnly :
+  PredOpTrait<"op can only be used in a 'spv.module' block", IsModuleOnlyPred>;
 
 //===----------------------------------------------------------------------===//
 // SPIR-V op definitions
