@@ -789,6 +789,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       y = keras.backend.pool2d(x, (2, 2), strides=(2, 2), pool_mode='other')
 
   def test_pool3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     val = np.random.random((10, 3, 10, 10, 10))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
