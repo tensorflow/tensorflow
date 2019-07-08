@@ -267,7 +267,7 @@ LogicalResult IfOp::verify() {
   auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto module = getOperation()->getFunction().getModule();
+  auto module = getParentOfType<Module>();
   auto thenFn = module.getNamedFunction(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
@@ -716,7 +716,7 @@ LogicalResult WhileOp::verify() {
   auto condAttr = getAttrOfType<FunctionAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto module = getOperation()->getFunction().getModule();
+  auto module = getParentOfType<Module>();
   auto condFn = module.getNamedFunction(condAttr.getValue());
   auto condFuncType = condFn.getType();
 

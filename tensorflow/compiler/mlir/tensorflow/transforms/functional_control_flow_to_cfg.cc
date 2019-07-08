@@ -151,7 +151,7 @@ static bool LowerIfOp(IfOp op) {
   Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
   if (!cond_i1) return true;
 
-  auto module = op_inst->getFunction().getModule();
+  auto module = op_inst->getParentOfType<Module>();
   auto then_fn = module.getNamedFunction(op.getThen());
   auto else_fn = module.getNamedFunction(op.getElse());
 
@@ -208,7 +208,7 @@ static bool LowerWhileOp(WhileOp op) {
 
   OpBuilder builder(op_inst);
 
-  auto module = op_inst->getFunction().getModule();
+  auto module = op_inst->getParentOfType<Module>();
   auto cond_fn = module.getNamedFunction(op.getCond());
   auto body_fn = module.getNamedFunction(op.getBody());
 

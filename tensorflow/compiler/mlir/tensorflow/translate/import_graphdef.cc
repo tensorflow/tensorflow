@@ -795,7 +795,8 @@ Status Importer::ConvertFunctionArgAndRets(
               "max", builder_->getF32FloatAttr(input_spec.max_value)));
           state.attributes.push_back(builder_->getNamedAttr(
               "type", builder_->getTypeAttr(final_type)));
-          bb->getFunction().setAttr("tf.quantize", builder_->getUnitAttr());
+          inst->getParentOfType<mlir::FuncOp>().setAttr(
+              "tf.quantize", builder_->getUnitAttr());
         }
       }
 
