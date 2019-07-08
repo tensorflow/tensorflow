@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -62,14 +62,14 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
   return true;
 #else
   return false;
 #endif
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -755,7 +755,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer) {}
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_NCCL
 
 }  // namespace gpu
 }  // namespace xla
