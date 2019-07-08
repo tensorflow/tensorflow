@@ -180,9 +180,9 @@ def _embedding_lookup_and_transform(params,
                                          ids_per_partition)
 
         # Emulate a conditional using a boolean indicator tensor
-        new_ids = array_ops.where(p_assignments < extras,
-                                  flat_ids % (ids_per_partition + 1),
-                                  (flat_ids - extras) % ids_per_partition)
+        new_ids = array_ops.where_v2(p_assignments < extras,
+                                     flat_ids % (ids_per_partition + 1),
+                                     (flat_ids - extras) % ids_per_partition)
       else:
         raise ValueError("Unrecognized partition strategy: " +
                          partition_strategy)
@@ -796,7 +796,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
           array_ops.reshape(is_row_empty, [-1, 1]),
           array_ops.stack([1, array_ops.shape(result)[1]]))
 
-      result = array_ops.where(
+      result = array_ops.where_v2(
           is_row_empty, array_ops.zeros_like(result), result, name=scope)
 
     # Reshape back from linear ids back into higher-dimensional dense result.
