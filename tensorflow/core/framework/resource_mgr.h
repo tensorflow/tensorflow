@@ -92,20 +92,25 @@ class ScopedStepContainer {
   // prefix: optional string prefix to disambiguate step containers.
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup)
-      : name_(strings::StrCat("__per_step_", step_id)), cleanup_(cleanup) {}
+      : name_(strings::StrCat("__per_step_", step_id)),
+        step_id_(step_id),
+        cleanup_(cleanup) {}
 
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup,
                       const string& prefix)
       : name_(strings::StrCat("__", prefix, "_per_step_", step_id)),
+        step_id_(step_id),
         cleanup_(cleanup) {}
 
   ~ScopedStepContainer() { cleanup_(name_); }
 
   const string& name() const { return name_; }
+  const int64 step_id() const { return step_id_; }
 
  private:
   const string name_;
+  const int64 step_id_;
   const std::function<void(const string&)> cleanup_;
 };
 
