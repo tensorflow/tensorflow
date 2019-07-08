@@ -75,7 +75,7 @@ def main(_):
     else:
       loss_fn = l2hmc.compute_loss
 
-    samples = tf.random_normal(shape=[n_samples, x_dim])
+    samples = tf.random.normal(shape=[n_samples, x_dim])
     for i in range(1, train_iters + 1):
       loss, samples, accept_prob = train_one_iter(
           dynamics,
@@ -108,7 +108,7 @@ def main(_):
   else:
     apply_transition = dynamics.apply_transition
 
-  samples = tf.random_normal(shape=[n_samples, x_dim])
+  samples = tf.random.normal(shape=[n_samples, x_dim])
   samples_history = []
   for i in range(eval_iters):
     samples_history.append(samples.numpy())
