@@ -2424,7 +2424,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
     my_max = array_ops.stop_gradient(
-        array_ops.where(
+        array_ops.where_v2(
             gen_math_ops.is_finite(raw_max), raw_max,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
@@ -3856,7 +3856,7 @@ def tensordot(a, b, axes, name=None):
         shape_a = array_ops.shape(a)
         rank_a = array_ops.rank(a)
         axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
-        axes = array_ops.where(axes >= 0, axes, axes + rank_a)
+        axes = array_ops.where_v2(axes >= 0, axes, axes + rank_a)
         free, _ = array_ops.setdiff1d(range(rank_a), axes)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
