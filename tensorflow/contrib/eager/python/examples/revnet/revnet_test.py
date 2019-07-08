@@ -55,8 +55,8 @@ class RevNetTest(tf.test.TestCase):
     config.batch_size = 2
     shape = (config.batch_size,) + config.input_shape
     self.model = revnet.RevNet(config=config)
-    self.x = tf.random_normal(shape=shape, dtype=tf.float64)
-    self.t = tf.random_uniform(
+    self.x = tf.random.normal(shape=shape, dtype=tf.float64)
+    self.t = tf.random.uniform(
         shape=[config.batch_size],
         minval=0,
         maxval=config.n_classes,
@@ -147,9 +147,9 @@ class RevNetTest(tf.test.TestCase):
       config.add_hparam("n_classes", 10)
       config.add_hparam("dataset", "cifar-10")
 
-      x = tf.random_normal(
+      x = tf.random.normal(
           shape=(self.config.batch_size,) + self.config.input_shape)
-      t = tf.random_uniform(
+      t = tf.random.uniform(
           shape=(self.config.batch_size,),
           minval=0,
           maxval=self.config.n_classes,
@@ -177,8 +177,8 @@ def device_and_data_format():
 
 def random_batch(batch_size, config):
   shape = (batch_size,) + config.input_shape
-  images = tf.random_uniform(shape)
-  labels = tf.random_uniform(
+  images = tf.random.uniform(shape)
+  labels = tf.random.uniform(
       [batch_size], minval=0, maxval=config.n_classes, dtype=tf.int32)
 
   return images, labels
