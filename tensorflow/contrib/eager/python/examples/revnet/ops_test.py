@@ -30,7 +30,7 @@ class OpsTest(tf.test.TestCase):
 
     batch_size = 100
     # NHWC format
-    x = tf.random_normal(shape=[batch_size, 32, 32, 3])
+    x = tf.random.normal(shape=[batch_size, 32, 32, 3])
     # HW doesn't change but number of features increased
     y = ops.downsample(x, filters=5, strides=(1, 1), axis=3)
     self.assertEqual(y.shape, [batch_size, 32, 32, 5])
@@ -42,18 +42,18 @@ class OpsTest(tf.test.TestCase):
     self.assertEqual(y.shape, [batch_size, 16, 16, 5])
 
     # Test gradient flow
-    x = tf.random_normal(shape=[batch_size, 32, 32, 3])
+    x = tf.random.normal(shape=[batch_size, 32, 32, 3])
     with tfe.GradientTape() as tape:
       tape.watch(x)
       y = ops.downsample(x, filters=3, strides=(1, 1))
     self.assertEqual(y.shape, x.shape)
-    dy = tf.random_normal(shape=[batch_size, 32, 32, 3])
+    dy = tf.random.normal(shape=[batch_size, 32, 32, 3])
     grad, = tape.gradient(y, [x], output_gradients=[dy])
     self.assertEqual(grad.shape, x.shape)
 
     # Default NCHW format
     if tf.test.is_gpu_available():
-      x = tf.random_normal(shape=[batch_size, 3, 32, 32])
+      x = tf.random.normal(shape=[batch_size, 3, 32, 32])
       # HW doesn't change but feature map reduced
       y = ops.downsample(x, filters=5, strides=(1, 1))
       self.assertEqual(y.shape, [batch_size, 5, 32, 32])
@@ -65,12 +65,12 @@ class OpsTest(tf.test.TestCase):
       self.assertEqual(y.shape, [batch_size, 5, 16, 16])
 
       # Test gradient flow
-      x = tf.random_normal(shape=[batch_size, 3, 32, 32])
+      x = tf.random.normal(shape=[batch_size, 3, 32, 32])
       with tfe.GradientTape() as tape:
         tape.watch(x)
         y = ops.downsample(x, filters=3, strides=(1, 1))
       self.assertEqual(y.shape, x.shape)
-      dy = tf.random_normal(shape=[batch_size, 3, 32, 32])
+      dy = tf.random.normal(shape=[batch_size, 3, 32, 32])
       grad, = tape.gradient(y, [x], output_gradients=[dy])
       self.assertEqual(grad.shape, x.shape)
 
