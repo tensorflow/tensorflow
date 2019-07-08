@@ -264,7 +264,7 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
           desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
       safe_value = tensorflow::make_safe(
           PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY | NPY_ARRAY_FORCECAST, nullptr));
+                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
       if (PyErr_Occurred()) return nullptr;
       if (safe_value == nullptr) {
         PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
