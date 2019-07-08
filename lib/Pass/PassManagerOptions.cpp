@@ -31,6 +31,11 @@ struct PassManagerOptions {
   PassManagerOptions();
 
   //===--------------------------------------------------------------------===//
+  // Multi-threading
+  //===--------------------------------------------------------------------===//
+  llvm::cl::opt<bool> disableThreads;
+
+  //===--------------------------------------------------------------------===//
   // IR Printing
   //===--------------------------------------------------------------------===//
   PassOptionList printBefore;
@@ -57,9 +62,17 @@ static llvm::ManagedStatic<llvm::Optional<PassManagerOptions>> options;
 
 PassManagerOptions::PassManagerOptions()
     //===------------------------------------------------------------------===//
-    // IR Printing
+    // Multi-threading
     //===------------------------------------------------------------------===//
-    : printBefore("print-ir-before",
+    : disableThreads(
+          "disable-pass-threading",
+          llvm::cl::desc("Disable multithreading in the pass manager"),
+          llvm::cl::init(false)),
+
+      //===----------------------------------------------------------------===//
+      // IR Printing
+      //===----------------------------------------------------------------===//
+      printBefore("print-ir-before",
                   llvm::cl::desc("Print IR before specified passes")),
       printAfter("print-ir-after",
                  llvm::cl::desc("Print IR after specified passes")),
@@ -143,6 +156,10 @@ void mlir::registerPassManagerCLOptions() {
 }
 
 void mlir::applyPassManagerCLOptions(PassManager &pm) {
+  // Disable multi-threading.
+  if ((*options)->disableThreads)
+    pm.disableMultithreading();
+
   // Add the IR printing instrumentation.
   (*options)->addPrinterInstrumentation(pm);
 

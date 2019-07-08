@@ -54,13 +54,13 @@ performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
   if (!module)
     return failure();
 
-  // Run each of the passes that were selected.
+  // Apply any pass manager command line options.
   PassManager pm(verifyPasses);
+  applyPassManagerCLOptions(pm);
+
+  // Run each of the passes that were selected.
   for (const auto *passEntry : passList)
     passEntry->addToPipeline(pm);
-
-  // Apply any pass manager command line options.
-  applyPassManagerCLOptions(pm);
 
   // Run the pipeline.
   if (failed(pm.run(*module)))

@@ -63,6 +63,9 @@ public:
   LLVM_NODISCARD
   LogicalResult run(Module module);
 
+  /// Disable support for multi-threading within the pass manager.
+  void disableMultithreading(bool disable = true);
+
   //===--------------------------------------------------------------------===//
   // Pipeline Building
   //===--------------------------------------------------------------------===//
@@ -119,6 +122,9 @@ private:
 
   /// Flag that specifies if pass timing is enabled.
   bool passTiming : 1;
+
+  /// Flag that specifies if multi-threading is disabled.
+  bool disableThreads : 1;
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;

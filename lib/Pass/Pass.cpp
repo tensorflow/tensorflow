@@ -33,11 +33,6 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-static llvm::cl::opt<bool>
-    disableThreads("disable-pass-threading",
-                   llvm::cl::desc("Disable multithreading in the pass manager"),
-                   llvm::cl::init(false));
-
 //===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
@@ -257,7 +252,7 @@ class ModuleVerifier : public ModulePass<ModuleVerifier> {
 
 PassManager::PassManager(bool verifyPasses)
     : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses),
-      passTiming(false) {}
+      passTiming(false), disableThreads(false) {}
 
 PassManager::~PassManager() {}
 
@@ -265,6 +260,11 @@ PassManager::~PassManager() {}
 LogicalResult PassManager::run(Module module) {
   ModuleAnalysisManager mam(module, instrumentor.get());
   return mpe->run(module, mam);
+}
+
+/// Disable support for multi-threading within the pass manager.
+void PassManager::disableMultithreading(bool disable) {
+  disableThreads = disable;
 }
 
 /// Add an opaque pass pointer to the current manager. This takes ownership
