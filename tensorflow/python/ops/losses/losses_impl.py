@@ -115,7 +115,7 @@ def _num_present(losses, weights, per_batch=False):
     return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:
     weights = math_ops.cast(weights, dtype=dtypes.float32)
-    present = array_ops.where(
+    present = array_ops.where_v2(
         math_ops.equal(weights, 0.0),
         array_ops.zeros_like(weights),
         array_ops.ones_like(weights))
@@ -584,7 +584,7 @@ def mean_pairwise_squared_error(
       weighted_losses = math_ops.multiply(term1 - term2, weights)
       loss = math_ops.reduce_sum(weighted_losses)
 
-      mean_loss = array_ops.where(
+      mean_loss = array_ops.where_v2(
           math_ops.reduce_sum(num_present_per_batch) > 0,
           loss,
           array_ops.zeros_like(loss),
