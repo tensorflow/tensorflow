@@ -116,7 +116,7 @@ class OptimizationOptions(options.OptionsBase):
       name="hoist_random_uniform",
       ty=bool,
       docstring=
-      "Whether to hoist `tf.random_uniform()` ops out of map transformations. "
+      "Whether to hoist `tf.random.uniform()` ops out of map transformations. "
       "If None, defaults to False.")
 
   map_and_batch_fusion = options.create_option(
