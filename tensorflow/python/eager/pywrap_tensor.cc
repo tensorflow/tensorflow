@@ -66,7 +66,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(PyObject* obj) {
   if (!cppstatus.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
-                        "Failed to convert numpy ndarray to a Tensor (",
+                        "Failed to convert a NumPy array to a Tensor (",
                         cppstatus.error_message(), ").")
                         .c_str());
     return nullptr;
@@ -78,6 +78,12 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(PyObject* obj) {
 // The two may share underlying storage so changes to one may reflect in the
 // other.
 PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
+  if (TFE_TensorHandleDataType(handle) == TF_RESOURCE) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Cannot convert a Tensor of dtype resource to a NumPy array.");
+    return nullptr;
+  }
+
   auto tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
@@ -653,7 +659,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 static PyObject* EagerTensor_numpy(EagerTensor* self) {
   auto status = tensorflow::make_safe(TF_NewStatus());
   auto* py_array = TFE_TensorHandleToNumpy(self->handle, status.get());
-  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_ValueError)) {
     Py_XDECREF(py_array);
     return nullptr;
   } else {

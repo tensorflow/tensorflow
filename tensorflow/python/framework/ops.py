@@ -247,7 +247,9 @@ def uid():
 def numpy_text(tensor, is_repr=False):
   """Human readable representation of a tensor's numpy value."""
   if tensor.dtype.is_numpy_compatible:
-    text = repr(tensor.numpy()) if is_repr else str(tensor.numpy())
+    # pylint: disable=protected-access
+    text = repr(tensor._numpy()) if is_repr else str(tensor._numpy())
+    # pylint: enable=protected-access
   else:
     text = "<unprintable>"
   if "\n" in text:
@@ -758,25 +760,22 @@ class _EagerTensorBase(Tensor):
     Raises:
       ValueError: if the type of this Tensor is not representable in numpy.
     """
-    if self.dtype == dtypes.resource:
-      raise ValueError("Resource handles are not convertible to numpy.")
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
-  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
-    return int(self.numpy())
+    return int(self._numpy())
 
   def __long__(self):
-    return long(self.numpy())
+    return long(self._numpy())
 
   def __float__(self):
-    return float(self.numpy())
+    return float(self._numpy())
 
   def __index__(self):
-    maybe_arr = self.numpy()
+    maybe_arr = self._numpy()
     if isinstance(maybe_arr, np.ndarray):
       return maybe_arr.__index__()
     return int(maybe_arr)  # Must be a NumPy scalar.
@@ -788,10 +787,10 @@ class _EagerTensorBase(Tensor):
     return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
-    return self.numpy().__format__(format_spec)
+    return self._numpy().__format__(format_spec)
 
   def __reduce__(self):
-    return (convert_to_tensor, (self.numpy(),))
+    return (convert_to_tensor, (self._numpy(),))
 
   def _numpy(self):
     raise NotImplementedError()
@@ -955,7 +954,7 @@ class _EagerTensorBase(Tensor):
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
-    return bool(self.numpy())
+    return bool(self._numpy())
 
   def __nonzero__(self):
     return self.__bool__()
