@@ -1228,7 +1228,7 @@ public:
   }
 
   void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                              ArrayRef<Value *> operands) {
+                              ArrayRef<Value *> operands) override {
     AffineMap map = mapAttr.getValue();
     unsigned numDims = map.getNumDims();
     auto printValueName = [&](unsigned pos, bool isSymbol) {

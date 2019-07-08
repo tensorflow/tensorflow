@@ -1244,9 +1244,8 @@ private:
       return "'integer'";
     case ElementKind::Float:
       return "'float'";
-    default:
-      llvm_unreachable("unknown element kind");
     }
+    llvm_unreachable("unknown element kind");
   }
 
   /// Build a Dense Integer attribute for the given type.
@@ -3438,9 +3437,10 @@ public:
   }
 
   /// Parse an AffineMap of SSA ids.
-  ParseResult parseAffineMapOfSSAIds(SmallVectorImpl<OperandType> &operands,
-                                     Attribute &mapAttr, StringRef attrName,
-                                     SmallVectorImpl<NamedAttribute> &attrs) {
+  ParseResult
+  parseAffineMapOfSSAIds(SmallVectorImpl<OperandType> &operands,
+                         Attribute &mapAttr, StringRef attrName,
+                         SmallVectorImpl<NamedAttribute> &attrs) override {
     SmallVector<OperandType, 2> dimOperands;
     SmallVector<OperandType, 1> symOperands;
 
