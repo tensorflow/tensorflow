@@ -710,27 +710,13 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   request.set_op_id(ctx->NextId());
   request.set_device_name(recv_device->name());
 
-  Device* tensor_handle_device = h->device();
-
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
   // TODO(b/110044833): this is currently slow, but can be fixed by making
   // tensor handles aware of more than one device.
-  TensorHandle* actual_handle;
-  if (tensor_handle_device != nullptr &&
-      tensor_handle_device->device_type() != "CPU") {
-    Tensor tensor;
-    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &tensor));
-    TF_RETURN_IF_ERROR(
-        TensorHandle::CreateLocalHandle(tensor, nullptr, ctx, &actual_handle));
-  } else {
-    actual_handle = h;
-    actual_handle->Ref();
-  }
-
-  const Tensor* tensor;
-  TF_RETURN_IF_ERROR(actual_handle->Tensor(&tensor));
-  tensor->AsProtoTensorContent(request.add_tensors());
+  Tensor tensor;
+  TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &tensor));
+  tensor.AsProtoTensorContent(request.add_tensors());
 
   const tensorflow::uint64 id = request.op_id();
 
@@ -746,18 +732,16 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   if (!status.ok()) return status;
 
   auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      id, 0, tensor->shape(), eager_client, context_id, ctx);
+      id, 0, tensor.shape(), eager_client, context_id, ctx);
   if (mirror) {
     status = h->AddRemoteMirror(std::move(tensor_handle_data), recv_device);
     h->Ref();
     *result = h;
   } else {
     status = TensorHandle::CreateRemoteHandle(std::move(tensor_handle_data),
-                                              tensor->dtype(), recv_device,
+                                              tensor.dtype(), recv_device,
                                               nullptr, ctx, result);
   }
-
-  actual_handle->Unref();
 
   return status;
 }
