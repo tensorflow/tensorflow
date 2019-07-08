@@ -20,7 +20,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Translation.h"
+#include "mlir/IR/Module.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/Support/ManagedStatic.h"
 
 using namespace mlir;
