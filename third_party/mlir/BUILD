@@ -8,6 +8,17 @@ package(
     features = ["-layering_check"],
 )
 
+package_group(
+    name = "subpackages",
+    packages = ["//..."],
+)
+
+package_group(
+    name = "friends",
+    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
+    packages = ["//..."],
+)
+
 exports_files(["run_lit.sh"])
 
 load(":tblgen.bzl", "gentbl")
