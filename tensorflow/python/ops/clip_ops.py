@@ -114,9 +114,9 @@ def _clip_by_value_grad(op, grad):
   xzmask = math_ops.greater(x, z)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   rx, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
-  xgrad = array_ops.where(math_ops.logical_or(xymask, xzmask), zeros, grad)
-  ygrad = array_ops.where(xymask, grad, zeros)
-  zgrad = array_ops.where(xzmask, grad, zeros)
+  xgrad = array_ops.where_v2(math_ops.logical_or(xymask, xzmask), zeros, grad)
+  ygrad = array_ops.where_v2(xymask, grad, zeros)
+  zgrad = array_ops.where_v2(xzmask, grad, zeros)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   gz = array_ops.reshape(math_ops.reduce_sum(zgrad, rz), sz)
@@ -170,8 +170,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
     pred = l2sum > 0
     # Two-tap tf.where trick to bypass NaN gradients
-    l2sum_safe = array_ops.where(pred, l2sum, array_ops.ones_like(l2sum))
-    l2norm = array_ops.where(pred, math_ops.sqrt(l2sum_safe), l2sum)
+    l2sum_safe = array_ops.where_v2(pred, l2sum, array_ops.ones_like(l2sum))
+    l2norm = array_ops.where_v2(pred, math_ops.sqrt(l2sum_safe), l2sum)
     intermediate = values * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
@@ -295,7 +295,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
-    scale = array_ops.where(
+    scale = array_ops.where_v2(
         math_ops.is_finite(use_norm),
         scale_for_finite,
         # Return NaN if use_norm is not finite.
