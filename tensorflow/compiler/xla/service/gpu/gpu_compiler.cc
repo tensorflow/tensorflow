@@ -106,28 +106,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
+GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
+                         const char* target_triple, const char* data_layout)
+    : platform_id_(platform_id),
+      target_triple_(target_triple),
+      data_layout_(data_layout),
+      pointer_size_(llvm::DataLayout(data_layout)
+                        .getPointerSize(0 /* default address space */)) {}
 
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
-  }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  return absl::nullopt;
+StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  tensorflow::profiler::TraceMe activity(
+      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
+  return std::move(module);
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -153,41 +158,140 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   if (VLOG_IS_ON(2)) {
     pipeline.AddPass<MemWastedOnPassthroughParams>();
   }
-  pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
+  pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
-}
-
-}  // namespace
-
-GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
-                         const char* target_triple, const char* data_layout)
-    : platform_id_(platform_id),
-      target_triple_(target_triple),
-      data_layout_(data_layout),
-      pointer_size_(llvm::DataLayout(data_layout)
-                        .getPointerSize(0 /* default address space */)) {}
-
-StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
-  tensorflow::profiler::TraceMe activity(
-      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
-
-  return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  // TBD
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+
+  TF_RET_CHECK(stream_exec != nullptr);
+
+  llvm::LLVMContext llvm_context;
+  std::string buffer;
+  llvm::raw_string_ostream error(buffer);
+  llvm::DiagnosticPrinterRawOStream printer(error);
+  auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
+                              void* Context) {
+    auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
+    diag_info.print(*printer);
+  };
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
+
+  llvm::Module llvm_module(module->name().c_str(), llvm_context);
+  // Set the target triple and the data layout.
+  llvm_module.setTargetTriple(target_triple_);
+  llvm_module.setDataLayout(data_layout_);
+
+  // Determine the HLO schedule, which is an ordering of HLO instructions.  This
+  // is used by buffer assignment to enable buffer reuse, and the same ordering
+  // must also be used to determine the thunk launch schedule.
+  std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+
+  // Run buffer analysis on the HLO graph. This analysis figures out which
+  // temporary buffers are required to run the computation.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, GetCanShareBuffer()));
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
+
+  IrEmitterContext ir_emitter_context(
+      module.get(), buffer_assignment.get(), stream_exec->platform(),
+      &stream_exec->GetDeviceDescription(), &llvm_module);
+
+  HloComputation* entry_computation = module->entry_computation();
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
+                               &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
+  }
+
+  if (user_pre_optimization_hook_) {
+    user_pre_optimization_hook_(llvm_module);
+  }
+  string ir_module_string_before_opt;
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  if (embed_ir_in_executable) {
+    ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
+  }
+
+  llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/false);
+
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
+
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
+
+    // verifyModule() returns true if the module is broken.
+    TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+        << "Invalid LLVM IR before optimizations:\n"
+        << err_stream.str()
+        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+           "Rerun with --xla_dump_to to get the IR. ";
+  }
+
+  GpuVersion gpu_version = GetGpuVersion(stream_exec);
+
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+  TF_ASSIGN_OR_RETURN(
+      BackendCompileResult backend_result,
+      InvokeBackend(std::move(module), &llvm_module, gpu_version));
+
+  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
+      ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
+      hlo_schedule->ThunkLaunchOrder());
+  if (DumpingEnabledForHloModule(*module)) {
+    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+                            thunk_schedule->ToString());
+  }
+
+  std::unique_ptr<HloProfileIndexMap> profile_index_map;
+  std::unique_ptr<HloProfilePrinterData> profile_printer;
+
+  if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
+    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    cost_analysis.set_bytes_per_second(
+        stream_exec->GetDeviceDescription().memory_bandwidth());
+    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
+    VLOG(1) << "HLO memory read+written: "
+            << tensorflow::strings::HumanReadableNumBytes(
+                   cost_analysis.bytes_accessed());
+    if (module->config().hlo_profiling_enabled()) {
+      profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
+      profile_printer = CreateHloProfilePrinterData(
+          *profile_index_map, cost_analysis, entry_computation->name());
+    }
+  }
+
+  auto* gpu_executable = new GpuExecutable(
+      backend_result.first, backend_result.second, gpu_version,
+      std::move(thunk_schedule), std::move(module),
+      std::move(buffer_assignment), std::move(profile_printer),
+      std::move(profile_index_map));
+  if (embed_ir_in_executable) {
+    DCHECK_NE("", ir_module_string_before_opt);
+    gpu_executable->set_ir_module_string(ir_module_string_before_opt);
+  }
+  return std::unique_ptr<Executable>(gpu_executable);
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

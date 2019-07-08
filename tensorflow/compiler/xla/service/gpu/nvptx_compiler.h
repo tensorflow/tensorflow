@@ -49,9 +49,13 @@ class NVPTXCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
+
+  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
+
+  StatusOr<std::pair<std::string, std::vector<uint8>>> InvokeBackend(
+      std::unique_ptr<HloModule> hlo_module, llvm::Module* llvm_module,
+      GpuVersion gpu_version) override;
 
  private:
   tensorflow::mutex mutex_;

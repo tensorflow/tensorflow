@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -59,6 +61,16 @@ class GpuCompiler : public LLVMCompiler {
   virtual Status OptimizeHloModule(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() = 0;
+
+  virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+
+  virtual StatusOr<std::pair<std::string, std::vector<uint8>>> InvokeBackend(
+      std::unique_ptr<HloModule> hlo_module, llvm::Module* llvm_module,
+      GpuVersion gpu_version) = 0;
+
+  Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
