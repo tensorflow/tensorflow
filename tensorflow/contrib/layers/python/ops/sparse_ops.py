@@ -70,7 +70,7 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
   with ops.name_scope("DenseToSparseTensor"):
     dense_tensor = ops.convert_to_tensor(dense_tensor)
     ignore_value = _ignore_value_tensor(dense_tensor.dtype, ignore_value)
-    indices = array_ops.where(
+    indices = array_ops.where_v2(
         math_ops.not_equal(dense_tensor, ignore_value), name="indices")
     return sparse_tensor.SparseTensor(
         indices=indices,
@@ -151,7 +151,7 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
         name="missing")
     zeros_like_indicators = array_ops.zeros_like(
         indicators, dtype=dtypes.int64, name="zeros")
-    binary_indicators = array_ops.where(
+    binary_indicators = array_ops.where_v2(
         missing_indicators, zeros_like_indicators,
         array_ops.ones_like(indicators, dtype=dtypes.int64, name="ones"),
         name="binary_indicators")
@@ -161,7 +161,7 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
     # off-by-1 from the actual indices. We'll subtract 1 below. Since they're
     # off-by-one, the max value is the size of the last dimension (i.e.,
     # last_index + 1).
-    row_index_indicators = array_ops.where(
+    row_index_indicators = array_ops.where_v2(
         missing_indicators, zeros_like_indicators,
         math_ops.cumsum(binary_indicators, axis=-1), "row_index_indicators")
     result_last_dim = array_ops.reshape(
@@ -224,4 +224,4 @@ def sparse_row_envelope(sparse_input, row_axis=0, col_axis=1, name=None):
     row_envelope = math_ops.unsorted_segment_max(
         col_indices + 1, row_indices, num_rows, name=name)
     zeros = array_ops.zeros_like(row_envelope)
-    return array_ops.where(row_envelope > zeros, row_envelope, zeros)
+    return array_ops.where_v2(row_envelope > zeros, row_envelope, zeros)
