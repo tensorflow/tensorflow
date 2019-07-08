@@ -701,7 +701,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[118] {
     BuiltinOperator_MATRIX_SET_DIAG,
     BuiltinOperator_ROUND,
     BuiltinOperator_HARD_SWISH,
-    BuiltinOperator_REDUCE_ANY
+    BuiltinOperator_REDUCE_ALL
   };
   return values;
 }
