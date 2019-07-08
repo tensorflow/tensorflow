@@ -2071,6 +2071,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _experimental_distribute_dataset(self, dataset):
     return dataset
 
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    return dataset_fn(InputContext())
+
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)
 

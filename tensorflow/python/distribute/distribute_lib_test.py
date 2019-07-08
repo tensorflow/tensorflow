@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -86,6 +89,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
                                            [distribute_lib.InputContext()],
                                            self._container_strategy())
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    return dataset_fn(distribute_lib.InputContext())
 
   def _local_results(self, value):
     return (value,)
@@ -403,7 +409,7 @@ class _TestExtended2(_TestExtended):
     return next_creator(*args, **kwargs)
 
 
-class DefaultDistributionStrategyTest(test.TestCase):
+class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
 
   def testMergeCall(self):
     _assert_in_default_state(self)
@@ -464,6 +470,42 @@ class DefaultDistributionStrategyTest(test.TestCase):
 
     for _ in range(2):
       default_strategy.experimental_run_v2(train_step, args=(next_val,))
+
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
+  def testDistributedDatasets(self):
+    default_strategy = ds_context._get_default_strategy()
+    if context.executing_eagerly():
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
+      dist_dataset = default_strategy.experimental_distribute_dataset(
+          dataset_fn(distribute_lib.InputContext()))
+      next_val = next(iter(dist_dataset))
+    else:
+      dataset_fn = lambda _: dataset_ops.DatasetV1.range(10).batch(2)
+      dist_dataset = default_strategy.experimental_distribute_dataset(
+          dataset_fn(distribute_lib.InputContext()))
+      iterator = dist_dataset.make_initializable_iterator()
+      self.evaluate(iterator.initializer)
+      next_val = iterator.get_next()
+    self.assertAllEqual([0, 1], self.evaluate(next_val))
+
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
+  def testDistributedDatasetsFromFunction(self):
+    default_strategy = ds_context._get_default_strategy()
+    if context.executing_eagerly():
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
+      dist_dataset_from_func = \
+          default_strategy.experimental_distribute_datasets_from_function(
+              dataset_fn)
+      next_val = next(iter(dist_dataset_from_func))
+      self.assertAllEqual([0, 1], self.evaluate(next_val))
+    else:
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "only supported when eager execution is "
+                                   "enabled"):
+        dist_dataset_from_func = \
+          default_strategy.experimental_distribute_datasets_from_function(
+              dataset_fn)
 
 
 class InputContextTest(test.TestCase):

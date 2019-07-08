@@ -176,6 +176,7 @@ py_test(
         "no_rocm",
     ],
     deps = [
+        ":combinations",
         ":distribute_lib",
         ":input_lib",
         ":reduce_util",
