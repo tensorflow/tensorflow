@@ -31,12 +31,12 @@ def random_dataset():
   time_steps = 10
   alphabet = 50
   chars = tf.one_hot(
-      tf.random_uniform(
+      tf.random.uniform(
           [batch_size, time_steps], minval=0, maxval=alphabet, dtype=tf.int32),
       alphabet)
   sequence_length = tf.constant(
       [time_steps for _ in range(batch_size)], dtype=tf.int64)
-  labels = tf.random_normal([batch_size, LABEL_DIMENSION])
+  labels = tf.random.normal([batch_size, LABEL_DIMENSION])
   return tf.data.Dataset.from_tensors((labels, chars, sequence_length))
 
 
