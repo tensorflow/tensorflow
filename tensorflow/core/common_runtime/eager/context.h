@@ -173,8 +173,6 @@ class EagerContext : public core::RefCounted {
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  uint64 NextId() { return executor_.NextId(); }
-
   void ExecutorAdd(std::unique_ptr<EagerNode> node) {
     executor_.Add(std::move(node));
   }
@@ -295,12 +293,17 @@ class EagerContext : public core::RefCounted {
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
-#endif  // IS_MOBILE_PLATFORM
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
+  // Helper function to create monotonically increasing ids unique to this
+  // context.
+  uint64 NextId();
+#endif  // IS_MOBILE_PLATFORM
+
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
@@ -428,6 +431,9 @@ class EagerContext : public core::RefCounted {
   mutex keep_alive_thread_shutdown_mu_;
   condition_variable keep_alive_thread_cv_;
   bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
+
+  mutex next_id_mutex_;
+  uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;

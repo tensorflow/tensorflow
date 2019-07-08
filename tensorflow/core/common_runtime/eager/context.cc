@@ -773,6 +773,11 @@ Status EagerContext::InitializeRemoteWorker(
 
   return Status::OK();
 }
+
+tensorflow::uint64 EagerContext::NextId() {
+  tensorflow::mutex_lock l(next_id_mutex_);
+  return next_id_++;
+}
 #endif  // !IS_MOBILE_PLATFORM
 
 }  // namespace tensorflow
