@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,47 +39,21 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// The GPU compiler generates efficient GPU executables.
-class NVPTXCompiler : public LLVMCompiler {
+// NVPTXCompiler generates efficient GPU executables for NVPTX target.
+class NVPTXCompiler : public GpuCompiler {
  public:
   NVPTXCompiler(se::Platform::Id platform_id);
   ~NVPTXCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
-
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+  Status OptimizeHloModule(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                     AotCompilationOptions const& options) override;
-
-  se::Platform::Id PlatformId() const override;
-
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // Capture just the pointer size, not the entire NVPTXCompiler object.
-    int64 pointer_size = pointer_size_;
-    return [pointer_size](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
-    };
-  }
-
  private:
-  se::Platform::Id platform_id_;
-
-  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
-  const int64 pointer_size_;
-
   tensorflow::mutex mutex_;
 
   // When compiling an HLO module, we need to find a path to the nvvm libdevice

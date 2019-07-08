@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -166,9 +167,12 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   return ".";
 }
 
+}  // namespace
+
 // Runs optimization passes on the given HLO module.
-Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* device_allocator) {
+Status NVPTXCompiler::OptimizeHloModule(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -403,6 +407,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   return Status::OK();
 }
 
+namespace {
 absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                         const HloInstruction* operand,
                                         const ShapeIndex& user_index) {
@@ -418,39 +423,6 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
     return user_index.size() == 1 && user_index[0] == 0;
   }
   return absl::nullopt;
-}
-
-// Modifies the given HLO module so that it will be accepted by IrEmitter.
-// Unlike optimization passes, the passes are necessary for correctness.
-Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
-  // In some cases, we have to place the result of an instruction in a temporary
-  // buffer. For instance, the buffer that holds an external parameter is
-  // assumed immutable at this point, and should not be reused for output
-  // (b/27180329). Therefore, in that case, we set the output to be a copy of
-  // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-   * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  // Copy insertion should be performed immediately before IR emission to avoid
-  // inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes an
-  // instruction which materializes a value). DCE must be run immediately before
-  // (and sometime after) copy insertion, to avoid dead code from interfering
-  // with the rewrites.
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
-  // The following pass LOGs memory waste. Add it when VLOGing is enabled only.
-  if (VLOG_IS_ON(2)) {
-    pipeline.AddPass<MemWastedOnPassthroughParams>();
-  }
-  pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
-  pipeline.AddPass<GpuSanitizeConstantNames>();
-  return pipeline.Run(hlo_module).status();
 }
 
 // Prints a warning if the ptx->sass JIT in the driver has known bugs.
@@ -493,29 +465,10 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
-
 }  // namespace
 
 NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
-    : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
-                        .getPointerSize(0 /* default address space */)),
-      platform_id_(platform_id) {}
-
-StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
-  tensorflow::profiler::TraceMe activity(
-      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
-
-  return std::move(module);
-}
+    : GpuCompiler(platform_id, nvptx::kTargetTriple, nvptx::kDataLayout) {}
 
 StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -764,17 +717,6 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-NVPTXCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                                  const AotCompilationOptions& options) {
-  return Unimplemented(
-      "not yet implemented: NVPTXCompiler::CompileAheadOfTime");
-}
-
-se::Platform::Id NVPTXCompiler::PlatformId() const {
-  return platform_id_;
 }
 
 }  // namespace gpu

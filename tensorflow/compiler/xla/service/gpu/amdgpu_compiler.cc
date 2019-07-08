@@ -101,15 +101,12 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace tracing = tensorflow::tracing;
 
 // Returns the directory containing ROCm-Device-Libs files. This function is
 // called in AMDGPUCompiler's constructor, so can't return an error. But
@@ -138,13 +135,12 @@ string GetROCDLDir(const HloModuleConfig& config) {
   return ".";
 }
 
-// Runs optimization passes on the given HLO module.
-//
-// It takes a compiler pointer, as passes may compile and execute HLOs on the
-// fly for cuDNN verification or other purposes.
-Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* device_allocator,
-                         Compiler* compiler) {
+}  // namespace
+
+// Runs optimization passes on the given HLO module for AMDGPU.
+Status AMDGPUCompiler::OptimizeHloModule(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -236,7 +232,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   }
 
   {
-    // Convert convolutions into CustomCalls to cudnn, then canonicalize them
+    // Convert convolutions into CustomCalls to MIOpen, then canonicalize them
     // (PadInsertion).
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -298,12 +294,11 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // The new tuple and gte instructions then be simplified away, because
     // nobody is expected to use the scratch value.
     //
-    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // However, if we were to run MiopenConvAlgorithmPicker after fusion
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<MiopenConvAlgorithmPicker>(
-        stream_exec, device_allocator, compiler);
+    pipeline.AddPass<MiopenConvAlgorithmPicker>(stream_exec, device_allocator);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 
@@ -346,59 +341,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   return Status::OK();
 }
 
-// Modifies the given HLO module so that it will be accepted by IrEmitter.
-// Unlike optimization passes, the passes are necessary for correctness.
-Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
-  // In some cases, we have to place the result of an instruction in a temporary
-  // buffer. For instance, the buffer that holds an external parameter is
-  // assumed immutable at this point, and should not be reused for output
-  // (b/27180329). Therefore, in that case, we set the output to be a copy of
-  // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  // Copy insertion should be performed immediately before IR emission to avoid
-  // inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes an
-  // instruction which materializes a value). DCE must be run immediately before
-  // (and sometime after) copy insertion, to avoid dead code from interfering
-  // with the rewrites.
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<GpuCopyInsertion>();
-  pipeline.AddPass<GpuSanitizeConstantNames>();
-
-  return pipeline.Run(hlo_module).status();
-}
-
-}  // namespace
-
 AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
-    : pointer_size_(llvm::DataLayout(amdgpu::kDataLayout)
-                        .getPointerSize(0 /* default address space */)),
-      platform_id_(platform_id) {}
-
-StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  VLOG(3) << "*** HLO Before Optimization";
-  XLA_VLOG_LINES(3, module->ToString());
-
-  XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunHloPasses");
-  tensorflow::profiler::TraceMe activity(
-      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
-
-  return std::move(module);
-}
+    : GpuCompiler(platform_id, amdgpu::kTargetTriple, amdgpu::kDataLayout) {}
 
 StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -547,17 +491,6 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     amdgpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
   return std::unique_ptr<Executable>(amdgpu_executable);
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-AMDGPUCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                                   const AotCompilationOptions& options) {
-  return Unimplemented(
-      "not yet implemented: AMDGPUCompiler::CompileAheadOfTime");
-}
-
-se::Platform::Id AMDGPUCompiler::PlatformId() const {
-  return platform_id_;
 }
 
 }  // namespace gpu
