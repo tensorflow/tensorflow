@@ -63,7 +63,7 @@ def warmup(dynamics,
            step_fn=step):
   """Warmup optimization to reduce overhead."""
 
-  samples = tf.random_normal(
+  samples = tf.random.normal(
       shape=[n_samples, dynamics.x_dim], dtype=tf.float32)
 
   for _ in range(n_iters):
@@ -107,7 +107,7 @@ class L2hmcTest(tf.test.TestCase):
         minus_loglikelihood_fn=energy_fn,
         n_steps=hparams.n_steps,
         eps=hparams.eps)
-    samples = tf.random_normal(shape=[hparams.n_samples, hparams.x_dim])
+    samples = tf.random.normal(shape=[hparams.n_samples, hparams.x_dim])
     x_, v_, x_accept_prob, x_out = dynamics.apply_transition(samples)
 
     self.assertEqual(x_.shape, v_.shape)
@@ -151,7 +151,7 @@ class L2hmcBenchmark(tf.test.Benchmark):
       tf.reset_default_graph()
       with tf.Graph().as_default():
         energy_fn, _, _ = l2hmc.get_scg_energy_fn()
-        x = tf.random_normal([hparams.n_samples, hparams.x_dim],
+        x = tf.random.normal([hparams.n_samples, hparams.x_dim],
                              dtype=tf.float32)
         dynamics = l2hmc.Dynamics(
             x_dim=hparams.x_dim,
@@ -218,7 +218,7 @@ class L2hmcBenchmark(tf.test.Benchmark):
           step_fn=step_fn)
 
       # Training
-      samples = tf.random_normal(
+      samples = tf.random.normal(
           shape=[hparams.n_samples, hparams.x_dim], dtype=tf.float32)
       start_time = time.time()
       fit(dynamics,
