@@ -614,51 +614,46 @@ class BatchNormalizationBase(Layer):
     return (r, d, out_mean, out_variance)
 
   def moment_calculation(self,
-          x,
-          axes,
-          shift=None,  # pylint: disable=unused-argument
-          name=None,
-          keep_dims=False,
-          mask=None):
+                         inputs,
+                         axes,
+                         keep_dims=False,
+                         mask=None):
 
-      with ops.name_scope(name, "moments", [x, axes]):
+      with ops.name_scope("moments", values=[inputs, axes]):
           # The dynamic range of fp16 is too limited to support the collection of
           # sufficient statistics. As a workaround we simply perform the operations
           # on 32-bit floats before converting the mean and variance back to fp16
-          y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+          casted_inputs = math_ops.cast(inputs, dtypes.float32) if inputs.dtype == dtypes.float16 else inputs
           # Compute true mean while keeping the dims for proper broadcasting.
 
-          # Count the number of valid data points we have in each axis we are batchnorming
           if mask is not None:
               mask = array_ops.expand_dims(mask, axis=-1)
-              # Get a count of the number of actual values by summing the mask
-              axis_counts = math_ops.reduce_sum(math_ops.cast(mask, dtypes.float32), axes, keepdims=True, name="mask_sum")
-              sum = math_ops.reduce_sum(y, axes, keepdims=True, name="values_sum")
-              mean = math_ops.divide(sum, axis_counts)
+              binary_mask = math_ops.cast(mask, casted_inputs.dtype)
 
-              squared_difference = math_ops.squared_difference(y, array_ops.stop_gradient(mean))
-              squared_difference = squared_difference * math_ops.cast(mask, y.dtype)
-              squared_sum = math_ops.reduce_sum(squared_difference, axes, keepdims=True, name="squared_sum")
+              # Count the number of non-padded values by summing the mask
+              axis_counts = math_ops.reduce_sum(binary_mask, axes, keepdims=True, name="mask_sum")
+
+              # Exclude any padded values when calculating the sum
+              masked_inputs = casted_inputs * binary_mask
+              masked_sum = math_ops.reduce_sum(masked_inputs, axes, keepdims=True, name="values_sum")
+
+              mean = math_ops.divide(masked_sum, axis_counts)
+
+              squared_difference = math_ops.squared_difference(casted_inputs, array_ops.stop_gradient(mean))
+              masked_difference = squared_difference * binary_mask
+              squared_sum = math_ops.reduce_sum(masked_difference, axes, keepdims=True, name="squared_sum")
               variance = math_ops.divide(squared_sum, axis_counts)
+
+              if not keep_dims:
+                  mean = array_ops.squeeze(mean, axes)
+                  variance = array_ops.squeeze(variance, axes)
+              if inputs.dtype == dtypes.float16:
+                  return (math_ops.cast(mean, dtypes.float16),
+                          math_ops.cast(variance, dtypes.float16))
           else:
-              mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
-              # sample variance, not unbiased variance
-              # Note: stop_gradient does not change the gradient that gets
-              #       backpropagated to the mean from the variance calculation,
-              #       because that gradient is zero
-              variance = math_ops.reduce_mean(
-                  math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
-                  axes,
-                  keepdims=True,
-                  name="variance")
-          if not keep_dims:
-              mean = array_ops.squeeze(mean, axes)
-              variance = array_ops.squeeze(variance, axes)
-          if x.dtype == dtypes.float16:
-              return (math_ops.cast(mean, dtypes.float16),
-                      math_ops.cast(variance, dtypes.float16))
-          else:
-              return (mean, variance)
+              mean, variance = nn.moments(inputs, axes, keep_dims=keep_dims)
+
+          return (mean, variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims, mask=None):
     mean, variance = self.moment_calculation(inputs, reduction_axes, keep_dims=keep_dims, mask=mask)

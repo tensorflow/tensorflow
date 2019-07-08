@@ -225,13 +225,15 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     masked = tf.keras.layers.Masking()(input)
     normed = BatchNormalization(momentum=0.0)(masked)
     model = tf.keras.models.Model(input, normed)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
 
     model.fit(x=padded_data, y=padded_data, batch_size=10, epochs=5)
     moments_mask = model.layers[2].get_weights()
     model.fit(x=data, y=data, batch_size=10, epochs=5)
     moments = model.layers[2].get_weights()
     self.assertEqual(moments_mask[2][0], moments[2][0]) # moving average mean comparison
-    self.assertEqual(moments_mask[3][0], moments_mask[3][0])  # moving average variance comparison
+    self.assertEqual(moments_mask[3][0], moments[3][0])  # moving average variance comparison
 
   def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
 
