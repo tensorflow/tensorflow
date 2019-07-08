@@ -108,7 +108,7 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
   # Unlike numpy, tensorflow's return order is (s, u, v)
   s, u, v = linalg_ops.svd(mat)
   # sqrt is unstable around 0, just use 0 in such case
-  si = array_ops.where(math_ops.less(s, eps), s, math_ops.sqrt(s))
+  si = array_ops.where_v2(math_ops.less(s, eps), s, math_ops.sqrt(s))
   # Note that the v returned by Tensorflow is v = V
   # (when referencing the equation A = U S V^T)
   # This is unlike Numpy which returns v = V^T
