@@ -90,7 +90,7 @@ class MPITests(tf.test.TestCase):
       dims = [1, 2, 3]
       for dtype, dim in itertools.product(dtypes, dims):
         tf.set_random_seed(1234)
-        tensor = tf.random_uniform([17] * dim, -100, 100, dtype=dtype)
+        tensor = tf.random.uniform([17] * dim, -100, 100, dtype=dtype)
         summed = mpi.allreduce(tensor, average=False)
         multiplied = tensor * size
         max_difference = tf.reduce_max(tf.abs(summed - multiplied))
@@ -134,7 +134,7 @@ class MPITests(tf.test.TestCase):
       dim = 3
       with tf.device("/gpu:0"):
         tf.set_random_seed(1234)
-        tensor = tf.random_uniform([17] * dim, -100, 100, dtype=dtype)
+        tensor = tf.random.uniform([17] * dim, -100, 100, dtype=dtype)
         summed = mpi.allreduce(tensor, average=False)
         multiplied = tensor * size
         max_difference = tf.reduce_max(tf.abs(summed - multiplied))
@@ -168,7 +168,7 @@ class MPITests(tf.test.TestCase):
       # Same rank, different dimension
       tf.set_random_seed(1234)
       dims = [17 + rank] * 3
-      tensor = tf.random_uniform(dims, -1.0, 1.0)
+      tensor = tf.random.uniform(dims, -1.0, 1.0)
       with self.assertRaises(tf.errors.FailedPreconditionError):
         session.run(mpi.allreduce(tensor))
 
@@ -178,7 +178,7 @@ class MPITests(tf.test.TestCase):
         dims = [17, 23 * 57]
       else:
         dims = [17, 23, 57]
-      tensor = tf.random_uniform(dims, -1.0, 1.0)
+      tensor = tf.random.uniform(dims, -1.0, 1.0)
       with self.assertRaises(tf.errors.FailedPreconditionError):
         session.run(mpi.allreduce(tensor))
 
