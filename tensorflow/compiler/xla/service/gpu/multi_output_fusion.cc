@@ -123,16 +123,10 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   for (HloInstruction* consumer : producer->users()) {
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
-    if (!IsFusibleAsMultiOutputFusionRoot(*consumer)) {
-      VLOG(3) << "Consumer " << consumer->name()
-              << " is not eligible as multi-output fusion root.";
+    if (!ShouldFuseProducerConsumerMOF(*producer, *consumer)) {
       continue;
     }
-    if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
-      VLOG(3) << producer->name() << " and " << consumer->name()
-              << " are not fusible.";
-      continue;
-    }
+
     // Do not fuse a producer if the other operands of the fusion are
     // reachable from the producer, this would create a cycle.
     auto operand_reachable_from_producer = [&](const HloInstruction* operand) {
@@ -150,11 +144,6 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     };
     if (absl::c_any_of(consumer->operands(), operand_reachable_from_producer)) {
       VLOG(3) << producer->name() << " would introduce a cycle when fused.";
-      continue;
-    }
-    if (FusionWouldBeTooLarge(*producer, *consumer)) {
-      VLOG(3) << producer->name() << " and " << consumer->name()
-              << " would be too large of a fusion.";
       continue;
     }
     fusion_candidates.push_back(consumer);
@@ -175,12 +164,6 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     // the back of the vector.
     HloInstruction* producer = defs_before_uses.back();
     defs_before_uses.pop_back();
-    // Never multi-output fuse constants.  To the extent that we want to fuse
-    // constants, that should be handled by the regular fusion pass.
-    if (producer->opcode() == HloOpcode::kConstant) {
-      VLOG(3) << producer->name() << " is a constant.";
-      continue;
-    }
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
         producer, *reachability());
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);

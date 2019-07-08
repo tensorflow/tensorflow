@@ -261,6 +261,23 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
+  // Skip 'fusion' instruction if it is an equivalent of convert
+  // downcast an any of its user write more memory.
+  if (postpone_ &&
+      absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+        return PostponeFusion(*fusion, *user);
+      })) {
+    VLOG(3) << "Postpone fusion " << fusion->name()
+            << " merged_to_current_bytes_ratio: "
+            << merged_to_current_bytes_ratio << " into users { "
+            << absl::StrJoin(fusion->users(), ", ",
+                             [](string* out, HloInstruction* user) {
+                               absl::StrAppend(out, user->name());
+                             })
+            << " }";
+    return Status::OK();
+  }
+
   // Skip 'fusion' instruction if merging it into at least one of the users
   // would make the fusion too big.
   if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {

@@ -425,5 +425,98 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
                                   : HloInstruction::FusionKind::kLoop;
 }
 
+bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
+                                   const HloInstruction& consumer) {
+  if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    VLOG(3) << "Consumer " << consumer.name()
+            << " is not eligible as multi-output fusion root.";
+    return false;
+  }
+
+  if (!IsProducerConsumerMultiOutputFusible(producer, consumer)) {
+    VLOG(3) << producer.name() << " and " << consumer.name()
+            << " are not fusible.";
+    return false;
+  }
+  // Never multi-output fuse constants.  To the extent that we want to fuse
+  // constants, that should be handled by the regular fusion pass.
+  if (producer.opcode() == HloOpcode::kConstant) {
+    VLOG(3) << producer.name() << " is a constant.";
+    return false;
+  }
+
+  if (FusionWouldBeTooLarge(producer, consumer)) {
+    VLOG(3) << producer.name() << " and " << consumer.name()
+            << " would be too large of a fusion.";
+    return false;
+  }
+  return true;
+}
+
+// We can't get optimal fusion group by being always greedy.  Here we
+// determine some fusion that we want to postpone to later.  Currently
+// we want to postpone the merge of downcast convert in its consumer
+// to allow fusing it into its producer later when possible.
+// As MOF fusion is done only late in the fusion, we postpone in those case.
+// This also check that some cases we want to fuse early and doesn't postpone
+// them.
+bool PostponeFusion(const HloInstruction& producer,
+                    const HloInstruction& consumer) {
+  // Step 1. See if this is a downcast or equivalent operation.
+  bool downcast_try_to_postpone = false;
+  auto is_downcast = [](const HloInstruction& instr) {
+    return instr.opcode() == HloOpcode::kConvert &&
+           ShapeUtil::ByteSizeOf(instr.operand(0)->shape()) >
+               ShapeUtil::ByteSizeOf(instr.shape());
+  };
+
+  // It is more efficient to fuse downcast convert in the producer
+  // then the consumer.
+  // Here a downcast convert can be one convert operation
+  // or a fusion with one input and one output that lower the memory output.
+  if (is_downcast(producer)) {
+    // If the consumer is also a downcast, we should merge them early
+    // as this is the equivalent of a bigger downcast.
+    if (is_downcast(consumer) ||
+        (consumer.IsLoopFusion() &&
+         is_downcast(
+             *consumer.fused_instructions_computation()->root_instruction()))) {
+      return false;
+      // A downcast of a parameter can't be merged into its producer.
+    } else if (producer.operand(0)->opcode() == HloOpcode::kParameter) {
+      return false;
+    } else {
+      downcast_try_to_postpone = true;
+    }
+  } else if (producer.IsLoopFusion() &&
+             is_downcast(*producer.fused_instructions_computation()
+                              ->root_instruction()) &&
+             producer.operands().size() == 1) {
+    downcast_try_to_postpone = true;
+  } else if (producer.IsLoopFusion() && producer.operands().size() == 1) {
+    auto root = producer.fused_instructions_computation()->root_instruction();
+    if (root->opcode() == HloOpcode::kConvert &&
+        ShapeUtil::ByteSizeOf(producer.operand(0)->shape()) >
+            ShapeUtil::ByteSizeOf(producer.shape())) {
+      downcast_try_to_postpone = true;
+    }
+  }
+  if (!downcast_try_to_postpone) {
+    VLOG(4) << "No operation to postpone, producer: " << producer.ToString()
+            << " consumer: " << consumer.ToString();
+    return false;
+  }
+
+  // Step 2. See if we have a chance to merge in the future.
+  const HloInstruction* future_producer = producer.operand(0);
+  if (!ShouldFuseProducerConsumerMOF(*future_producer, producer)) {
+    return false;
+  }
+
+  // As the fusion pipeline run until fixed point, we do not do a
+  // cycle detection here.
+
+  return true;
+}
 }  // namespace gpu
 }  // namespace xla

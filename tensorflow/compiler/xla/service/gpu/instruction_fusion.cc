@@ -67,6 +67,12 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
   auto producer = consumer->operand(operand_index);
+  if (nb_run() == 0 &&
+      PostponeFusion(*producer, *consumer)) {
+    VLOG(3) << "Postpone fusion of: " << producer->ToString() << " into "
+            << consumer->ToString();
+    return false;
+  }
 
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {

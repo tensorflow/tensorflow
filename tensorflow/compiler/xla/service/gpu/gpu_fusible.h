@@ -101,6 +101,14 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
                                             const HloInstruction& consumer);
 
+// Should the fusion of Producer-Consumer be done?
+bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
+                                   const HloInstruction& consumer);
+
+// Some fusion cases that we want to postpone to the MOF fusion phase for
+// efficiency.
+bool PostponeFusion(const HloInstruction& producer,
+                    const HloInstruction& consumer);
 }  // namespace gpu
 }  // namespace xla
 
