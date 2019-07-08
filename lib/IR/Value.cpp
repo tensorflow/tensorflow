@@ -29,21 +29,9 @@ Operation *Value::getDefiningOp() {
   return nullptr;
 }
 
-/// Return the function that this Value is defined in.
-Function Value::getFunction() {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    return cast<BlockArgument>(this)->getFunction();
-  case Value::Kind::OpResult:
-    return getDefiningOp()->getFunction();
-  }
-  llvm_unreachable("Unknown Value Kind");
-}
-
 Location Value::getLoc() {
-  if (auto *op = getDefiningOp()) {
+  if (auto *op = getDefiningOp())
     return op->getLoc();
-  }
   return UnknownLoc::get(getContext());
 }
 
@@ -77,21 +65,4 @@ void IRObjectWithUseList::dropAllUses() {
   while (!use_empty()) {
     use_begin()->drop();
   }
-}
-
-//===----------------------------------------------------------------------===//
-// BlockArgument implementation.
-//===----------------------------------------------------------------------===//
-
-/// Return the function that this argument is defined in.
-Function BlockArgument::getFunction() {
-  if (auto *owner = getOwner())
-    return owner->getFunction();
-  return nullptr;
-}
-
-/// Returns if the current argument is a function argument.
-bool BlockArgument::isFunctionArgument() {
-  auto containingFn = getFunction();
-  return containingFn && &containingFn.front() == getOwner();
 }

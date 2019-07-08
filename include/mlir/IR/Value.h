@@ -72,9 +72,6 @@ public:
     IRObjectWithUseList::replaceAllUsesWith(newValue);
   }
 
-  /// Return the function that this Value is defined in.
-  Function getFunction();
-
   /// If this value is the result of an operation, return the operation that
   /// defines it.
   Operation *getDefiningOp();
@@ -128,16 +125,10 @@ public:
     return const_cast<Value *>(value)->getKind() == Kind::BlockArgument;
   }
 
-  /// Return the function that this argument is defined in.
-  Function getFunction();
-
   Block *getOwner() { return owner; }
 
   /// Returns the number of this argument.
   unsigned getArgNumber();
-
-  /// Returns if the current argument is a function argument.
-  bool isFunctionArgument();
 
 private:
   friend class Block; // For access to private constructor.

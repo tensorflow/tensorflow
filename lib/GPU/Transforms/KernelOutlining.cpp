@@ -64,7 +64,7 @@ static Function outlineKernelFunc(gpu::LaunchOp launchOp) {
   FunctionType type =
       FunctionType::get(kernelOperandTypes, {}, launchOp.getContext());
   std::string kernelFuncName =
-      Twine(launchOp.getOperation()->getFunction().getName(), "_kernel").str();
+      Twine(launchOp.getParentOfType<FuncOp>().getName(), "_kernel").str();
   Function outlinedFunc = Function::create(loc, kernelFuncName, type);
   outlinedFunc.getBody().takeBody(launchOp.getBody());
   Builder builder(launchOp.getContext());

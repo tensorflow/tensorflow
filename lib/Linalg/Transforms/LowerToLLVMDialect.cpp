@@ -170,7 +170,7 @@ public:
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     // Insert the `malloc` declaration if it is not already present.
-    auto module = op->getFunction().getModule();
+    auto module = op->getParentOfType<ModuleOp>();
     Function mallocFunc = module.getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
@@ -231,7 +231,7 @@ public:
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
-    auto module = op->getFunction().getModule();
+    auto module = op->getParentOfType<ModuleOp>();
     Function freeFunc = module.getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(voidPtrTy, {});
@@ -602,7 +602,7 @@ static Function getLLVMLibraryCallDeclaration(Operation *op,
                                               PatternRewriter &rewriter) {
   assert(isa<LinalgOp>(op));
   auto fnName = LinalgOp::getLibraryCallName();
-  auto module = op->getFunction().getModule();
+  auto module = op->getParentOfType<ModuleOp>();
   if (auto f = module.getNamedFunction(fnName)) {
     return f;
   }

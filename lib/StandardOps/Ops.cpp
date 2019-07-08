@@ -431,8 +431,7 @@ static LogicalResult verify(CallOp op) {
   auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' function attribute");
-  auto fn = op.getOperation()->getFunction().getModule().getNamedFunction(
-      fnAttr.getValue());
+  auto fn = op.getParentOfType<ModuleOp>().getNamedFunction(fnAttr.getValue());
   if (!fn)
     return op.emitOpError() << "'" << fnAttr.getValue()
                             << "' does not reference a valid function";
@@ -1098,8 +1097,8 @@ static LogicalResult verify(ConstantOp &op) {
       return op.emitOpError("requires 'value' to be a function reference");
 
     // Try to find the referenced function.
-    auto fn = op.getOperation()->getFunction().getModule().getNamedFunction(
-        fnAttr.getValue());
+    auto fn =
+        op.getParentOfType<ModuleOp>().getNamedFunction(fnAttr.getValue());
     if (!fn)
       return op.emitOpError("reference to undefined function 'bar'");
 
@@ -2029,7 +2028,9 @@ static void print(OpAsmPrinter *p, ReturnOp op) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  auto function = op.getOperation()->getFunction();
+  // TODO(b/137008268): Return op should verify that it is nested directly
+  // within a function operation.
+  auto function = op.getParentOfType<FuncOp>();
 
   // The operand number and types must match the function signature.
   const auto &results = function.getType().getResults();

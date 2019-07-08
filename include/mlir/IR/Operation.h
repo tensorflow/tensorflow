@@ -125,10 +125,14 @@ public:
   /// or nullptr if this is a top-level operation.
   Operation *getParentOp();
 
-  /// Returns the function that this operation is part of.
-  /// The function is determined by traversing the chain of parent operations.
-  /// Returns nullptr if the operation is unlinked.
-  Function getFunction();
+  /// Return the closest surrounding parent operation that is of type 'OpTy'.
+  template <typename OpTy> OpTy getParentOfType() {
+    auto *op = this;
+    while ((op = op->getParentOp()))
+      if (auto parentOp = llvm::dyn_cast<OpTy>(op))
+        return parentOp;
+    return OpTy();
+  }
 
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);

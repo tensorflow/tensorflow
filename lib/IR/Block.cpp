@@ -50,13 +50,8 @@ Operation *Block::getContainingOp() {
   return getParent() ? getParent()->getContainingOp() : nullptr;
 }
 
-Function Block::getFunction() {
-  auto *parent = getParent();
-  return parent ? parent->getParentOfType<FuncOp>() : nullptr;
-}
-
-/// Insert this block (which must not already be in a function) right before
-/// the specified block.
+/// Insert this block (which must not already be in a region) right before the
+/// specified block.
 void Block::insertBefore(Block *block) {
   assert(!getParent() && "already inserted into a block!");
   assert(block->getParent() && "cannot insert before a block without a parent");
@@ -254,11 +249,11 @@ void Block::walk(Block::iterator begin, Block::iterator end,
 /// invalidated.
 Block *Block::splitBlock(iterator splitBefore) {
   // Start by creating a new basic block, and insert it immediate after this
-  // one in the containing function.
+  // one in the containing region.
   auto newBB = new Block();
   getParent()->getBlocks().insert(std::next(Region::iterator(this)), newBB);
 
-  // Move all of the operations from the split point to the end of the function
+  // Move all of the operations from the split point to the end of the region
   // into the new block.
   newBB->getOperations().splice(newBB->end(), getOperations(), splitBefore,
                                 end());

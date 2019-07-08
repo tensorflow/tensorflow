@@ -635,8 +635,8 @@ static bool emitSlice(MaterializationState *state,
     }
   }
 
-  LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
-  LLVM_DEBUG((*slice)[0]->getFunction().print(dbgs()));
+  LLVM_DEBUG(dbgs() << "\nFunction is now\n");
+  LLVM_DEBUG((*slice)[0]->getParentOfType<FuncOp>().print(dbgs()));
 
   // slice are topologically sorted, we can just erase them in reverse
   // order. Reverse iterator does not just work simply with an operator*

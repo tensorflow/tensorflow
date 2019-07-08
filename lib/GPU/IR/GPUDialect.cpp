@@ -426,7 +426,7 @@ LogicalResult LaunchFuncOp::verify() {
     return emitOpError("attribute 'kernel' must be a function");
   }
 
-  auto module = getOperation()->getFunction().getModule();
+  auto module = getParentOfType<ModuleOp>();
   Function kernelFunc = module.getNamedFunction(kernel());
   if (!kernelFunc)
     return emitError() << "kernel function '" << kernelAttr << "' is undefined";

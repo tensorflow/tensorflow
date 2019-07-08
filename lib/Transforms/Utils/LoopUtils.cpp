@@ -125,7 +125,7 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
   Operation *op = forOp.getOperation();
   if (!iv->use_empty()) {
     if (forOp.hasConstantLowerBound()) {
-      OpBuilder topBuilder(op->getFunction().getBody());
+      OpBuilder topBuilder(op->getParentOfType<FuncOp>().getBody());
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forOp.getLoc(), forOp.getConstantLowerBound());
       iv->replaceAllUsesWith(constOp);

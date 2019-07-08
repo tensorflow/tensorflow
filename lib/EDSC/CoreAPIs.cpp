@@ -98,6 +98,6 @@ mlir_attr_t makeBoolAttr(mlir_context_t context, bool value) {
 }
 
 unsigned getFunctionArity(mlir_func_t function) {
-  auto *f = reinterpret_cast<mlir::Function *>(function);
-  return f->getNumArguments();
+  auto f = mlir::Function::getFromOpaquePointer(function);
+  return f.getNumArguments();
 }

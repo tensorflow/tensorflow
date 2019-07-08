@@ -136,7 +136,7 @@ public:
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
-    Function printfFunc = getPrintf(op->getFunction().getModule());
+    Function printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
 
     auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();

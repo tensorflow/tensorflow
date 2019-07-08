@@ -1421,8 +1421,8 @@ void OperationPrinter::print(Block *block, bool printBlockArgs,
     os << ':';
 
     // Print out some context information about the predecessors of this block.
-    if (!block->getFunction()) {
-      os << "\t// block is not in a function!";
+    if (!block->getParent()) {
+      os << "\t// block is not in a region!";
     } else if (block->hasNoPredecessors()) {
       os << "\t// no predecessors";
     } else if (auto *pred = block->getSinglePredecessor()) {

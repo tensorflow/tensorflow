@@ -71,6 +71,11 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return state; }
 
+  /// Return the closes surrounding parent operation that is of type 'OpTy'.
+  template <typename OpTy> OpTy getParentOfType() {
+    return getOperation()->getParentOfType<OpTy>();
+  }
+
   /// Return the context this operation belongs to.
   MLIRContext *getContext() { return getOperation()->getContext(); }
 

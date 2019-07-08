@@ -307,7 +307,7 @@ AffineDimExpr AffineApplyNormalizer::renumberOneDim(Value *v) {
   if (inserted) {
     reorderedDims.push_back(v);
   }
-  return getAffineDimExpr(iterPos->second, v->getFunction().getContext())
+  return getAffineDimExpr(iterPos->second, v->getContext())
       .cast<AffineDimExpr>();
 }
 

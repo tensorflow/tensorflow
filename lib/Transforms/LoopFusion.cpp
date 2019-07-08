@@ -859,7 +859,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   // Create builder to insert alloc op just before 'forOp'.
   OpBuilder b(forInst);
   // Builder to create constants at the top level.
-  OpBuilder top(forInst->getFunction().getBody());
+  OpBuilder top(forInst->getParentOfType<FuncOp>().getBody());
   // Create new memref type based on slice bounds.
   auto *oldMemRef = cast<AffineStoreOp>(srcStoreOpInst).getMemRef();
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
@@ -1750,7 +1750,7 @@ public:
     };
 
     // Search for siblings which load the same memref function argument.
-    auto fn = dstNode->op->getFunction();
+    auto fn = dstNode->op->getParentOfType<FuncOp>();
     for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
       for (auto *user : fn.getArgument(i)->getUsers()) {
         if (auto loadOp = dyn_cast<AffineLoadOp>(user)) {

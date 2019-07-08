@@ -81,11 +81,12 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   std::unique_ptr<DominanceInfo> domInfo;
   std::unique_ptr<PostDominanceInfo> postDomInfo;
   if (domInstFilter)
-    domInfo = llvm::make_unique<DominanceInfo>(domInstFilter->getFunction());
+    domInfo = llvm::make_unique<DominanceInfo>(
+        domInstFilter->getParentOfType<FuncOp>());
 
   if (postDomInstFilter)
-    postDomInfo =
-        llvm::make_unique<PostDominanceInfo>(postDomInstFilter->getFunction());
+    postDomInfo = llvm::make_unique<PostDominanceInfo>(
+        postDomInstFilter->getParentOfType<FuncOp>());
 
   // The ops where memref replacement succeeds are replaced with new ones.
   SmallVector<Operation *, 8> opsToErase;
