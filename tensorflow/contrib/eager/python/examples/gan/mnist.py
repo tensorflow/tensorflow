@@ -220,7 +220,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
     with tf.contrib.summary.record_summaries_every_n_global_steps(
         log_interval, global_step=step_counter):
       current_batch_size = images.shape[0]
-      noise = tf.random_uniform(
+      noise = tf.random.uniform(
           shape=[current_batch_size, noise_dim],
           minval=-1.,
           maxval=1.,
