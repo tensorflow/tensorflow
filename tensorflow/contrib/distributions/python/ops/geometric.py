@@ -160,7 +160,7 @@ class Geometric(distribution.Distribution):
       # However, scipy takes the floor, so we do too.
       x = math_ops.floor(x)
     x *= array_ops.ones_like(self.probs)
-    return array_ops.where(
+    return array_ops.where_v2(
         x < 0.,
         array_ops.zeros_like(x),
         -math_ops.expm1((1. + x) * math_ops.log1p(-self.probs)))
@@ -173,7 +173,7 @@ class Geometric(distribution.Distribution):
       x = math_ops.floor(x)
     x *= array_ops.ones_like(self.probs)
     probs = self.probs * array_ops.ones_like(x)
-    safe_domain = array_ops.where(
+    safe_domain = array_ops.where_v2(
         math_ops.equal(x, 0.),
         array_ops.zeros_like(probs),
         probs)
