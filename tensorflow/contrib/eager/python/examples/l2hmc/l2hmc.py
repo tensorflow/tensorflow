@@ -77,7 +77,7 @@ class Dynamics(tf.keras.Model):
 
     # Decide direction uniformly
     batch_size = tf.shape(position)[0]
-    forward_mask = tf.cast(tf.random_uniform((batch_size,)) > .5, tf.float32)
+    forward_mask = tf.cast(tf.random.uniform((batch_size,)) > .5, tf.float32)
     backward_mask = 1. - forward_mask
 
     # Obtain proposed states
@@ -93,7 +93,7 @@ class Dynamics(tf.keras.Model):
 
     # Accept or reject step
     accept_mask = tf.cast(
-        accept_prob > tf.random_uniform(tf.shape(accept_prob)), tf.float32)
+        accept_prob > tf.random.uniform(tf.shape(accept_prob)), tf.float32)
     reject_mask = 1. - accept_mask
 
     # Samples after accept/reject step
@@ -108,7 +108,7 @@ class Dynamics(tf.keras.Model):
     lf_fn = self._forward_lf if forward else self._backward_lf
 
     # Resample momentum
-    momentum = tf.random_normal(tf.shape(position))
+    momentum = tf.random.normal(tf.shape(position))
     position_post, momentum_post = position, momentum
     sumlogdet = 0.
     # Apply augmented leapfrog steps
@@ -328,7 +328,7 @@ def get_rw_energy_fn():
 def compute_loss(dynamics, x, scale=.1, eps=1e-4):
   """Compute loss defined in equation (8)."""
 
-  z = tf.random_normal(tf.shape(x))  # Auxiliary variable
+  z = tf.random.normal(tf.shape(x))  # Auxiliary variable
   x_, _, x_accept_prob, x_out = dynamics.apply_transition(x)
   z_, _, z_accept_prob, _ = dynamics.apply_transition(z)
 
