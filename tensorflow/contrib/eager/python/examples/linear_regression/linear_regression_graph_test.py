@@ -30,8 +30,8 @@ class GraphLinearRegressionBenchmark(tf.test.Benchmark):
     num_batches = 200
     batch_size = 64
     dataset = linear_regression.synthetic_dataset_helper(
-        w=tf.random_uniform([3, 1]),
-        b=tf.random_uniform([1]),
+        w=tf.random.uniform([3, 1]),
+        b=tf.random.uniform([1]),
         num_features=3,
         noise_level=0.01,
         batch_size=batch_size,
