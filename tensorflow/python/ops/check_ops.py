@@ -522,7 +522,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
           # If shapes are different this information is more confusing
           # than useful.
           mask = math_ops.logical_not(eq)
-          indices = array_ops.where(mask)
+          indices = array_ops.where_v2(mask)
           indices_np = indices.numpy()
           x_vals = array_ops.boolean_mask(x, mask)
           y_vals = array_ops.boolean_mask(y, mask)
