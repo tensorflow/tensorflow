@@ -478,7 +478,7 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim + 10])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim+10])
     with self.assertRaises(ValueError):
       _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
     with self.assertRaises(ValueError):
