@@ -1796,7 +1796,7 @@ class AUC(Metric):
         dtp, math_ops.maximum(dp, 0), name='prec_slope')
     intercept = self.true_positives[1:] - math_ops.multiply(prec_slope, p[1:])
 
-    safe_p_ratio = array_ops.where(
+    safe_p_ratio = array_ops.where_v2(
         math_ops.logical_and(p[:self.num_thresholds - 1] > 0, p[1:] > 0),
         math_ops.div_no_nan(
             p[:self.num_thresholds - 1],
