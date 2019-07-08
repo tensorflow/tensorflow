@@ -1,8 +1,5 @@
 // RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
-// TODO(antiagainst): Remove the wrapping functions once MLIR is moved to
-// be generally region-based.
-
 //===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
@@ -59,133 +56,103 @@ func @value_result_type_mismatch() -> () {
 // spv.module
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: func @module_without_cap_ext
-func @module_without_cap_ext() -> () {
-  // CHECK: spv.module "Logical" "VulkanKHR"
-  spv.module "Logical" "VulkanKHR" { }
-  return
+// Module without capability and extension
+// CHECK: spv.module "Logical" "VulkanKHR"
+spv.module "Logical" "VulkanKHR" { }
+
+// Module with capability and extension
+// CHECK: attributes {capability = ["Shader"], extension = ["SPV_KHR_16bit_storage"]}
+spv.module "Logical" "VulkanKHR" { } attributes {
+  capability = ["Shader"],
+  extension = ["SPV_KHR_16bit_storage"]
 }
 
-// CHECK-LABEL: func @module_with_cap_ext
-func @module_with_cap_ext() -> () {
-  // CHECK: attributes {capability = ["Shader"], extension = ["SPV_KHR_16bit_storage"]}
-  spv.module "Logical" "VulkanKHR" { } attributes {
-    capability = ["Shader"],
-    extension = ["SPV_KHR_16bit_storage"]
-  }
-  return
+// Module with explict spv._module_end
+// CHECK: spv.module
+spv.module "Logical" "VulkanKHR" {
+  spv._module_end
 }
 
-// CHECK-LABEL: func @module_with_explict_module_end
-func @module_with_explict_module_end() -> () {
-  // CHECK: spv.module
-  spv.module "Logical" "VulkanKHR" {
-    spv._module_end
-  }
-  return
-}
-
-// CHECK-LABEL: func @module_with_func
-func @module_with_func() -> () {
-  // CHECK: spv.module
-  spv.module "Logical" "VulkanKHR" {
-    func @do_nothing() -> () {
-      spv.Return
-    }
-  }
-  return
-}
-
-// -----
-
-func @missing_addressing_model() -> () {
-  // expected-error@+1 {{custom op 'spv.module' expected addressing_model attribute specified as string}}
-  spv.module { }
-  return
-}
-
-// -----
-
-func @wrong_addressing_model() -> () {
-  // expected-error@+1 {{custom op 'spv.module' invalid addressing_model attribute specification: "Physical"}}
-  spv.module "Physical" { }
-  return
-}
-
-// -----
-
-func @missing_memory_model() -> () {
-  // expected-error@+1 {{custom op 'spv.module' expected memory_model attribute specified as string}}
-  spv.module "Logical" { }
-  return
-}
-
-// -----
-
-func @wrong_memory_model() -> () {
-  // expected-error@+1 {{custom op 'spv.module' invalid memory_model attribute specification: "Bla"}}
-  spv.module "Logical" "Bla" { }
-  return
-}
-
-// -----
-
-func @module_with_multiple_blocks() -> () {
-  // expected-error @+1 {{failed to verify constraint: region with 1 blocks}}
-  spv.module "Logical" "VulkanKHR" {
-  ^first:
-    spv.Return
-  ^second:
+// Module with function
+// CHECK: spv.module
+spv.module "Logical" "VulkanKHR" {
+  func @do_nothing() -> () {
     spv.Return
   }
-  return
 }
 
 // -----
 
-func @use_non_spv_op_inside_module() -> () {
-  spv.module "Logical" "VulkanKHR" {
-    // expected-error @+1 {{'spv.module' can only contain func and spv.* ops}}
+// Missing addressing model
+// expected-error@+1 {{custom op 'spv.module' expected addressing_model attribute specified as string}}
+spv.module { }
+
+// -----
+
+// Wrong addressing model
+// expected-error@+1 {{custom op 'spv.module' invalid addressing_model attribute specification: "Physical"}}
+spv.module "Physical" { }
+
+// -----
+
+// Missing memory model
+// expected-error@+1 {{custom op 'spv.module' expected memory_model attribute specified as string}}
+spv.module "Logical" { }
+
+// -----
+
+// Wrong memory model
+// expected-error@+1 {{custom op 'spv.module' invalid memory_model attribute specification: "Bla"}}
+spv.module "Logical" "Bla" { }
+
+// -----
+
+// Module_with_multiple_blocks
+// expected-error @+1 {{failed to verify constraint: region with 1 blocks}}
+spv.module "Logical" "VulkanKHR" {
+^first:
+  spv.Return
+^second:
+  spv.Return
+}
+
+// -----
+
+// Use non SPIR-V op inside.module
+spv.module "Logical" "VulkanKHR" {
+  // expected-error @+1 {{'spv.module' can only contain func and spv.* ops}}
+  "dialect.op"() : () -> ()
+}
+
+// -----
+
+// Use non SPIR-V op inside function
+spv.module "Logical" "VulkanKHR" {
+  func @do_nothing() -> () {
+    // expected-error @+1 {{functions in 'spv.module' can only contain spv.* ops}}
     "dialect.op"() : () -> ()
   }
-  return
 }
 
 // -----
 
-func @use_non_spv_op_inside_func() -> () {
-  spv.module "Logical" "VulkanKHR" {
-    func @do_nothing() -> () {
-      // expected-error @+1 {{functions in 'spv.module' can only contain spv.* ops}}
-      "dialect.op"() : () -> ()
-    }
-  }
-  return
+// Use external function
+spv.module "Logical" "VulkanKHR" {
+  // expected-error @+1 {{'spv.module' cannot contain external functions}}
+  func @extern() -> ()
 }
 
 // -----
 
-func @use_extern_func() -> () {
-  spv.module "Logical" "VulkanKHR" {
-    // expected-error @+1 {{'spv.module' cannot contain external functions}}
-    func @extern() -> ()
-  }
-  return
-}
-
-// -----
-
-func @module_with_nested_func() -> () {
-  spv.module "Logical" "VulkanKHR" {
-    func @outer_func() -> () {
-      // expected-error @+1 {{'spv.module' cannot contain nested functions}}
-      func @inner_func() -> () {
-        spv.Return
-      }
+// Module with nested function
+spv.module "Logical" "VulkanKHR" {
+  func @outer_func() -> () {
+    // expected-error @+1 {{'spv.module' cannot contain nested functions}}
+    func @inner_func() -> () {
       spv.Return
     }
+    spv.Return
   }
-  return
 }
 
 // -----

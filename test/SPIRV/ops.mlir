@@ -173,14 +173,12 @@ func @aligned_load_incorrect_attributes() -> () {
 
 // -----
 
-func @return_mismatch_func_signature() -> () {
-  spv.module "Logical" "VulkanKHR" {
-    func @work() -> (i32) {
-      // expected-error @+1 {{cannot be used in functions returning value}}
-      spv.Return
-    }
+// Return mismatches function signature
+spv.module "Logical" "VulkanKHR" {
+  func @work() -> (i32) {
+    // expected-error @+1 {{cannot be used in functions returning value}}
+    spv.Return
   }
-  return
 }
 
 // -----
