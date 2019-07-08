@@ -463,11 +463,6 @@ namespace tensorflow {
 class Tensor;
 }  // namespace tensorflow
 
-const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
-    TFE_TensorHandle* h, TF_Status* status);
-
-TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
-                                                     TF_Status* status);
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
                                       TF_Status* status);
 #endif
