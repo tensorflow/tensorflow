@@ -93,18 +93,6 @@ makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
   return res;
 }
 
-// E.g. for `A` in the expression:
-//     `A(i, k) * B(k, j) -> C(i, j)`
-// and for map:
-//     `(i, j, k) -> (i, k)`
-// and for `r` such that:
-//     `r == 1` (i.e. result `k`)
-// returns 2 (i.e. `k` on the map domain).
-static unsigned getPosInDomain(LinalgOp op, unsigned viewIndex, unsigned dim) {
-  auto map = loopToOperandRangesMaps(op)[viewIndex];
-  return map.getResult(dim).cast<AffineDimExpr>().getPosition();
-}
-
 namespace {
 // Helper visitor to determine whether an AffineExpr is tiled.
 // This is achieved by traversing every AffineDimExpr with position `pos` and
