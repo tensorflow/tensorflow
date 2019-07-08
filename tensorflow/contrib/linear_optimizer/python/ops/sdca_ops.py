@@ -462,9 +462,9 @@ class SdcaModel(object):
               (flat_ids - extras) // ids_per_partition)
 
           # Emulate a conditional using a boolean indicator tensor
-          new_ids = array_ops.where(p_assignments < extras,
-                                    flat_ids % (ids_per_partition + 1),
-                                    (flat_ids - extras) % ids_per_partition)
+          new_ids = array_ops.where_v2(p_assignments < extras,
+                                       flat_ids % (ids_per_partition + 1),
+                                       (flat_ids - extras) % ids_per_partition)
 
           # Cast partition assignments to int32 for use in dynamic_partition.
           # There really should not be more than 2^32 partitions.
