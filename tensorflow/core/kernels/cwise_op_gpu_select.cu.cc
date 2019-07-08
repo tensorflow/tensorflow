@@ -117,6 +117,7 @@ struct BatchSelectFunctor<GPUDevice, T> {
 
 SELECT_FUNCTOR(bool);
 SELECT_FUNCTOR(Eigen::half);
+SELECT_FUNCTOR(bfloat16);
 SELECT_FUNCTOR(float);
 SELECT_FUNCTOR(double);
 SELECT_FUNCTOR(int32);

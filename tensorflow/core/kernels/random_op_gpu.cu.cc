@@ -41,6 +41,8 @@ typedef Eigen::GpuDevice GPUDevice;
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct FillPhiloxRandom<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, bfloat16> >;
+template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
@@ -51,12 +53,17 @@ template struct FillPhiloxRandom<
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct FillPhiloxRandom<
+    GPUDevice, random::NormalDistribution<random::PhiloxRandom, bfloat16> >;
+template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::TruncatedNormalDistribution<
         random::SingleSampleAdapter<random::PhiloxRandom>, Eigen::half> >;
+template struct FillPhiloxRandom<
+    GPUDevice, random::TruncatedNormalDistribution<
+                   random::SingleSampleAdapter<random::PhiloxRandom>, bfloat16> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::TruncatedNormalDistribution<
                    random::SingleSampleAdapter<random::PhiloxRandom>, float> >;

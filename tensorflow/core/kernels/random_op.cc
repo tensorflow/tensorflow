@@ -426,6 +426,7 @@ TF_CALL_int64(REGISTER_INT);
                               .TypeConstraint<IntType>("Tout"),               \
                           RandomUniformIntOp<GPUDevice, IntType>);
 
+TF_CALL_bfloat16(REGISTER);
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
