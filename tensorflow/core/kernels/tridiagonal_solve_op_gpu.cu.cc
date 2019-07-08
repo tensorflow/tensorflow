@@ -232,15 +232,9 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
     bool* not_invertible_dev;
     cudaMalloc(&not_invertible_dev, sizeof(bool));
     TF_CHECK_OK(GpuLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
-<<<<<<< HEAD
-                                 cfg.block_count, cfg.thread_per_block, 0,
-                                 device.stream(), m, diagonals, rhs, k, output,
-                                 not_invertible_dev));
-=======
                                 cfg.block_count, cfg.thread_per_block, 0,
                                 device.stream(), m, diagonals, rhs, k, output,
                                 not_invertible_dev));
->>>>>>> upstream/master
     bool not_invertible_host;
     cudaMemcpy(&not_invertible_host, not_invertible_dev, sizeof(bool),
                cudaMemcpyDeviceToHost);

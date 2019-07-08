@@ -23,12 +23,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-<<<<<<< HEAD
 #endif
-=======
-#endif  // GOOGLE_CUDA
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #if TENSORFLOW_USE_ROCM
@@ -137,18 +132,6 @@ TensorShape PoolParameters::forward_output_shape() {
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-=======
-
-namespace {
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  se::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // namespace
->>>>>>> upstream/master
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -464,10 +447,6 @@ void DnnPoolingGradOp<T>::Compute(
                              output_backprop_data, &input_backprop_data)
           .ok();
 #endif 
-
-
-
-
   OP_REQUIRES(context, status,
               errors::Internal("dnn PoolBackward launch failed"));
 

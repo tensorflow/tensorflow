@@ -38,7 +38,7 @@ namespace functor {
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
       Gpu3DLaunchConfig config, Index indices_width, Index bound,              \
-      const T begin, const Index* indices, const T* input, T* out) {           \
+      const T begin, const Index *indices, const T *input, T *out) {           \
     GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {                \
       GPU_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {              \
         GPU_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {            \
@@ -61,7 +61,7 @@ namespace functor {
   template <typename T, typename Index>                                        \
   struct ReduceSliceFunctor##reduceop<GPUDevice, T, Index> {                   \
     virtual ~ReduceSliceFunctor##reduceop() {}                                 \
-    virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,          \
+    virtual void operator()(OpKernelContext *ctx, const GPUDevice &d,          \
                             Index indices_width,                               \
                             typename TTypes<Index, 1>::ConstTensor indices,    \
                             typename TTypes<T, 3>::ConstTensor data,           \
@@ -77,11 +77,7 @@ namespace functor {
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \
-<<<<<<< HEAD
-      TF_CHECK_OK(GpuLaunchKernel(                                            \
-=======
       TF_CHECK_OK(GpuLaunchKernel(                                             \
->>>>>>> upstream/master
           ReduceSliceDeviceKernel##reduceop<T, Index>, config.block_count,     \
           config.thread_per_block, 0, d.stream(), config, indices_width,       \
           bound, beginning<T>(), indices.data(), data.data(), output.data())); \

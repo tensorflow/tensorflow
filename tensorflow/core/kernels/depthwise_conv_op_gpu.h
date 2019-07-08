@@ -758,10 +758,6 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                               std::min(max_block_count, config.block_count),
                               config.thread_per_block, 0, device.stream(), args,
                               input, filter, output, num_outputs));
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
   return Status::OK();
 }
 

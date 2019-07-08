@@ -403,13 +403,8 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
   TF_CHECK_OK(GpuLaunchKernel(TopKKernel<T>, batch_size, num_shards,
-<<<<<<< HEAD
-                               shared_memory_size, stream, input, length, k,
-                               sorted, output, indices));
-=======
                               shared_memory_size, stream, input, length, k,
                               sorted, output, indices));
->>>>>>> upstream/master
   return cudaGetLastError();
 }
 
@@ -441,11 +436,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
                         typename TTypes<T, 2>::Tensor values,
                         TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-<<<<<<< HEAD
-  const cudaStream_t& cu_stream = GetGpuStream(ctx);
-=======
   const auto& cu_stream = GetGpuStream(ctx);
->>>>>>> upstream/master
   size_t temp_storage_bytes = -1;
 
   // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
@@ -559,11 +550,7 @@ struct TopKFunctor<GPUDevice, T> {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
                                     k, values, indices);
     } else {
-<<<<<<< HEAD
-      const cudaStream_t& cu_stream = GetGpuStream(context);
-=======
       const auto& cu_stream = GetGpuStream(context);
->>>>>>> upstream/master
       auto err = impl::LaunchTopKKernel(cu_stream, /* num_shards */ 0,
                                         input.data(), num_rows, num_cols, k,
                                         sorted, values.data(), indices.data());

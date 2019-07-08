@@ -195,11 +195,7 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
-<<<<<<< HEAD
       Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
-=======
-      Gpu2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
->>>>>>> upstream/master
       TF_CHECK_OK(GpuLaunchKernel(ComputeValueOfVKernel<Scalar>,
                                   cfg2D.block_count, cfg2D.thread_per_block, 0,
                                   d.stream(), cfg2D, m, full_matrices_ ? m : p,
@@ -208,13 +204,8 @@ class SvdOpGpu : public AsyncOpKernel {
       // 2. clamp V to -1 or +1
       GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
       TF_CHECK_OK(GpuLaunchKernel(ExtractSignOfVKernel<Scalar>,
-<<<<<<< HEAD
-                                   cfg1D.block_count, cfg1D.thread_per_block, 0,
-                                   d.stream(), cfg1D, outputV_ptr));
-=======
                                   cfg1D.block_count, cfg1D.thread_per_block, 0,
                                   d.stream(), cfg1D, outputV_ptr));
->>>>>>> upstream/master
     }
 
     if (compute_uv_) {

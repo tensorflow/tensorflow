@@ -111,18 +111,10 @@ __global__ void UnsortedSegmentCustomKernel(const int64 input_outer_dim_size,
                                             const int64 output_outer_dim_size,
                                             const Index* segment_ids,
                                             const T* input, T* output) {
-<<<<<<< HEAD
-  const Index input_total_size = input_outer_dim_size * inner_dim_size;
-  const Index output_total_size = output_outer_dim_size * inner_dim_size;
-  for (int input_index : GpuGridRangeX(input_total_size)) {
-    const Index input_segment_index = input_index / inner_dim_size;
-    const Index segment_offset = input_index % inner_dim_size;
-=======
   const int64 input_total_size = input_outer_dim_size * inner_dim_size;
   for (int64 input_index : GpuGridRangeX(input_total_size)) {
     const int64 input_segment_index = input_index / inner_dim_size;
     const int64 segment_offset = input_index % inner_dim_size;
->>>>>>> upstream/master
     const Index output_segment_index = segment_ids[input_segment_index];
     if (output_segment_index < 0 ||
         output_segment_index >= output_outer_dim_size) {
@@ -148,13 +140,8 @@ void SegmentSumFunctor<T, Index>::operator()(
   // Set 'output' to zeros.
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
   TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
-<<<<<<< HEAD
-                               config.thread_per_block, 0, d.stream(),
-                               output.size(), output.data()));
-=======
                               config.thread_per_block, 0, d.stream(),
                               output.size(), output.data()));
->>>>>>> upstream/master
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -214,19 +201,11 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64 output_outer_dim_size = output.dimension(0);
     config = GetGpuLaunchConfig(data_size, d);
 
-<<<<<<< HEAD
-    TF_CHECK_OK(
-        GpuLaunchKernel(UnsortedSegmentCustomKernel<T, Index, ReductionF>,
-                        config.block_count, config.thread_per_block, 0,
-                        d.stream(), input_outer_dim_size, input_inner_dim_size,
-                        num_segments, segment_ids.data(), data, output.data()));
-=======
     TF_CHECK_OK(GpuLaunchKernel(
         UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,
         config.thread_per_block, 0, d.stream(), input_outer_dim_size,
         input_inner_dim_size, output_outer_dim_size, segment_ids.data(),
         data.data(), output.data()));
->>>>>>> upstream/master
   }
 };
 
@@ -265,11 +244,7 @@ TF_CALL_int32(DEFINE_REAL_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
 TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
 
-<<<<<<< HEAD
-// ROCM TODO: support atomicAdd for complex numbers on ROCm
-=======
 // TODO(rocm): support atomicAdd for complex numbers on ROCm
->>>>>>> upstream/master
 #if GOOGLE_CUDA
 TF_CALL_complex64(DEFINE_SUM_GPU_SPECS);
 TF_CALL_complex128(DEFINE_SUM_GPU_SPECS);

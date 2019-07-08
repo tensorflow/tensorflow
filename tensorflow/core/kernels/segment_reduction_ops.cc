@@ -44,16 +44,13 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
+
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/rocm.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
-<<<<<<< HEAD
-#endif
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 namespace tensorflow {
 
@@ -608,11 +605,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
-<<<<<<< HEAD
-// ROCM TODO: support atomicAdd for complex numbers on ROCm
-=======
 // TODO(rocm): support atomicAdd for complex numbers on ROCm
->>>>>>> upstream/master
 #if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);

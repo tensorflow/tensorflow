@@ -3789,15 +3789,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-<<<<<<< HEAD
-    deps = MATH_DEPS + if_cuda_is_configured([
-=======
     deps = MATH_DEPS + if_cuda_or_rocm([
->>>>>>> upstream/master
         ":cuda_solvers",
-    ]) + if_rocm_is_configured([
-        ":cuda_solvers",
-    ])
+    ]),
 )
 
 tf_kernel_library(

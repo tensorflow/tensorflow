@@ -131,17 +131,13 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (c * height + h) * width + w;
-         maxval = __vmaxs4(maxval, bottom_data_n[idx]);
+        maxval = __vmaxs4(maxval, bottom_data_n[idx]);
       }
     }
     top_data[index] = maxval;
   }
 }
-<<<<<<< HEAD
-#endif // GOOGLE_CUDA
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNHWC(
@@ -219,11 +215,7 @@ __global__ void MaxPoolBackwardNoMaskNHWC(
     // uninitialized, if all the bottom_data are NaN.
     if (maxidx != -1) {
       GpuAtomicAdd(bottom_diff + n * height * width * channels + maxidx,
-<<<<<<< HEAD
-                    top_diff[index]);
-=======
                    top_diff[index]);
->>>>>>> upstream/master
     }
   }
 }
@@ -411,11 +403,7 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
       pad_t, pad_l, top_data));
   return d.ok();
 }
-<<<<<<< HEAD
-#endif // GOOGLE_CUDA
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 template <typename T>
 bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
