@@ -1218,7 +1218,7 @@ def internal_convert_to_tensor(value,
     return ret
   raise TypeError("%sCannot convert %r with type %s to Tensor: "
                   "no conversion function registered." %
-                  (_error_prefix(name), value, unwrapped_type))
+                  (_error_prefix(name), value, type(value)))
 
 
 def internal_convert_n_to_tensor(values,
