@@ -1560,7 +1560,7 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   """
   with variable_scope.variable_scope(scope, 'dense_to_sparse', [tensor]) as sc:
     tensor = ops.convert_to_tensor(tensor)
-    indices = array_ops.where(
+    indices = array_ops.where_v2(
         math_ops.not_equal(tensor, constant_op.constant(eos_token,
                                                         tensor.dtype)))
     values = array_ops.gather_nd(tensor, indices)
