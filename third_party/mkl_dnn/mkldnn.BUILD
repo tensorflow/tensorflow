@@ -35,7 +35,8 @@ template_rule(
 # set to "version_major.version_minor.version_patch". The git hash version can
 # be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
-# TODO(bhavanis): MKL-DNN version needs to be updated for MKL-DNN v1.x
+# TODO(bhavanis): MKL-DNN minor version needs to be updated for MKL-DNN v1.x.
+# The current version numbers will work only if MKL-DNN v0.18 is used.
 
 template_rule(
     name = "mkldnn_version_h",
@@ -68,9 +69,8 @@ cc_library(
     ]) + if_mkl_v1_open_source_only([
         "src/cpu/jit_utils/jit_utils.cpp",
         "src/cpu/jit_utils/jit_utils.hpp",
-    ]) + [":mkldnn_version_h"] + if_mkl_v1_open_source_only([
         ":mkldnn_config_h",
-    ]),
+    ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",
