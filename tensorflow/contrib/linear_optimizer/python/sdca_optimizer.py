@@ -122,7 +122,7 @@ class SDCAOptimizer(object):
     def _dense_tensor_to_sparse_feature_column(dense_tensor):
       """Returns SparseFeatureColumn for the input dense_tensor."""
       ignore_value = 0.0
-      sparse_indices = array_ops.where(
+      sparse_indices = array_ops.where_v2(
           math_ops.not_equal(dense_tensor,
                              math_ops.cast(ignore_value, dense_tensor.dtype)))
       sparse_values = array_ops.gather_nd(dense_tensor, sparse_indices)
