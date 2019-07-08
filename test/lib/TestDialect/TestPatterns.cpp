@@ -148,7 +148,8 @@ struct TestTypeConverter : public TypeConverter {
   /// Override the hook to materialize a conversion. This is necessary because
   /// we generate 1->N type mappings.
   Operation *materializeConversion(PatternRewriter &rewriter, Type resultType,
-                                   ArrayRef<Value *> inputs, Location loc) {
+                                   ArrayRef<Value *> inputs,
+                                   Location loc) override {
     return rewriter.create<TestCastOp>(loc, resultType, inputs);
   }
 };
