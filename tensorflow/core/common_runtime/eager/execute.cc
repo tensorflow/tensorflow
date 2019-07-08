@@ -1197,9 +1197,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
   } else {
     tensorflow::Tensor tensor;
     TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, dstd, &tensor));
-    const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
-    return TensorHandle::CreateLocalHandle(tensor, dst_cpu ? nullptr : dstd,
-                                           ctx, result);
+    return TensorHandle::CreateLocalHandle(tensor, dstd, ctx, result);
     return Status::OK();
   }
 }
