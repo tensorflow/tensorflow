@@ -500,3 +500,16 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+tf_cc_test(
+    name = "toco_cmdline_flags_test",
+    srcs = [
+        "toco_cmdline_flags_test.cc",
+    ],
+    deps = [
+        ":toco_cmdline_flags",
+        ":toco_flags_proto_cc",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
