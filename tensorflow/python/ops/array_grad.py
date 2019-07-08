@@ -196,7 +196,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
         end = start + size_concat_dim
         # Compute the 1-D Tensor of indices relevant for this input.
         indices_to_select = array_ops.squeeze(
-            array_ops.where(
+            array_ops.where_v2(
                 math_ops.logical_and(grad.indices >= start,
                                      grad.indices < end)),
             axis=[1])
