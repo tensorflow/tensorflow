@@ -1541,7 +1541,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       nondefault_index = starts + columns
       has_value = nondefault_index < limits
       default_index = array_ops.fill(array_ops.stack([nrows, ncols]), nvals)
-      indices = array_ops.where(has_value, nondefault_index, default_index)
+      indices = array_ops.where_v2(has_value, nondefault_index, default_index)
 
       # Gather the results into a `Tensor`.
       return array_ops.gather(values_and_default, indices)
@@ -2163,7 +2163,7 @@ def _assert_sparse_indices_are_ragged_right(indices):
   #   * For indices that start a new row: index_suffix[i] must be zero.
   #   * For indices that continue a row: index_suffix[i] must be equal to
   #     index_suffix[i-1]+1.
-  index_ok = array_ops.where(
+  index_ok = array_ops.where_v2(
       index_prefix_changed, math_ops.equal(index_suffix[1:], 0),
       math_ops.equal(index_suffix[1:], index_suffix[:-1] + 1))
 
