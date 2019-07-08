@@ -25,6 +25,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/SPIRV/Passes.h"
 #include "mlir/SPIRV/SPIRVOps.h"
+#include "mlir/StandardOps/Ops.h"
 
 namespace mlir {
 #include "StdOpsToSPIRVConversion.cpp.inc"
