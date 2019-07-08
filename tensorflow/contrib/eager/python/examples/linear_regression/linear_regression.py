@@ -110,8 +110,8 @@ def synthetic_dataset_helper(w, b, num_features, noise_level, batch_size,
   # - Generate x's as vectors with shape [batch_size N]
   # - y = tf.matmul(x, W) + b + noise
   def batch(_):
-    x = tf.random_normal([batch_size, num_features])
-    y = tf.matmul(x, w) + b + noise_level * tf.random_normal([])
+    x = tf.random.normal([batch_size, num_features])
+    y = tf.matmul(x, w) + b + noise_level * tf.random.normal([])
     return x, y
 
   with tf.device("/device:CPU:0"):
