@@ -1439,6 +1439,13 @@ class PoolingTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
+    # The functionality associated with TF_ENABLE_NANPROP is currently
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+    if test.is_built_with_rocm():
+      return
+
     # Test the GPU implementation that uses cudnn for now.
     saved_nanprop = os.environ.get("TF_ENABLE_MAXPOOL_NANPROP")
     # Do not propagate the diff in cases of NaNs
@@ -1517,6 +1524,13 @@ class PoolingTest(test.TestCase):
           v2=v2)
 
     if not test.is_gpu_available():
+      return
+
+    # The functionality associated with TF_ENABLE_NANPROP is currently
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+    if test.is_built_with_rocm():
       return
 
     # Test the GPU implementation that uses cudnn for now.
