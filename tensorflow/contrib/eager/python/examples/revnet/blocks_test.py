@@ -56,7 +56,7 @@ def _validate_block_call_channels_last(block_factory, test):
   with tf.device("/cpu:0"):  # NHWC format
     input_shape = (8, 8, 128)
     data_shape = (16,) + input_shape
-    x = tf.random_normal(shape=data_shape)
+    x = tf.random.normal(shape=data_shape)
 
     # Stride 1
     block = block_factory(
@@ -97,7 +97,7 @@ def _validate_block_call_channels_first(block_factory, test):
   with tf.device("/gpu:0"):  # Default NCHW format
     input_shape = (128, 8, 8)
     data_shape = (16,) + input_shape
-    x = tf.random_normal(shape=data_shape)
+    x = tf.random.normal(shape=data_shape)
 
     # Stride of 1
     block = block_factory(filters=128, strides=(1, 1), input_shape=input_shape)
@@ -131,8 +131,8 @@ class RevBlockTest(tf.test.TestCase):
       # Stride 1
       input_shape = (128, 8, 8)
       data_shape = (16,) + input_shape
-      x = tf.random_normal(shape=data_shape, dtype=tf.float64)
-      dy = tf.random_normal(shape=data_shape, dtype=tf.float64)
+      x = tf.random.normal(shape=data_shape, dtype=tf.float64)
+      dy = tf.random.normal(shape=data_shape, dtype=tf.float64)
       dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       block = blocks.RevBlock(
           n_res=3,
@@ -160,8 +160,8 @@ class RevBlockTest(tf.test.TestCase):
       self._check_grad_angle(dw_true, dw)
 
       # Stride 2
-      x = tf.random_normal(shape=data_shape, dtype=tf.float64)
-      dy = tf.random_normal(shape=(16, 128, 4, 4), dtype=tf.float64)
+      x = tf.random.normal(shape=data_shape, dtype=tf.float64)
+      dy = tf.random.normal(shape=(16, 128, 4, 4), dtype=tf.float64)
       dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       block = blocks.RevBlock(
           n_res=3,
@@ -194,8 +194,8 @@ class RevBlockTest(tf.test.TestCase):
 
     input_shape = (128, 8, 8)
     data_shape = (16,) + input_shape
-    x = tf.random_normal(shape=data_shape, dtype=tf.float64)
-    dy = tf.random_normal(shape=data_shape, dtype=tf.float64)
+    x = tf.random.normal(shape=data_shape, dtype=tf.float64)
+    dy = tf.random.normal(shape=data_shape, dtype=tf.float64)
     dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
     block = blocks.RevBlock(
         n_res=3,
@@ -234,8 +234,8 @@ class _ResidualTest(tf.test.TestCase):
       input_shape = (128, 8, 8)
       data_shape = (16,) + input_shape
       # Use double precision for testing
-      x_true = tf.random_normal(shape=data_shape, dtype=tf.float64)
-      dy = tf.random_normal(shape=data_shape, dtype=tf.float64)
+      x_true = tf.random.normal(shape=data_shape, dtype=tf.float64)
+      dy = tf.random.normal(shape=data_shape, dtype=tf.float64)
       dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       residual = blocks._Residual(
           filters=128,
