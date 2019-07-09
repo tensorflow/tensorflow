@@ -243,7 +243,7 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &supported_devs));
   if (supported_devs.empty()) {
-    return errors::Internal("Could not find valid device for node.\nNode:",
+    return errors::NotFound("Could not find valid device for node.\nNode:",
                             FormatNodeDefForError(ndef),
                             "\nAll kernels registered for op ", ndef.op(),
                             " :\n", KernelsRegisteredForOp(ndef.op()));
