@@ -70,11 +70,13 @@ class GpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  // Returns the compiled PTX for the computation.
+  // Returns the compiled code for the computation. The compiled code is PTX in
+  // Cuda and unused empty string in ROCm.
   const string& text() const { return text_; }
 
-  // Returns the binary (compiled PTX) stored in this GpuExecutable.  May be
-  // empty, in which case compilation is left up to the GPU driver.
+  // Returns the binary stored in this GpuExecutable. The binary is cubin in
+  // Cuda, and HSA code object in ROCm. It may be empty, in which case
+  // compilation is left up to the GPU driver.
   const std::vector<uint8>& binary() const { return binary_; }
 
   // ExecuteOnStream will fail if the compute capability of the stream doesn't
