@@ -1,20 +1,21 @@
 // RUN: mlir-opt %s | FileCheck %s
 
-// CHECK-LABEL: func @module_parsing
-func @module_parsing() {
-  // CHECK-NEXT: module {
-  module {
-  }
+// CHECK: module {
+module {
+}
 
-  // CHECK: module {
-  // CHECK-NEXT: }
-  module {
-    "module_terminator"() : () -> ()
-  }
+// CHECK: module {
+// CHECK-NEXT: }
+module {
+  "module_terminator"() : () -> ()
+}
 
-  // CHECK: module attributes {foo.attr = true} {
-  module attributes {foo.attr = true} {
-  }
+// CHECK: module attributes {foo.attr = true} {
+module attributes {foo.attr = true} {
+}
 
-  return
+// CHECK: module {
+module {
+  // CHECK-NEXT: "foo.result_op"() : () -> i32
+  %result = "foo.result_op"() : () -> i32
 }

@@ -96,15 +96,6 @@ LogicalResult ModuleOp::verify() {
            << ModuleTerminatorOp::getOperationName() << "'";
   }
 
-  for (auto &op : *body) {
-    if (op.getNumResults() != 0) {
-      return emitOpError()
-          .append("may not contain operations that produce results")
-          .attachNote(op.getLoc())
-          .append("see offending operation defined here");
-    }
-  }
-
   return success();
 }
 

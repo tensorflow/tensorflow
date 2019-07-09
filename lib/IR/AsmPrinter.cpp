@@ -1620,8 +1620,10 @@ void ModulePrinter::print(ModuleOp module) {
   // as part of the custom syntax for modules.
   OperationPrinter opPrinter(module, *this);
   auto *moduleBody = module.getBody();
-  for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end()))
+  for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end())) {
     opPrinter.print(&op);
+    os << '\n';
+  }
 }
 
 //===----------------------------------------------------------------------===//
