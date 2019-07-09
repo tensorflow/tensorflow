@@ -815,8 +815,6 @@ static void tile(MutableArrayRef<ForOp> forOps, ArrayRef<Value *> sizes) {
         builder.create<ForOp>(forOps[i].getLoc(), forOps[i].lowerBound(),
                               forOps[i].upperBound(), newSteps[i]);
 
-    builder.setInsertionPointToStart(outerForOp.body());
-
     // FIXME: builder should do this for us.
     ensureStdTerminator(outerForOp.getOperation()->getRegion(0), builder,
                         forOps[i].getLoc());

@@ -7,6 +7,7 @@ add_llvm_library(MLIRTransforms
   DmaGeneration.cpp
   LoopFusion.cpp
   LoopInvariantCodeMotion.cpp
+  LoopParametricTiling.cpp
   LoopTiling.cpp
   LoopUnrollAndJam.cpp
   LoopUnroll.cpp

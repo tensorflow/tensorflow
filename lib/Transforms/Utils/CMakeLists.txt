@@ -15,4 +15,5 @@ target_link_libraries(MLIRTransformUtils
   MLIRAffineOps
   MLIRAnalysis
   MLIRPass
+  MLIRStandardOps
   )
