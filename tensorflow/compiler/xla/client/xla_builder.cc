@@ -1734,10 +1734,12 @@ XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                           const XlaOp& updates,
                           const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
-                          bool indices_are_sorted) {
+                          bool indices_are_sorted, bool use_atomic) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_indices_are_sorted(indices_are_sorted);
+
+    instr.set_use_atomic(use_atomic);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
@@ -3378,10 +3380,10 @@ XlaOp Gather(const XlaOp input, const XlaOp start_indices,
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
               const XlaOp updates, const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
-              bool indices_are_sorted) {
+              bool indices_are_sorted, bool use_atomic) {
   return input.builder()->Scatter(input, scatter_indices, updates,
                                   update_computation, dimension_numbers,
-                                  indices_are_sorted);
+                                  indices_are_sorted, use_atomic);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {

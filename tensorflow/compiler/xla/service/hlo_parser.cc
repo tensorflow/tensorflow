@@ -1726,6 +1726,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> indices_are_sorted = false;
       attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
                                      &indices_are_sorted};
+      optional<bool> use_atomic = true;
+      attrs["use_atomic"] = {/*required=*/false, AttrTy::kBool,
+                             &use_atomic};
 
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
@@ -1742,7 +1745,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateScatter(
           shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
           /*updates=*/operands[2], *update_computation, dim_numbers,
-          indices_are_sorted.value()));
+          indices_are_sorted.value(), use_atomic.value()));
       break;
     }
     case HloOpcode::kDomain: {

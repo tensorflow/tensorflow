@@ -801,7 +801,7 @@ class HloInstruction {
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
-      bool indices_are_sorted);
+      bool indices_are_sorted, bool use_atomic);
 
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
@@ -1626,6 +1626,11 @@ class HloInstruction {
 
   // Sets the window data in a windowed operation such as convolution.
   virtual void set_window(const Window& window) {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Returns the use_atomic field.
+  virtual bool use_atomic() const {
     LOG(FATAL) << "Unimplemented method.";
   }
 

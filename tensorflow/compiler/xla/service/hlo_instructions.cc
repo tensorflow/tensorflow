@@ -2493,9 +2493,10 @@ HloScatterInstruction::HloScatterInstruction(
     const Shape& shape, HloInstruction* operand,
     HloInstruction* scatter_indices, HloInstruction* updates,
     HloComputation* update_computation,
-    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted)
+    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
+    bool use_atomic)
     : HloInstruction(HloOpcode::kScatter, shape),
-      indices_are_sorted_(indices_are_sorted) {
+      indices_are_sorted_(indices_are_sorted), use_atomic_(use_atomic) {
   AppendOperand(operand);
   AppendOperand(scatter_indices);
   AppendOperand(updates);
@@ -2550,6 +2551,7 @@ HloInstructionProto HloScatterInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   *proto.mutable_scatter_dimension_numbers() = scatter_dimension_numbers();
   proto.set_indices_are_sorted(indices_are_sorted());
+  proto.set_use_atomic(use_atomic());
   return proto;
 }
 
@@ -2559,6 +2561,9 @@ std::vector<string> HloScatterInstruction::ExtraAttributesToStringImpl(
       ScatterDimensionNumbersToString(scatter_dimension_numbers())};
   if (indices_are_sorted()) {
     attrs.push_back("indices_are_sorted=true");
+  }
+  if (!use_atomic()) {
+    attrs.push_back("use_atomic=false");
   }
   return attrs;
 }
@@ -2572,7 +2577,8 @@ bool HloScatterInstruction::IdenticalSlowPath(
              scatter_dimension_numbers(),
              casted_other.scatter_dimension_numbers()) &&
          eq_computations(to_apply(), casted_other.to_apply()) &&
-         indices_are_sorted() == casted_other.indices_are_sorted();
+         indices_are_sorted() == casted_other.indices_are_sorted() &&
+         use_atomic() == casted_other.use_atomic();
 }
 
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
@@ -2581,7 +2587,7 @@ std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
       shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
-      scatter_dimension_numbers(), indices_are_sorted());
+      scatter_dimension_numbers(), indices_are_sorted(), use_atomic());
 }
 
 HloIotaInstruction::HloIotaInstruction(const Shape& shape, int64 iota_dimension)

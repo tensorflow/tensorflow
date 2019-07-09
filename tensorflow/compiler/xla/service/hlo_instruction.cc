@@ -565,7 +565,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               proto.scatter_dimension_numbers());
       instruction = CreateScatter(shape, operands(0), operands(1), operands(2),
                                   computations(0), *scatter_dimension_numbers,
-                                  proto.indices_are_sorted());
+                                  proto.indices_are_sorted(), proto.use_atomic());
       break;
     }
     case HloOpcode::kIota:
@@ -1393,10 +1393,10 @@ bool HloInstruction::HasSideEffect() const {
     HloInstruction* scatter_indices, HloInstruction* updates,
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers,
-    bool indices_are_sorted) {
+    bool indices_are_sorted, bool use_atomic) {
   return absl::make_unique<HloScatterInstruction>(
       shape, operand, scatter_indices, updates, update_computation,
-      scatter_dim_numbers, indices_are_sorted);
+      scatter_dim_numbers, indices_are_sorted, use_atomic);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(

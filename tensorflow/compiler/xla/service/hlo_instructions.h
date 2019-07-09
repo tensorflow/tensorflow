@@ -1453,7 +1453,7 @@ class HloScatterInstruction : public HloInstruction {
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
-      bool indices_are_sorted);
+      bool indices_are_sorted, bool use_atomic);
   const ScatterDimensionNumbers& scatter_dimension_numbers() const {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
@@ -1462,6 +1462,7 @@ class HloScatterInstruction : public HloInstruction {
   void set_indices_are_sorted(bool indices_are_sorted) {
     indices_are_sorted_ = indices_are_sorted;
   }
+  bool use_atomic() const override { return use_atomic_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1489,6 +1490,7 @@ class HloScatterInstruction : public HloInstruction {
 
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
   bool indices_are_sorted_;
+  bool use_atomic_;
 };
 
 class HloIotaInstruction : public HloInstruction {
