@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -63,6 +64,13 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+namespace eager {
+// We need this forward declaration because we have circular dependency:
+// Context -> RemoteMgr -> TensorHandle -> Context.
+// TODO(fishx): Remove this once we remove Context dependency in TensorHandle.
+class RemoteMgr;
+}  // namespace eager
 
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
@@ -280,7 +288,9 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<DeviceMgr> remote_device_manager,
       const std::vector<string>& remote_contexts, uint64 context_id,
       Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      DistributedFunctionLibraryRuntime* cluster_flr,
+      std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+          remote_mgr);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
@@ -288,20 +298,25 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const DeviceMgr* remote_device_mgr,
       const std::vector<string>& remote_contexts, uint64 context_id,
-      std::function<Rendezvous*(const int64)> rendezvous_creator);
+      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+          remote_mgr);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
+  // TODO(fishx): Remove the custom deleter once we remove forward declaration.
+  const std::unique_ptr<eager::RemoteMgr,
+                        std::function<void(eager::RemoteMgr*)>>&
+  RemoteMgr() {
+    return remote_mgr_;
+  }
+
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
-
-  // Helper function to create monotonically increasing ids unique to this
-  // context.
-  uint64 NextId();
 #endif  // IS_MOBILE_PLATFORM
 
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
@@ -432,8 +447,8 @@ class EagerContext : public core::RefCounted {
   condition_variable keep_alive_thread_cv_;
   bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
 
-  mutex next_id_mutex_;
-  uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
+  std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+      remote_mgr_;
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -710,7 +711,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   eager::SendTensorResponse response;
 
   request.set_context_id(context_id);
-  request.set_op_id(ctx->NextId());
+  request.set_op_id(ctx->RemoteMgr()->NextOpId());
   request.set_device_name(recv_device->name());
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
@@ -749,19 +750,6 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   return status;
 }
 
-Status AddRemoteInput(eager::Operation* remote_op, TensorHandle* input,
-                      Device* input_device) {
-  tensorflow::int64 op_id;
-  int32 output_num;
-  TF_RETURN_IF_ERROR(input->RemoteAddress(input_device, &op_id, &output_num));
-
-  auto* remote_op_input = remote_op->add_inputs();
-  remote_op_input->set_op_id(op_id);
-  remote_op_input->set_output_num(output_num);
-
-  return Status::OK();
-}
-
 Status EnqueueAndWait(eager::EagerClient* eager_client,
                       const std::unique_ptr<eager::EnqueueRequest>& request,
                       eager::EnqueueResponse* response) {
@@ -780,7 +768,7 @@ Status EnqueueAndWait(eager::EagerClient* eager_client,
 void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
 
-  remote_op->set_id(ctx->NextId());
+  remote_op->set_id(ctx->RemoteMgr()->NextOpId());
   remote_op->set_name(op->Name());
 
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
@@ -841,7 +829,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         handle->Unref();
       }
 
-      TF_RETURN_IF_ERROR(AddRemoteInput(remote_op, input, input_device));
+      TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
+          input, remote_op->add_inputs(), input_device));
     }
   }
 
@@ -1275,7 +1264,8 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
     request->set_context_id(context_id);
 
     auto* remote_op = request->add_queue()->mutable_operation();
-    TF_RETURN_IF_ERROR(AddRemoteInput(remote_op, h, h->device()));
+    TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
+        h, remote_op->add_inputs(), h->device()));
 
     PrepareRemoteOp(remote_op, &op);
 

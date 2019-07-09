@@ -62,6 +62,7 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        ":remote_mgr",
         ":remote_tensor_handle",
         "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
@@ -92,6 +93,7 @@ tf_cc_test(
     srcs = ["eager_service_impl_test.cc"],
     deps = [
         ":eager_service_impl",
+        ":remote_mgr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:eager_service_proto_cc",
@@ -106,6 +108,24 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+    ],
+)
+
+cc_library(
+    name = "remote_mgr",
+    srcs = [
+        "remote_mgr.cc",
+    ],
+    hdrs = [
+        "remote_mgr.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_tensor_handle",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 

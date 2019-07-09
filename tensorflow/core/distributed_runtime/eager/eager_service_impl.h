@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 
-#include <unordered_map>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -112,55 +111,11 @@ class EagerServiceImpl {
       RecordAccess();
     }
     ~ServerContext() {
-      for (const auto& entry : tensors_) {
-        entry.second->Unref();
-      }
 
       ctx_->Unref();
     }
 
     tensorflow::EagerContext* Context() const { return ctx_; }
-
-    void AddOperationOutputs(
-        const gtl::ArraySlice<tensorflow::TensorHandle*>& handles,
-        int64 operation_id) {
-      mutex_lock l(tensors_mu_);
-      for (int i = 0; i < handles.size(); i++) {
-        // TODO(nareshmodi): Correctly handle operation_id not being unique.
-        tensors_.emplace(RemoteTensorHandleInternal(operation_id, i),
-                         handles[i]);
-      }
-    }
-
-    Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
-                           tensorflow::TensorHandle** handle) {
-      mutex_lock l(tensors_mu_);
-      auto iter = tensors_.find(remote_handle);
-      if (iter == tensors_.end()) {
-        return errors::InvalidArgument(
-            "Unable to find the relevant tensor remote_handle: Op ID: ",
-            remote_handle.op_id, ", Output num: ", remote_handle.output_num);
-      }
-
-      *handle = iter->second;
-
-      return Status::OK();
-    }
-
-    Status DeleteTensorHandle(const RemoteTensorHandleInternal& remote_handle) {
-      mutex_lock l(tensors_mu_);
-      auto iter = tensors_.find(remote_handle);
-      if (iter == tensors_.end()) {
-        return errors::InvalidArgument(
-            "Unable to find the relevant tensor remote_handle: Op ID: ",
-            remote_handle.op_id, ", Output num: ", remote_handle.output_num);
-      }
-
-      iter->second->Unref();
-      tensors_.erase(iter);
-
-      return Status::OK();
-    }
 
     void RecordAccess() {
       mutex_lock l(last_accessed_mu_);
@@ -175,17 +130,8 @@ class EagerServiceImpl {
     }
 
    private:
-    using RemoteTensorHandleMap =
-        gtl::FlatMap<RemoteTensorHandleInternal, tensorflow::TensorHandle*,
-                     RemoteTensorHandleInternalHash,
-                     RemoteTensorHandleInternalEquals>;
-
     // The context for this execution.
     tensorflow::EagerContext* ctx_;
-
-    // The state related to the context for this execution.
-    mutex tensors_mu_;
-    RemoteTensorHandleMap tensors_ GUARDED_BY(tensors_mu_);
 
     const WorkerEnv* const env_;  // Not owned.
 

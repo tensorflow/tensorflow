@@ -641,7 +641,9 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-    DistributedFunctionLibraryRuntime* cluster_flr) {
+    DistributedFunctionLibraryRuntime* cluster_flr,
+    std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+        remote_mgr) {
   mutex_lock l(remote_state_mu_);
 
   if (!remote_contexts_.empty()) {
@@ -673,6 +675,7 @@ Status EagerContext::InitializeRemoteMaster(
   }
 
   server_ = std::move(server);
+  remote_mgr_ = std::move(remote_mgr);
   worker_env_ = worker_env;
   worker_session_ = worker_session;
   remote_eager_workers_ = std::move(remote_eager_workers);
@@ -749,7 +752,9 @@ Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const DeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    std::function<Rendezvous*(const int64)> rendezvous_creator) {
+    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+        remote_mgr) {
   mutex_lock l(remote_state_mu_);
 
   if (remote_device_manager_ != nullptr || server_ != nullptr ||
@@ -764,6 +769,7 @@ Status EagerContext::InitializeRemoteWorker(
 
   rendezvous_creator_ = std::move(rendezvous_creator);
   remote_eager_workers_ = std::move(remote_eager_workers);
+  remote_mgr_ = std::move(remote_mgr);
 
   remote_unowned_device_manager_ = remote_device_mgr;
   InitDeviceMapAndAsync();
@@ -772,11 +778,6 @@ Status EagerContext::InitializeRemoteWorker(
   executor_.ClearError();
 
   return Status::OK();
-}
-
-tensorflow::uint64 EagerContext::NextId() {
-  tensorflow::mutex_lock l(next_id_mutex_);
-  return next_id_++;
 }
 #endif  // !IS_MOBILE_PLATFORM
 
