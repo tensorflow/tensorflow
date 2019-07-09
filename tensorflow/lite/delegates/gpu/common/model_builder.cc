@@ -816,6 +816,24 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
   }
 };
 
+class HardSwishOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration*) final {
+    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+                              /*outputs=*/1);
+  }
+
+  Status Parse(const TfLiteNode*, const TfLiteRegistration*,
+               GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::HARD_SWISH);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    return reader->AddOutputs(node);
+  }
+};
+
 class ReshapeOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2003,6 +2021,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return make_unique<ElementwiseOperationParser>(OperationType::DIV);
     case kTfLiteBuiltinFullyConnected:
       return make_unique<FullyConnectedOperationParser>();
+    case kTfLiteBuiltinHardSwish:
+      return make_unique<HardSwishOperationParser>();
     case kTfLiteBuiltinLogistic:
       return make_unique<ElementwiseOperationParser>(OperationType::SIGMOID);
     case kTfLiteBuiltinLog:
