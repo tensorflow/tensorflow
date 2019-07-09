@@ -1,3 +1,137 @@
+# Release 1.14.0
+
+## Major Features and Improvements
+
+* This is the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
+* Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
+
+## Behavioral changes
+
+* Set default loss reduction as `AUTO` for improving reliability of loss scaling with distribution strategy and custom training loops. `AUTO` indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When used in distribution strategy scope, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be 'None' or 'SUM'. Using other values will raise an error.
+* Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
+* Disable `run_eagerly` and distribution strategy if there are symbolic tensors added to the model using `add_metric` or `add_loss`.
+* tf.linspace(start, stop, num) now always uses "stop" as last value (for num > 1)
+* `ResourceVariable` and `Variable` no longer accepts `constraint` in the constructor, nor expose it as a @property.
+* The behavior of tf.gather is now correct when axis=None and batch_dims<0.
+* Only create a GCS directory object if the object does not already exist.
+* In `map_vectorization` optimization, reduce the degree of parallelism in the vectorized map node.
+* Bug fix: loss and gradients should now more reliably be correctly scaled w.r.t. the global batch size when using a tf.distribute.Strategy.
+* Updating cosine similarity loss - removed the negate sign from cosine similarity.
+* DType is no longer convertible to an int. Use dtype.as_datatype_enum instead of int(dtype) to get the same result.
+* Changed default for gradient accumulation for TPU embeddings to true.
+* Callbacks now log values in eager mode when a deferred build model is used.
+* Transitive dependencies on :pooling_ops were removed.  Some users may need to add explicit dependencies on :pooling_ops if they reference the operators from that library.
+
+## Bug Fixes and Other Changes
+* Documentation
+* Deprecations and Symbol renames.
+  * Remove unused StringViewVariantWrapper
+  * Delete unused Fingerprint64Map op registration
+  * SignatureDef util functions have been deprecated.
+  * Renamed tf.image functions to remove duplicate "image" where it is redundant.
+  * tf.keras.experimental.export renamed to tf.keras.experimental.export_saved_model
+  * Standardize the LayerNormalization API by replacing the args `norm_axis` and `params_axis` with `axis`.
+  * Tensor::UnsafeCopyFromInternal deprecated in favor Tensor::BitcastFrom
+* Keras & Python API
+  * Add v2 module aliases for:
+    * tf.initializers => tf.keras.initializers
+    * tf.losses => tf.keras.losses & tf.metrics => tf.keras.metrics
+    * tf.optimizers => tf.keras.optimizers
+  * Add tf.keras.layers.AbstractRNNCell as the preferred implementation of RNN cell for TF v2. User can use it to implement RNN cell with custom behavior.
+  * Adding `clear_losses` API to be able to clear losses at the end of forward pass in a custom training loop in eager.
+  * Add support for passing list of lists to the `metrics` param in Keras `compile`.
+  * Added top-k to precision and recall to keras metrics.
+  * Adding public APIs for `cumsum` and `cumprod` keras backend functions.
+  * Fix: model.add_loss(symbolic_tensor) should work in ambient eager.
+  * Add name argument to tf.string_split and tf.strings_split
+  * Minor change to SavedModels exported from Keras using tf.keras.experimental.export. (SignatureDef key for evaluation mode is now "eval" instead of "test"). This will be reverted back to "test" in the near future.
+  * Updates binary cross entropy logic in Keras when input is probabilities. Instead of converting probabilities to logits, we are using the cross entropy formula for probabilities.
+  * Raw TensorFlow functions can now be used in conjunction with the Keras Functional API during model creation. This obviates the need for users to create Lambda layers in most cases when using the Functional API. Like Lambda layers, TensorFlow functions that result in Variable creation or assign ops are not supported.
+  * Keras training and validation curves are shown on the same plot.
+  * Introduce `dynamic` constructor argument in Layer and Model, which should be set to True when using imperative control flow in the `call` method.
+  * Removing of dtype in the constructor of initializers and partition_info in call.
+* New ops and improved op functionality
+  * Add OpKernels for some stateless maps
+  * Add v2 APIs for AUCCurve and AUCSummationMethod enums. #tf-metrics-convergence
+  * Add tf.math.nextafter op.
+  * Add CompositeTensor base class.
+  * Add tf.linalg.tridiagonal_solve op.
+  * Add opkernel templates for common table operations.
+  * Added support for TFLite in TensorFlow 2.0.
+  * Adds summary trace API for collecting graph and profile information.
+  * Add batch_dims argument to tf.gather.
+  * Add support for `add_metric` in the graph function mode.
+  * Add C++ Gradient for BatchMatMulV2.
+  * Added tf.random.binomial
+  * Added gradient for SparseToDense op.
+  * Add legacy string flat hash map op kernels
+  * Add a ragged size op and register it to the op dispatcher
+  * Add broadcasting support to tf.matmul.
+  * Add ellipsis (...) support for tf.einsum()
+  * Added LinearOperator.adjoint and LinearOperator.H (alias).
+  * Added GPU implementation of tf.linalg.tridiagonal_solve.
+  * Added strings.byte_split
+  * Add RaggedTensor.placeholder()
+  * Add a new "result_type" parameter to tf.strings.split
+  * `add_update` can now be passed a zero-arg callable in order to support turning off the update when setting `trainable=False` on a Layer of a Model compiled with `run_eagerly=True`.
+  * Add variant wrapper for absl::string_view
+  * Add expand_composites argument to all nest.* methods.
+  * Add pfor converter for Squeeze.
+  * Bug fix for tf.tile gradient
+  * Expose CriticalSection in core as tf.CriticalSection.
+  * Update Fingerprint64Map to use aliases
+  * ResourceVariable support for gather_nd.
+  * ResourceVariable's gather op supports batch dimensions.
+  * Variadic reduce is supported on CPU
+  * Extend tf.function with basic support for CompositeTensors arguments (such as SparseTensor and RaggedTensor).
+  * Add templates and interfaces for creating lookup tables
+  * Post-training quantization tool supports quantizing weights shared by multiple operations. The models made with versions of this tool will use INT8 types for weights and will only be executable interpreters from this version onwards.
+  * Malformed gif images could result in an access out of bounds in the color palette of the frame. This has been fixed now
+  * image.resize now considers proper pixel centers and has new kernels (incl. anti-aliasing).
+* Performance
+  * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
+  * Support for multi-host ncclAllReduce in Distribution Strategy.
+  * Expose a flag that allows the number of threads to vary across Python benchmarks.
+* TensorFlow 2.0 Development
+  * Add v2 sparse categorical crossentropy metric.
+  * Allow non-Tensors through v2 losses.
+  * Add UnifiedGRU as the new GRU implementation for tf2.0. Change the default recurrent activation function for GRU from 'hard_sigmoid' to 'sigmoid', and 'reset_after' to True in 2.0. Historically recurrent activation is 'hard_sigmoid' since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default GRU will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with GRU(recurrent_activation='hard_sigmoid', reset_after=False) to fallback to 1.x behavior.
+  * TF 2.0 - Update metric name to always reflect what the user has given in compile. Affects following cases 1. When name is given as 'accuracy'/'crossentropy' 2. When an aliased function name is used eg. 'mse' 3. Removing the `weighted` prefix from weighted metric names.
+  * Begin adding Go wrapper for C Eager API
+  * image.resize in 2.0 now supports gradients for the new resize kernels.
+  * removed tf.string_split from v2 API
+  * Expose tf.contrib.proto.* ops in tf.io (they will exist in TF2)
+  * "Updates the TFLiteConverter API in 2.0. Changes from_concrete_function to from_concrete_functions."
+  * Enable tf.distribute.experimental.MultiWorkerMirroredStrategy working in eager mode.
+  * Support both binary and -1/1 label input in v2 hinge and squared hinge losses.
+* TensorFlow Lite
+  * "Adds support for tflite_convert in 2.0."
+  * "Remove lite.OpHint, lite.experimental, and lite.constant from 2.0 API."
+* tf.contrib
+  * Added Neural Turing Implementation as described in https://arxiv.org/abs/1807.08518.
+  * Remove tf.contrib.timeseries dependency on TF distributions.
+* tf.data
+  * Add num_parallel_reads and passing in a Dataset containing filenames into TextLineDataset and FixedLengthRecordDataset
+  * Going forward we operate in TF 2.0, this change is part of the effort to slowly converting XYZDataset to DatasetV2 type which is the official version going to be used in TF 2.0 and motivated by some compatibility issue found, _BigtableXYZDataset (of type DatasetV2) does not implement the _as_variant_tensor() of DatasetV1, when moving contrib.bigtable to tensorflow_io. Converting into DatasetV2 removes the overheads to maintain V1 while we are moving into TF 2.0.
+  * Add dataset ops to the graph (or create kernels in Eager execution) during the python Dataset object creation instead doing it during Iterator creation time.
+  * Add support for TensorArrays to tf.data Dataset.
+  * Switching tf.data functions to use `defun`, providing an escape hatch to continue using the legacy `Defun`.
+* Toolchains
+  * CUDNN_INSTALL_PATH, TENSORRT_INSTALL_PATH, NCCL_INSTALL_PATH, NCCL_HDR_PATH are deprecated. Use TF_CUDA_PATHS instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
+  * TF code now resides in `tensorflow_core` and `tensorflow` is just a virtual pip package. No code changes are needed for projects using TensorFlow, the change is transparent
+* XLA
+  * XLA HLO graphs can be inspected with interactive_graphviz tool now.
+* Estimator
+  * Use tf.compat.v1.estimator.inputs instead of tf.estimator.inputs
+  * Replace contrib references with tf.estimator.experimental.* for apis in early_stopping.py
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+1e100, 4d55397500, a6802739, abenmao, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy, Alex, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, Andreas Eberle, Andy Craze, Anthony Platanios, Armen Poghosov, armenpoghosov, arp95, Arpit Shah, Ashwin Ramaswami, Aurelien Geron, AuréLien Geron, aweers, awesomealex1, Ayush Agrawal, Ben Barsdell, Bharat Raghunathan, Bhavani Subramanian, blairhan, BléNesi Attila, Brandon Carter, candy.dc, Chao Liu, chenchc, chie8842, Christian Hansen, Christian Sigg, Clayne Robison, crafet, csukuangfj, ctiijima, Dan Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Salvadori, Dave Airlie, David Norman, Dayananda V, Dayananda-V, delock, Denis Khalikov, Deven Desai, Dheeraj Rajaram Reddy, dmitrievanthony, Donovan Ong, Drew Szurko, Duncan Riach, Dustin Neighly, Edward Forgacs, EFanZh, Fei Hu, Felix Lemke, Filip Matzner, fo40225, frreiss, Gautam, gehring, Geoffrey Irving, Grzegorz George Pawelczak, Grzegorz Pawelczak, Gyoung-Yoon Ryoo, HanGuo97, Hanton Yang, Hari Shankar, hehongliang, Heungsub Lee, Hoeseong Kim, I-Hong Jhuo, Ilango R, Innovimax, Irene Dea, Jacky Ko, Jakub Lipinski, Jason Zaman, jcf94, Jeffrey Poznanovic, Jens Elofsson, Jeroen BéDorf, Jia Qingtong, Jiankang, Joe Q, Joe Quadrino, Joeran Beel, Jonas Rauber, Jonathan, Jonathan Kyl, Joppe Geluykens, Joseph Friedman, jtressle, jwu, K Yasaswi Sri Chandra Gandhi, K. Hodges, Kaixi Hou, Karl Lessard, Karl Weinmeister, Karthik Muthuraman, Kashif Rasul, KDR, Keno Fischer, Kevin Mader, kjopek, Koan-Sin Tan, kouml, ktaebum, Lakshay Tokas, Laurent Le Brun, Letian Kang, Li, Guizi, Loo Rong Jie, Lucas Hendren, Lukas Geiger, Luke Han, luxupu, Ma, Guokai, Mahmoud Abuzaina, Mandar Deshpande, manhyuk, Marco Gaido, Marek Drozdowski, Mark Collier, Mark Ryan, mars20, Mateusz Chudyk, Matt Conley, MattConley, mbhuiyan, mdfaijul, Melissa Grueter, Michael KäUfl, MickaëL Schoentgen, Miguel Morin, Mihail Salnikov, Mike Arpaia, Mike Holcomb, monklof, Moses Marin, Mshr-H, nammbash, Natalia Gimelshein, Nayana-Ibm, neargye, Neeraj Pradhan, Nehal J Wani, Nick, Niels Ole Salscheider, Niranjan Hasabnis, nlewycky, Nuka-137, Nutti, olicht, P Sudeepam, Palmer Lao, Pan Daoxin, Pariksheet Pinjari, Pavel Samolysov, PENGWA, Pooya Davoodi, R S Nikhil Krishna, Rohit Gupta, Roman Soldatow, rthadur, Ruizhe, Ryan Jiang, Samantha Andow, Sami Kama, Sana-Damani, Saurabh Deoras, sdamani, seanshpark, Sebastien Iooss, Serv-Inc, Shahzad Lone, Shashank Gupta, Shashi, shashvat, shashvatshahi1998, Siju, Siju Samuel, Snease-Abq, Spencer Schaber, sremedios, srinivasan.narayanamoorthy, Steve Lang, Steve Nesae, Sumesh Udayakumaran, Supriya Rao, Taylor Jakobson, Taylor Thornton, Ted Chang, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Tim Zaman, tomguluson92, Tongxuan Liu, TungJerry, v1incent, Vagif, vcarpani, Vikram Tiwari, Vishwak Srinivasan, Vitor-Alves, wangsiyu, wateryzephyr, WeberXie, WeijieSun, Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, wyzhao, Xin, Yasuhiro Matsumoto, ymodak, Yong Tang, Younes Khoudli, Yuan Lin, Yves-Noel Weweler, Zantares, zjjott, 卜居, 王振华 (Wang Zhenhua), 黄鑫
+
 # Release 1.12.3
 
 ## Bug Fixes and Other Changes
