@@ -78,7 +78,7 @@ inline EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(
 // convolution depending on a template argument of this enum.
 enum DepthwiseConv2dDirection { DIRECTION_FORWARD, DIRECTION_BACKWARD };
 
-// A Gpu kernel to compute the depthwise convolution forward pass
+// A GPU kernel to compute the depthwise convolution forward pass
 // in NHWC format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
@@ -191,10 +191,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.x depths.
-  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-
   GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
-
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -324,7 +322,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   }
 }
 
-// A Gpu kernel to compute the depthwise convolution forward pass
+// A GPU kernel to compute the depthwise convolution forward pass
 // in NCHW format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
@@ -481,10 +479,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.z depths.
-  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-
   GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
-
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -782,7 +778,7 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   }
 }
 
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
+// A simple launch pad to launch the GPU kernel for depthwise convolution.
 template <typename T>
 void LaunchDepthwiseConvOp<GpuDevice, T>::operator()(OpKernelContext* ctx,
                                                      const DepthwiseArgs& args,
@@ -1001,7 +997,7 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   }
 }
 
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
+// A simple launch pad to launch the GPU kernel for depthwise convolution.
 template <typename T>
 void LaunchDepthwiseConvBackpropInputOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
@@ -1126,11 +1122,7 @@ __global__ void __launch_bounds__(640, 2)
 // Device function to compute sub-warp sum reduction for a power-of-two group of
 // neighboring threads.
 template <int kWidth, typename T>
-#if GOOGLE_CUDA
 __device__ __forceinline__ T WarpSumReduce(T val) {
-#elif TENSORFLOW_USE_ROCM
-__device__ inline T WarpSumReduce(T val) {
-#endif
   // support only power-of-two widths.
   assert(__popc(kWidth) == 1);
   int sub_warp = GpuLaneId() / kWidth;
@@ -1165,10 +1157,8 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.z));
   // Holds block plus halo and filter data for blockDim.x depths.
-  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-
   GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
-
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -1310,7 +1300,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   }
 }
 
-// A Gpu kernel to compute the depthwise convolution backprop w.r.t. filter.
+// A GPU kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 __global__ void __launch_bounds__(640, 2)
@@ -1754,7 +1744,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   }
 }
 
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
+// A simple launch pad to launch the GPU kernel for depthwise convolution.
 template <typename T>
 void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
