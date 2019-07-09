@@ -104,9 +104,9 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
   if (lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
     // ops are constant folded into variant types.
+    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
+    // handle constant ops that produce `TensorList`.
     // TODO(haoliang): Add this pass by default.
-    // TODO(b/137038401): Handle other ops that operate on variant types and
-    // improve error reporting.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
