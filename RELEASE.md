@@ -1,3 +1,10 @@
+# Release 1.12.3
+
+## Bug Fixes and Other Changes
+
+* Updates `png_archive` dependency to 1.6.37 to not be affected by CVE-2019-7317, CVE-2018-13785, and CVE-2018-14048.
+* Updates `sqlite` depenency to 3.28.0 to not be affected by CVE-2018-20506, CVE-2018-20346, and CVE-2018-20505.
+
 # Release 1.12.2
 
 ## Bug Fixes and Other Changes
