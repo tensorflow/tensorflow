@@ -251,16 +251,17 @@ MatchBackwardFilter(HloInstruction* conv) {
     return std::make_tuple(true, backward_conv_window, backward_conv_dnums,
                            lhs);
   }
-  Shape new_shape = lhs->shape();
 
   int64 input_batch_dimension = backward_conv_dnums.input_batch_dimension();
   int64 input_feature_dimension = backward_conv_dnums.input_feature_dimension();
 
-  int64 input_batch = new_shape.dimensions(input_batch_dimension);
-  int64 input_feature = new_shape.dimensions(input_feature_dimension);
-
+  int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
   // Ensure that input_batch is exact multiple of conv->feature_group_count()
-  CHECK_EQ(input_batch % conv->feature_group_count(), 0);
+  CHECK_EQ(input_batch % conv->feature_group_count(), 0)
+      << "Input batch should be an exact multiple of feature group count";
+  int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
+
+  Shape new_shape = lhs->shape();
   new_shape.set_dimensions(input_batch_dimension,
                            input_batch / conv->feature_group_count());
   new_shape.set_dimensions(input_feature_dimension,
