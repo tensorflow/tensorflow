@@ -5297,6 +5297,7 @@ tf_py_test(
         ":lib",
         ":util",
     ],
+    tags = ["no_windows"],  # b/137097422
 )
 
 cuda_py_test(
