@@ -399,7 +399,7 @@ def bucket_by_sequence_length(input_length,
     conditions_c = math_ops.logical_and(
         math_ops.less_equal(buckets_min, input_length),
         math_ops.less(input_length, buckets_max))
-    which_bucket = math_ops.reduce_min(array_ops.where(conditions_c))
+    which_bucket = math_ops.reduce_min(array_ops.where_v2(conditions_c))
     which_bucket = math_ops.cast(which_bucket, dtypes.int32)
 
     if shapes is not None:
