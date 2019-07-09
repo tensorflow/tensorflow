@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_TYPES_H_
 
+#include <Eigen/Core>
 #include <complex>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "absl/types/variant.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
-
-#include <Eigen/Core>
+#include "third_party/eigen3/Eigen/Core"
 
 namespace xla {
 
@@ -45,6 +45,13 @@ using complex128 = std::complex<double>;
 
 using ::Eigen::half;
 
+namespace gpu {
+// GpuVersion is used to abstract GPU hardware version.
+// On CUDA platform, it comprises CUDA compute capability which comprises a pair
+// of integers denoting major verison and minor version.
+// On ROCm platform, it comprises AMD GCN ISA version which is an integer.
+using GpuVersion = absl::variant<std::pair<int, int>, int>;
+}  // namespace gpu
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.
