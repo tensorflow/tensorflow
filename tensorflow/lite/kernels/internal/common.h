@@ -22,7 +22,7 @@ limitations under the License.
 #endif
 
 #include "fixedpoint/fixedpoint.h"
-#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {

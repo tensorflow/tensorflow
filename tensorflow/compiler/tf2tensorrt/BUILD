@@ -5,13 +5,13 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_gpu_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -174,6 +174,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -443,7 +444,18 @@ tf_cuda_cc_test(
     ],
 )
 
-# Library for the plugin factory
+tf_gpu_kernel_library(
+    name = "plugin_cast",
+    srcs = ["plugin/plugin_cast.cu.cc"],
+    deps = [
+        ":trt_plugins",
+        "//tensorflow/core:framework_lite",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:tensorrt",
+    ]),
+)
+
 tf_cuda_library(
     name = "trt_plugins",
     srcs = ["plugin/trt_plugin.cc"],

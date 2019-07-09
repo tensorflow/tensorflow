@@ -400,10 +400,10 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType, kReshufflingDatasetPrefix,
-        {std::to_string(buffer_size_), std::to_string(seed_),
-         std::to_string(seed2_)});
+    name_utils::DatasetDebugStringParams params;
+    params.dataset_prefix = kReshufflingDatasetPrefix;
+    params.set_args(buffer_size_, seed_, seed2_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -584,10 +584,10 @@ class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType, kFixedSeedDatasetPrefix,
-        {std::to_string(buffer_size_), std::to_string(seed_),
-         std::to_string(seed2_)});
+    name_utils::DatasetDebugStringParams params;
+    params.dataset_prefix = kFixedSeedDatasetPrefix;
+    params.set_args(buffer_size_, seed_, seed2_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -666,8 +666,9 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, buffer_size_, seed_,
-                                          seed2_, count_);
+    name_utils::DatasetDebugStringParams params;
+    params.set_args(buffer_size_, seed_, seed2_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(

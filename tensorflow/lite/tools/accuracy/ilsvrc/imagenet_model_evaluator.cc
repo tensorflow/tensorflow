@@ -36,6 +36,7 @@ limitations under the License.
 
 namespace {
 
+using tflite::evaluation::ImageLabel;
 using tflite::evaluation::TfliteInferenceParams;
 
 constexpr char kNumImagesFlag[] = "num_images";
@@ -71,9 +72,6 @@ std::vector<std::vector<T>> Split(const std::vector<T>& v, int n) {
   }
   return vecs;
 }
-
-// File pattern for imagenet files.
-const char* const kImagenetFilePattern = "*.[jJ][pP][eE][gG]";
 
 }  // namespace
 
@@ -159,11 +157,6 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
   return kTfLiteOk;
 }
 
-struct ImageLabel {
-  std::string image;
-  std::string label;
-};
-
 TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
                                    const std::vector<ImageLabel>& image_labels,
                                    const std::vector<std::string>& model_labels,
@@ -206,47 +199,6 @@ TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
   return kTfLiteOk;
 }
 
-// TODO(b/130823599): Move to tools/evaluation/utils.
-TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
-                                     std::vector<ImageLabel>* image_labels) {
-  if (!blacklist_file_path.empty()) {
-    std::vector<std::string> lines;
-    if (!tflite::evaluation::ReadFileLines(blacklist_file_path, &lines)) {
-      LOG(ERROR) << "Could not read: " << blacklist_file_path;
-      return kTfLiteError;
-    }
-    std::vector<int> blacklist_ids;
-    blacklist_ids.reserve(lines.size());
-    // Populate blacklist_ids with indices of images.
-    std::transform(lines.begin(), lines.end(),
-                   std::back_inserter(blacklist_ids),
-                   [](const std::string& val) { return std::stoi(val) - 1; });
-
-    std::vector<ImageLabel> filtered_images;
-    std::sort(blacklist_ids.begin(), blacklist_ids.end());
-    const size_t size_post_filtering =
-        image_labels->size() - blacklist_ids.size();
-    filtered_images.reserve(size_post_filtering);
-    int blacklist_index = 0;
-    for (int image_index = 0; image_index < image_labels->size();
-         image_index++) {
-      if (blacklist_index < blacklist_ids.size() &&
-          blacklist_ids[blacklist_index] == image_index) {
-        blacklist_index++;
-        continue;
-      }
-      filtered_images.push_back((*image_labels)[image_index]);
-    }
-
-    if (filtered_images.size() != size_post_filtering) {
-      LOG(ERROR) << "Invalid number of filtered images";
-      return kTfLiteError;
-    }
-    *image_labels = filtered_images;
-  }
-  return kTfLiteOk;
-}
-
 TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
   const std::string data_path = tflite::evaluation::StripTrailingSlashes(
                                     params_.ground_truth_images_path) +
@@ -270,8 +222,8 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
   }
 
   // Filter any blacklisted images.
-  if (FilterBlackListedImages(params_.blacklist_file_path, &image_labels) !=
-      kTfLiteOk) {
+  if (tflite::evaluation::FilterBlackListedImages(params_.blacklist_file_path,
+                                                  &image_labels) != kTfLiteOk) {
     LOG(ERROR) << "Could not filter by blacklist";
     return kTfLiteError;
   }

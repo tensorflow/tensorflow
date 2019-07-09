@@ -29,7 +29,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                               int64 step_id)
       : dev_mgr_(dev_mgr),
         dev_resolver_(dev_resolver),
-        buf_rendezvous_(step_id),
+        buf_rendezvous_(step_id, dev_mgr),
         step_id_(step_id) {}
 
   virtual ~CollectiveRemoteAccessLocal() {}

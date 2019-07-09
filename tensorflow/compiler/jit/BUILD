@@ -316,6 +316,7 @@ cc_library(
     srcs = ["jit_compilation_pass_registration.cc"],
     deps = [
         ":compilation_passes",
+        ":xla_activity_logging_listener",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu_internal",
     ] + tf_jit_compilation_passes_extra_deps(),
@@ -892,6 +893,17 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     provide_cc_alias = True,
+)
+
+cc_library(
+    name = "xla_activity_logging_listener",
+    srcs = ["xla_activity_logging_listener.cc"],
+    deps = [
+        ":xla_activity_listener",
+        "//tensorflow/core:logger",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

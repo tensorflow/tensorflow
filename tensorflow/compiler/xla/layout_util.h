@@ -164,10 +164,10 @@ class LayoutUtil {
   // so on. Then a logical dimension number l corresponds to the physical
   // dimension number MakeLogicalToPhysical(layout)[l].
   //
-  // As an example, consider physical dimension number 0, which by definition is
-  // the most major. Then l := Major(0) is the most major logical dimension. If
-  // v is the vector returned from this function, then v[l] == 0. So v maps the
-  // most major logical dimension l to the physical dimension number 0.
+  // In the returned vector, the first element represents the most major logical
+  // dimension. The element whose contents are 0 represents the most major
+  // physical dimension, and the element with contents (rank - 1) represents
+  // the most minor physical dimension.
   static std::vector<int64> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.

@@ -303,3 +303,24 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
+
+objc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = [
+        "test_util.mm",
+    ],
+    hdrs = ["test_util.h"],
+    sdk_frameworks = [
+        "Metal",
+    ],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:api",
+        "//tensorflow/lite/delegates/gpu/metal:inference_context",
+    ],
+)

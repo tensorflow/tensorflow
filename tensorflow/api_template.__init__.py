@@ -149,4 +149,5 @@ if hasattr(_current_module, 'keras'):
   optimizers = keras.optimizers
   initializers = keras.initializers
 
+compat.v2.compat.v1 = compat.v1
 # pylint: enable=undefined-variable

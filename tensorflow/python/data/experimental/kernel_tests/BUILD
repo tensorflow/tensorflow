@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -150,6 +150,32 @@ py_test(
         "//tensorflow/python/data/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_py_test(
+    name = "replicate_test",
+    srcs = ["replicate_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    grpc_enabled = True,
+    tags = ["no_oss"],
+)
+
+tf_py_test(
+    name = "replicate_cluster_test",
+    srcs = ["replicate_cluster_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    grpc_enabled = True,
+    tags = ["no_oss"],
 )
 
 py_test(

@@ -2732,12 +2732,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   } else {
     // An algorithm has been specified.
     *algorithm_desc = *algo_desc;
-    // commenting this line out for the upstream repo, since
-    // AlgorithmConfig::scratch_size_ has been removed in the upstream repo but
-    // is still used in the ROCM develop-upstream repo
-    //
-    // scratch_memory_size = *(algorithm_config.scratch_size());
-    //
+    scratch_memory_size = *(algorithm_config.scratch_size());
   }
 
   // allocate scratch memory

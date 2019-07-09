@@ -302,6 +302,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("SlidingWindowDataset").Device(DEVICE_CPU),
+                        SlidingWindowDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalSlidingWindowDataset").Device(DEVICE_CPU),
     SlidingWindowDatasetOp);

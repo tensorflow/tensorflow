@@ -54,13 +54,6 @@ Status TRTOptimizationPass::Init(
   if (params.count("is_dynamic_op")) {
     is_dynamic_op_ = params.at("is_dynamic_op").b();
   }
-  if (params.count("cached_engine_batches")) {
-    auto batch_vec = params.at("cached_engine_batches").list();
-    batches_.reserve(batch_vec.i_size());
-    for (const auto i : batch_vec.i()) {
-      batches_.push_back(i);
-    }
-  }
   if (params.count("maximum_cached_engines")) {
     max_cached_batches_ = params.at("maximum_cached_engines").i();
   }
@@ -264,7 +257,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
-  cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
   cp.use_function_backup = use_function_backup_;

@@ -18,6 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "parallel_interleave_dataset";
+constexpr int kOpVersion = 2;
 
 class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,9 +40,11 @@ class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes, bool sloppy,
       std::unique_ptr<OpKernel> *op_kernel) {
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
     NodeDef node_def = test::function::NDef(
         kNodeName,
-        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType),
+        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType, params),
         {ParallelInterleaveDatasetOp::kInputDataset,
          ParallelInterleaveDatasetOp::kCycleLength,
          ParallelInterleaveDatasetOp::kBlockLength,
@@ -607,8 +610,11 @@ TEST_F(ParallelInterleaveDatasetOpTest, DatasetTypeString) {
                              &parallel_interleave_dataset));
   core::ScopedUnref scoped_unref(parallel_interleave_dataset);
 
-  EXPECT_EQ(parallel_interleave_dataset->type_string(),
-            name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType));
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
+  EXPECT_EQ(
+      parallel_interleave_dataset->type_string(),
+      name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetOutputDtypes) {
@@ -885,10 +891,11 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(parallel_interleave_dataset->MakeIterator(
       iterator_ctx.get(), "Iterator", &iterator));
-
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
   EXPECT_EQ(iterator->prefix(),
             name_utils::IteratorPrefix(
-                ParallelInterleaveDatasetOp::kDatasetType, "Iterator"));
+                ParallelInterleaveDatasetOp::kDatasetType, "Iterator", params));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {

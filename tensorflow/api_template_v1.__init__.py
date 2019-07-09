@@ -141,4 +141,6 @@ try:
     vars()['__all__'].remove('compiler')
 except NameError:
   pass
+
+compat.v2.compat.v1 = compat.v1
 # pylint: enable=undefined-variable

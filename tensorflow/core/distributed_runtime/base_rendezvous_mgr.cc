@@ -176,12 +176,12 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   return session_;
 }
 
 bool BaseRemoteRendezvous::is_initialized() {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   return is_initialized_locked();
 }
 
@@ -190,7 +190,7 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
                                   const Tensor& val, const bool is_dead) {
   VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << parsed.FullKey();
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     DCHECK(is_initialized_locked());
     if (!IsLocalDevice(session_->worker_name, parsed.src_device)) {
@@ -209,7 +209,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
   // (e.g. calling session())
   WorkerSession* sess = nullptr;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     if (!is_initialized_locked()) {
       return errors::Internal("ValidateDevices called before initialization.");

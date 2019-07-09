@@ -113,7 +113,10 @@ struct BatchSelectFunctor<GPUDevice, T> {
   template struct BCastSelectFunctor<GPUDevice, T, 2>; \
   template struct BCastSelectFunctor<GPUDevice, T, 3>; \
   template struct BCastSelectFunctor<GPUDevice, T, 4>; \
-  template struct BCastSelectFunctor<GPUDevice, T, 5>;
+  template struct BCastSelectFunctor<GPUDevice, T, 5>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 6>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 7>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 8>;
 
 SELECT_FUNCTOR(bool);
 SELECT_FUNCTOR(Eigen::half);

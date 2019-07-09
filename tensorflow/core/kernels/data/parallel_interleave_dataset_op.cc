@@ -87,6 +87,17 @@ constexpr char kTFDataParallelInterleaveCurrent[] =
 constexpr char kTFDataParallelInterleaveFuture[] =
     "tf_data_parallel_interleave_future";
 
+// `kPrefetchFactor * cycle_length` is the number of future cycle elements that
+// will be prefetched ahead of time. The purpose of prefetching future cycle
+// elements is to overlap expensive initialization (e.g. opening of a remote
+// file) with other computation.
+constexpr double kPrefetchFactor = 2.0L;
+
+// `kCPUFactor * port::NumSchedulableCPUs()` is the size of the threadpool
+// created by this op. The rationale behind creating more threads than CPUs
+// is to achieve efficient CPU utilization when some of the threads perform I/O.
+constexpr double kCPUFactor = 2.0L;
+
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
 // This makes it possible to change the degree of parallelism (e.g. through
@@ -119,10 +130,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    name_utils::IteratorPrefixParams params;
+    params.op_version = op_version_;
     return absl::make_unique<ParallelInterleaveIterator>(
         ParallelInterleaveIterator::Params{
-            this, name_utils::IteratorPrefix(
-                      ParallelInterleaveDatasetOp::kDatasetType, prefix)},
+            this,
+            name_utils::IteratorPrefix(
+                ParallelInterleaveDatasetOp::kDatasetType, prefix, params)},
         sloppy_);
   }
 
@@ -133,8 +147,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
+    name_utils::DatasetDebugStringParams params;
+    params.op_version = op_version_;
     return name_utils::DatasetDebugString(
-        ParallelInterleaveDatasetOp::kDatasetType);
+        ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
  protected:
@@ -184,12 +200,23 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           num_parallel_calls_(std::make_shared<model::SharedState>(
               params.dataset->num_parallel_calls_, mu_, cond_var_)),
           sloppy_(sloppy),
-          current_elements_(params.dataset->cycle_length_),
-          thread_pool_(absl::make_unique<thread::ThreadPool>(
-              Env::Default(), ThreadOptions(),
-              kDataParallelInterleaveWorkerPool,
-              port::NumSchedulableCPUs() /* num_threads */,
-              false /* low_latency_hint */)) {}
+          current_elements_(params.dataset->cycle_length_) {
+      // The size of the threadpool is the smaller of:
+      //
+      // 1) The number of schedulable CPUs multiplied by a constant factor
+      //    factor to account for the fact that some threads may perform I/O.
+      //
+      // 2) The maximum number of iterators instantiated at any given point
+      //    in time (`cycle_length` for the current cycle elements and
+      //    `kPrefetchFactor * cycle_length` for future cycle elements).
+      const int num_threads =
+          std::min(static_cast<int>(kCPUFactor * port::NumSchedulableCPUs()),
+                   static_cast<int>((kPrefetchFactor + 1) *
+                                    params.dataset->cycle_length_));
+      thread_pool_ = absl::make_unique<thread::ThreadPool>(
+          Env::Default(), ThreadOptions(), kDataParallelInterleaveWorkerPool,
+          num_threads, /*low_latency_hint=*/false);
+    }
 
     ~ParallelInterleaveIterator() override {
       mutex_lock l(*mu_);
@@ -571,8 +598,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        // TODO(jsimsa): Autotune the number of iterators to prefetch.
-        return future_elements_.size() >= 2 * dataset()->cycle_length_;
+        // TODO(jsimsa): Autotune the number of elements to prefetch.
+        return future_elements_.size() >=
+               static_cast<int>(kPrefetchFactor * dataset()->cycle_length_);
       };
       while (true) {
         mutex_lock l(*mu_);
@@ -916,6 +944,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   const int64 cycle_length_;
   const int64 block_length_;
   const int64 num_parallel_calls_;
+  const int op_version_ = 2;
   const bool sloppy_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;

@@ -48,7 +48,7 @@ const char kModulePrefix[] = R"(
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   // Fusion with reduce instruction root and a sibling reduce instruction
   // sharing the same input param.
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
       p1.1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1.1, p1.1)
@@ -75,7 +75,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[6400]{0} parameter(1)
       mul = f32[6400]{0} multiply(p1.1, p1.1)
@@ -102,7 +102,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[10,10]{1,0} parameter(1)
       mul = f32[10,10]{1,0} multiply(p1.1, p1.1)
@@ -112,7 +112,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
 
     fused_computation_2 {
       p1.2 = f32[10,10]{1,0} parameter(1)
-      const.2 = f32[10]{0} parameter(0)
+      const.2 = f32[] parameter(0)
       ROOT reduce.2 = f32[10]{0} reduce(p1.2, const.2), dimensions={0}, to_apply=scalar_mul_computation
     }
 
@@ -131,7 +131,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
   // Two sibling fusions with reduce instruction roots sharing the same input
   // param.
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1.1, p1.1)
@@ -166,7 +166,7 @@ TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingReduceAndReduceMultiOutputFusion) {
   // Multi-output fusion with two reduce instructions root and a sibling reduce
   // instruction sharing the same input param.
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation (p0: f32[128,512,28,28]) -> (f32[512], f32[512]) {
       const.1 = f32[] constant(1)
       p0.1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
@@ -199,7 +199,7 @@ TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingFusionCheckAgainstReduceOperand) {
   // Verify that if we already have a multi-output fusion that we prefer to pick
   // a reduce op from its operands for checking shape compatibility.
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[10,10]{1,0} parameter(1)
       mul = f32[10,10]{1,0} multiply(p1.1, p1.1)
@@ -210,17 +210,17 @@ TEST_F(MultiOutputFusionTest,
 
     fused_computation_2 {
       p1.2 = f32[10,10]{1,0} parameter(1)
-      const.2 = f32[10] parameter(0)
+      const.2 = f32[] parameter(0)
       ROOT reduce.2 = f32[10] reduce(p1.2, const.2), dimensions={0}, to_apply=scalar_mul_computation
     }
 
     ENTRY entry {
       p0 = f32[] parameter(0)
       p1 = f32[10,10]{1,0} parameter(1)
-      p2 = f32[10]{0} parameter(2)
-      fusion.1 = (f32[10,10], f32[10]) fusion(p0, p1), kind=kInput, calls=fused_computation_1
-      get-tuple-element.1 = f32[10,10] get-tuple-element((f32[10,10], f32[10]) fusion.1), index=0
-      get-tuple-element.2 = f32[] get-tuple-element((f32[10,10], f32[10]) fusion.1), index=1
+      p2 = f32[] parameter(2)
+      fusion.1 = (f32[10,10], f32[]) fusion(p0, p1), kind=kInput, calls=fused_computation_1
+      get-tuple-element.1 = f32[10,10] get-tuple-element((f32[10,10], f32[]) fusion.1), index=0
+      get-tuple-element.2 = f32[] get-tuple-element((f32[10,10], f32[]) fusion.1), index=1
       fusion.2 = f32[10] fusion(p2, p1), kind=kInput, calls=fused_computation_2
       ROOT root = (f32[10,10], f32[], f32[10]) tuple(get-tuple-element.1, get-tuple-element.2, fusion.2)
     })"))
@@ -229,7 +229,7 @@ TEST_F(MultiOutputFusionTest,
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -238,7 +238,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
     fused_computation_2 {
       p0.2 = f32[6400]{0} parameter(0)
       const.2 = f32[] constant(1)
-      ROOT div = f32[6400]{0} divide(p0.2, const.2)
+      broadcast = f32[6400]{0} broadcast(const.2), dimensions={}
+      ROOT div = f32[6400]{0} divide(p0.2, broadcast)
     }
 
     ENTRY entry {
@@ -260,7 +261,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
   // Fusing a reduce into a loop fusion would require changing the fusion kind.
   // That's not supported yet.
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -278,7 +279,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -288,7 +289,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
       p0 = f32[6400]{0} parameter(0)
       fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
       const.2 = f32[] constant(1)
-      div = f32[6400]{0} divide(p0, const.2)
+      broadcast = f32[6400]{0} broadcast(const.2), dimensions={}
+      div = f32[6400]{0} divide(p0, broadcast)
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
     })"))
                     .ValueOrDie();
@@ -302,7 +304,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
       ROOT mul = f32[8,1,5,16,1,2]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -325,7 +327,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -337,7 +339,9 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
     fused_computation_2 {
       p0.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       const.2 = f32[] constant(0)
-      ROOT add = f32[8,1,5,16,1,1]{5,4,3,2,1,0} add(p0.2, const.2)
+      broadcast = f32[8,1,5,16,1,1]{5,4,3,2,1,0} broadcast(const.2),
+        dimensions={}
+      ROOT add = f32[8,1,5,16,1,1]{5,4,3,2,1,0} add(p0.2, broadcast)
     }
 
     ENTRY entry {
@@ -365,7 +369,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
 
 TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingLoopAndMultiOutputLoopDifferentShapes) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,2]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -384,7 +388,7 @@ TEST_F(MultiOutputFusionTest,
     ENTRY entry {
       p0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
       fusion.1 = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
-        f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop,
+        f32[8,1,5,16,1,2]{5,4,3,2,1,0}) fusion(p0), kind=kLoop,
         calls=fused_computation_1
       fusion.2 = f32[8,1,5,1,2]{4,3,2,1,0} fusion(p0), kind=kLoop,
         calls=fused_computation_2
@@ -399,7 +403,7 @@ TEST_F(MultiOutputFusionTest,
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -420,7 +424,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_add {
       p0.1 = f32[32,32,32]{2,1,0} parameter(0)
       p1.1 = f32[32,32,32]{2,1,0} parameter(1)
@@ -448,7 +452,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f32[32,32,32]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
@@ -495,7 +499,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
@@ -525,7 +529,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
 
 TEST_F(MultiOutputFusionTest,
        ProducerConsumerFusionFp16LoopFusionAndReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f16[32,32,32]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
@@ -551,7 +555,7 @@ TEST_F(MultiOutputFusionTest,
       p0 = f16[32,32,32]{2,1,0} parameter(0)
       p1 = f16[32,32,32]{2,1,0} parameter(1)
       select = f16[32,32,32]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_select
-      fusion = (f32[32,32]{1,0}, f32[2,2]{1,0}) fusion(select), kind=kInput,
+      fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(select), kind=kInput,
         calls=fused_reduce
       gte0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0
       gte1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
@@ -572,7 +576,7 @@ TEST_F(MultiOutputFusionTest,
 
 TEST_F(MultiOutputFusionTest,
        ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
       p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)
@@ -600,7 +604,7 @@ TEST_F(MultiOutputFusionTest,
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_add {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       p1 = f32[32,32,32]{2,1,0} parameter(1)
@@ -627,7 +631,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
       p6 = f32[32,32,32]{2,1,0} parameter(0)
       p7 = f32[64,64,64]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
-      pad = f32[64,64,64]{2,1,0} pad(p6, c0), padding=32_32x32_32x32_32
+      pad = f32[64,64,64]{2,1,0} pad(p6, c0), padding=16_16x16_16x16_16
       mul = f32[64,64,64]{2,1,0} multiply(pad, p7)
       ROOT r1 = f32[64,64]{1,0} reduce(mul, c0), dimensions={2},
         to_apply=scalar_add_computation
@@ -645,10 +649,51 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
 
       reduce1 = f32[32,32]{1,0} fusion(add, mul), kind=kInput,
           calls=fused_reduce_1
-      reduce2 = f32[32,32]{1,0} fusion(add, mul), kind=kInput,
+      reduce2 = f32[64,64]{1,0} fusion(add, mul), kind=kInput,
           calls=fused_reduce_2
       ROOT root = (f32[32,32,32]{2,1,0}, f32[32,32]{1,0}, f32[64,64]{1,0},
                    f32[64,64,64]{2,1,0}) tuple(add, reduce1, reduce2, mul)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  int multi_output_fusion_count = 0;
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    for (auto* instr : computation->instructions()) {
+      if (instr->IsMultiOutputFusion()) {
+        multi_output_fusion_count++;
+      }
+    }
+  }
+  EXPECT_EQ(1, multi_output_fusion_count);
+}
+
+TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[32,32,32]{2,1,0} parameter(1)
+      ROOT add = f32[32,32,32]{2,1,0} add(p0, p1)
+    }
+    fused_reduce {
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[64,64,64]{2,1,0} parameter(1)
+      slice = f32[32,32,32]{2,1,0} slice(p1), slice={[0:32], [0:32], [0:32]}
+      add = f32[32,32,32]{2,1,0} add(p0, slice)
+      c0 = f32[] constant(0)
+      ROOT r1 = f32[32,32]{1,0} reduce(add, c0), dimensions={2},
+        to_apply=scalar_add_computation
+    }
+    ENTRY reduce {
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[64,64,64]{2,1,0} parameter(1)
+      add = f32[32,32,32]{2,1,0} fusion(p0, p0), kind=kLoop, calls=fused_add
+      c0 = f32[] constant(0)
+      reduce2 = f32[32,32]{1,0} reduce(add, c0), dimensions={2},
+        to_apply=scalar_add_computation
+      reduce = f32[32,32]{1,0} fusion(add, p1), kind=kInput, calls=fused_reduce
+      ROOT root = (f32[32,32,32]{2,1,0}, f32[32,32]{1,0}, f32[32,32]{1,0})
+                  tuple(add, reduce, reduce2)
     })"))
                     .ValueOrDie();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
@@ -718,32 +763,28 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
-  auto module = ParseHloString(R"(HloModule dus_mof
+  auto module = ParseAndReturnVerifiedModule(R"(HloModule dus_mof
     fusion.1 {
       p.0 = f16[50,96,1024]{2,1,0} parameter(0)
-      p.1 = s32[1]{0} parameter(1)
-      p.2 = f16[1,96,1024]{2,1,0} parameter(2)
-      c.0 = s32[] constant(0)
-      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
+      p.1 = f16[1,96,1024]{2,1,0} parameter(1)
+      c.0 = s32[3]{0} constant({0, 0, 0})
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.1, c.0)
     }
 
     fusion.2 {
       p.0 = f16[50,96,1024]{2,1,0} parameter(0)
-      p.1 = s32[1]{0} parameter(1)
-      p.2 = f16[1,96,1024]{2,1,0} parameter(2)
-      c.0 = s32[] constant(0)
-      pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
+      p.1 = f16[1,96,1024]{2,1,0} parameter(1)
+      c.0 = s32[3]{0} constant({0, 0, 0})
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.1, c.0)
     }
 
     ENTRY entry {
       p.00 = f16[50,96,1024]{2,1,0} parameter(0)
       p.01 = f16[50,96,1024]{2,1,0} parameter(1)
-      p.1 = s32[1]{0} parameter(2)
-      p.2 = f16[1,96,1024]{2,1,0} parameter(3)
+      p.1 = f16[1,96,1024]{2,1,0} parameter(2)
 
-      f1 = f16[50,96,1024] fusion(p.00, p.1, p.2), kind=kLoop, calls=fusion.1
-      f2 = f16[50,96,1024] fusion(p.01, p.1, p.2), kind=kLoop, calls=fusion.2
+      f1 = f16[50,96,1024] fusion(p.00, p.1), kind=kLoop, calls=fusion.1
+      f2 = f16[50,96,1024] fusion(p.01, p.1), kind=kLoop, calls=fusion.2
       ROOT tuple = (f16[50,96,1024],f16[50,96,1024]) tuple(f1, f2)
     })")
                     .ValueOrDie();
