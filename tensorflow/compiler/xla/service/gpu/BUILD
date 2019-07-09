@@ -638,6 +638,7 @@ cc_library(
         ":cudnn_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
+        ":scratch_allocator",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:hlo",
