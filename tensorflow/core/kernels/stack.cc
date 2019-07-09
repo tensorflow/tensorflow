@@ -75,7 +75,7 @@ class Stack : public ResourceBase {
                                      "its max_size (", max_size_, ")");
     }
     stack_.push_back({value, absl::nullopt, absl::nullopt});
-    int index = stack_.size() - 1;
+    size_t index = stack_.size() - 1;
     unswapped_lru_.push_back(index);
     stack_.back().unswap_iter = std::prev(unswapped_lru_.end());
     return Status::OK();
@@ -88,7 +88,7 @@ class Stack : public ResourceBase {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] is empty when calling Pop().");
     }
-    int index = stack_.size() - 1;
+    size_t index = stack_.size() - 1;
     while (is_swapping_ins_[index]) {
       cond_swapping_ins_[index].wait(l);
       index = stack_.size() - 1;
@@ -128,7 +128,7 @@ class Stack : public ResourceBase {
                           TensorAndAllocation** value) {
     mutex_lock l(mu_);
     while (!unswapped_lru_.empty()) {
-      int index = unswapped_lru_.front();
+      size_t index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
       stack_[index].unswap_iter.reset();
       if (!cond(stack_[index].value)) {
@@ -155,7 +155,7 @@ class Stack : public ResourceBase {
     return false; // nothing to swap in
   }
 
-  void FinishSwappingIn(int index) {
+  void FinishSwappingIn(size_t index) {
     mutex_lock l(mu_);
     is_swapping_ins_[index] = false;
     cond_swapping_ins_[index].notify_one();
