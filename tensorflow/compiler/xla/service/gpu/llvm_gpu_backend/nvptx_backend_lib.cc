@@ -701,8 +701,8 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  TF_RETURN_IF_ERROR(amdgpu::LinkROCDLIfNecessary(
-      module, absl::get<int>(gpu_version), device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, absl::get<int>(gpu_version),
+                                          device_bitcode_dir_path));
 
   return Status::OK();
 }
@@ -729,10 +729,9 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
-StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
-                                            int amdgpu_version,
-                                            const HloModuleConfig& hlo_module_config,
-                                            const string& rocdl_dir_path) {
+StatusOr<std::vector<uint8>> CompileToHsaco(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
 
@@ -743,10 +742,12 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
-    TF_ASSIGN_OR_RETURN(target_machine,
-                        LinkAndOptimizeModule(
-                            module, amdgpu_version, hlo_module_config,
-                            rocdl_dir_path));
+    TF_ASSIGN_OR_RETURN(
+        target_machine,
+        LinkAndOptimizeModule(module, gpu_version, hlo_module_config,
+                              rocdl_dir_path, AMDGPUTargetModuleLinker,
+                              "amdgcn--amdhsa-amdgiz", AMDGPUGetTargetMachine,
+                              kAMDGPUInlineThreshold));
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
   }
   return std::move(hsaco);
