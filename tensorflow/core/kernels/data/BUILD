@@ -985,6 +985,39 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "text_line_dataset_op",
+    srcs = ["text_line_dataset_op.cc"],
+    hdrs = ["text_line_dataset_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "text_line_dataset_op_test",
+    size = "small",
+    srcs = ["text_line_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":text_line_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.cc"],
     hdrs = ["iterator_ops.h"],
@@ -1164,6 +1197,7 @@ tf_kernel_library(
         ":take_dataset_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
+        ":text_line_dataset_op",
         ":window_dataset_op",
         ":zip_dataset_op",
         "//tensorflow/core:array_ops_op_lib",
