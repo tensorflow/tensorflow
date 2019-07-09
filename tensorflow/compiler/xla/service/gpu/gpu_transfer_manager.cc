@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -181,7 +181,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
