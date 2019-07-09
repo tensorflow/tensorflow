@@ -887,7 +887,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     // them, it's possible that rewritten node already exists in a graph
     return rewritten_nodes_.find(node->name()) != rewritten_nodes_.end() ||
            ctx().node_map->NodeExists(OuterNodeName(node, false)) ||
-           ctx().node_map->NodeExists(OuterNodeName(node, true));
+           ctx().node_map->NodeExists(OuterNodeName(node, true)) ||
+           ctx().node_map->NodeExists(InnerAddNodeName(node));
   }
 
   // keep names of the nodes that were optimized by this stage
