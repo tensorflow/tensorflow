@@ -280,6 +280,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
     ],
 )
 
