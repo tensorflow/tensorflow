@@ -190,7 +190,7 @@ class NegativeBinomial(distribution.Distribution):
     return self.total_count * math_ops.exp(self.logits)
 
   def _mode(self):
-    adjusted_count = array_ops.where(
+    adjusted_count = array_ops.where_v2(
         1. < self.total_count,
         self.total_count - 1.,
         array_ops.zeros_like(self.total_count))
