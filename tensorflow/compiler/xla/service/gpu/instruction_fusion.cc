@@ -83,10 +83,6 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
   auto producer = consumer->operand(operand_index);
 
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
-    return false;
-  }
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {
     return false;
@@ -105,19 +101,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
-      consumer->opcode() == HloOpcode::kScatter) {
-    return HloInstruction::FusionKind::kInput;
-  }
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
-    return HloInstruction::FusionKind::kOutput;
-  }
-  if (HloOpcode::kFusion == consumer->opcode()) {
-    return consumer->fusion_kind();
-  }
-  return InstructionFusion::ChooseKind(producer, consumer);
+  return ChooseFusionKind(*producer, *consumer);
 }
 
 }  // namespace gpu

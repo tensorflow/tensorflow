@@ -369,6 +369,21 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
+def _is_array_like(obj):  # pylint: disable=invalid-name
+  """Check if a given object is array-like."""
+  # TODO(slebedev): an object could also implement C-level array interface.
+  if (callable(getattr(obj, "__array__", None)) or
+      isinstance(getattr(obj, "__array_interface__", None), dict)):
+    return True
+
+  try:
+    memoryview(obj)
+  except TypeError:
+    return False
+  else:
+    return not isinstance(obj, bytes)
+
+
 # pylint: disable=invalid-name
 @tf_export("make_tensor_proto")
 def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
@@ -441,21 +456,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
           dtypes.qint32
       ])
 
+  if _is_array_like(values):
+    values = np.asarray(values)
+
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
-    if dtype:
+    if dtype and dtype.is_numpy_compatible:
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
-  elif callable(getattr(values, "__array__", None)) or isinstance(
-      getattr(values, "__array_interface__", None), dict):
-    # If a class has the __array__ method, or __array_interface__ dict, then it
-    # is possible to convert to numpy array.
-    nparray = np.asarray(values, dtype=dtype)
-
-    # This is the preferred way to create an array from the object, so replace
-    # the `values` with the array so that _FlattenToStrings is not run.
-    values = nparray
   else:
     if values is None:
       raise ValueError("None values not supported.")
@@ -959,3 +968,18 @@ def is_tensor(x):  # pylint: disable=invalid-name
   return (isinstance(x, tensor_like._TensorLike) or  # pylint: disable=protected-access
           ops.is_dense_tensor_like(x) or
           getattr(x, "is_tensor_like", False))
+
+
+def shape_tensor(shape):  # pylint: disable=invalid-name
+  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
+  dtype = None
+  if isinstance(shape, (tuple, list)):
+    if not shape:
+      dtype = dtypes.int32
+    else:
+      # If there are Dimension objects in the shape, unwrap them. This can be a
+      # problem if v1 and v2 TensorShape objects get mixed up in partial
+      # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
+      # not convertible to Tensors becasue of mixed content.
+      shape = tuple(map(tensor_shape.dimension_value, shape))
+  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")

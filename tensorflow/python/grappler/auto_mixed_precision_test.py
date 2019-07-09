@@ -28,6 +28,7 @@ from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -249,6 +250,32 @@ def _build_node_map(nodes):
   for node in nodes:
     node_map[node.name] = node
   return node_map
+
+
+def _example_noninlined_funcdef_shape(op):
+  return [op.inputs[0].shape]
+
+
+@function.Defun(
+    shape_func=_example_noninlined_funcdef_shape,
+    func_name='example_noninlined_funcdef_grad',
+    noinline=True)
+def _example_noninlined_funcdef_grad(features, grad):
+  """Gradient of Swish function defined below."""
+  sigmoid_features = math_ops.sigmoid(features)
+  activation_grad = (
+      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+  return grad * activation_grad
+
+
+@function.Defun(
+    grad_func=_example_noninlined_funcdef_grad,
+    shape_func=_example_noninlined_funcdef_shape,
+    func_name='example_noninlined_funcdef',
+    noinline=True)
+def _example_noninlined_funcdef(features):
+  """Computes the Swish activation function: `x * sigmoid(x)`."""
+  return features * math_ops.sigmoid(features)
 
 
 class AutoMixedPrecisionTest(test.TestCase):
@@ -566,6 +593,28 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_8(self):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')
+
+  @test_util.run_deprecated_v1
+  def test_noninlined_funcdef(self):
+    """Test graph with non-inlined function subgraph.
+
+    This requires the grappler pass to handle an OpDef that only appears in the
+    graph's function registry instead of the global op registry.
+    """
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y = _matmul_act(x)
+      y = _example_noninlined_funcdef(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (g, y)
+
+      output_val_ref, output_val, cost_graph = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+
+      self._assert_output_fp16(node_map, 'MatMul')
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 
 if __name__ == '__main__':

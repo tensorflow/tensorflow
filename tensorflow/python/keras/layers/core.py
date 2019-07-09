@@ -26,7 +26,6 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -44,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -1033,8 +1033,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs)
-    rank = common_shapes.rank(inputs)
+    rank = len(inputs.shape)
     if rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
@@ -1049,7 +1048,10 @@ class Dense(Layer):
       # will be automatically casted to inputs.dtype.
       if not self._mixed_precision_policy.should_cast_variables:
         inputs = math_ops.cast(inputs, self.dtype)
-      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
+      if K.is_sparse(inputs):
+        outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
+      else:
+        outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:

@@ -23,13 +23,15 @@ option java_package = "tflite.evaluation";
 
 // Defines the functionality executed by an EvaluationStage.
 //
-// Next ID: 5
+// Next ID: 6
 message ProcessSpecification {
   oneof params {
     ImagePreprocessingParams image_preprocessing_params = 1;
     TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
     TfliteInferenceParams tflite_inference_params = 3;
     ImageClassificationParams image_classification_params = 4;
+    ObjectDetectionAveragePrecisionParams
+        object_detection_average_precision_params = 5;
   }
 }
 
@@ -69,7 +71,7 @@ message AccuracyMetrics {
 // Contains process-specific metrics, which may differ based on what an
 // EvaluationStage does.
 //
-// Next ID: 6
+// Next ID: 7
 message ProcessMetrics {
   optional LatencyMetrics total_latency = 1;
 
@@ -78,6 +80,8 @@ message ProcessMetrics {
     TfliteInferenceMetrics tflite_inference_metrics = 3;
     ImageClassificationMetrics image_classification_metrics = 4;
     InferenceProfilerMetrics inference_profiler_metrics = 5;
+    ObjectDetectionAveragePrecisionMetrics
+        object_detection_average_precision_metrics = 6;
   }
 }
 
@@ -193,4 +197,89 @@ message InferenceProfilerMetrics {
   // output_errors[v] : statistics for the error value of the vth output vector
   //   across all Runs.
   repeated AccuracyMetrics output_errors = 3;
+}
+
+// Proto containing information about all the objects (predicted or
+// ground-truth) contained in an image.
+//
+// Next ID: 3
+message ObjectDetectionResult {
+  // One instance of an object detected in an image.
+  // Next ID: 4
+  message ObjectInstance {
+    // Defines the bounding box for a detected object.
+    // Next ID: 5
+    message NormalizedBoundingBox {
+      // All boundaries defined below are required.
+      // Each boundary value should be normalized with respect to the image
+      // dimensions. This helps evaluate detections independent of image size.
+      // For example, normalized_top = top_boundary / image_height.
+      optional float normalized_top = 1;
+      optional float normalized_bottom = 2;
+      optional float normalized_left = 3;
+      optional float normalized_right = 4;
+    }
+
+    // Required.
+    optional int32 class_id = 1;
+    // Required
+    optional NormalizedBoundingBox bounding_box = 2;
+    // Value in (0, 1.0] denoting confidence in this prediction.
+    // Default value of 1.0 for ground-truth data.
+    optional float score = 3 [default = 1.0];
+  }
+
+  repeated ObjectInstance objects = 1;
+  // Required for ground-truth data, to compare against inference results.
+  optional string image_name = 2;
+}
+
+// Proto containing ground-truth ObjectsSets for all images in a COCO validation
+// set.
+//
+// Next ID: 2
+message ObjectDetectionGroundTruth {
+  repeated ObjectDetectionResult detection_results = 1;
+}
+
+// Parameters that define how Average Precision is computed for Object Detection
+// task.
+// Refer for details: http://cocodataset.org/#detection-eval
+//
+// Next ID: 4
+message ObjectDetectionAveragePrecisionParams {
+  // Total object classes. The AP value returned for each IoU threshold is an
+  // average over all classes encountered in predicted/ground truth sets.
+  optional int32 num_classes = 1;
+  // A predicted box matches a ground truth box if and only if
+  // IoU between these two are larger than an IoU threshold.
+  // AP is computed for all relevant {IoU threshold, class} combinations and
+  // averaged to get mAP.
+  // If left empty, evaluation is done for all IoU threshods in the range
+  // 0.5:0.05:0.95 (min:increment:max).
+  repeated float iou_thresholds = 2;
+  // AP is computed as the average of maximum precision at (1
+  // + num_recall_points) recall levels. E.g., if num_recall_points is 10,
+  // recall levels are 0., 0.1, 0.2, ..., 0.9, 1.0.
+  // Default: 100
+  optional int32 num_recall_points = 3 [default = 100];
+}
+
+// Average Precision metrics from Object Detection task.
+//
+// Next ID: 3
+message ObjectDetectionAveragePrecisionMetrics {
+  // Average Precision value for a particular IoU threshold.
+  // Next ID: 3
+  message AveragePrecision {
+    optional float iou_threshold = 1;
+    optional float average_precision = 2;
+  }
+
+  // One entry for each in
+  // ObjectDetectionAveragePrecisionParams::iou_thresholds, averaged over all
+  // classes.
+  repeated AveragePrecision individual_average_precisions = 1;
+  // Average of Average Precision across all IoU thresholds.
+  optional float overall_mean_average_precision = 2;
 }

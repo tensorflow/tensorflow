@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -817,29 +818,119 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
           FAdd(FMul(EmitExtractReal(lhs_value), EmitExtractImag(rhs_value)),
                FMul(EmitExtractImag(lhs_value), EmitExtractReal(rhs_value))));
     case HloOpcode::kDivide: {
-      // (a+bi) / (c+di) = ((a+bi)(c-di)) / ((c+di)(c-di))
-      // = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
-      auto rhs_sum_sq =
-          FAdd(FMul(EmitExtractReal(rhs_value), EmitExtractReal(rhs_value)),
-               FMul(EmitExtractImag(rhs_value), EmitExtractImag(rhs_value)));
-      auto type = rhs_sum_sq->getType();
+      // Division of complex numbers is implemented here, taking into account
+      // over/underflow, NaN and Inf values.
+      auto a_r = EmitExtractReal(lhs_value);
+      auto a_i = EmitExtractImag(lhs_value);
+      auto b_r = EmitExtractReal(rhs_value);
+      auto b_i = EmitExtractImag(rhs_value);
+      auto type = a_r->getType();
+
+      // Smith's algorithm to divide complex numbers. It is just a bit smarter
+      // way to compute the following formula:
+      //  (a_r + a_i * i) / (b_r + b_i * i)
+      //    = (a_r + a_i * i) (b_r - b_i * i) / ((b_r + b_i * i)(b_r - b_i * i))
+      //    = ((a_r * b_r + a_i * b_i) + (a_i * b_r - a_r * b_i) * i) / ||b||^2
+      //
+      // Depending on whether |b_r| < |b_i| we compute either
+      //   b_r_b_i_ratio = b_r / b_i
+      //   b_r_b_i_denom = b_i + b_r * b_r_b_i_ratio
+      //   c_r = (a_r * b_r_b_i_ratio + a_i ) / b_r_b_i_denom
+      //   c_i = (a_i * b_r_b_i_ratio - a_r ) / b_r_b_i_denom
+      //
+      // or
+      //
+      //   b_i_b_r_ratio = b_i / b_r
+      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_denom
+      //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
+      //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
+      //
+      // See https://dl.acm.org/citation.cfm?id=368661 for more details.
+      auto b_r_b_i_ratio = FDiv(b_r, b_i);
+      auto b_r_b_i_denom = FAdd(b_i, FMul(b_r_b_i_ratio, b_r));
+      auto b_i_b_r_ratio = FDiv(b_i, b_r);
+      auto b_i_b_r_denom = FAdd(b_r, FMul(b_i_b_r_ratio, b_i));
+
+      auto b_r_lt_b_i = FCmpOLT(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_));
+      auto c_r = Select(
+          b_r_lt_b_i, FDiv(FAdd(FMul(b_r_b_i_ratio, a_r), a_i), b_r_b_i_denom),
+          FDiv(FAdd(FMul(b_i_b_r_ratio, a_i), a_r), b_i_b_r_denom));
+      auto c_i = Select(
+          b_r_lt_b_i, FDiv(FSub(FMul(b_r_b_i_ratio, a_i), a_r), b_r_b_i_denom),
+          FDiv(FSub(a_i, FMul(b_i_b_r_ratio, a_r)), b_i_b_r_denom));
+      auto result = EmitComposeComplex(op, c_r, c_i);
+
+      // Consider corner cases, if the result is (NaN, NaN).
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(rhs_sum_sq, zero);
-      auto real_inf_or_nan = FDiv(EmitExtractReal(lhs_value), zero);
-      auto imag_inf_or_nan = FDiv(EmitExtractImag(lhs_value), zero);
-      return Select(
-          oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
+      auto one = llvm::ConstantFP::get(type, 1.0);
+      auto inf = llvm::ConstantFP::getInfinity(type);
+
+      // Case 1. Zero denominator.
+      auto zero_denominator =
+          And(And(FCmpOEQ(b_r, zero), FCmpOEQ(b_i, zero)),
+              Or(Neg(FCmpONE(a_r, zero)), Neg(FCmpONE(a_i, zero))));
+      auto inf_with_sign_of_c = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {inf, a_r}, {type}, b_);
+      auto zero_denominator_result = EmitComposeComplex(
+          op, FMul(inf_with_sign_of_c, a_r), FMul(inf_with_sign_of_c, a_i));
+
+      // Case 2. Infinite numerator, finite denominator.
+      auto b_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                inf);
+      auto b_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_),
+                                inf);
+      auto inf_num_finite_denom = And(Or(FCmpOEQ(a_r, inf), FCmpOEQ(a_i, inf)),
+                                      And(b_r_finite, b_i_finite));
+
+      auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_r, inf), one, zero), a_r}, {type}, b_);
+      auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_i, inf), one, zero), a_i}, {type}, b_);
+      auto inf_num_finite_denom_result =
           EmitComposeComplex(op,
-                             FDiv(FAdd(FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq),
-                             FDiv(FSub(FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq)));
+                             FMul(inf, FAdd(FMul(a_r_inf_with_sign, b_r),
+                                            FMul(a_i_inf_with_sign, b_i))),
+                             FMul(inf, FSub(FMul(a_i_inf_with_sign, b_r),
+                                            FMul(a_r_inf_with_sign, b_i))));
+
+      // Case 3. Finite numerator, infinite denominator.
+      auto a_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_r}, {type}, b_),
+                                inf);
+      auto a_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_i}, {type}, b_),
+                                inf);
+      auto finite_num_inf_denom = And(Or(FCmpOEQ(b_r, inf), FCmpOEQ(b_i, inf)),
+                                      And(a_r_finite, a_i_finite));
+
+      auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_r, inf), one, zero), b_r}, {type}, b_);
+      auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_i, inf), one, zero), b_i}, {type}, b_);
+      auto finite_num_inf_denom_result =
+          EmitComposeComplex(op,
+                             FMul(zero, FAdd(FMul(a_r, b_r_inf_with_sign),
+                                             FMul(a_i, b_i_inf_with_sign))),
+                             FMul(zero, FSub(FMul(a_i, b_r_inf_with_sign),
+                                             FMul(a_r, b_i_inf_with_sign))));
+
+      auto c_nan = And(FCmpUNO(c_r, zero), FCmpUNO(c_i, zero));
+      return Select(
+          c_nan,
+          Select(zero_denominator, zero_denominator_result,
+                 Select(inf_num_finite_denom, inf_num_finite_denom_result,
+                        Select(finite_num_inf_denom,
+                               finite_num_inf_denom_result, result))),
+          result);
     }
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
@@ -891,176 +982,6 @@ llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) {
   return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
-}
-
-// TODO(b/123355973): We have an implementation of erfinv in math.cc.  We
-// shouldn't have two implementations, especially since this one isn't testable
-// (it's only observable via a normally-distributed RNG).
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
-                                                      llvm::Value* x) {
-  if (prim_type != F16 && prim_type != F32 && prim_type != F64) {
-    return Unimplemented(
-        "Inverse erf is only implemented for element "
-        "types F16, F32 and F64.");
-  }
-
-  // Upcast half to float.
-  if (prim_type == F16) {
-    x = b_->CreateFPExt(x, b_->getFloatTy());
-  }
-
-  auto get_float = [&](const double f) {
-    return llvm::ConstantFP::get(x->getType(), f);
-  };
-  auto multiply_add = [&](absl::Span<const double> coefficients,
-                          llvm::Value* w) {
-    llvm::Value* p = get_float(coefficients.front());
-    coefficients.remove_prefix(1);
-    for (float coefficient : coefficients) {
-      p = FAdd(FMul(p, w), get_float(coefficient));
-    }
-    return p;
-  };
-
-  // Approximation for inverse error function from
-  //   Giles, M., "Approximating the erfinv function".
-  // The approximation has the form (float version):
-  //   w = -log((1-x)*(1+x))
-  //   if ( w < 5 ) {
-  //     w = w - 2.5
-  //     p = sum_{i=1}^n lq[i]*w^i
-  //   } else {
-  //     w = sqrt(w) - 3
-  //     p = sum_{i=1}^n gq[i]*w^i
-  //   }
-  //   return p*x
-  llvm::Function* logf_fn = llvm::Intrinsic::getDeclaration(
-      module_, llvm::Intrinsic::log, {x->getType()});
-
-  llvm::Value* w = FNeg(Call(
-      logf_fn, {FMul(FSub(get_float(1.0f), x), FAdd(get_float(1.0f), x))}));
-
-  llvm::Value* p_addr =
-      llvm_ir::EmitAllocaAtFunctionEntry(x->getType(), "p.addr", b_);
-
-  if (prim_type == F16 || prim_type == F32) {
-    llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(5.0f)), "w_less_than_five", b_);
-    // Handle true BB.
-    SetToFirstInsertPoint(if_data.true_block, b_);
-    {
-      llvm::Value* lw = FSub(w, get_float(2.5f));
-      absl::Span<const double> lq{
-          2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-          -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-          -0.00417768164f,  0.246640727f,    1.50140941f};
-      llvm::Value* p = multiply_add(lq, lw);
-      Store(p, p_addr);
-    }
-
-    // Handle false BB.
-    SetToFirstInsertPoint(if_data.false_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getFloatTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(3.0f));
-      absl::Span<const double> gq{
-          -0.000200214257f, 0.000100950558f, 0.00134934322f,
-          -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-          0.00943887047f,   1.00167406f,     2.83297682f};
-      llvm::Value* p = multiply_add(gq, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.after_block, b_);
-  } else {
-    DCHECK(prim_type == F64);
-
-    llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(6.25)), "w_less_than_6.25", b_);
-
-    SetToFirstInsertPoint(if_data.true_block, b_);
-    {
-      llvm::Value* lw = FSub(w, get_float(3.125));
-      absl::Span<const double> c{
-          -3.6444120640178196996e-21, -1.685059138182016589e-19,
-          1.2858480715256400167e-18,  1.115787767802518096e-17,
-          -1.333171662854620906e-16,  2.0972767875968561637e-17,
-          6.6376381343583238325e-15,  -4.0545662729752068639e-14,
-          -8.1519341976054721522e-14, 2.6335093153082322977e-12,
-          -1.2975133253453532498e-11, -5.4154120542946279317e-11,
-          1.051212273321532285e-09,   -4.1126339803469836976e-09,
-          -2.9070369957882005086e-08, 4.2347877827932403518e-07,
-          -1.3654692000834678645e-06, -1.3882523362786468719e-05,
-          0.0001867342080340571352,   -0.00074070253416626697512,
-          -0.0060336708714301490533,  0.24015818242558961693,
-          1.6536545626831027356};
-      llvm::Value* p = multiply_add(c, lw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.false_block, b_);
-    llvm_ir::LlvmIfData if_data_second = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(16.0)), "w_less_than_16", b_);
-    SetToFirstInsertPoint(if_data_second.true_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getDoubleTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(3.25));
-      absl::Span<const double> t1{
-          2.2137376921775787049e-09,  9.0756561938885390979e-08,
-          -2.7517406297064545428e-07, 1.8239629214389227755e-08,
-          1.5027403968909827627e-06,  -4.013867526981545969e-06,
-          2.9234449089955446044e-06,  1.2475304481671778723e-05,
-          -4.7318229009055733981e-05, 6.8284851459573175448e-05,
-          2.4031110387097893999e-05,  -0.0003550375203628474796,
-          0.00095328937973738049703,  -0.0016882755560235047313,
-          0.0024914420961078508066,   -0.0037512085075692412107,
-          0.005370914553590063617,    1.0052589676941592334,
-          3.0838856104922207635};
-      llvm::Value* p = multiply_add(t1, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data_second.false_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getDoubleTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(5.0));
-      absl::Span<const double> t2{
-          -2.7109920616438573243e-11, -2.5556418169965252055e-10,
-          1.5076572693500548083e-09,  -3.7894654401267369937e-09,
-          7.6157012080783393804e-09,  -1.4960026627149240478e-08,
-          2.9147953450901080826e-08,  -6.7711997758452339498e-08,
-          2.2900482228026654717e-07,  -9.9298272942317002539e-07,
-          4.5260625972231537039e-06,  -1.9681778105531670567e-05,
-          7.5995277030017761139e-05,  -0.00021503011930044477347,
-          -0.00013871931833623122026, 1.0103004648645343977,
-          4.8499064014085844221};
-      llvm::Value* p = multiply_add(t2, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.after_block, b_);
-  }
-  llvm::Value* p = Load(p_addr);
-  x = FMul(p, x);
-  // Trunc back to half if needed.
-  if (prim_type == F16) {
-    x = b_->CreateFPTrunc(x, b_->getHalfTy());
-  }
-  return x;
-}
-
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(PrimitiveType prim_type,
-                                                       llvm::Value* value) {
-  // Compute erfcinv(value) by calculating erfinv(1.0 - value).
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
-  auto one = llvm::ConstantFP::get(type, 1.0);
-  return EmitErfInv(prim_type, FSub(one, value));
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
@@ -1364,311 +1285,6 @@ llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
                                          : llvm::ICmpInst::ICMP_ULE,
                                lhs_value, rhs_value),
                 lhs_value, rhs_value);
-}
-
-StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
-    const HloInstruction* hlo,
-    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& index, llvm::Value* raw_value) {
-  TF_ASSIGN_OR_RETURN(llvm::Value * a_or_mean,
-                      operand_to_generator.at(hlo->operand(0))(index));
-  TF_ASSIGN_OR_RETURN(llvm::Value * b_or_sigma,
-                      operand_to_generator.at(hlo->operand(1))(index));
-  PrimitiveType elem_prim_ty = hlo->shape().element_type();
-  llvm::Type* elem_ir_ty =
-      llvm_ir::PrimitiveTypeToIrType(elem_prim_ty, module_);
-  llvm::Type* raw_value_ty = raw_value->getType();
-
-  // If we're generating a floating-point value, convert the raw integer R (i.e.
-  // `raw_value`) to a float in the range [0, 1).
-  //
-  // The basic approach is to choose a significand and exponent such that the
-  // significand is uniformly distributed and the exponent is distributed, well,
-  // exponentially (it's more likely to be close to 0 than far from 0).
-  //
-  // An easy way to do this is to say that the significand is the first S bits
-  // of R, and the exponent is determined by the number of trailing zeroes in R,
-  // exp = 2^-(cttz(R) + 1).  (+1 because the largest exponent should be -1;
-  // this way the largest value we can return is 1.999... * 2^-1 = 1-ε.)
-  //
-  // This results in a small bias.  Namely, if R has enough trailing zeroes, the
-  // significand and exponent will "overlap".  As a concrete example, consider
-  //
-  //         20 X's                 12 zeroes
-  //   R = 0bXXXXXXXXXXXXXXXXXXXX000000000000
-  //
-  // Here the exponent is 2^-13 because R has 12 trailing zeroes.  The
-  // significand is made up of the first 23 most-significant bits of R, which we
-  // observe contain 3 zeroes.  This is biased because any random value with
-  // exponent 2^-12 will have a significand which ends in `000`.
-  //
-  // For f32s, this problem occurs only when there are more than 32-23 = 9
-  // trailing zeros, which happens with probability 0.5^10 = ~0.1%. Moreover the
-  // probability of a large bias (i.e. many trailing 0s in the significand) is
-  // exponentially low.  So we deem this acceptable.
-  llvm::Value* elem_value = raw_value;
-  if (elem_ir_ty->isFloatingPointTy()) {
-    const auto& dest_flt_semantics = elem_ir_ty->getFltSemantics();
-    const int bits = raw_value_ty->getPrimitiveSizeInBits();
-    CHECK_GE(bits, llvm::APFloat::semanticsSizeInBits(dest_flt_semantics));
-
-    // Subtract 1 because semanticsPrecision includes the "hidden bit", i.e. the
-    // implicit "1." at the beginning of the significand.
-    const int significand_bits =
-        llvm::APFloat::semanticsPrecision(dest_flt_semantics) - 1;
-
-    llvm::Value* cttz = llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::cttz, {raw_value, /*is_zero_undef=*/b_->getFalse()},
-        {raw_value->getType()}, b_);
-    llvm::Value* significand = LShr(raw_value, bits - significand_bits);
-
-    // Exponent bias is -127 for f32, meaning that if the exponent is E and the
-    // significand is S, then the value of the number is 2^(E - 127) * (1.S).
-    //
-    // We want cttz == 0 to correspond to 2^-1, so our exponent is computed as
-    // E = 126 - cttz.
-    //
-    // For f64, this is all the same, except the bias is -1023.
-    //
-    // In IEEE floating point, the absolute value of the exponent bias equals
-    // the value of the largest possible exponent.
-    const int bias = -llvm::APFloat::semanticsMaxExponent(dest_flt_semantics);
-    llvm::Value* exponent =
-        Sub(llvm::ConstantInt::get(cttz->getType(), -bias - 1), cttz);
-
-    // Now just slot everything into place!  The `Trunc` is here because
-    // raw_value may be larger than our float destination.
-    elem_value =
-        BitCast(Trunc(Or(Shl(exponent, significand_bits), significand),
-                      b_->getIntNTy(elem_ir_ty->getPrimitiveSizeInBits())),
-                elem_ir_ty);
-  }
-
-  // Convert the value for the requested distribution.
-  switch (hlo->random_distribution()) {
-    case RNG_UNIFORM: {
-      if (elem_ir_ty->isFloatingPointTy()) {
-        return FAdd(FMul(FSub(b_or_sigma, a_or_mean), elem_value), a_or_mean);
-      } else {
-        // To generate a uniform random value in [a, b) from a raw random sample
-        // in range [0, 2^N), we let range = b - a and return
-        // (a + raw_value % range). If range is not a power of 2, raw values
-        // larger than (2^N - 2^N % range) are biased toward results in
-        // [a, a + (limit % range)). An unbiased algorithm would need to drop
-        // raw values and re-sample, but we don't do this because re-sampling in
-        // an efficient way is complex, and it's not clear that users need it.
-        // In particular, if one thread in a GPU warp needs to re-sample, we pay
-        // the same cost as if the whole warp were to re-sample.  So an
-        // efficient re-sampling implementation on GPU would need to do
-        // nontrivial work to share entropy between threads in the warp.
-        auto range = Sub(b_or_sigma, a_or_mean);
-        return Add(a_or_mean, URem(elem_value, range));
-      }
-    }
-    case RNG_NORMAL: {
-      // Convert uniform x in (0, 1] to normal using formula:
-      //   Normal(x, mu, sigma) = mu + sqrt(2)*sigma*ErfcInv(2x)
-      //                        = mu + sqrt(2)*sigma*ErfInv(1-2x)
-      TF_ASSIGN_OR_RETURN(
-          llvm::Value * r,
-          EmitErfcInv(elem_prim_ty, FMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
-                                         elem_value)));
-      return FAdd(FMul(llvm::ConstantFP::get(r->getType(), std::sqrt(2.0)),
-                       FMul(r, b_or_sigma)),
-                  a_or_mean);
-    }
-    default:
-      return InvalidArgument(
-          "unhandled distribution %s",
-          RandomDistribution_Name(hlo->random_distribution()));
-  }
-}
-
-namespace {
-
-// Checks that the primitive type is supported by the elemental IR emitter for
-// Philox RNG and returns the number of elements in each 128 bit sample of the
-// Philox RNG algorithm.
-int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
-  // Calculate the number of elements, that is the number of random numbers, in
-  // a 128 bit sample.
-  switch (elem_prim_ty) {
-    case U32:
-    case S32:
-    case F32:
-    // The algorithm uses 32 bits to generate values for F16.
-    case F16:
-      return 4;
-    case U64:
-    case S64:
-    case F64:
-      return 2;
-    default:
-      // BF16 is converted to F16 by the hlo pass HloElementTypeConverter.
-      // Other data types are not supported by XLA random operation.
-      LOG(FATAL) << "Unrecognized primitive type for RNG " << elem_prim_ty;
-  }
-  return 0;
-}
-
-// Calculates the four uint32 values for the 128-bit Philox sample.
-std::array<llvm::Value*, 4> CalculateSampleValues(
-    llvm::Value* sample_idx, llvm::Value* hlo_random_value,
-    llvm::Value* global_random_number, llvm::Value* rng_state,
-    llvm::IRBuilder<>* b) {
-  llvm::Type* index_ty = sample_idx->getType();
-
-  std::array<llvm::Value*, 4> counter_values;
-
-  // Use the sample index to initialize counter[0] and counter[1].
-  unsigned index_ty_size_in_bits = index_ty->getPrimitiveSizeInBits();
-  CHECK(index_ty_size_in_bits == 32 || index_ty_size_in_bits == 64);
-  if (index_ty_size_in_bits == 32) {
-    counter_values[0] = sample_idx;
-    counter_values[1] = b->getInt32(0);
-  } else {
-    std::tie(counter_values[0], counter_values[1]) =
-        llvm_ir::SplitInt64ToInt32s(b, sample_idx);
-  }
-
-  // Xor the global state variable with the global random number seed and use
-  // the result to initialize counter[2] and counter[3].
-  std::tie(counter_values[2], counter_values[3]) = llvm_ir::SplitInt64ToInt32s(
-      b, b->CreateXor(rng_state, global_random_number));
-
-  // The algorithm uses a 64 bit key, which is also interpreted as two uint32
-  // values.
-  llvm::Value* key_values[2];
-
-  // Use a module random number to initialize the key.
-  std::tie(key_values[0], key_values[1]) =
-      llvm_ir::SplitInt64ToInt32s(b, hlo_random_value);
-
-  // Prepare the constants used in the Philox RNG Algorithm.
-  llvm::Value* philoxW32A = b->getInt32(0x9E3779B9);
-  llvm::Value* philoxW32B = b->getInt32(0xBB67AE85);
-  llvm::Value* philoxM4xW32A = b->getInt32(0xD2511F53);
-  llvm::Value* philoxM4xW32B = b->getInt32(0xCD9E8D57);
-
-  // Compute the 128 bit value for the current sample by repeating the
-  // single round computation and key raising computation for ten times.
-  for (int round = 0; round < 10; ++round) {
-    // A single round of computation of the counter values is as follows:
-    //  MultiplyHighLow(kPhiloxM4x32A, counter[0], &lo0, &hi0);
-    //  MultiplyHighLow(kPhiloxM4x32B, counter[2], &lo1, &hi1);
-    //  counter[0] = hi1 ^ counter[1] ^ key[0];
-    //  counter[1] = lo1;
-    //  counter[2] = hi0 ^ counter[3] ^ key[1];
-    //  counter[3] = lo0;
-    llvm::Value* lo0;
-    llvm::Value* hi0;
-    std::tie(lo0, hi0) =
-        llvm_ir::UMulLowHigh32(b, philoxM4xW32A, counter_values[0]);
-    llvm::Value* lo1;
-    llvm::Value* hi1;
-    std::tie(lo1, hi1) =
-        llvm_ir::UMulLowHigh32(b, philoxM4xW32B, counter_values[2]);
-    counter_values[0] =
-        b->CreateXor(hi1, b->CreateXor(counter_values[1], key_values[0]));
-    counter_values[1] = lo1;
-    counter_values[2] =
-        b->CreateXor(hi0, b->CreateXor(counter_values[3], key_values[1]));
-    counter_values[3] = lo0;
-    key_values[0] = b->CreateAdd(key_values[0], philoxW32A);
-    key_values[1] = b->CreateAdd(key_values[1], philoxW32B);
-  }
-
-  return counter_values;
-}
-
-}  // namespace
-
-// Implements the Philox algorithm to generate random numbers in parallel.
-// Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
-//   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
-//
-// The paper presents a few variants of the Philox algorithm, we picked the
-// 4x32_10 version of the algorithm for the following reasons:
-//   . 4x32 uses 32-bit multiplication which is fast on GPUs.
-//   . The authors recommend the 10-round variant, and TensorFlow also uses it.
-//
-// Precondition: the RNG instruction is not fused.
-llvm_ir::ElementGenerator ElementalIrEmitter::MakePhiloxRngElementGenerator(
-    const HloInstruction* hlo,
-    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
-  VLOG(3) << "Using philox RNG algorithm";
-  CHECK(!hlo->IsFused());
-  // A random number generated by the per module random number generator.
-  // This ensures that each RNG HLO generates a different random sequence.
-  llvm::Value* hlo_random_value = b_->getInt64(hlo->GetModule()->RandomNew64());
-  // A value specified by the configuration or generated by a global random
-  // number generator.
-  llvm::Value* global_random_number =
-      b_->getInt64(hlo_module_config_.seed() != 0 ? hlo_module_config_.seed()
-                                                  : GlobalRandomValue());
-
-  int elems_per_sample =
-      GetNumberOfElementsPerPhiloxRngSample(hlo->shape().element_type());
-
-  // Allocate stack storage for the 128 bit sample as four int32.
-  llvm::Type* int32_ty = b_->getInt32Ty();
-  llvm::Value* sample_address = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-      int32_ty, /*element_count=*/b_->getInt32(4), "sample", b_);
-
-  // Load the global state variable for the Philox RNG algorithm.
-  llvm::GlobalVariable* rng_state_ptr =
-      llvm_ir::GetOrCreateVariableForPhiloxRngState(module_, b_);
-  llvm::Value* rng_state = Load(rng_state_ptr, "rng_state_value");
-
-  // Build and return the elemental IR generator to generate a random value for
-  // the element corresponding to the current thread.
-  //
-  // This elemental IR generator computes one sample with multiple random
-  // numbers but only returns one random number. As a result, neighboring
-  // threads may calculate the same sample unnecessarily. However, if the
-  // kernel containing the RNG hlo is unrolled, LLVM is able to optimize away
-  // the duplicated computation of the same sample. In particular, if the unroll
-  // factor is a multiplier of elems_per_sample, LLVM is able to completely
-  // remove such duplicated computation. If the unroll factor is a non-trivial
-  // factor of elems_per_sample, LLVM can only partially remove such duplicated
-  // computation.
-  return [=](const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    llvm::Type* index_ty = index.GetType();
-    // Calculate the linear element index.
-    llvm::Value* elem_idx = index.linear();
-    if (elem_idx == nullptr) {
-      elem_idx = index.Linearize(AsInt64Slice(hlo->shape().dimensions()), b_);
-    }
-
-    // Calculate the index for the 128 bit sample and the offset of the current
-    // element within the sample.
-    llvm::Value* elems_per_sample_value =
-        llvm::ConstantInt::get(index_ty, elems_per_sample);
-    llvm::Value* sample_idx = UDiv(elem_idx, elems_per_sample_value);
-    llvm::Value* elem_offset = URem(elem_idx, elems_per_sample_value);
-
-    std::array<llvm::Value*, 4> counter_values = CalculateSampleValues(
-        sample_idx, hlo_random_value, global_random_number, rng_state, b_);
-
-    // Store the four counter_values into the sample_address alloca so we can
-    // load the elem_offset'th one below.
-    for (int idx = 0; idx < 4; ++idx) {
-      Store(counter_values[idx],
-            InBoundsGEP(sample_address, b_->getInt32(idx)));
-    }
-
-    llvm::Type* int64_ty = b_->getInt64Ty();
-    CHECK(elems_per_sample == 2 || elems_per_sample == 4);
-    llvm::Type* raw_value_ty = elems_per_sample == 2 ? int64_ty : int32_ty;
-    // Retrieve the raw value for the current element from the current sample.
-    llvm::Value* raw_elem_value = Load(
-        InBoundsGEP(PointerCast(sample_address, raw_value_ty->getPointerTo()),
-                    elem_offset),
-        "raw_elem_value");
-
-    return ConvertValueForDistribution(hlo, operand_to_generator, index,
-                                       raw_elem_value);
-  };
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalSelect(
@@ -2338,8 +1954,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (primitive_util::IsIntegralType(component_element_type) ||
-            component_element_type == PRED) {
+        if (primitive_util::IsIntegralType(component_element_type)) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
@@ -2429,8 +2044,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
             target_index.SourceIndexOfTranspose(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(), b_));
       };
-    case HloOpcode::kRng:
-      return MakePhiloxRngElementGenerator(hlo, operand_to_generator);
     case HloOpcode::kPad:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {

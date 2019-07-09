@@ -34,8 +34,7 @@ class ApiTest(test.TestCase):
     def test_fn(*, a):
       return a
 
-    x = api.converted_call(test_fn, None,
-                           converter.ConversionOptions(recursive=True),
+    x = api.converted_call(test_fn, converter.ConversionOptions(recursive=True),
                            (), {'a': constant_op.constant(-1)})
     self.assertEqual(-1, self.evaluate(x))
 

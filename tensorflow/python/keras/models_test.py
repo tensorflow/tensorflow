@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import functools
 import os
 
@@ -35,7 +34,6 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -320,36 +318,6 @@ class TestModelBackend(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
 
     keras.backend.set_floatx(floatx)
-
-
-class TestModelDeepCopy(test.TestCase):
-
-  def test_deep_copy_eager_mode_trainable(self):
-    with context.eager_mode():
-      x = random_ops.random_normal((32, 4))
-      model = TestModel(trainable=True)
-      model(x)  # Initialize Variables.
-      model_copy = copy.deepcopy(model)
-      self.assertEqual(len(model_copy.trainable_variables), 3)
-      model_copy.n_outputs.assign(1200)
-      self.assertFalse(
-          np.allclose(model_copy.n_outputs.numpy(),
-                      model.n_outputs.numpy()))
-
-  def test_deep_copy_eager_mode_not_trainable(self):
-    with context.eager_mode():
-      x = random_ops.random_normal((32, 4))
-      model = TestModel(trainable=False)
-      model(x)
-      model_copy = copy.deepcopy(model)
-      self.assertEqual(len(model_copy.trainable_variables), 2)
-
-      weights = model_copy.get_weights()
-      weights = [w * 4 for w in weights]
-      model_copy.set_weights(weights)
-      self.assertFalse(
-          np.allclose(model.get_weights()[0],
-                      model_copy.get_weights()[0]))
 
 
 class TestCloneAndBuildModel(keras_parameterized.TestCase):

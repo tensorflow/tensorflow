@@ -202,7 +202,7 @@ void TestRemoteExecute(bool async) {
 
   TF_DeleteStatus(status);
 
-  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
 }
 
@@ -288,7 +288,7 @@ void TestRemoteExecuteSilentCopies(bool async) {
 
   TF_DeleteStatus(status);
 
-  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server1.release();
   worker_server2.release();
 }
@@ -342,7 +342,7 @@ void TestRemoteExecuteDeleteTensorAfterContext(bool async) {
 
   TF_DeleteStatus(status);
 
-  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
 }
 
@@ -436,7 +436,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   TFE_ContextAsyncWait(ctx, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
 
   // Update the server def with a new set of names (worker instead of
@@ -483,7 +483,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
 
   TFE_DeleteContext(ctx);
 
-  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
 }
 

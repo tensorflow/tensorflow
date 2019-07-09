@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -47,4 +48,8 @@ def cardinality(dataset):
     the cardinality is infinite or unknown, the operation returns the named
     constant `INFINITE_CARDINALITY` and `UNKNOWN_CARDINALITY` respectively.
   """
-  return ged_ops.experimental_dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+
+  if compat.forward_compatible(2019, 8, 3):
+    return ged_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+  else:
+    return ged_ops.experimental_dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access

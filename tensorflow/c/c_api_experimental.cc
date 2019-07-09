@@ -631,7 +631,7 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
   std::unique_ptr<tensorflow::Tensor> tensor;
   reader->GetTensor(name, &tensor, status);
   if (!status->status.ok()) return nullptr;
-  return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
+  return tensorflow::TF_TensorFromTensor(*tensor, status);
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
@@ -673,7 +673,7 @@ void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
 void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
                            TF_DataType value) {
   auto iter = builder->attr_names.insert(attr_name).first;
-  builder->Set((*iter).c_str(), static_cast<tensorflow::DataType>(value));
+  builder->Set(*iter, static_cast<tensorflow::DataType>(value));
 }
 
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
@@ -805,8 +805,8 @@ std::string tensorflow::getTF_OutputDebugString(TF_Output node) {
 using tensorflow::getTF_OutputDebugString;
 
 TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(TF_Output t,
-                                                  TF_DataType dtype) {
-  auto ret = new TFE_TensorHandle(t, dtype);
+                                                  TF_DataType data_type) {
+  auto ret = new TFE_TensorHandle(t, data_type);
   VLOG(1) << "Storing TFOutput " << getTF_OutputDebugString(t)
           << " into tensor handle " << ret << " with internal handle "
           << ret->handle;
@@ -994,24 +994,4 @@ TFE_TensorHandle* TFE_ConsumeInputConcreteTensorFromTraceContext(
   VLOG(1) << "Returning a new tensor handle " << ret << ": "
           << handle->DebugString();
   return ret;
-}
-
-void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
-                                          TFE_ContextMirroringPolicy policy) {
-  options->mirroring_policy = policy;
-}
-
-void TFE_ContextSetThreadLocalMirroringPolicy(
-    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
-  ctx->context->SetThreadLocalMirroringPolicy(
-      static_cast<tensorflow::ContextMirroringPolicy>(policy));
-}
-
-// Note: this function looks up a thread local policy. So it should be called in
-// the appropriate client thread. In particular, in async mode, it may not be
-// safe to call this function from the async EagerExecutor threads.
-extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
-    TFE_Context* ctx) {
-  return static_cast<TFE_ContextMirroringPolicy>(
-      ctx->context->GetMirroringPolicy());
 }

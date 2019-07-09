@@ -91,7 +91,7 @@ def normalize_element(element):
   """
   components = nest.flatten(element)
   normalized_components = []
-  with ops.name_scope("normalize_tensors"):
+  with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, t in enumerate(components):

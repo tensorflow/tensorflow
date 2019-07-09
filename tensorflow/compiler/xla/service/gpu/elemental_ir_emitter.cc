@@ -195,12 +195,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
                             {lhs_input_type, rhs_input_type}, output_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
-    PrimitiveType prim_type, llvm::Value* value) {
-  return EmitDeviceMathCall(TargetDeviceFunctionID::kErfcinv, {value},
-                            {prim_type}, prim_type);
-}
-
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(PrimitiveType prim_type,
                                                       llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kLog, {value}, {prim_type},

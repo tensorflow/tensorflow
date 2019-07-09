@@ -35,14 +35,14 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(S32, {1}), exp1, {0}));
+          ShapeUtil::MakeShape(F32, {1}), exp1, {}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -60,9 +60,9 @@ TEST_F(InstructionFusionTest,
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(S32, {1}), negate1, {0}));
+          ShapeUtil::MakeShape(S32, {1}), negate1, {}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -75,13 +75,13 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), exp1));
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {}), exp1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -94,13 +94,13 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(
-      HloInstruction::CreateTranspose(ShapeUtil::MakeShape(S32, {}), exp1, {}));
+      HloInstruction::CreateTranspose(ShapeUtil::MakeShape(F32, {}), exp1, {}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -145,7 +145,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
 
 // Tests that broadcasts fused into a fusion with a reduce root.
 TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -174,7 +174,7 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -197,7 +197,7 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -227,7 +227,7 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry {
       p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
@@ -246,7 +246,7 @@ TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -268,11 +268,11 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
 }
 
 TEST_F(InstructionFusionTest, AddIntoBitcast) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
-      p0 = f32[4,1,1]{2,1,0} parameter(0)
+      p0 = f32[4,1]{1,0} parameter(0)
       p1 = f32[4,1]{1,0} parameter(1)
       add = f32[4,1] add(p0, p1)
       ROOT bitcast = f32[4,1,1] bitcast(add)
@@ -290,7 +290,7 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
 }
 
 TEST_F(InstructionFusionTest, DontFuseGTE) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY DontFuseGTE {
     p0 = (f32[10], f32[10]) parameter(0)
@@ -308,7 +308,7 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   Add {
     lhs = f32[] parameter(0)
@@ -317,9 +317,9 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
   }
   ENTRY TestComputation {
     zero = f32[] constant(0)
-    one = f32[] constant(1)
     p0 = f32[100] parameter(0)
-    recip = f32[100] divide(one, p0)
+    p1 = f32[100] parameter(1)
+    recip = f32[100] divide(p1, p0)
     sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     ROOT root = (f32[], f32[]) tuple(sum1, sum2)
@@ -339,7 +339,7 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
 // is *not* duplicated and fused into both reduces, because we say that integer
 // division is not cheap.
 TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   Add {
     lhs = s32[] parameter(0)
@@ -348,9 +348,9 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
   }
   ENTRY TestComputation {
     zero = s32[] constant(0)
-    one_hundred = s32[] constant(100)
     p0 = s32[100] parameter(0)
-    recip = s32[100] divide(one_hundred, p0)
+    p1 = s32[100] parameter(1)
+    recip = s32[100] divide(p1, p0)
     sum1 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     sum2 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     ROOT mul = (s32[], s32[]) tuple(sum1, sum2)
@@ -364,7 +364,7 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY NoOutputFusion {
     alpha = f32[] constant(3)
@@ -418,7 +418,7 @@ static StatusOr<const HloInstruction*> FindHloInstruction(
 TEST_F(InstructionFusionTest, MultiOutputFusion) {
   // sub --> add --> tuple
   //  \---------------/
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -438,7 +438,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseScalarConstant) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
 
   ENTRY FuseScalarConstant {
@@ -492,13 +492,13 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoScatter) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
     }
 
     ENTRY FuseIntoScatter {
@@ -531,7 +531,7 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
 }
 
 TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -561,7 +561,7 @@ TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
 }
 
 TEST_F(InstructionFusionTest, FuseReverse) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY Reverse {

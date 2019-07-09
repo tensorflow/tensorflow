@@ -644,6 +644,24 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     after_restore = self.evaluate(v)
     self.assertAllClose(before_save, after_restore)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph"]))
+  def testTraceback(self, distribution):
+    with distribution.scope():
+      variable_scope.get_variable(
+          name="testVar", initializer=1., use_resource=True)
+      with self.assertRaisesRegex(
+          ValueError, "Variable testVar already exists"):
+        variable_scope.get_variable(
+            name="testVar", initializer=1., use_resource=True)
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 

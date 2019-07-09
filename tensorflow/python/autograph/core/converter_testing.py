@@ -58,9 +58,10 @@ class TestCase(test.TestCase):
     source = None
 
     self.dynamic_calls = []
-    def converted_call(*args):
+    # See api.converted_call
+    def converted_call(unused_f, unused_opts, args, kwargs):
       """Mock version of api.converted_call."""
-      self.dynamic_calls.append(args[3:])  # args only; see api.converted_call
+      self.dynamic_calls.append((args, kwargs))
       return RESULT_OF_MOCK_CONVERTED_CALL
 
     try:

@@ -211,9 +211,12 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("SetStatsAggregatorDataset").Device(DEVICE_CPU),
+                        SetStatsAggregatorDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalSetStatsAggregatorDataset").Device(DEVICE_CPU),
     SetStatsAggregatorDatasetOp);
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

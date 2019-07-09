@@ -1,6 +1,8 @@
+$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model,))
+
 MICRO_VISION_MODEL_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc \
-tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.cc
+$(MAKEFILE_DIR)/downloads/person_model/person_detect_model_data.cc
 
 MICRO_VISION_MODEL_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h \
@@ -8,8 +10,8 @@ tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_dat
 
 MICRO_VISION_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/micro_vision_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_vision/no_person_image_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_vision/person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model/no_person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model/person_image_data.cc \
 $(MICRO_VISION_MODEL_SRCS)
 
 MICRO_VISION_TEST_HDRS := \
@@ -39,13 +41,13 @@ $(MICRO_VISION_MODEL_HDRS)
 include $(wildcard tensorflow/lite/experimental/micro/examples/micro_vision/*/Makefile.inc)
 
 # Tests loading and running a vision model.
-#$(eval $(call microlite_test,micro_vision_test,\
-#$(MICRO_VISION_TEST_SRCS),$(MICRO_VISION_TEST_HDRS)))
+$(eval $(call microlite_test,micro_vision_test,\
+$(MICRO_VISION_TEST_SRCS),$(MICRO_VISION_TEST_HDRS)))
 
 # Tests the image provider module.
 $(eval $(call microlite_test,image_provider_test,\
 $(IMAGE_PROVIDER_TEST_SRCS),$(IMAGE_PROVIDER_TEST_HDRS)))
 
 # Builds a standalone object recognition binary.
-#$(eval $(call microlite_test,micro_vision,\
-#$(MICRO_VISION_SRCS),$(MICRO_VISION_HDRS)))
+$(eval $(call microlite_test,micro_vision,\
+$(MICRO_VISION_SRCS),$(MICRO_VISION_HDRS)))

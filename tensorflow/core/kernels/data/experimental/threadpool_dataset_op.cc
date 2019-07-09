@@ -431,14 +431,25 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("MaxIntraOpParallelismDataset").Device(DEVICE_CPU),
+                        MaxIntraOpParallelismDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMaxIntraOpParallelismDataset").Device(DEVICE_CPU),
     MaxIntraOpParallelismDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("PrivateThreadPoolDataset").Device(DEVICE_CPU),
+                        PrivateThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalPrivateThreadPoolDataset").Device(DEVICE_CPU),
     PrivateThreadPoolDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolHandle").Device(DEVICE_CPU),
+                        ThreadPoolHandleOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalThreadPoolHandle").Device(DEVICE_CPU),
                         ThreadPoolHandleOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
+                        ThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalThreadPoolDataset").Device(DEVICE_CPU),
     ThreadPoolDatasetOp);

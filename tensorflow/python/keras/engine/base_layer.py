@@ -23,6 +23,7 @@ import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
 import json
+import threading
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -46,6 +47,7 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import casting_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
@@ -182,19 +184,14 @@ class Layer(module.Module):
     self._maybe_create_attribute('_trainable_weights', [])
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
+    # Object to store all thread local layer properties.
+    self._thread_local = threading.local()
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
     self._callable_losses = []
     # A list of symbolic Tensors containing activity regularizers and losses
     # manually added through `add_loss` in graph-building mode.
     self._losses = []
-    # A list of loss values containing activity regularizers and losses
-    # manually added through `add_loss` during eager execution. It is cleared
-    # after every batch.
-    # Because we plan on eventually allowing a same model instance to be trained
-    # in eager mode or graph mode alternatively, we need to keep track of
-    # eager losses and symbolic losses via separate attributes.
-    self._eager_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
@@ -700,7 +697,10 @@ class Layer(module.Module):
 
           if not self.dynamic:
             try:
-              with base_layer_utils.autocast_context_manager(
+              # We do not directly pass self.weights, because we do not want
+              # to include weights of any layers in self.layers.
+              with casting_utils.autocast_context_manager(
+                  self._trainable_weights + self._non_trainable_weights,
                   input_list,
                   self._mixed_precision_policy.should_cast_variables):
                 # Add auto_control_deps in V2 when they are not already added by
@@ -756,8 +756,11 @@ class Layer(module.Module):
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          with base_layer_utils.autocast_context_manager(
-              input_list, self._mixed_precision_policy.should_cast_variables):
+          # We do not directly pass self.weights, because we do not want
+          # to include weights of any layers in self.layers.
+          with casting_utils.autocast_context_manager(
+              self._trainable_weights + self._non_trainable_weights, input_list,
+              self._mixed_precision_policy.should_cast_variables):
             outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -2234,6 +2237,22 @@ class Layer(module.Module):
       A string with the object identifier, which is used at load time.
     """
     return '_tf_keras_layer'
+
+  @property
+  def _eager_losses(self):
+    # A list of loss values containing activity regularizers and losses
+    # manually added through `add_loss` during eager execution. It is cleared
+    # after every batch.
+    # Because we plan on eventually allowing a same model instance to be trained
+    # in eager mode or graph mode alternatively, we need to keep track of
+    # eager losses and symbolic losses via separate attributes.
+    if not hasattr(self._thread_local, '_eager_losses'):
+      self._thread_local._eager_losses = []
+    return self._thread_local._eager_losses
+
+  @_eager_losses.setter
+  def _eager_losses(self, losses):
+    self._thread_local._eager_losses = losses
 
   @property
   def _tracking_metadata(self):

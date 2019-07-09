@@ -5482,5 +5482,51 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      iota = s32[5,1000] iota(), iota_dimension=0
+      five = s32[] constant(5)
+      five_bcast = s32[5,1000] broadcast(s32[] five), dimensions={}
+      ROOT remainder = s32[5,1000] remainder(iota, s32[5,1000] five_bcast)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIota) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      iota = s32[5,1000] iota(), iota_dimension=0
+      five = s32[] constant(5)
+      five_bcast = s32[5,1000] broadcast(five), dimensions={}
+      sum = s32[5,1000] add(iota, five_bcast)
+      ROOT remainder = s32[5,1000] remainder(sum, s32[5,1000] five_bcast)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Remainder(m::Iota(), m::Broadcast())));
+}
+
+// No simplification because 125 + 5 overflows S8.
+TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIotaOverflow) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      iota = s8[126] iota(), iota_dimension=0
+      five = s8[] constant(5)
+      five_bcast = s8[126] broadcast(five), dimensions={}
+      sum = s8[126] add(iota, five_bcast)
+      ROOT remainder = s8[126] remainder(sum, s8[126] five_bcast)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace xla

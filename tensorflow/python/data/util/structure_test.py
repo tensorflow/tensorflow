@@ -703,12 +703,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
 
     for expected, actual in zip(
         nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
-      if sparse_tensor.is_sparse(expected):
-        self.assertSparseValuesEqual(expected, actual)
-      elif ragged_tensor.is_ragged(expected):
-        self.assertAllEqual(expected, actual)
-      else:
-        self.assertAllEqual(expected, actual)
+      self.assertValuesEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
 

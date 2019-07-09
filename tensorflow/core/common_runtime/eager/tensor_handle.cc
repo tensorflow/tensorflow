@@ -77,6 +77,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 
 Status TensorHandle::CreateLocalHandle(const class Tensor& t,
                                        TensorHandle** h) {
+  // TODO(b/136608821): Move away from nullptr
   return CreateLocalHandle(t, nullptr, nullptr, nullptr, h);
 }
 
@@ -271,6 +272,10 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   return tensor_handle_data_->TensorValue(t);
 }
 
+Device* TensorHandle::DeviceOrHostCPU(EagerContext* ctx) const {
+  return (device_ == nullptr) ? ctx->HostCPU() : device_;
+}
+
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
   TF_RETURN_IF_ERROR(WaitReady());
   return tensor_handle_data_->Shape(shape);
@@ -375,10 +380,11 @@ void TensorHandle::Poison(Status status) {
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                                   tensorflow::Tensor* output) {
-  tensorflow::Device* srcd = (device_ == nullptr) ? ctx->HostCPU() : device_;
-  bool is_same_device = (srcd == dstd) || (srcd->name() == dstd->name());
+  tensorflow::Device* srcd = DeviceOrHostCPU(ctx);
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
   const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
+  bool is_same_device =
+      (srcd == dstd) || (srcd->name() == dstd->name()) || (dst_cpu && src_cpu);
 
   const tensorflow::Tensor* src = nullptr;
   TF_RETURN_IF_ERROR(Tensor(&src));

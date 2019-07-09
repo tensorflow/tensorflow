@@ -24,6 +24,7 @@ import copy
 import itertools
 import json
 import os
+import threading
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 
@@ -190,6 +191,9 @@ class Network(base_layer.Layer):
 
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic'})
 
+    # Object to store all thread local layer properties.
+    self._thread_local = threading.local()
+
     self._init_set_name(name, zero_based=True)
     self._activity_regularizer = None
     # This acts just like the `trainable` attribute of any layer instance.
@@ -213,7 +217,6 @@ class Network(base_layer.Layer):
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
-    self._eager_losses = []
     self._callable_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
@@ -568,13 +571,6 @@ class Network(base_layer.Layer):
       if layer.name == name:
         return layer
     raise ValueError('No such layer: ' + name)
-
-  @trackable.no_automatic_dependency_tracking
-  def _clear_losses(self):
-    """Used every step in eager to reset losses."""
-    self._eager_losses = []
-    for layer in self.layers:
-      layer._clear_losses()
 
   @property
   def trainable_weights(self):

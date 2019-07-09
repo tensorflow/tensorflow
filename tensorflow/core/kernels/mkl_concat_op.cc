@@ -656,20 +656,22 @@ class MklConcatOp : public OpKernel {
 };
 
 /* Use optimized concat for float type only */
-#define REGISTER_MKL_CPU(type)                                              \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcat")                                \
-                              .Device(DEVICE_CPU)                           \
-                              .TypeConstraint<type>("T")                    \
-                              .HostMemory("concat_dim")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),         \
-                          MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>) \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                              \
-                              .Device(DEVICE_CPU)                           \
-                              .TypeConstraint<type>("T")                    \
-                              .TypeConstraint<int32>("Tidx")                \
-                              .HostMemory("axis")                           \
-                              .Label(mkl_op_registry::kMklOpLabel),         \
-                          MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
+#define REGISTER_MKL_CPU(type)                                 \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConcat")                                       \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .HostMemory("concat_dim")                            \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>)        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConcatV2")                                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .TypeConstraint<int32>("Tidx")                       \
+          .HostMemory("axis")                                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
 
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);

@@ -695,6 +695,14 @@ void SetOpAttrWithDefaults(
   }
 }
 
+PyObject* GetPythonObjectFromInt(int num) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_FromLong(num);
+#else
+  return PyInt_FromLong(num);
+#endif
+}
+
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
 PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
@@ -1500,33 +1508,51 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   return tensor_ids;
 }
 
-PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
+// Fill `tensor_ids` and `dtypes` from `tensors`, none of which may be
+// null. Returns true on success and false on a Python exception.
+bool TensorShapesAndDtypes(PyObject* tensors,
+                           std::vector<tensorflow::int64>* tensor_ids,
+                           std::vector<tensorflow::DataType>* dtypes) {
+  tensorflow::Safe_PyObjectPtr seq(
+      PySequence_Fast(tensors, "expected a sequence"));
+  if (seq == nullptr) {
+    return false;
+  }
+  int len = PySequence_Fast_GET_SIZE(seq.get());
+  tensor_ids->reserve(len);
+  dtypes->reserve(len);
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq.get(), i);
+    tensor_ids->push_back(FastTensorId(item));
+    dtypes->push_back(FastTensorDtype(item));
+  }
+  return true;
+}
+
+bool TapeCouldPossiblyRecord(PyObject* tensors) {
   if (tensors == Py_None) {
-    Py_RETURN_FALSE;
+    return false;
   }
   if (*ThreadTapeIsStopped()) {
-    Py_RETURN_FALSE;
+    return false;
   }
   if (!HasTape()) {
+    return false;
+  }
+  return true;
+}
+
+PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
+  if (!TapeCouldPossiblyRecord(tensors)) {
     Py_RETURN_FALSE;
   }
-  PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
-  if (seq == nullptr) {
-    return nullptr;
-  }
-  int len = PySequence_Fast_GET_SIZE(seq);
   // TODO(apassos) consider not building a list and changing the API to check
   // each tensor individually.
   std::vector<tensorflow::int64> tensor_ids;
   std::vector<tensorflow::DataType> dtypes;
-  tensor_ids.reserve(len);
-  dtypes.reserve(len);
-  for (int i = 0; i < len; ++i) {
-    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
-    tensor_ids.push_back(FastTensorId(item));
-    dtypes.push_back(FastTensorDtype(item));
+  if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
+    return nullptr;
   }
-  Py_DECREF(seq);
   auto tape_set = *GetTapeSet();
   for (TFE_Py_Tape* tape : tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
@@ -1541,6 +1567,53 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   }
 
   Py_RETURN_FALSE;
+}
+
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
+  if (!TapeCouldPossiblyRecord(tensors)) {
+    return GetPythonObjectFromInt(0);
+  }
+  std::vector<tensorflow::int64> tensor_ids;
+  std::vector<tensorflow::DataType> dtypes;
+  if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
+    return nullptr;
+  }
+
+  // If there is a persistent tape watching, or if there are multiple tapes
+  // watching, we'll return immediately indicating that higher-order tape
+  // gradients are possible.
+  bool some_tape_watching = false;
+  auto tape_set = *GetTapeSet();
+  for (TFE_Py_Tape* tape : tape_set) {
+    if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
+      if (tape->tape->IsPersistent() || some_tape_watching) {
+        // Either this is the second tape watching, or this tape is persistent:
+        // higher-order gradients are possible.
+        return GetPythonObjectFromInt(2);
+      }
+      some_tape_watching = true;
+    }
+  }
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    if (accumulator->accumulator->ShouldRecord(tensor_ids, dtypes)) {
+      if (some_tape_watching) {
+        // This is the second tape watching: higher-order gradients are
+        // possible. Note that there's no equivalent of persistence for
+        // forward-mode.
+        return GetPythonObjectFromInt(2);
+      }
+      some_tape_watching = true;
+    }
+  }
+  if (some_tape_watching) {
+    // There's exactly one non-persistent tape. The user can request first-order
+    // gradients but won't be able to get higher-order tape gradients.
+    return GetPythonObjectFromInt(1);
+  } else {
+    // There are no tapes. The user can't request tape gradients.
+    return GetPythonObjectFromInt(0);
+  }
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
@@ -1994,14 +2067,6 @@ PyObject* GetPythonObjectFromString(const char* s) {
   return PyUnicode_FromString(s);
 #else
   return PyBytes_FromString(s);
-#endif
-}
-
-PyObject* GetPythonObjectFromInt(int num) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_FromLong(num);
-#else
-  return PyInt_FromLong(num);
 #endif
 }
 
