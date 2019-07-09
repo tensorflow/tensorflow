@@ -284,7 +284,7 @@ void TestByteSwap(const T* forward, const T* swapped, int array_len) {
   auto bytes_per_elem = sizeof(T);
 
   // Convert the entire array at once
-  std::unique_ptr<T> forward_copy(new T[array_len]);
+  std::unique_ptr<T[]> forward_copy(new T[array_len]);
   std::memcpy(forward_copy.get(), forward, array_len * bytes_per_elem);
   TF_EXPECT_OK(ByteSwapArray(reinterpret_cast<char*>(forward_copy.get()),
                              bytes_per_elem, array_len));
