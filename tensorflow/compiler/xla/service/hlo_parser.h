@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
-#include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
