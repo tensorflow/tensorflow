@@ -77,9 +77,15 @@ def TFL_AFAttr : StrEnumAttr<
 // These should match the padding enum in TFLite schema.
 def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
 def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
+def TFL_MIRRORPAD_Reflect : StrEnumAttrCase<"REFLECT">;
+def TFL_MIRRORPAD_Symmetric : StrEnumAttrCase<"SYMMETRIC">;
 
 def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
       TFL_PAD_Same, TFL_PAD_Valid
+    ]>;
+
+def TFL_MirrorPaddingAttr : StrEnumAttr<"Padding", "Mirror pad enum", [
+      TFL_MIRRORPAD_Reflect, TFL_MIRRORPAD_Symmetric
     ]>;
 
 //===----------------------------------------------------------------------===//
@@ -1958,6 +1964,42 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   let hasOptions = 1;
 }
 
+
+def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
+                     NoSideEffect, TFL_OperandHasRank<1, 2>]> {
+  let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
+
+  let description = [{
+    This operation pads a input with mirrored values according to the paddings
+    you specify. paddings is an integer tensor with shape [n, 2],
+    where n is the rank of input.
+    For each dimension D of input, paddings[D, 0] indicates how many values
+    to add before the contents of input in that dimension,
+    and paddings[D, 1] indicates how many values to add after the contents of
+    input in that dimension.
+
+    Both paddings[D, 0] and paddings[D, 1] must be no greater than
+    input.dim_size(D) (or input.dim_size(D) - 1)
+    if copy_border is true (if false, respectively).
+
+    The padded size of each dimension D of the output is:
+
+    paddings(D, 0) + input.dim_size(D) + paddings(D, 1)
+  }];
+
+  let arguments = (ins
+    // TODO: add uint8 support when ready.
+    TensorOf<[F32, I32, I64]>:$input,
+    TensorOf<[I32, I64]>:$pad,
+    TFL_MirrorPaddingAttr:$mode
+  );
+
+  let results = (outs
+    TensorOf<[F32, I32, I64]>:$output
+  );
+
+  let hasOptions = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Quantization ops.

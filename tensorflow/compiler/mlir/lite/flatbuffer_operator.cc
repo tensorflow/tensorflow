@@ -42,6 +42,13 @@ static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
       .Case("VALID", tflite::Padding_VALID);
 }
 
+static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return llvm::StringSwitch<tflite::MirrorPadMode>(str)
+      .Case("REFLECT", tflite::MirrorPadMode_REFLECT)
+      .Case("SYMMETRIC", tflite::MirrorPadMode_SYMMETRIC);
+}
+
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
     mlir::Type type, flatbuffers::FlatBufferBuilder* builder) {
   switch (type.getKind()) {
