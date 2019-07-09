@@ -51,9 +51,7 @@ public:
   MLIRContext *getContext() const { return context; }
 
   /// Return the name of the attribute used for symbol names.
-  static constexpr llvm::StringLiteral getSymbolAttrName() {
-    return "sym_name";
-  }
+  static StringRef getSymbolAttrName() { return "sym_name"; }
 
 private:
   MLIRContext *context;
