@@ -1331,7 +1331,8 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     - The cuda runtime is added as a dependency (if necessary).
     - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
     - In addition, when the library is also built with TensorRT or NCCL enabled,
-        -DGOOGLE_TENSORRT=1 or -DGOOGLE_NCCL=1 are passed to the list of copts.
+        it additionally passes -DGOOGLE_TENSORRT=1 or -DGOOGLE_NCCL=1 to the
+        list of copts.
 
     Args:
     - cuda_deps: BUILD dependencies which will be linked if and only if:
