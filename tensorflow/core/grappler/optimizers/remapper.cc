@@ -1634,6 +1634,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
       const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+      // TODO(rmlarsen): Get rid of tensor value copies.
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           assume_valid_feeds,
           /*aggressive_shape_inference=*/false,
