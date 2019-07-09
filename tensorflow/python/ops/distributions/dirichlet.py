@@ -293,7 +293,7 @@ class Dirichlet(distribution.Distribution):
           array_ops.shape(mode),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(
+      return array_ops.where_v2(
           math_ops.reduce_all(self.concentration > 1., axis=-1),
           mode, nan)
     return control_flow_ops.with_dependencies([
