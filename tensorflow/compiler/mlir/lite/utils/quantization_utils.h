@@ -116,7 +116,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // quantization parameters are stored as adjacent quantize and dequantize ops
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function.
-void ApplyQuantizationParamsPropagation(mlir::Function func);
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func);
 
 }  // end namespace TFL
 }  // end namespace mlir

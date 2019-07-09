@@ -121,7 +121,7 @@ struct RequantizeState {
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(Function fn) : builder_(fn.getBody()) {}
+  explicit QuantizationDriver(FuncOp fn) : builder_(fn.getBody()) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -706,7 +706,7 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::Function func) {
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func) {
   QuantizationDriver(func).Run();
 }
 

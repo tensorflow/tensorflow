@@ -1151,8 +1151,8 @@ Status Importer::Convert(llvm::StringRef func_name,
                          const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                          llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
-  auto function = mlir::Function::create(mlir::UnknownLoc::get(context_),
-                                         func_name, func_type, attrs);
+  auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
+                                       func_name, func_type, attrs);
 
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());

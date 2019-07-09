@@ -77,7 +77,7 @@ using llvm::Twine;
 using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::Function;
+using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::Module;
 using mlir::NoneType;
@@ -247,14 +247,14 @@ static bool IsValidTFLiteMlirModule(Module module) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
-  Function main_fn = module.getNamedFunction("main");
+  FuncOp main_fn = module.getNamedFunction("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
            false;
   }
 
-  for (auto fn : module.getOps<Function>()) {
+  for (auto fn : module.getOps<FuncOp>()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -391,11 +391,11 @@ class Translator {
       Operation* inst, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(Function fn);
+  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
-  void InitializeNamesFromAttribute(Function fn);
+  void InitializeNamesFromAttribute(FuncOp fn);
 
   // Returns a unique name for `op`.
   std::string UniqueName(mlir::Operation* op);
@@ -781,7 +781,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
          llvm::None;
 }
 
-void Translator::InitializeNamesFromAttribute(Function fn) {
+void Translator::InitializeNamesFromAttribute(FuncOp fn) {
   auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
@@ -823,8 +823,7 @@ void Translator::InitializeNamesFromAttribute(Function fn) {
   }
 }
 
-Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
-    Function fn) {
+Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   InitializeNamesFromAttribute(fn);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
@@ -941,14 +940,14 @@ Optional<std::string> Translator::TranslateInternal() {
   // Create a list of functions in the module with main function being the
   // first function in the list. This is required as the first subgraph in the
   // model is entry point for the model.
-  std::vector<Function> functions;
+  std::vector<FuncOp> functions;
   functions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
-  Function main_fn = module_.getNamedFunction("main");
+  FuncOp main_fn = module_.getNamedFunction("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_.getOps<Function>()) {
+  for (auto fn : module_.getOps<FuncOp>()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;

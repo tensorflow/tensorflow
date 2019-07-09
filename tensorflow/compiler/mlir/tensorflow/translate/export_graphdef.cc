@@ -92,19 +92,19 @@ class Exporter {
                         std::unique_ptr<Graph>* graph,
                         FunctionLibraryDefinition* flib_def);
 
-  // Converts a given Function to a FunctionDef and adds it to the function
+  // Converts a given FuncOp to a FunctionDef and adds it to the function
   // definition library
   static Status ConvertLibFunction(const ExporterConfigs& configs,
                                    const Dialect* tf_dialect,
-                                   mlir::Function function,
+                                   mlir::FuncOp function,
                                    FunctionDefLibrary* flib);
-  // Converts the given CFG Function to a Graph. The arguments and returns of
+  // Converts the given FuncOp to a Graph. The arguments and returns of
   // function are added to the graph with special op names kArgOp and kRetOp.
   // Later on, this graph can be converted a function definition and added to
   // another graph.
   static StatusOr<std::unique_ptr<Graph>> Convert(
       const ExporterConfigs& configs, const Dialect* tf_dialect,
-      mlir::Function function, FunctionDefLibrary* flib);
+      mlir::FuncOp function, FunctionDefLibrary* flib);
 
  private:
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
@@ -376,11 +376,11 @@ Status Exporter::AddNextIterationNode(mlir::Operation* inst) {
 
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
                                                    const Dialect* tf_dialect,
-                                                   mlir::Function function,
+                                                   mlir::FuncOp function,
                                                    FunctionDefLibrary* flib) {
   if (function.getBlocks().size() != 1) {
     return errors::FailedPrecondition(
-        "Input Function must have only one basic block!");
+        "Input FuncOp must have only one basic block!");
   }
   mlir::Block& block = function.front();
 
@@ -433,7 +433,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
     mlir::Type type = arg->getType();
     if (!type.isa<mlir::TensorType>()) {
       return errors::InvalidArgument(
-          "Functions arguments must have tensor types. Found ",
+          "FuncOps arguments must have tensor types. Found ",
           mlir::debugString(type), " in function ", function.getName().str());
     }
 
@@ -483,7 +483,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
 
 Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
                                     const Dialect* tf_dialect,
-                                    mlir::Function function,
+                                    mlir::FuncOp function,
                                     FunctionDefLibrary* flib) {
   // First look for the function in the current function library. If found,
   // nothing needs to be done.
@@ -536,10 +536,10 @@ Status Exporter::Convert(mlir::Module module, const ExporterConfigs& configs,
                          FunctionLibraryDefinition* flib_def) {
   mlir::Identifier entry_func_id =
       mlir::Identifier::get("main", module.getContext());
-  absl::optional<mlir::Function> entry_func;
+  absl::optional<mlir::FuncOp> entry_func;
   FunctionDefLibrary flib;
   auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
-  for (auto function : module.getOps<mlir::Function>()) {
+  for (auto function : module.getOps<mlir::FuncOp>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
 

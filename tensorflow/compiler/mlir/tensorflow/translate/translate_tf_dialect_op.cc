@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
-  mlir::Function fn = module.getNamedFunction("main");
+  mlir::FuncOp fn = module.getNamedFunction("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;

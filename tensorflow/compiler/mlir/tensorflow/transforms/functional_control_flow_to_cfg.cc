@@ -70,7 +70,7 @@ static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
 // that is compatible for tensor cast.
 //
 static Operation* CallFn(Location loc,
-                         const std::function<Value*(int)>& get_arg, Function fn,
+                         const std::function<Value*(int)>& get_arg, FuncOp fn,
                          OpBuilder* builder) {
   FunctionType fn_type = fn.getType();
   llvm::SmallVector<Value*, 4> operands;

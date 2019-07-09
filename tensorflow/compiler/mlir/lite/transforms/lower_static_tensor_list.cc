@@ -61,7 +61,7 @@ namespace {
 
 class TensorListPatternRewriter : public PatternRewriter {
  public:
-  explicit TensorListPatternRewriter(Function fn)
+  explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getBody()) {}
 
   Operation *createOperation(const OperationState &state) override {
@@ -77,7 +77,7 @@ struct LowerStaticTensorListPass
   void runOnModule() override;
 
   // Apply type and op changes within a function.
-  LogicalResult RewriteFunction(Function func,
+  LogicalResult RewriteFunction(FuncOp func,
                                 TensorListPatternRewriter *rewriter);
 
   // Changes the function type of `cond_func` and `body_func`, and the result
@@ -276,8 +276,8 @@ LogicalResult LowerStaticTensorListPass::UpdateWhileFunctionType(
 
   auto *context = &getContext();
   auto module = getModule();
-  Function cond_func = module.getNamedFunction(while_op->getCond());
-  Function body_func = module.getNamedFunction(while_op->getBody());
+  FuncOp cond_func = module.getNamedFunction(while_op->getCond());
+  FuncOp body_func = module.getNamedFunction(while_op->getBody());
 
   if (cond_func) {
     // Change `cond_func`'s argument types to `unranked_argument_types`.
@@ -327,7 +327,7 @@ LogicalResult LowerStaticTensorListPass::UpdateWhileFunctionType(
 }
 
 LogicalResult LowerStaticTensorListPass::RewriteFunction(
-    Function func, TensorListPatternRewriter *rewriter) {
+    FuncOp func, TensorListPatternRewriter *rewriter) {
   auto *context = &getContext();
 
   for (Block &block : func) {
@@ -388,7 +388,7 @@ void LowerStaticTensorListPass::runOnModule() {
   // have a potential issue when one function taking a `DT_VARIANT` is processed
   // before the function that produces the `DT_VARIANT`. We need to carefully
   // order the functions to be processed.
-  std::vector<Function> funcs_in_module;
+  std::vector<FuncOp> funcs_in_module;
   for (auto func : getModule().getOps<FuncOp>()) {
     // Always place the main function to be the first in the list.
     if (func.getName() == "main") {
