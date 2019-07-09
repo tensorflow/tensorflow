@@ -594,7 +594,7 @@ class NextQueuedSequenceBatch(object):
       # unless we explicitly tie them to CPU.
       with ops.colocate_with(self._state_saver._capacity_queue.queue_ref):
         indices_where_not_done = array_ops.reshape(
-            array_ops.where(
+            array_ops.where_v2(
                 math_ops.logical_not(self._state_saver._sequence_is_done)),
             [-1])
         keeping_next_key = array_ops.gather(
