@@ -153,7 +153,7 @@ static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe,
 /// module.
 void ModuleToFunctionPassAdaptor::runOnModule() {
   ModuleAnalysisManager &mam = getAnalysisManager();
-  for (auto func : getModule()) {
+  for (auto func : getModule().getOps<FuncOp>()) {
     // Skip external functions.
     if (func.isExternal())
       continue;
@@ -185,7 +185,7 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
   // This ensures that an analysis manager exists for each function, as well as
   // providing a queue of functions to execute over.
   std::vector<std::pair<Function, FunctionAnalysisManager>> funcAMPairs;
-  for (auto func : getModule())
+  for (auto func : getModule().getOps<FuncOp>())
     if (!func.isExternal())
       funcAMPairs.emplace_back(func, mam.slice(func));
 

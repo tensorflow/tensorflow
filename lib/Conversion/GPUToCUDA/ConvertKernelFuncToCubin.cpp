@@ -64,7 +64,7 @@ public:
     LLVMInitializeNVPTXTargetMC();
     LLVMInitializeNVPTXAsmPrinter();
 
-    for (auto function : getModule()) {
+    for (auto function : getModule().getOps<FuncOp>()) {
       if (!gpu::GPUDialect::isKernel(function) || function.isExternal()) {
         continue;
       }

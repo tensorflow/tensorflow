@@ -123,7 +123,7 @@ public:
     auto module = getModule();
     Builder builder(&getContext());
 
-    auto functions = module.getFunctions();
+    auto functions = module.getOps<FuncOp>();
     for (auto it = functions.begin(); it != functions.end();) {
       // Move iterator to after the current function so that potential insertion
       // of the accessor is after the kernel with cubin iself.

@@ -64,18 +64,17 @@ public:
   // Body Management.
   //===--------------------------------------------------------------------===//
 
-  // Iterate over the functions within the module.
-  using iterator = Block::op_iterator<FuncOp>;
+  /// Iteration over the operations in the module.
+  using iterator = Block::iterator;
 
-  // Iteration over the functions in the module.
-  iterator begin() { return getBody()->op_begin<FuncOp>(); }
-  iterator end() { return getBody()->op_end<FuncOp>(); }
-  Function front() { return *begin(); }
-  Function back() { return *std::prev(end()); }
+  iterator begin() { return getBody()->begin(); }
+  iterator end() { return getBody()->end(); }
+  Operation &front() { return *begin(); }
 
-  /// This is the list of functions in the module.
-  llvm::iterator_range<iterator> getFunctions() {
-    return getBody()->getOps<FuncOp>();
+  /// This returns a range of operations of the given type 'T' held within the
+  /// module.
+  template <typename T> llvm::iterator_range<Block::op_iterator<T>> getOps() {
+    return getBody()->getOps<T>();
   }
 
   /// Insert the operation into the back of the body, before the terminator.
@@ -83,7 +82,7 @@ public:
     insert(Block::iterator(getBody()->getTerminator()), op);
   }
 
-  /// Inser the operation at the given insertion point. Note: The operation is
+  /// Insert the operation at the given insertion point. Note: The operation is
   /// never inserted after the terminator, even if the insertion point is end().
   void insert(Operation *insertPt, Operation *op) {
     insert(Block::iterator(insertPt), op);
@@ -106,7 +105,7 @@ public:
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
   Function getNamedFunction(Identifier name) {
-    auto it = llvm::find_if(getFunctions(),
+    auto it = llvm::find_if(getOps<FuncOp>(),
                             [name](FuncOp fn) { return fn.getName() == name; });
     return it == end() ? nullptr : *it;
   }

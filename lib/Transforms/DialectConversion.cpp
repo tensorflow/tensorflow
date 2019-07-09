@@ -1131,7 +1131,7 @@ LogicalResult
 mlir::applyConversionPatterns(Module module, ConversionTarget &target,
                               TypeConverter &converter,
                               OwningRewritePatternList &&patterns) {
-  SmallVector<Function, 32> allFunctions(module.getFunctions());
+  SmallVector<Function, 32> allFunctions(module.getOps<FuncOp>());
   return applyConversionPatterns(allFunctions, target, converter,
                                  std::move(patterns));
 }

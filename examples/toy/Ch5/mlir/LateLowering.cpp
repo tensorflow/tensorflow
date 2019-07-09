@@ -369,7 +369,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     // affine dialect: they already include conversion to the LLVM dialect.
 
     // First patch calls type to return memref instead of ToyArray
-    for (auto function : getModule()) {
+    for (auto function : getModule().getOps<FuncOp>()) {
       function.walk([&](Operation *op) {
         auto callOp = dyn_cast<CallOp>(op);
         if (!callOp)
@@ -384,7 +384,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
       });
     }
 
-    for (auto function : getModule()) {
+    for (auto function : getModule().getOps<FuncOp>()) {
       function.walk([&](Operation *op) {
         // Turns toy.alloc into sequence of alloc/dealloc (later malloc/free).
         if (auto allocOp = dyn_cast<toy::AllocOp>(op)) {
@@ -403,7 +403,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     }
 
     // Lower Linalg to affine
-    for (auto function : getModule())
+    for (auto function : getModule().getOps<FuncOp>())
       linalg::lowerToLoops(function);
 
     getModule().dump();

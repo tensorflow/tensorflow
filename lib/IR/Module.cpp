@@ -107,7 +107,7 @@ LogicalResult ModuleOp::verify() {
 
   // Check that all functions are uniquely named.
   llvm::StringMap<Location> nameToOrigLoc;
-  for (auto fn : getFunctions()) {
+  for (auto fn : getOps<FuncOp>()) {
     auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
     if (!it.second)
       return fn.emitError()

@@ -22,7 +22,7 @@ using namespace mlir;
 
 /// Build a symbol table with the symbols within the given module.
 SymbolTable::SymbolTable(ModuleOp module) : context(module.getContext()) {
-  for (auto func : module) {
+  for (auto func : module.getOps<FuncOp>()) {
     auto inserted = symbolTable.insert({func.getName(), func});
     (void)inserted;
     assert(inserted.second &&

@@ -805,7 +805,7 @@ static void lowerLinalgForToCFG(Function &f) {
 void LowerLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
 
-  for (auto f : module.getFunctions()) {
+  for (auto f : module.getOps<FuncOp>()) {
     lowerLinalgSubViewOps(f);
     lowerLinalgForToCFG(f);
     if (failed(lowerAffineConstructs(f)))

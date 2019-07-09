@@ -141,7 +141,8 @@ public:
 
     // Delete any generic function left
     // FIXME: we may want this as a separate pass.
-    for (mlir::Function function : llvm::make_early_inc_range(module)) {
+    for (mlir::Function function :
+         llvm::make_early_inc_range(module.getOps<mlir::Function>())) {
       if (auto genericAttr =
               function.getAttrOfType<mlir::BoolAttr>("toy.generic")) {
         if (genericAttr.getValue())

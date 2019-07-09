@@ -938,7 +938,7 @@ static void ensureDistinctSuccessors(Block &bb) {
 }
 
 void mlir::LLVM::ensureDistinctSuccessors(Module m) {
-  for (auto f : m) {
+  for (auto f : m.getOps<FuncOp>()) {
     for (auto &bb : f.getBlocks()) {
       ::ensureDistinctSuccessors(bb);
     }

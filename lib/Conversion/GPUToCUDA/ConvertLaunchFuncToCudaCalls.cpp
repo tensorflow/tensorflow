@@ -130,7 +130,7 @@ public:
     // Cache the used LLVM types.
     initializeCachedTypes();
 
-    for (auto func : getModule()) {
+    for (auto func : getModule().getOps<FuncOp>()) {
       func.walk<mlir::gpu::LaunchFuncOp>(
           [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
     }

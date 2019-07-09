@@ -68,7 +68,7 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module m) {
 
   // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
   // function as a kernel.
-  for (Function func : m) {
+  for (Function func : m.getOps<FuncOp>()) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 
