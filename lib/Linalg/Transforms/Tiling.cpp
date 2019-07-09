@@ -401,10 +401,8 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     // 4. Filter the subset of views that need to be promoted.
     SmallVector<Value *, 8> filteredViews;
     filteredViews.reserve(views.size());
-    assert(
-        viewsToPromote.empty() ||
-        views.size() == viewsToPromote.size() &&
-            "expected viewsToPromote to be empty or of the same size as view");
+    assert((viewsToPromote.empty() || views.size() == viewsToPromote.size()) &&
+           "expected viewsToPromote to be empty or of the same size as view");
     for (auto it : llvm::zip(views, viewsToPromote)) {
       if (!std::get<1>(it))
         continue;
