@@ -135,8 +135,9 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
     result->params.scale = src_quantization->scale()->Get(0);
-    memcpy(&result->params.zero_point,
-           (int64_t*)src_quantization->zero_point()->Data(), sizeof(int64_t));
+    for (int b = 0; b < sizeof(int64_t); ++b)
+      *(((char*)&result->params.zero_point) + b) =
+          *(((char*)src_quantization->zero_point()->Data()) + b);
     result->params.zero_point =
         flatbuffers::EndianScalar(result->params.zero_point);
   }

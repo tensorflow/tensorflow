@@ -78,7 +78,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   subgraph_ = (*subgraphs)[0];
   tensors_ = subgraph_->tensors();
   operators_ = subgraph_->operators();
-  
+
   context_.tensors_size = tensors_->size();
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
@@ -100,6 +100,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during
   // inference.
+  // NOTE: This requires that the flatbuffer is held in memory which can be
+  // modified by this process.
   if (!FLATBUFFERS_LITTLEENDIAN) {
     for (int t = 0; t < tensors_size(); ++t) {
       TfLiteTensor* thisTensor = &context_.tensors[t];
