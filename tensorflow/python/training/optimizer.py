@@ -411,6 +411,10 @@ class Optimizer(
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
                                 name=name)
+  
+  def maximize(self, reward, **kwargs):
+    """Add operations to maximize `reward`. All kwargs forwarded to `minimize`.
+    return self.minimize(-reward, **kwargs)
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
