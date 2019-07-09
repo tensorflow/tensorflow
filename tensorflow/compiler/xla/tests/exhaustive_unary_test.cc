@@ -370,7 +370,7 @@ class Exhaustive32BitOrLessUnaryTest
   template <typename T>
   void FillInput(Literal* input_literal) {
     using IntegralT =
-    typename int_type::IntegralTypeWithByteWidth<sizeof(T)>::type;
+    typename test_util::IntegralTypeWithByteWidth<sizeof(T)>::type;
     int64 input_size = input_literal->element_count();
     int64 begin, end;
     std::tie(begin, end) = std::get<1>(GetParam());

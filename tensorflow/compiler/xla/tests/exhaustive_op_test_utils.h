@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 using Eigen::half;
 
-namespace int_type {
+namespace test_util {
 template <int N>
 struct IntegralTypeWithByteWidth {};
 
@@ -174,7 +174,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // T is the type of the floating value represented by the `bits`.
   template <typename T>
   T ConvertValue(uint64 bits) {
-    using I = typename int_type::IntegralTypeWithByteWidth<sizeof(T)>::type;
+    using I = typename test_util::IntegralTypeWithByteWidth<sizeof(T)>::type;
     I used_bits = static_cast<I>(bits);
     return BitCast<T>(used_bits);
   }
