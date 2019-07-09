@@ -1570,6 +1570,33 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
+  let summary = [{
+Computes the product of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TF_NumberTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Use QuantizeAndDequantizeV2 instead.";
 
@@ -2606,34 +2633,6 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
-  let summary = "List of the given size with empty elements.";
-
-  let description = [{
-element_shape: the shape of the future elements of the list
-num_elements: the number of elements to reserve
-handle: the output list
-element_dtype: the desired type of elements in the list.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements,
-
-    TypeAttr:$element_dtype
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

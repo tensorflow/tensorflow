@@ -381,8 +381,11 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
+  // TODO(b/134086343): ExecuteOnStream should not be async according to the
+  // documentation, instead ExecuteAsyncOnStream should be used.
   return Execute(run_options, arguments, hlo_execution_profile,
-                 /*block_host_until_done=*/true);
+                 /*block_host_until_done=*/
+                 !run_options->allocator()->AllowsAsynchronousDeallocation());
 }
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(

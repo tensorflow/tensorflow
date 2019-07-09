@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -172,8 +173,6 @@ class EagerContext : public core::RefCounted {
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  uint64 NextId() { return executor_.NextId(); }
-
   void ExecutorAdd(std::unique_ptr<EagerNode> node) {
     executor_.Add(std::move(node));
   }
@@ -187,6 +186,7 @@ class EagerContext : public core::RefCounted {
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
+  bool AllowSoftPlacement() const { return allow_soft_placement_; }
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
@@ -254,6 +254,8 @@ class EagerContext : public core::RefCounted {
 
 #if !defined(IS_MOBILE_PLATFORM)
   Status GetClient(Device* device, eager::EagerClient** client);
+  Status GetClient(const DeviceNameUtils::ParsedName& device_name,
+                   eager::EagerClient** client);
 
   uint64 GetContextId();
 
@@ -291,12 +293,17 @@ class EagerContext : public core::RefCounted {
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
-#endif  // IS_MOBILE_PLATFORM
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
+  // Helper function to create monotonically increasing ids unique to this
+  // context.
+  uint64 NextId();
+#endif  // IS_MOBILE_PLATFORM
+
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
@@ -310,6 +317,7 @@ class EagerContext : public core::RefCounted {
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
+  bool IsLocalDeviceName(const DeviceNameUtils::ParsedName& device_name) const;
 
  private:
   void InitDeviceMapAndAsync();
@@ -376,7 +384,9 @@ class EagerContext : public core::RefCounted {
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
   RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
+  // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
+  const bool allow_soft_placement_;
   // EagerExecutor for async execution.
   EagerExecutor executor_;
 
@@ -413,7 +423,6 @@ class EagerContext : public core::RefCounted {
 
   uint64 context_id_;
   std::vector<string> remote_contexts_;
-  gtl::FlatMap<Device*, eager::EagerClient*> device_to_client_cache_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;
@@ -422,6 +431,9 @@ class EagerContext : public core::RefCounted {
   mutex keep_alive_thread_shutdown_mu_;
   condition_variable keep_alive_thread_cv_;
   bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
+
+  mutex next_id_mutex_;
+  uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;

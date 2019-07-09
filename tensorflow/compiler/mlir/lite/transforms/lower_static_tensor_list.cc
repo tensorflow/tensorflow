@@ -198,8 +198,6 @@ struct ConvertTFTensorListSetItem : public RewritePattern {
   }
 };
 
-// TODO(hinsu): Fix end-to-end test when passing string `element_dtype`
-// attribute.
 struct ConvertTFTensorListReserve : public RewritePattern {
   explicit ConvertTFTensorListReserve(MLIRContext *context)
       : RewritePattern(TF::TensorListReserveOp::getOperationName(), 1,
@@ -213,18 +211,24 @@ struct ConvertTFTensorListReserve : public RewritePattern {
     TF::TensorListReserveOp tf_op = cast<TF::TensorListReserveOp>(op);
 
     auto element_shape = tf_op.element_shape();
-    auto shape_dtype =
-        element_shape->getType().cast<TensorType>().getElementType();
+    auto shape_dtype = getElementTypeOrSelf(element_shape->getType());
     auto num_elements = tf_op.num_elements();
-    int64_t input_rank = -1;  // -1 means unknown dimension.
-    if (auto type = element_shape->getType().dyn_cast<RankedTensorType>()) {
-      // Note that the first item of the shape array is the element's rank, add
-      // it by 1 to get the input's rank.
-      if (type.hasStaticShape() && type.getRank() != 0) {
-        input_rank = type.getShape()[0] + 1;
-      }
+    Type element_dtype = tf_op.element_dtype();
+
+    int64_t result_rank = -1;  // -1 means unknown result rank.
+    Type result_type = rewriter.getTensorType(element_dtype);
+    if (auto element_type = tf_op.element_type().dyn_cast<RankedTensorType>()) {
+      result_rank = element_type.getRank() + 1;
+      // If element type is ranked, then result type will have unknown leading
+      // dimension and element shape for the following dimensions.
+      //
+      // Note: leading dim is not inferred here even if num_elements input is a
+      // constant.
+      SmallVector<int64_t, 4> result_shape = {-1};
+      ArrayRef<int64_t> shape = element_type.getShape();
+      result_shape.append(shape.begin(), shape.end());
+      result_type = rewriter.getTensorType(result_shape, element_dtype);
     }
-    auto element_dtype = tf_op.element_dtype();
 
     // The output shape of the result tensor should be [num_elements +
     // element_shape].
@@ -232,7 +236,12 @@ struct ConvertTFTensorListReserve : public RewritePattern {
     auto leading_dim = rewriter.create<TF::ExpandDimsOp>(
         op->getLoc(), rewriter.getTensorType({1}, shape_dtype), num_elements,
         scalar_zero);
-    auto shape_type = rewriter.getTensorType({input_rank}, shape_dtype);
+
+    // Create a 1-D RankedTensorType for result's shape. Number of elements in
+    // it is equal to the rank of the result, if known. Otherwise, the number of
+    // elements are unknown and represented with -1. In both cases, we can
+    // specify dimension using rank of the result.
+    Type shape_type = rewriter.getTensorType({result_rank}, shape_dtype);
     auto list_shape = rewriter.create<TF::ConcatOp>(
         op->getLoc(), shape_type, scalar_zero,
         ArrayRef<Value *>({leading_dim, element_shape}),
@@ -244,8 +253,7 @@ struct ConvertTFTensorListReserve : public RewritePattern {
     auto zero_attr = rewriter.getZeroAttr(zero_type);
     auto zero = rewriter.create<ConstantOp>(op->getLoc(), zero_type, zero_attr);
 
-    rewriter.replaceOpWithNewOp<TF::FillOp>(
-        op, rewriter.getTensorType(element_dtype), list_shape, zero);
+    rewriter.replaceOpWithNewOp<TF::FillOp>(op, result_type, list_shape, zero);
     return matchSuccess();
   }
 };
@@ -381,9 +389,9 @@ void LowerStaticTensorListPass::runOnModule() {
   // before the function that produces the `DT_VARIANT`. We need to carefully
   // order the functions to be processed.
   std::vector<Function> funcs_in_module;
-  for (auto func : getModule().getFunctions()) {
+  for (auto func : getModule().getOps<FuncOp>()) {
     // Always place the main function to be the first in the list.
-    if (func.getName().is("main")) {
+    if (func.getName() == "main") {
       funcs_in_module.insert(funcs_in_module.begin(), func);
     } else {
       funcs_in_module.push_back(func);

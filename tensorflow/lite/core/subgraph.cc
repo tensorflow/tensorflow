@@ -601,9 +601,6 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   if (graph_is_immutable && !delegates_applied) {
     ReportError("ResizeInputTensor is disallowed when graph is immutable.");
     return kTfLiteError;
-  } else if (graph_is_immutable) {
-    // Undo delegation if it resulted in the graph being immutable.
-    TF_LITE_ENSURE_STATUS(UndoAllDelegates());
   }
 
   // TODO(aselle): All bounds checks can be implemented as one-sided bounds
@@ -623,6 +620,10 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
     return kTfLiteOk;
   }
 
+  if (graph_is_immutable) {
+    // Undo delegation if it resulted in the graph being immutable.
+    TF_LITE_ENSURE_STATUS(UndoAllDelegates());
+  }
   state_ = kStateUninvokable;
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
@@ -1076,6 +1077,8 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
                                        execution_plan_[execution_plan_index]);
   }
   nodes_and_registration_.resize(max_retained_node_index + 1);
+  // After undoing delegates, the graph is uninvokable, but mutable.
+  state_ = kStateUninvokable;
 
   delegates_undone_ = true;
   return kTfLiteOk;

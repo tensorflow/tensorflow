@@ -1078,6 +1078,29 @@ def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
   let customOption = "ReducerOptions";
 }
 
+def TFL_SliceOp : TFL_Op<"slice", [NoSideEffect]> {
+  let summary = "Return a slice from 'input'.";
+
+  let description = [{
+The output tensor is a tensor with dimensions described by 'size'
+whose values are extracted from 'input' starting at the offsets in
+'begin'.
+
+*Requirements*:
+  0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
+  }];
+
+  let arguments = (ins
+    AnyTensor:$input,
+    TFL_I32OrI64Tensor:$begin,
+    TFL_I32OrI64Tensor:$size
+  );
+
+  let results = (outs
+    AnyTensor:$output
+  );
+}
+
 def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
   let summary = "Sum operator";
 
@@ -1125,6 +1148,25 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
+    TFL_I32OrI64Tensor:$axes,
+    BoolAttr:$keep_dims
+  );
+
+  let results = (outs AnyTensor);
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
+def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
+  let summary = "Prod-reduction operator";
+
+  let description = [{
+    Computes the product along the specified axes
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I32, I64]>:$input,
     TFL_I32OrI64Tensor:$axes,
     BoolAttr:$keep_dims
   );

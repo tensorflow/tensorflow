@@ -589,6 +589,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       tensor = *src;
     } else {
       tensorflow::EagerContext* ctx = handle->Context();
+      CHECK_NE(ctx, nullptr);
       status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
       if (!status->status.ok()) return nullptr;
     }
@@ -630,7 +631,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
-  status->status = op->operation.SetDevice(device_name);
+  status->status = op->operation.SetDeviceName(device_name);
 }
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
@@ -966,40 +967,6 @@ void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
                                       TF_Status* status) {
   return TFE_TensorHandle::CreateLocalHandle(t, status);
-}
-
-const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
-    TFE_TensorHandle* h, TF_Status* status) {
-  if (!h->handle->OnHostCPU()) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "TFE_TensorHandle is placed in device (not host) memory. Cannot return "
-        "a tensorflow::Tensor");
-    return nullptr;
-  }
-
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->Tensor(&t);
-  if (!status->status.ok()) return nullptr;
-
-  return t;
-}
-
-TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
-                                                     TF_Status* status) {
-  // TensorHandles created by PyFuncOp lack context and therefore could
-  // not be copied.
-  tensorflow::EagerContext* ctx = h->handle->Context();
-  if (!h->handle->OnHostCPU() && ctx != nullptr) {
-    tensorflow::TensorHandle* handle = nullptr;
-    status->status = tensorflow::EagerCopyToDevice(
-        h->handle, ctx, ctx->HostCPU(), false, &handle);
-    if (status->status.ok()) {
-      return new TFE_TensorHandle(handle);
-    } else {
-      return nullptr;
-    }
-  }
-  return h;
 }
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,

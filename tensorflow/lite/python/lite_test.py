@@ -102,7 +102,7 @@ class FromConstructor(TestModels):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromSessionTest(TestModels):
+class FromSessionTest(TestModels, parameterized.TestCase):
 
   def testFloat(self):
     in_tensor = array_ops.placeholder(
@@ -632,6 +632,137 @@ class FromSessionTest(TestModels):
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  @parameterized.named_parameters(
+      # Quantize to Float16 even if rep data provided.
+      ('UseRepresentativeData', True, False, True, False, False),
+      # Quantize to Float16 if no rep data provided.
+      ('NoRepresentativeData', False, False, True, False, False),
+      # Post training quantization if both rep data and int8 included.
+      ('UseRepresentativeDataIncludeInt8', True, True, False, False, True),
+      # Error if no rep data and int8 included.
+      ('NoRepresentativeDataIncludeInt8', False, True, False, True, False))
+  def testQuantizeFloat16(self, use_rep_data, include_int8,
+                          is_float16_quantized, is_error,
+                          is_post_training_quantized):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+    interpreter = Interpreter(model_content=float_tflite)
+    interpreter.allocate_tensors()
+    self.assertEqual(interpreter.get_tensor_details()[0]['name'], 'Conv2D_bias')
+    self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                     lite.constants.FLOAT)
+    # Convert model to quantized version
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    if include_int8:
+      quantized_converter.target_spec.supported_types.append(
+          lite.constants.INT8)
+    if use_rep_data:
+      quantized_converter.representative_dataset = calibration_gen
+
+    if is_error:
+      with self.assertRaises(ValueError) as error:
+        quantized_converter.convert()
+      self.assertEqual(
+          'representative_dataset is required when specifying '
+          'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+    else:
+      quantized_tflite = quantized_converter.convert()
+      self.assertTrue(quantized_tflite)
+      interpreter = Interpreter(model_content=quantized_tflite)
+      interpreter.allocate_tensors()
+      self.assertEqual(interpreter.get_tensor_details()[0]['name'],
+                       'Conv2D_bias')
+
+      if is_float16_quantized:
+        # Verify that bias constant is float16 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.FLOAT16)
+      elif is_post_training_quantized:
+        # Verify that bias constants is int32 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.INT32)
+      else:
+        raise ValueError('Invalid test options.')
+
+  def testInvalidQuantizeFloat16(self):
+    inp, output, _ = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Specify float16 quantization
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    # Specifiy only int8 builtin ops
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'TFLITE_BUILTINS_INT8 requires smallest supported type to be INT8.',
+        str(error.exception))
+
+  def testInvalidPostTrainingQuantize(self):
+    np.random.seed(0)
+    # We need the tensor to have more than 1024 elements for quantize_weights
+    # to kick in. Thus, the [33, 33] shape.
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
+
+    # Attempt to convert to quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    # Restricting to int8 type only
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    # A representative dataset is required for full fixed point quantization.
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'representative_dataset is required when specifying '
+        'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+  def testPostTrainingCalibrateAndQuantizeFloatNotAllowed(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+    # Ensure that restricting supported types to int8 forces
+    # all fixed point ops/tensors in converter.
+    self.assertTrue(quantized_converter._is_int8_target_required())
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))

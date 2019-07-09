@@ -171,10 +171,16 @@ class Exporter {
 };
 
 std::string Exporter::UniqueName(llvm::StringRef prefix) {
+  // Keep incrementing the counter until we find a unique name.
   std::string name = prefix;
-  auto& val = name_to_count_[name];
-  if (val) name = (prefix + llvm::Twine(val)).str();
-  ++val;
+  int64& prefix_count = name_to_count_[name];
+  int64 val = prefix_count;
+  while (val != 0) {
+    name = (prefix + llvm::Twine(prefix_count)).str();
+    ++prefix_count;
+    val = name_to_count_[name];
+  }
+  name_to_count_[name] = 1;
   return name;
 }
 
@@ -188,8 +194,10 @@ std::string Exporter::UniqueName(mlir::Operation* op) {
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     mlir::BlockArgument* arg, unsigned index) {
   auto node_def = absl::make_unique<NodeDef>();
-  node_def->set_name(
-      UniqueName(arg->getOwner()->getFunction().getName().str()));
+  node_def->set_name(UniqueName(arg->getContainingRegion()
+                                    ->getParentOfType<mlir::FuncOp>()
+                                    .getName()
+                                    .str()));
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -207,7 +215,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::Operation* inst, unsigned index) {
   auto node_def = absl::make_unique<NodeDef>();
   auto* inst_op = inst->getOperand(index);
-  node_def->set_name(UniqueName(inst->getFunction().getName().str()));
+  node_def->set_name(
+      UniqueName(inst->getParentOfType<mlir::FuncOp>().getName().str()));
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -310,7 +319,8 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (arg->getFunction().getName().is("main")) {
+  if (arg->getContainingRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+      "main") {
     if (!arg->hasOneUse()) {
       return errors::FailedPrecondition(
           "Arg in 'main' should only have one user.");
@@ -330,6 +340,9 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
     }
     for (auto* r : input->getResults()) state.types.push_back(r->getType());
     auto* inst = builder.createOperation(state);
+    // If it is one of the specified input names, then the new
+    // instruction should have the same name.
+    op_to_name_[inst].assign(op_to_name_[input]);
     for (int index = 0, e = input->getNumResults(); index != e; ++index) {
       input->getResult(index)->replaceAllUsesWith(inst->getResult(index));
     }
@@ -393,7 +406,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
   Exporter exporter(graph.get(), tf_dialect);
 
-  // Set input and output names.
+  // Set input and output names and increment the use counter for them to help
+  // generate unique names.
   if (!output_names.empty()) {
     auto term = block.getTerminator();
     TF_RET_CHECK(output_names.size() == term->getNumOperands())
@@ -401,12 +415,14 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
         << ") != terminator operands (" << term->getNumOperands() << ")";
     int i = 0;
     for (auto it : term->getOperands()) {
+      exporter.name_to_count_[output_names[i].str()] = 1;
       exporter.op_to_name_[it->getDefiningOp()] = output_names[i++];
     }
   }
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
+      exporter.name_to_count_[input_names[it.index()].str()] = 1;
       exporter.op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
     }
   }
@@ -507,8 +523,10 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
   // Ignore the gradient attribute on the function as it gets converted to
   // GradientDef.
   absl::flat_hash_set<string> attrs_to_ignore = {grad_string};
-  TF_RETURN_IF_ERROR(ConvertAttributes(function.getAttrs(), attrs_to_ignore,
-                                       func_def.mutable_attr()));
+  llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
+      function.getDialectAttrs());
+  TF_RETURN_IF_ERROR(
+      ConvertAttributes(funcAttrs, attrs_to_ignore, func_def.mutable_attr()));
   (*flib->add_function()) = func_def;
   return Status::OK();
 }
@@ -521,7 +539,7 @@ Status Exporter::Convert(mlir::Module module, const ExporterConfigs& configs,
   absl::optional<mlir::Function> entry_func;
   FunctionDefLibrary flib;
   auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
-  for (auto function : module.getFunctions()) {
+  for (auto function : module.getOps<mlir::Function>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
 

@@ -49,6 +49,11 @@ class TensorFlowDialect : public Dialect {
   // Prints a type registered to this dialect.
   void printType(Type ty, raw_ostream &os) const override;
 
+  // Parse and print variant type. It may have subtypes inferred using shape
+  // inference.
+  Type ParseVariantType(StringRef spec, Location loc) const;
+  void PrintVariantType(VariantType ty, raw_ostream &os) const;
+
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,

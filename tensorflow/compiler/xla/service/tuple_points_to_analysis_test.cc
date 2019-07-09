@@ -1072,7 +1072,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
   computation_ = module_->entry_computation();
   RunAnalysis();
 

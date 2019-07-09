@@ -62,16 +62,16 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
-static bool MlirToGraphdefTranslateFunction(Module module,
-                                            llvm::StringRef output_filename) {
-  if (!module) return true;
+static LogicalResult MlirToGraphdefTranslateFunction(
+    Module module, llvm::StringRef output_filename) {
+  if (!module) return failure();
 
   std::error_code error;
   auto result = llvm::make_unique<llvm::ToolOutputFile>(output_filename, error,
                                                         llvm::sys::fs::F_None);
   if (error) {
     LOG(ERROR) << error.message();
-    return true;
+    return failure();
   }
 
   // TODO(fengliuai): Add exporter flags.
@@ -80,12 +80,12 @@ static bool MlirToGraphdefTranslateFunction(Module module,
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
-    return true;
+    return mlir::failure();
   }
 
   result->os() << graphdef_or.ValueOrDie()->DebugString();
   result->keep();
-  return false;
+  return success();
 }
 
 static TranslateFromMLIRRegistration mlir_to_graphdef_translate(

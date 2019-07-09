@@ -254,7 +254,7 @@ static bool IsValidTFLiteMlirModule(Module module) {
            false;
   }
 
-  for (auto fn : module.getFunctions()) {
+  for (auto fn : module.getOps<Function>()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -948,7 +948,7 @@ Optional<std::string> Translator::TranslateInternal() {
   Function main_fn = module_.getNamedFunction("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_.getFunctions()) {
+  for (auto fn : module_.getOps<Function>()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
@@ -1002,25 +1002,25 @@ bool tflite::MlirToFlatBufferTranslateFunction(
   return false;
 }
 
-static bool MlirToFlatBufferFileTranslateFunction(Module module,
-                                                  llvm::StringRef filename) {
+static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
+    Module module, llvm::StringRef filename) {
   std::string serialized_flatbuffer;
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
           emit_select_tf_ops, emit_custom_ops))
-    return true;
+    return mlir::failure();
 
   auto file = openOutputFile(filename);
   if (!file) {
     auto* context = module.getContext();
     return emitError(UnknownLoc::get(context), "failed to open output file ")
                << filename,
-           true;
+           mlir::failure();
   }
 
   file->os() << serialized_flatbuffer;
   file->keep();
-  return false;
+  return mlir::success();
 }
 
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(

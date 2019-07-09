@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -500,6 +502,17 @@ Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
         "The iota dimension cannot go beyond the operation rank or be "
         "negative.");
   }
+
+  PrimitiveType primitive_type = iota->shape().element_type();
+  if (!primitive_util::IsIntegralType(primitive_type) &&
+      !primitive_util::IsFloatingPointType(primitive_type) &&
+      !primitive_util::IsComplexType(primitive_type)) {
+    return InvalidArgument(
+        "Only support iota of integral, floating point or complex primitive "
+        "types, got %s",
+        PrimitiveType_Name(primitive_type));
+  }
+
   return Status::OK();
 }
 

@@ -887,7 +887,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     // them, it's possible that rewritten node already exists in a graph
     return rewritten_nodes_.find(node->name()) != rewritten_nodes_.end() ||
            ctx().node_map->NodeExists(OuterNodeName(node, false)) ||
-           ctx().node_map->NodeExists(OuterNodeName(node, true));
+           ctx().node_map->NodeExists(OuterNodeName(node, true)) ||
+           ctx().node_map->NodeExists(InnerAddNodeName(node));
   }
 
   // keep names of the nodes that were optimized by this stage
@@ -3239,10 +3240,9 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
                       int slice_start_value, int pack_axis,
                       string* simplified_node_name) {
+    const string& input_slice = pack->input(slice_start_value);
+
     OpInfo::TensorProperties input_slice_properties;
-    NodeDef* input_slice;
-    TF_RETURN_IF_ERROR(
-        GetInputNode(pack->input(slice_start_value), &input_slice));
     TF_RETURN_IF_ERROR(GetTensorProperties(pack->input(slice_start_value),
                                            &input_slice_properties));
     PartialTensorShape input_slice_shape(input_slice_properties.shape());
@@ -3257,7 +3257,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("Identity");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties.dtype(), "T", output);
-      output->add_input(input_slice->name());
+      output->add_input(input_slice);
     } else {
       NodeDef* axis = AddEmptyNode(
           OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
@@ -3272,7 +3272,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("ExpandDims");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties.dtype(), "T", output);
-      output->add_input(input_slice->name());
+      output->add_input(input_slice);
       output->add_input(axis->name());
     }
 

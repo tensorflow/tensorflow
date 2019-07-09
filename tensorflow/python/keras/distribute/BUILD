@@ -220,6 +220,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # b/136660639
         "no_windows_gpu",
         "notap",  # b/131937016
         "notsan",

@@ -466,7 +466,8 @@ class Subgraph {
     kStateInvokable,
     // The interpreter is ready to be invoked, and graph can't be further
     // modified. The interpreter will enter this state when calling
-    // `ModifyGraphWithDelegate` with `allow_dynamic_tensors=false`.
+    // `ModifyGraphWithDelegate` and the delegate doesn't support dynamic
+    // tensors.
     kStateInvokableAndImmutable,
   };
   State state_ = kStateUninvokable;

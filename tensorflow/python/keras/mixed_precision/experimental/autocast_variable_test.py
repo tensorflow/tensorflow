@@ -97,30 +97,46 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(*TESTCASES)
   def test_operator_overloads(self, distribute):
     with get_distribute_scope(distribute):
-      x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
-      self.evaluate(x.initializer)
+      for read_dtype in (dtypes.float32, dtypes.float16):
+        x = get_var(7., dtypes.float32)
+        x = get_autocast_var(x, distribute)
+        x._read_dtype = read_dtype
+        self.evaluate(x.initializer)
+        self.assertAlmostEqual(8, self.evaluate(x + 1))
+        self.assertAlmostEqual(10, self.evaluate(3 + x))
+        self.assertAlmostEqual(14, self.evaluate(x + x))
+        self.assertAlmostEqual(5, self.evaluate(x - 2))
+        self.assertAlmostEqual(6, self.evaluate(13 - x))
+        self.assertAlmostEqual(0, self.evaluate(x - x))
+        self.assertAlmostEqual(14, self.evaluate(x * 2))
+        self.assertAlmostEqual(21, self.evaluate(3 * x))
+        self.assertAlmostEqual(49, self.evaluate(x * x))
+        self.assertAlmostEqual(3.5, self.evaluate(x / 2))
+        self.assertAlmostEqual(1.5, self.evaluate(10.5 / x))
+        self.assertAlmostEqual(3, self.evaluate(x // 2))
+        self.assertAlmostEqual(2, self.evaluate(15 // x))
+        if read_dtype == dtypes.float32:
+          # The "mod" operator does not support float16
+          self.assertAlmostEqual(1, self.evaluate(x % 2))
+          self.assertAlmostEqual(2, self.evaluate(16 % x))
+        self.assertTrue(self.evaluate(x < 12))
+        self.assertTrue(self.evaluate(x <= 12))
+        self.assertFalse(self.evaluate(x > 12))
+        self.assertFalse(self.evaluate(x >= 12))
+        self.assertFalse(self.evaluate(12 < x))
+        self.assertFalse(self.evaluate(12 <= x))
+        self.assertTrue(self.evaluate(12 > x))
+        self.assertTrue(self.evaluate(12 >= x))
+        self.assertAlmostEqual(343, self.evaluate(pow(x, 3)), places=4)
+        self.assertAlmostEqual(128, self.evaluate(pow(2, x)), places=4)
+        self.assertAlmostEqual(-7, self.evaluate(-x))
+        self.assertAlmostEqual(7, self.evaluate(abs(x)))
 
-    v1 = constant_op.constant(2., dtype=dtypes.float32)
-    v2 = constant_op.constant(2., dtype=dtypes.float16)
-
-    # Because autocast variables do not yet define operator overloads, the
-    # operator is defined by the non-variable tensor
-
-    # Test variable as the LHS. Currently, this is not supported with
-    # distributed autocast variables
-    if not distribute:
-      self.assertEqual(self.evaluate(x + v1), 3.)
-
-      x._read_dtype = dtypes.float16
-      self.assertEqual(self.evaluate(x + v2), 3.)
-
-    # Test variable as the RHS
-    x._read_dtype = dtypes.float32
-    self.assertEqual(self.evaluate(v1 + x), 3.)
-
-    x._read_dtype = dtypes.float16
-    self.assertEqual(self.evaluate(v2 + x), 3.)
+        x = get_var([7, 8, 9], dtypes.float32)
+        x = get_autocast_var(x, distribute)
+        x._read_dtype = read_dtype
+        self.evaluate(x.initializer)
+        self.assertEqual(self.evaluate(x[1]), 8)
 
   @parameterized.named_parameters(*TESTCASES)
   def test_assign(self, distribute):

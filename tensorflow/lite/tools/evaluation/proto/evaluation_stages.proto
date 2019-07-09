@@ -23,13 +23,15 @@ option java_package = "tflite.evaluation";
 
 // Defines the functionality executed by an EvaluationStage.
 //
-// Next ID: 5
+// Next ID: 6
 message ProcessSpecification {
   oneof params {
     ImagePreprocessingParams image_preprocessing_params = 1;
     TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
     TfliteInferenceParams tflite_inference_params = 3;
     ImageClassificationParams image_classification_params = 4;
+    ObjectDetectionAveragePrecisionParams
+        object_detection_average_precision_params = 5;
   }
 }
 
@@ -69,7 +71,7 @@ message AccuracyMetrics {
 // Contains process-specific metrics, which may differ based on what an
 // EvaluationStage does.
 //
-// Next ID: 6
+// Next ID: 7
 message ProcessMetrics {
   optional LatencyMetrics total_latency = 1;
 
@@ -78,6 +80,8 @@ message ProcessMetrics {
     TfliteInferenceMetrics tflite_inference_metrics = 3;
     ImageClassificationMetrics image_classification_metrics = 4;
     InferenceProfilerMetrics inference_profiler_metrics = 5;
+    ObjectDetectionAveragePrecisionMetrics
+        object_detection_average_precision_metrics = 6;
   }
 }
 
@@ -236,4 +240,46 @@ message ObjectDetectionResult {
 // Next ID: 2
 message ObjectDetectionGroundTruth {
   repeated ObjectDetectionResult detection_results = 1;
+}
+
+// Parameters that define how Average Precision is computed for Object Detection
+// task.
+// Refer for details: http://cocodataset.org/#detection-eval
+//
+// Next ID: 4
+message ObjectDetectionAveragePrecisionParams {
+  // Total object classes. The AP value returned for each IoU threshold is an
+  // average over all classes encountered in predicted/ground truth sets.
+  optional int32 num_classes = 1;
+  // A predicted box matches a ground truth box if and only if
+  // IoU between these two are larger than an IoU threshold.
+  // AP is computed for all relevant {IoU threshold, class} combinations and
+  // averaged to get mAP.
+  // If left empty, evaluation is done for all IoU threshods in the range
+  // 0.5:0.05:0.95 (min:increment:max).
+  repeated float iou_thresholds = 2;
+  // AP is computed as the average of maximum precision at (1
+  // + num_recall_points) recall levels. E.g., if num_recall_points is 10,
+  // recall levels are 0., 0.1, 0.2, ..., 0.9, 1.0.
+  // Default: 100
+  optional int32 num_recall_points = 3 [default = 100];
+}
+
+// Average Precision metrics from Object Detection task.
+//
+// Next ID: 3
+message ObjectDetectionAveragePrecisionMetrics {
+  // Average Precision value for a particular IoU threshold.
+  // Next ID: 3
+  message AveragePrecision {
+    optional float iou_threshold = 1;
+    optional float average_precision = 2;
+  }
+
+  // One entry for each in
+  // ObjectDetectionAveragePrecisionParams::iou_thresholds, averaged over all
+  // classes.
+  repeated AveragePrecision individual_average_precisions = 1;
+  // Average of Average Precision across all IoU thresholds.
+  optional float overall_mean_average_precision = 2;
 }

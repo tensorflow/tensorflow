@@ -115,10 +115,12 @@ def tflite_jni_binary(
     linkopts = linkopts + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+            "-Wl,-install_name,@rpath/" + name,
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            "-Wl,-soname," + name,
         ],
     })
     native.cc_binary(

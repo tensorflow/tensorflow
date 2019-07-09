@@ -301,8 +301,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
@@ -314,8 +313,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);

@@ -330,7 +330,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_infs)
       .def_property("xla_cpu_fast_math_honor_nans",
                     &DebugOptions::xla_cpu_fast_math_honor_nans,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans)
+      .def_property("xla_cpu_fast_math_honor_division",
+                    &DebugOptions::xla_cpu_fast_math_honor_division,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())

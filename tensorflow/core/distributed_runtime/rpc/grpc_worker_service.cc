@@ -370,11 +370,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
                     GrpcWorkerServiceOptions options)
       : is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
-    // TODO(jingdong): it would be cleaner to move this option to GrpcWorker
-    // since the cache is maintained by GrpcWorker now.
-    if (options.cache_rpc_response) {
-      worker->EnableResponseCache();
-    }
 
     for (int i = 0; i < options.num_serving_threads; i++) {
       threads_.emplace_back(
@@ -428,7 +423,11 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
       recv_buf_max_chunk_(
           config.experimental().recv_buf_max_chunk() > 0
               ? config.experimental().recv_buf_max_chunk()
-              : (config.experimental().recv_buf_max_chunk() < 0 ? 0 : 4096)) {}
+              : (config.experimental().recv_buf_max_chunk() < 0 ? 0 : 4096)) {
+  if (config.rpc_options().cache_rpc_response()) {
+    EnableResponseCache();
+  }
+}
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(1) << "Enabling gRPC tensor response cache.";
@@ -635,51 +634,66 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   CollectiveExecutor::Handle ce_handle(
       env_->collective_executor_mgr->FindOrCreate(step_id), true);
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
+  auto consumer_callback = [this, request, rendezvous_done](
+                               const Status& status,
+                               BufRendezvous::Hook* hook) {
+    Status s = status;
+    if (s.ok()) {
+      if (hook == nullptr) {
+        s = errors::Internal("Invalid null hook for key ",
+                             request->buf_rendezvous_key());
+      }
+      if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+        s = errors::Internal("Tensor value for key ",
+                             request->buf_rendezvous_key(),
+                             " is not of a type supported by RecvBuf");
+      }
+    } else {
+      if (hook != nullptr) {
+        LOG(ERROR) << "Got hook " << hook << " with status " << s
+                   << " from ConsumeBuf";
+      }
+    }
+
+    if (s.ok()) {
+      // The RPC source tensor needs to be in CPU RAM.  If not already
+      // there make a copy using memory appropriate to the purpose.
+      const size_t num_bytes = hook->prod_value->TotalBytes();
+      const bool on_host =
+          hook->prod_dev->attributes().device_type() == "CPU" ||
+          hook->prod_attr.on_host();
+      if ((!on_host) && (num_bytes > 0)) {
+        Device* cpu_dev = nullptr;
+        s = env_->device_mgr->LookupDevice("CPU:0", &cpu_dev);
+        if (s.ok()) {
+          AllocatorAttributes cpu_attr;
+          cpu_attr.set_gpu_compatible(true);
+          cpu_attr.set_nic_compatible(true);
+          Tensor* cpu_tensor =
+              new Tensor(cpu_dev->GetAllocator(cpu_attr),
+                         hook->prod_value->dtype(), hook->prod_value->shape());
+          hook->prod_ctx->CopyDeviceTensorToCPU(
+              hook->prod_value, "empty_name", hook->prod_dev, cpu_tensor,
+              [hook, cpu_tensor, rendezvous_done](const Status& s) {
+                rendezvous_done(*cpu_tensor, s);
+                BufRendezvous::DoneWithHook(hook);
+                delete cpu_tensor;
+              });
+          return;
+        }
+      }
+    }
+
+    if (hook == nullptr) {
+      rendezvous_done(Tensor(), s);
+    } else {
+      rendezvous_done(*hook->prod_value, s);
+      BufRendezvous::DoneWithHook(hook);
+    }
+  };
   rma->buf_rendezvous()->ConsumeBuf(
       request->buf_rendezvous_key(), request->src_device(),
-      request->src_incarnation(),
-      [this, request, rendezvous_done](const Status& status,
-                                       BufRendezvous::Hook* hook) {
-        Status s = status;
-        if (s.ok()) {
-          if (!DMAHelper::CanUseDMA(hook->prod_value)) {
-            s = errors::Internal("Tensor value for key ",
-                                 request->buf_rendezvous_key(),
-                                 " is not of a type supported by RecvBuf");
-          }
-        }
-        if (s.ok()) {
-          // The RPC source tensor needs to be in CPU RAM.  If not already
-          // there make a copy using memory appropriate to the purpose.
-          const size_t num_bytes = hook->prod_value->TotalBytes();
-          const bool on_host =
-              hook->prod_dev->attributes().device_type() == "CPU" ||
-              hook->prod_attr.on_host();
-          if ((!on_host) && (num_bytes > 0)) {
-            Device* cpu_dev = nullptr;
-            s = env_->device_mgr->LookupDevice("CPU:0", &cpu_dev);
-            if (s.ok()) {
-              AllocatorAttributes cpu_attr;
-              cpu_attr.set_gpu_compatible(true);
-              cpu_attr.set_nic_compatible(true);
-              Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
-                                              hook->prod_value->dtype(),
-                                              hook->prod_value->shape());
-              hook->prod_ctx->CopyDeviceTensorToCPU(
-                  hook->prod_value, "empty_name", hook->prod_dev, cpu_tensor,
-                  [hook, cpu_tensor, rendezvous_done](const Status& s) {
-                    rendezvous_done(*cpu_tensor, s);
-                    BufRendezvous::DoneWithHook(hook);
-                    delete cpu_tensor;
-                  });
-              return;
-            }
-          }
-        }
-
-        rendezvous_done(*hook->prod_value, s);
-        BufRendezvous::DoneWithHook(hook);
-      });
+      request->src_incarnation(), consumer_callback);
 }
 
 void GrpcWorker::LoggingAsync(const LoggingRequest* request,

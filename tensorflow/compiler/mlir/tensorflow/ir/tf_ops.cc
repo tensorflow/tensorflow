@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -28,8 +31,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Parser.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TF {
@@ -59,20 +67,18 @@ static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
   return true;
 }
 
-// Returns true if the specified element type is a TensorFlow type that is ok
-// in a tensor.
-static inline bool isValidTFElementType(Type type) {
-  return type.isa<FloatType>() || type.isa<IntegerType>() ||
-         type.isa<TensorFlowType>();
-}
+// Returns true if the given pair of TensorFlow types can be cast to one
+// another. In other words, a single run-time value is legal for both the types.
+// For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
+bool AreCastCompatible(Type a, Type b) {
+  if (TensorCastOp::areCastCompatible(a, b)) return true;
 
-// Returns true if this is a valid TensorFlow tensor type.
-static inline bool isValidTFTensorType(Type type) {
-  // TensorFlow types should be tensors of one of the valid TensorFlow element
-  // types.
-  if (auto tensorTy = type.dyn_cast<TensorType>())
-    return isValidTFElementType(tensorTy.getElementType());
-  return false;
+  // Variant types may optionally contain subtypes information that need not
+  // match.  It is also not possible to compare subtypes for compatibility as
+  // their interpretation depends on the ops operating on them.  So, accept all
+  // pairs of variant types.
+  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
+         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
 }
 
 //===----------------------------------------------------------------------===//
@@ -167,6 +173,14 @@ void ConstOp::build(Builder *builder, OperationState *result, Attribute value) {
 
 void ConstOp::build(Builder *builder, OperationState *result, Type type,
                     Attribute value) {
+  // Handle the case where the type and value are already tensors.
+  if (type.isa<TensorType>() && value.isa<ElementsAttr>()) {
+    result->addTypes(type);
+    result->addAttribute("value", value);
+    return;
+  }
+
+  // Otherwise, default to the attribute builder.
   ConstOp::build(builder, result, value);
   assert(type == result->types[0] && "type mismatch in construction");
 }
@@ -267,7 +281,7 @@ LogicalResult IfOp::verify() {
   auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto module = getOperation()->getFunction().getModule();
+  auto module = getParentOfType<Module>();
   auto thenFn = module.getNamedFunction(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
@@ -290,14 +304,14 @@ LogicalResult IfOp::verify() {
   for (unsigned i = 0; i < expectedNumInputs; ++i) {
     auto operandType = getOperand(i + 1)->getType().cast<TensorType>();
     auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(operandType, thenInputType))
+    if (!AreCastCompatible(operandType, thenInputType))
       return emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
                         thenInputType, operandType, i));
 
     auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(operandType, elseInputType))
+    if (!AreCastCompatible(operandType, elseInputType))
       return emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
@@ -305,7 +319,7 @@ LogicalResult IfOp::verify() {
 
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
-    if (!TensorCastOp::areCastCompatible(thenInputType, elseInputType))
+    if (!AreCastCompatible(thenInputType, elseInputType))
       return emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
           thenInputType, elseInputType, i));
@@ -321,14 +335,14 @@ LogicalResult IfOp::verify() {
   for (unsigned i = 0; i < expectedNumResults; ++i) {
     auto resultType = getResult(i)->getType().cast<TensorType>();
     auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(thenResultType, resultType))
+    if (!AreCastCompatible(thenResultType, resultType))
       return emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
                         thenResultType, resultType, i));
 
     auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(elseResultType, resultType))
+    if (!AreCastCompatible(elseResultType, resultType))
       return emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
@@ -573,9 +587,7 @@ static LogicalResult Verify(ShapeOp op) {
     // The operand is a ranked tensor.
     if (resultType.hasStaticShape()) {
       if ((!rankedTensorType.getShape().empty() &&
-           resultType.getDimSize(0) != rankedTensorType.getShape().size()) ||
-          (rankedTensorType.getShape().empty() &&
-           resultType.getDimSize(0) != 1))
+           resultType.getDimSize(0) != rankedTensorType.getShape().size()))
         return op.emitOpError(
             "requires dimension size of result to match rank of operand");
     }
@@ -595,11 +607,8 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   auto rankedTensorType = inputType.dyn_cast<RankedTensorType>();
   if (!rankedTensorType || !rankedTensorType.hasStaticShape()) return {};
 
-  // TODO: This is handling the simple case where the resultant type matches the
-  // size of getShape()'s returned type.
   auto shape = rankedTensorType.getShape();
   int rank = shape.size();
-  if (rank == 0) return {};
 
   Builder b(getContext());
   auto elementType = getType().cast<ShapedType>().getElementType();
@@ -721,7 +730,7 @@ LogicalResult WhileOp::verify() {
   auto condAttr = getAttrOfType<FunctionAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto module = getOperation()->getFunction().getModule();
+  auto module = getParentOfType<Module>();
   auto condFn = module.getNamedFunction(condAttr.getValue());
   auto condFuncType = condFn.getType();
 
@@ -788,7 +797,7 @@ LogicalResult WhileOp::verify() {
         auto aType = a.second[idx];
         auto bType = b.second[idx];
 
-        if (!TensorCastOp::areCastCompatible(aType, bType))
+        if (!AreCastCompatible(aType, bType))
           return emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
               a.first, aType, b.first, bType, idx));
@@ -840,8 +849,12 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
+// Custom TensorFlow types are handled separately at the end as they do partial
+// match.
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+                      .StartsWith("variant", TensorFlowTypes::VARIANT)
                       .Default(0);
   switch (typeKind) {
     default:
@@ -850,8 +863,11 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   case TensorFlowTypes::enumerant:              \
     return tftype##Type::get(getContext());
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+    case TensorFlowTypes::VARIANT:
+      return ParseVariantType(data, loc);
   }
 }
 
@@ -865,16 +881,67 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
   case TensorFlowTypes::enumerant:              \
     os << name;                                 \
     break;
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
+  case TensorFlowTypes::enumerant:                     \
+    Print##tftype##Type(ty.cast<tftype##Type>(), os);  \
+    break;
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
   }
 }
 
+Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
+  bool success = spec.consume_front("variant");
+  DCHECK(success) << spec.str();
+
+  // Default variant type without inferred subtypes.
+  MLIRContext *context = getContext();
+  if (spec.empty()) return VariantType::get(context);
+
+  if (!spec.consume_front("<") || !spec.consume_back(">"))
+    return emitError(loc) << "tf.variant delimiter <...> mismatch", nullptr;
+
+  // Most variant types with subtypes have only one subtype.
+  SmallVector<StringRef, 1> subtype_specs;
+  llvm::SplitString(spec, subtype_specs, ",");
+  if (subtype_specs.empty())
+    return emitError(loc) << "invalid type: tf.variant<>", nullptr;
+
+  SmallVector<TensorType, 1> subtypes;
+  subtypes.reserve(subtype_specs.size());
+  for (StringRef subtype_spec : subtype_specs) {
+    subtype_spec = subtype_spec.trim();
+    Type type = mlir::parseType(subtype_spec, context);
+    if (!type) {
+      return emitError(loc) << "invalid type: " << subtype_spec, nullptr;
+    }
+
+    if (TensorType tensor_ty = type.dyn_cast<TensorType>()) {
+      subtypes.push_back(tensor_ty);
+    } else {
+      return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
+    }
+  }
+  return VariantType::getChecked(subtypes, context, loc);
+}
+
+void TensorFlowDialect::PrintVariantType(VariantType ty,
+                                         raw_ostream &os) const {
+  os << "variant";
+  ArrayRef<TensorType> subtypes = ty.getSubtypes();
+  if (subtypes.empty()) return;
+
+  os << "<";
+  interleaveComma(subtypes, os);
+  os << ">";
+}
+
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() && value.getType() == type)
+  // If this is an opaque elements attribute or the result type doesn't match
+  // the attribute type, then generate a tf.Const.
+  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
     return builder.create<ConstOp>(loc, type, value);
   return nullptr;
 }
@@ -887,13 +954,13 @@ LogicalResult verifyTensorFlowOp(Operation *op) {
            << op->getName() << " should start with 'tf.'";
 
   for (Type type : op->getOperandTypes()) {
-    if (!isValidTFTensorType(type))
+    if (!IsValidTFTensorType(type))
       return op->emitOpError(
           "requires operands to have a valid TensorFlow tensor type");
   }
 
   for (Type type : op->getResultTypes()) {
-    if (!isValidTFTensorType(type))
+    if (!IsValidTFTensorType(type))
       return op->emitOpError(
           "requires results to have a valid TensorFlow tensor type");
   }

@@ -1701,6 +1701,7 @@ cuda_py_test(
     tags = [
         # TODO(b/134600611): Re-enable this test.
         "notap",
+        "no_oss",
     ],
     xla_enable_strict_auto_jit = True,
 )

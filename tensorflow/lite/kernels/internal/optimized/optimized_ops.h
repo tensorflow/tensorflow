@@ -4932,7 +4932,8 @@ inline void Slice(const tflite::SliceParams& op_params,
     for (int in_h = start_h; in_h < stop_h; ++in_h) {
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         const int len = stop_d - start_d;
-        writer->WriteN(Offset(ext_shape, in_b, in_h, in_w, start_d), len);
+        if (len > 0)
+          writer->WriteN(Offset(ext_shape, in_b, in_h, in_w, start_d), len);
       }
     }
   }

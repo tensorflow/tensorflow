@@ -176,6 +176,10 @@ class OpsTestBase : public ::testing::Test {
     // it was using.
     context_.reset(nullptr);
 
+    // Delete the output copies from previous runs.
+    gtl::STLDeleteElements(&managed_outputs_);
+    managed_outputs_.resize(0);
+
     params_.reset(new OpKernelContext::Params);
     params_->device = device_;
     params_->frame_iter = FrameAndIter(0, 0);

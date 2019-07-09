@@ -80,7 +80,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -112,7 +112,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -151,7 +151,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -182,7 +182,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -208,7 +208,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());

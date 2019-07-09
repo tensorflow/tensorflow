@@ -4,8 +4,20 @@
 licenses(["notice"])
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":friends"],
     features = ["-layering_check"],
+)
+
+package_group(
+    name = "subpackages",
+    packages = ["//..."],
+)
+
+# Please do not depend on this from any other packages.
+package_group(
+    name = "friends",
+    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
+    packages = ["//..."],
 )
 
 exports_files(["run_lit.sh"])
@@ -104,7 +116,10 @@ cc_library(
         "include/mlir/Pass/PassRegistry.h",
     ],
     includes = ["include"],
-    linkopts = ["-lpthread"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":IR",
         ":Support",
@@ -611,15 +626,29 @@ gentbl(
     tbl_outs = [
         (
             "-gen-rewriters",
-            "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
+            "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.td",
+    td_file = "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/StandardOps/Ops.td",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVOpUtilsIncGen",
+    tbl_outs = [
+        (
+            "-gen-spirv-op-utils",
+            "include/mlir/SPIRV/SPIRVOpUtils.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/SPIRV/SPIRVBase.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
     ],
 )
 
@@ -643,6 +672,7 @@ cc_library(
     srcs = [
         "include/mlir/SPIRV/SPIRVEnums.cpp.inc",
         "include/mlir/SPIRV/SPIRVEnums.h.inc",
+        "include/mlir/SPIRV/SPIRVOpUtils.inc",
         "include/mlir/SPIRV/SPIRVOps.cpp.inc",
         "include/mlir/SPIRV/SPIRVOps.h.inc",
         "lib/SPIRV/SPIRVDialect.cpp",
@@ -658,6 +688,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
         "@llvm//:support",
@@ -668,17 +699,21 @@ cc_library(
 cc_library(
     name = "SPIRVConversions",
     srcs = [
-        "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
-        "lib/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
     ],
     hdrs = [
         "include/mlir/SPIRV/Passes.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "lib/Conversion/StandardToSPIRV",
+    ],
     deps = [
         ":IR",
         ":Pass",
         ":SPIRVDialect",
+        ":StandardOps",
         ":StdOpsToSPIRVConversionIncGen",
         ":Support",
         "@llvm//:support",
@@ -1198,6 +1233,46 @@ cc_binary(
     linkopts = ["-ldl"],
     deps = [
         ":mlir-cpu-runner-lib",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "tools/libcuda-runtime-wrappers.so",
+    srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
+    includes = ["include"],
+    linkshared = True,
+    deps = [
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cuda_runtime",
+        "//third_party/gpus/cuda:libcuda",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-cuda-runner",
+    srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
+    data = [
+        ":tools/libcuda-runtime-wrappers.so",
+    ],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":GPUDialectRegistration",
+        ":GPUToNVVMTransforms",
+        ":GPUTransforms",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":Transforms",
+        ":mlir-cpu-runner-lib",
+        "//devtools/build/runtime:get_runfiles_dir",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cuda_runtime",
+        "//third_party/gpus/cuda:libcuda",
+        "@llvm//:support",
     ],
 )
 
@@ -1247,11 +1322,14 @@ cc_binary(
         "tools/mlir-tblgen/OpDocGen.cpp",
         "tools/mlir-tblgen/ReferenceImplGen.cpp",
         "tools/mlir-tblgen/RewriterGen.cpp",
-        "tools/mlir-tblgen/SPIRVSerializationGen.cpp",
+        "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     includes = ["include"],
-    linkopts = ["-lpthread"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":Support",
         ":TableGen",

@@ -154,7 +154,7 @@ class ConcatAggregator(Aggregator):
       self.results = np.concatenate(self.results, axis=0)
 
     if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+      self.results = self.results._numpy()  # pylint: disable=protected-access
 
 
 _COPY_THREADS = 4

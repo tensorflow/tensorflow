@@ -1065,17 +1065,19 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
-                                      &operand_2_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
+                             &operand_1_new_dims, &operand_2_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
-                                      &operand_1_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
+                             &operand_2_new_dims, &operand_1_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
@@ -1794,16 +1796,9 @@ void TestMatMulHelper(
       test->AddTestTensor("input", {2}, /*batch_size=*/1);
       test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
-        if (transpose_a || transpose_b) {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension for "
-              "BatchMatMul, at my_matmul");
-        } else {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension");
-        }
+        test->RunValidationAndConversion(
+            node_def, error::UNIMPLEMENTED,
+            "TensorRT does not support batched constants.");
         continue;
       } else if (transpose_a) {
         test->RunValidationAndConversion(
@@ -1835,16 +1830,9 @@ void TestMatMulHelper(
     test->AddTestTensor("input", {2}, /*batch_size=*/1);
     test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
-      if (transpose_b) {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension for "
-            "BatchMatMul, at my_matmul");
-      } else {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension");
-      }
+      test->RunValidationAndConversion(
+          node_def, error::UNIMPLEMENTED,
+          "TensorRT does not support batched constants.");
       continue;
     }
     test->RunValidationAndConversion(node_def);
@@ -1861,6 +1849,18 @@ void TestMatMulHelper(
       EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
     }
   }
+}
+
+template <typename LayerType>
+void CheckAddedLayers(OpConverterTest* test, bool expect_found) {
+  bool layer_found = false;
+  for (int i = 0; i < test->converter_->network()->getNbLayers(); i++) {
+    nvinfer1::ILayer* layer = test->converter_->network()->getLayer(i);
+    if (dynamic_cast<LayerType*>(layer)) {
+      layer_found = true;
+    }
+  }
+  EXPECT_EQ(expect_found, layer_found);
 }
 
 TEST_F(OpConverterTest, ConvertMatMul) {
@@ -1910,6 +1910,31 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::INVALID_ARGUMENT,
         "Cannot currently transpose constant input if it is not 2 dimensional");
   }
+  {
+    // Make sure that INT8 mode uses IFullyConnectedLayer when possible.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {2, 1, 1});
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, false);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, true);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
+  {
+    // Make sure that INT8 mode doesn't try to use IFullyConnectedLayer when not
+    // compatible. In this case we can't use FC because weights is a tensor.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {2, 1, 1});
+    AddTestTensor("weights", {2, 2});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, true);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, false);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
   TestMatMulHelper(this, get_matmul_nodedef, "MatMul");
 }
 
@@ -1926,6 +1951,30 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
                                    matmul_attrs);
     return matmul.operation.node()->def();
   };
+
+  {
+    // Can't broadcast two tensor inputs of different rank.
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {1, 2, 2}, /*batch_size=*/2);
+    AddTestTensor("weights", {2}, /*batch_size=*/2);
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Inputs must have the same rank if they are both tensors.");
+  }
+  {
+    // Make sure that INT8 mode doesn't try to use IFullyConnectedLayer when not
+    // compatible. In this case we can't use FC because transpose_a is true.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestTensor("input", {1, 2, 2});
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, true);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, false);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
 
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
@@ -2054,21 +2103,6 @@ NodeDef GetBinaryOpNodeDef(const string& input_name_l,
   auto input_r = ops::Placeholder(s.WithOpName(input_name_r), dtype);
   auto op = OpType(s.WithOpName("my_binary"), input_l, input_r);
   return op.operation.node()->def();
-}
-
-void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
-  bool element_wise_layer_found = false;
-  bool scale_layer_found = false;
-  for (int i = 0; i < test->converter_->network()->getNbLayers(); i++) {
-    nvinfer1::ILayer* layer = test->converter_->network()->getLayer(i);
-    if (dynamic_cast<nvinfer1::IScaleLayer*>(layer)) {
-      scale_layer_found = true;
-    } else if (dynamic_cast<nvinfer1::IElementWiseLayer*>(layer)) {
-      element_wise_layer_found = true;
-    }
-  }
-  EXPECT_EQ(expect_scale_layer, scale_layer_found);
-  EXPECT_NE(expect_scale_layer, element_wise_layer_found);
 }
 
 template <typename OpType, DataType dtype>

@@ -696,7 +696,8 @@ ENTRY entry {
   add = f32[128] add(crs0, crs0), sharding={maximal device=0}
   ROOT t = (f32[128], f32[128]) tuple(add, crs1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
                           op::Add(), op::Tuple()));
