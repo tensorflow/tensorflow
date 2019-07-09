@@ -88,6 +88,8 @@ else:
   REQUIRED_PACKAGES.append('wheel')
   # mock comes with unittest.mock for python3, need to install for python2
   REQUIRED_PACKAGES.append('mock >= 2.0.0')
+  # functools comes with python3, need to install the backport for python2
+  REQUIRED_PACKAGES.append('functools32 >= 3.2.3')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:

@@ -3555,6 +3555,7 @@ py_library(
         ":math_ops",
         ":platform",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "@functools32_archive//:functools32",
         "@opt_einsum_archive//:opt_einsum",
     ],
 )
