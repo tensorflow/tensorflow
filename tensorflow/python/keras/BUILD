@@ -262,6 +262,8 @@ py_library(
         ":constraints",
         ":engine_utils",
         ":regularizers",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
