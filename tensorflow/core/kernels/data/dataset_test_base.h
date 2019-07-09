@@ -38,8 +38,34 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/env.h"
+
 namespace tensorflow {
 namespace data {
+
+enum CompressionType : int { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+
+// Gets the compression name.
+string CompressionName(CompressionType compression_type);
+
+// Gets the specified zlib compression options according to the compression
+// type. Note that `CompressionType : UNCOMPRESSED` is not supported because
+// `ZlibCompressionOptions` does not have the option for uncompressed data.
+io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type);
+
+// Saves the input text into the file with the specified compression.
+Status CreateFile(const string& filename, const std::vector<string>& text,
+                  int input_buffer_size, int output_buffer_size,
+                  const CompressionType& compression_type);
+
+// Saves the input texts into multiple files with the specified compression.
+Status CreateMultiTextFiles(const std::vector<string>& filenames,
+                            const std::vector<string>& multi_texts,
+                            int input_buffer_size, int output_buffer_size,
+                            const CompressionType& compression_type);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
