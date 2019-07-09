@@ -3415,25 +3415,21 @@ def image_gradients(image):
       shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
     dx, dy = tf.image.image_gradients(image)
     print(image[0, :,:,0])
-    print('-' * 20)
-    print(dx[0, :,:,0])
-    print('-' * 20)
-    print(dy[0, :,:,0])
-      tf.Tensor(
+    tf.Tensor(
       [[ 0.  1.  2.  3.  4.]
       [ 5.  6.  7.  8.  9.]
       [10. 11. 12. 13. 14.]
       [15. 16. 17. 18. 19.]
       [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
-      --------------------
-      tf.Tensor(
+    print(dx[0, :,:,0])
+    tf.Tensor(
       [[5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
-      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)
-      --------------------
-      tf.Tensor(
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
+    print(dy[0, :,:,0])
+    tf.Tensor(
       [[1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]
