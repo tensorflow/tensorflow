@@ -207,7 +207,7 @@ struct ScatterFunctorBase {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     mutex mu_;
-    Index bad_index = -1 GUARDED_BY(mu_);
+    Index bad_index GUARDED_BY(mu_) = -1;
     auto ParallelScatter = [&](Index start, Index end) LOCKS_EXCLUDED(mu_){
       for (Index i = start; i < end; i++) {
         // Grab the index and check its validity.  Do this carefully,
