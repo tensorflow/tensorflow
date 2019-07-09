@@ -359,7 +359,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
-    const HloModuleConfig&) {
+    const HloModuleConfig& hlo_module_config) {
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(
@@ -598,7 +598,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
-    const HloModuleConfig&) {
+    const HloModuleConfig& hlo_module_config) {
   return std::move(GetTargetMachine(
       target_triple, absl::StrCat("gfx", absl::get<int>(gpu_version)),
       hlo_module_config, "-code-object-v3"));
