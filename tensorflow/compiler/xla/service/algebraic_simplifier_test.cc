@@ -5503,5 +5503,20 @@ TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIotaOverflow) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = s32[1000] parameter(0)
+      q = s32[1000] parameter(1)
+      r = s32[1000] remainder(p, q)
+      ROOT rr = s32[1000] remainder(r, q)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Remainder(m::Parameter(), m::Parameter())));
+}
+
 }  // namespace
 }  // namespace xla
