@@ -140,6 +140,10 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 
   boost_mode_enable(error_reporter, true);
 
+  // Turn on the 1.8V regulator for DVDD on the camera.
+  am_hal_gpio_pinconfig(HM01B0_PIN_DVDD_EN, g_AM_HAL_GPIO_OUTPUT_12);
+  am_hal_gpio_output_set(HM01B0_PIN_DVDD_EN);
+
   hm01b0_power_up(&s_HM01B0Cfg);
 
   // TODO(njeff): check the delay time to just fit the spec.
@@ -160,7 +164,14 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   // camera uses a double-buffered input.  This means there is always one valid
   // image to read while the other buffer fills.  Streaming mode allows the
   // camera to perform auto exposure constantly.
-  hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0);
+  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+  uint32_t error_code =
+      hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0);
+  if (error_code == HM01B0_ERR_OK) {
+    am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
+
+    return kTfLiteError;
+  }
 
   return kTfLiteOk;
 }
@@ -180,7 +191,6 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
   hm01b0_blocking_read_oneframe_scaled(frame, frame_width, frame_height,
                                        channels);
 
-  am_util_delay_ms(2000);
 #ifdef DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
   hm01b0_framebuffer_dump(frame, frame_width * frame_height * channels);
 #endif

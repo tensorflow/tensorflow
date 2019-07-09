@@ -35,6 +35,7 @@ extern "C" {
 #define HM01B0_PIN_INT 4
 #define HM01B0_PIN_SCL 8
 #define HM01B0_PIN_SDA 9
+#define HM01B0_PIN_DVDD_EN 10
 
 // Define AP3B's CTIMER and output pin for HM01B0 MCLK generation
 #define HM01B0_MCLK_GENERATOR_MOD 0
