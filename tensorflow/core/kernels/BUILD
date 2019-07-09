@@ -4348,6 +4348,7 @@ tf_kernel_library(
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
         ":fill_functor",
+        ":redux_functor",
     ] + if_cuda([
         "//tensorflow/core:stream_executor",
     ]),

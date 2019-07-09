@@ -269,6 +269,22 @@ BM_FusedBatchNorm(64, 14, 14, 256, fp16, true, NCHW, gpu);
   BENCHMARK(BM_NAME(FusedBatchNormGrad, N, H, W, C, T, IS_TRAINING, FORMAT,   \
                     DEVICE));
 
+#define BM_FusedBatchNormGradResnetShapes(T, IS_TRAINING, FORMAT, DEVICE) \
+  BM_FusedBatchNormGrad(64, 56, 56, 64, T, IS_TRAINING, FORMAT, DEVICE);  \
+  BM_FusedBatchNormGrad(64, 56, 56, 128, T, IS_TRAINING, FORMAT, DEVICE); \
+  BM_FusedBatchNormGrad(64, 56, 56, 256, T, IS_TRAINING, FORMAT, DEVICE); \
+                                                                          \
+  BM_FusedBatchNormGrad(64, 28, 28, 128, T, IS_TRAINING, FORMAT, DEVICE); \
+  BM_FusedBatchNormGrad(64, 28, 28, 256, T, IS_TRAINING, FORMAT, DEVICE); \
+  BM_FusedBatchNormGrad(64, 28, 28, 512, T, IS_TRAINING, FORMAT, DEVICE); \
+                                                                          \
+  BM_FusedBatchNormGrad(64, 14, 14, 128, T, IS_TRAINING, FORMAT, DEVICE); \
+  BM_FusedBatchNormGrad(64, 14, 14, 256, T, IS_TRAINING, FORMAT, DEVICE); \
+  BM_FusedBatchNormGrad(64, 14, 14, 1024, T, IS_TRAINING, FORMAT, DEVICE)
+
+BM_FusedBatchNormGradResnetShapes(fp32, true, NHWC, cpu);
+BM_FusedBatchNormGradResnetShapes(fp32, false, NHWC, cpu);
+
 #ifdef GOOGLE_CUDA
 BM_FusedBatchNormGrad(64, 14, 14, 256, fp32, true, NHWC, gpu);
 BM_FusedBatchNormGrad(64, 14, 14, 256, fp16, true, NHWC, gpu);
