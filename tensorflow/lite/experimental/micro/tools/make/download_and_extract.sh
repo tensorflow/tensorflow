@@ -92,6 +92,8 @@ download_and_extract() {
   
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
+  elif [[ "${url}" == *tar.xz ]]; then
+    tar -C "${dir}" --strip-components=1 -xf ${tempfile}
   elif [[ "${url}" == *bz2 ]]; then
     curl -Ls "${url}" > ${tempdir}/tarred.bz2
     tar -C "${dir}" --strip-components=1 -xjf ${tempfile}
@@ -106,6 +108,8 @@ download_and_extract() {
     else
       cp -R ${tempdir2}/* ${dir}/
     fi
+  else
+    echo "Error unsupported archive type. Failed to extract tool after download."
   fi
   rm -rf ${tempdir2} ${tempdir}
 
