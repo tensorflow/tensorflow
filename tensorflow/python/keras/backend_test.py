@@ -1661,6 +1661,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):
