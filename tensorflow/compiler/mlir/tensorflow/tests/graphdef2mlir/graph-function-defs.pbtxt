@@ -526,14 +526,12 @@ versions {
 # CHECK-NEXT:    %18:2 = "_tf.Identity"(%17#0, %6) {T = "tfdtype$DT_INT32", device = "", name = "output_1_shard_0"} : (tensor<*xi32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:    return
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
-# CHECK-NEXT:  func @cond_false0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
+# CHECK:  func @cond_false0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
 # CHECK-NEXT:    %0:2 = "_tf.Identity"(%arg0) {T = "tfdtype$DT_INT32", device = "", name = "Identity"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:    %1:2 = "_tf.Identity"(%arg1) {T = "tfdtype$DT_INT32", device = "", name = "Identity_1"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:    return %1#0, %0#0 : tensor<*xi32>, tensor<*xi32>
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
-# CHECK-NEXT:  func @cond_true0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
+# CHECK:  func @cond_true0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
 # CHECK-NEXT:    %0:2 = "_tf.Identity"(%arg0) {T = "tfdtype$DT_INT32", device = "", name = "Identity"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:    %1:2 = "_tf.Identity"(%arg1) {T = "tfdtype$DT_INT32", device = "", name = "Identity_1"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi32>
