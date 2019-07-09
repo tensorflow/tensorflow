@@ -270,6 +270,7 @@ tf_py_test(
     tags = [
         "no_windows",
         "nomac",
+        "notap",  # TODO(b/137133525): enable after this is fixed.
     ],
 )
 
