@@ -25,7 +25,10 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "be in the human-readable proto text format, otherwise it is expected "
        "to be in the proto binary format."},
       {"hlo_module", &flags->hlo_module,
-       "Input HLO Module in the proto binary format."},
+       "Input HLO Module in the proto binary format. This is NOT a forwards or "
+       "backwards compatible format, so do not expect an HLO module generated "
+       "from a different version of TensorFlow to work. If this is set, the "
+       "--graph flag must not be set."},
       {"config", &flags->config,
        "Input file containing Config proto.  If the file ends in '.pbtxt' it "
        "is expected to be in the human-readable proto text format, otherwise "

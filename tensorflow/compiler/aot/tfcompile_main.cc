@@ -81,9 +81,10 @@ Status Main(const MainFlags& flags) {
     return Status::OK();
   }
 
-  // Read and initialize the graph.
-  if (flags.graph.empty() && flags.hlo_module.empty()) {
-    return errors::InvalidArgument("Must specify either --graph or --hlo_module");
+  if ((flags.graph.empty() && flags.hlo_module.empty())
+   || (!flags.graph.empty() && !flags.hlo_module.empty())) {
+    return errors::InvalidArgument(
+      "Must specify exactly one of --graph or --hlo_module");
   }
 
   CompileResult compile_result;
@@ -93,6 +94,7 @@ Status Main(const MainFlags& flags) {
     TF_RETURN_IF_ERROR(ReadProtoFile(flags.hlo_module, &hlo_module));
     TF_RETURN_IF_ERROR(CompileHloModule(hlo_module, config, flags, &compile_result));
   } else {
+    // Read and initialize the graph.
     GraphDef graph_def;
     TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
     TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
