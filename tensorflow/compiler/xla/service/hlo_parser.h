@@ -45,13 +45,6 @@ StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str);
 
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    absl::string_view str, const HloModuleConfig& config);
-
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
-
 // Given a string in the HloModule::ToString() format, parses the string and
 // builds the HloModule in place at the given module pointer. 'module' must
 // point to an empty module (no computations).

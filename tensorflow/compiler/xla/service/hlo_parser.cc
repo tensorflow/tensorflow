@@ -4235,15 +4235,6 @@ StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
   return ParseAndReturnUnverifiedModule(str, HloModuleConfig());
 }
 
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    absl::string_view str, const HloModuleConfig& config) {
-  return ParseAndReturnUnverifiedModule(str, config);
-}
-
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str) {
-  return ParseAndReturnUnverifiedModule(str);
-}
-
 Status ParseHloString(absl::string_view str, HloModule* module) {
   TF_RET_CHECK(module->computation_count() == 0);
   HloParser parser(str);
