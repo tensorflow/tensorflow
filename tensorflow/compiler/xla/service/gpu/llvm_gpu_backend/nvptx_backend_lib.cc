@@ -342,13 +342,12 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, compute_capability,
                                               device_bitcode_dir_path));
 
-  // Set the flush-denormals-to-zero flag on the module so the NVVM reflect
-  // pass can access it.
+  // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
+  // can access it.
   module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
                         hlo_module_config.debug_options().xla_gpu_ftz());
 
-  // If ftz is enabled, set it as an attribute on every function in the
-  // module.
+  // If ftz is enabled, set it as an attribute on every function in the module.
   if (hlo_module_config.debug_options().xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
       fn.addFnAttr("nvptx-f32ftz", "true");
