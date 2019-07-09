@@ -31867,7 +31867,7 @@ func LeakyReluGradAlpha(value float32) LeakyReluGradAttr {
 //	features: The features passed as input to the corresponding LeakyRelu operation,
 // OR the outputs of that operation (both work equivalently).
 //
-// Returns `gradients * (features > 0) + alpha * gradients * (features <= 0)`.
+// Returns `gradients * (features > 0) + alpha * gradients * (featurs <= 0)`.
 func LeakyReluGrad(scope *Scope, gradients tf.Output, features tf.Output, optional ...LeakyReluGradAttr) (backprops tf.Output) {
 	if scope.Err() != nil {
 		return
