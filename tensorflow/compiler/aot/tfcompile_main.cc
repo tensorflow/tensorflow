@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -81,13 +82,21 @@ Status Main(const MainFlags& flags) {
   }
 
   // Read and initialize the graph.
-  if (flags.graph.empty()) {
-    return errors::InvalidArgument("Must specify --graph");
+  if (flags.graph.empty() && flags.hlo_module.empty()) {
+    return errors::InvalidArgument("Must specify either --graph or --hlo_module");
   }
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
+
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
+
+  if (flags.graph.empty()) {
+    xla::HloModuleProto hlo_module;
+    TF_RETURN_IF_ERROR(ReadProtoFile(flags.hlo_module, &hlo_module));
+    TF_RETURN_IF_ERROR(CompileHloModule(hlo_module, config, flags, &compile_result));
+  } else {
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
+    TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
+  }
 
   // Write output files.
   Env* env = Env::Default();

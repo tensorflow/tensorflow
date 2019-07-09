@@ -45,6 +45,11 @@ struct CompileResult {
 Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
                     const MainFlags& flags, CompileResult* compile_result);
 
+// Same as above, but compiles an HLO module.
+Status CompileHloModule(const xla::HloModuleProto& module,
+                        const tf2xla::Config& config, const MainFlags& flags,
+                        CompileResult* compile_result);
+
 }  // namespace tfcompile
 }  // namespace tensorflow
 

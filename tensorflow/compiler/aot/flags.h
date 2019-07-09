@@ -27,6 +27,7 @@ namespace tfcompile {
 // Flags for the tfcompile binary.  See *.cc file for descriptions.
 struct MainFlags {
   string graph;
+  string hlo_module;
   string config;
   bool dump_fetch_nodes = false;
   string target_triple;

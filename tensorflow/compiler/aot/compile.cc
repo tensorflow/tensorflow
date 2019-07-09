@@ -90,19 +90,10 @@ Status CompileXla(xla::CompileOnlyClient* client,
 
 }  // namespace
 
-Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
-                    const MainFlags& flags, CompileResult* compile_result) {
-  // Converts the graph into an XLA computation, and compiles the
-  // computation.
-  // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
-  se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  xla::CompileOnlyClient* client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
-          .ValueOrDie();
-  xla::XlaComputation computation;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToXla(graph_def, config, client, &computation));
+Status CompileComputation(xla::CompileOnlyClient* client,
+                          const xla::XlaComputation& computation,
+                          const tf2xla::Config& config, const MainFlags& flags,
+                          CompileResult* compile_result) {
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
@@ -122,6 +113,33 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   return CompileXla(client, computation, aot_opts, compile_result);
+}
+
+xla::CompileOnlyClient* GetClient() {
+  se::Platform* cpu_platform =
+    se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
+  return xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
+    .ValueOrDie();
+}
+
+Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
+                    const MainFlags& flags, CompileResult* compile_result) {
+  // Converts the graph into an XLA computation, and compiles the
+  // computation.
+  // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
+  xla::CompileOnlyClient* client = GetClient();
+  xla::XlaComputation computation;
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToXla(graph_def, config, client, &computation));
+  return CompileComputation(client, computation, config, flags, compile_result);
+}
+
+Status CompileHloModule(const xla::HloModuleProto& module,
+                        const tf2xla::Config& config, const MainFlags& flags,
+                        CompileResult* compile_result) {
+  xla::CompileOnlyClient* client = GetClient();
+  xla::XlaComputation computation(module);
+  return CompileComputation(client, computation, config, flags, compile_result);
 }
 
 }  // namespace tfcompile
