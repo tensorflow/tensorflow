@@ -389,7 +389,7 @@ void LowerStaticTensorListPass::runOnModule() {
   // before the function that produces the `DT_VARIANT`. We need to carefully
   // order the functions to be processed.
   std::vector<Function> funcs_in_module;
-  for (auto func : getModule().getFunctions()) {
+  for (auto func : getModule().getOps<FuncOp>()) {
     // Always place the main function to be the first in the list.
     if (func.getName() == "main") {
       funcs_in_module.insert(funcs_in_module.begin(), func);

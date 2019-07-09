@@ -539,7 +539,7 @@ Status Exporter::Convert(mlir::Module module, const ExporterConfigs& configs,
   absl::optional<mlir::Function> entry_func;
   FunctionDefLibrary flib;
   auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
-  for (auto function : module.getFunctions()) {
+  for (auto function : module.getOps<mlir::Function>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
 

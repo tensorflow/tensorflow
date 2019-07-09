@@ -99,7 +99,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
   }
   auto& module = module_or.ValueOrDie();
   std::srand(0);
-  for (auto fn : *module) {
+  for (auto fn : module->getOps<mlir::FuncOp>()) {
     for (auto& bb : fn) {
       for (auto& inst : bb) {
         auto attr_id = mlir::Identifier::get("value", context);

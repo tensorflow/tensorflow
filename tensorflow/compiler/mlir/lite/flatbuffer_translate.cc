@@ -254,7 +254,7 @@ static bool IsValidTFLiteMlirModule(Module module) {
            false;
   }
 
-  for (auto fn : module.getFunctions()) {
+  for (auto fn : module.getOps<Function>()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -948,7 +948,7 @@ Optional<std::string> Translator::TranslateInternal() {
   Function main_fn = module_.getNamedFunction("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_.getFunctions()) {
+  for (auto fn : module_.getOps<Function>()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
