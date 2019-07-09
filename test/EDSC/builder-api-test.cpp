@@ -355,9 +355,9 @@ TEST_FUNC(builder_helpers) {
   //      CHECK:   affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  //  CHECK-DAG:         [[a:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[a:%.*]] = load %arg0[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
-  //  CHECK-DAG:         [[c:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[c:%.*]] = load %arg1[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[d:%.*]] = addf [[b]], [[c]] : f32
   // CHECK-NEXT:         store [[d]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // CHECK-NEXT:       }
