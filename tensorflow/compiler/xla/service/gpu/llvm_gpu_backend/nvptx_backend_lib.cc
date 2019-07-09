@@ -333,14 +333,14 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   return LinkWithBitcodeVector(module, libdevice_path_vector);
 }
 
-StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
-    llvm::Module* module, std::pair<int, int> compute_capability,
-    const HloModuleConfig& hlo_module_config,
-    const string& device_bitcode_dir_path) {
+Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+                               const HloModuleConfig& hlo_module_config,
+                               const string& device_bitcode_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, compute_capability,
-                                              device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(
+      module, absl::get<std::pair<int, int>>(gpu_version),
+      device_bitcode_dir_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -353,6 +353,36 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
       fn.addFnAttr("nvptx-f32ftz", "true");
     }
   }
+
+  return Status::OK();
+}
+
+std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
+    llvm::Triple target_triple, GpuVersion gpu_version,
+    const HloModuleConfig&) {
+  // Figure out the exact name of the processor as known to the NVPTX backend
+  // from the gpu_architecture flag.
+  return GetTargetMachine(
+      target_triple, GetSmName(absl::get<std::pair<int, int>>(gpu_version)),
+      hlo_module_config, "+ptx60");
+}
+
+}  // namespace nvptx
+
+namespace {
+using TargetModuleLinker = std::function<Status(
+    llvm::Module*, GpuVersion, const HloModuleConfig&, const string&)>;
+using GetLLVMTargetMachine = std::function<std::unique_ptr<llvm::TargetMachine>(
+    llvm::Triple, GpuVersion, const HloModuleConfig&)>;
+
+StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config,
+    const string& device_bitcode_dir_path, TargetModuleLinker module_linker,
+    const string& default_target_triple,
+    GetLLVMTargetMachine get_llvm_target_machine, int inline_threshold) {
+  TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
+                                   device_bitcode_dir_path));
 
   IrDumpingPassManager module_passes(module->getModuleIdentifier(), "", false);
 
@@ -367,14 +397,11 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::UnknownArch) {
     LOG(WARNING) << "target triple not found in the module";
-    target_triple = llvm::Triple("nvptx64-unknown-unknown");
+    target_triple = llvm::Triple(default_target_triple);
   }
 
-  // Figure out the exact name of the processor as known to the NVPTX backend
-  // from the gpu_architecture flag.
   std::unique_ptr<llvm::TargetMachine> target_machine =
-      GetTargetMachine(target_triple, GetSmName(compute_capability),
-                       hlo_module_config, "+ptx60");
+      get_llvm_target_machine(target_triple, gpu_version, hlo_module_config);
 
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
@@ -405,7 +432,7 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   // Add optimization passes, and set inliner threshold.
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes, kDefaultInlineThreshold);
+                        &function_passes, inline_threshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
@@ -435,6 +462,9 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   return std::move(target_machine);
 }
 
+}  // namespace
+
+namespace nvptx {
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
 void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
@@ -481,8 +511,7 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
-StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
@@ -506,8 +535,10 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
     TF_ASSIGN_OR_RETURN(
         target_machine,
-        LinkAndOptimizeModule(module, compute_capability, hlo_module_config,
-                              libdevice_dir_path));
+        LinkAndOptimizeModule(module, gpu_version, hlo_module_config,
+                              libdevice_dir_path, NVPTXTargetModuleLinker,
+                              "nvptx64-unknown-unknown", NVPTXGetTargetMachine,
+                              kDefaultInlineThreshold));
     TF_ASSIGN_OR_RETURN(ptx, EmitModuleToPTX(module, target_machine.get()));
   }
   return ptx;
@@ -555,92 +586,22 @@ Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
                                GetROCDLPaths(amdgpu_version, rocdl_dir_path));
 }
 
-StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
-    llvm::Module* module, int amdgpu_version,
-    const HloModuleConfig& hlo_module_config,
-    const string& device_bitcode_dir_path) {
+Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+                                const HloModuleConfig& hlo_module_config,
+                                const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  TF_RETURN_IF_ERROR(amdgpu::LinkROCDLIfNecessary(module, amdgpu_version,
-                                                  device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(amdgpu::LinkROCDLIfNecessary(
+      module, absl::get<int>(gpu_version), device_bitcode_dir_path));
 
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(), "", false);
+  return Status::OK();
+}
 
-  // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  llvm::TargetLibraryInfoWrapperPass* tliwp =
-      new llvm::TargetLibraryInfoWrapperPass(
-          llvm::Triple(module->getTargetTriple()));
-  module_passes.add(tliwp);
-
-  // Try to fetch the target triple from the module. If not present, set a
-  // default target triple.
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::UnknownArch) {
-    LOG(WARNING) << "target triple not found in the module";
-    target_triple = llvm::Triple("amdgcn--amdhsa-amdgiz");
-  }
-
-  // Construct LLVM TargetMachine.
-  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
-      target_triple, absl::StrCat("gfx", amdgpu_version),
-      hlo_module_config, "-code-object-v3");
-
-  module_passes.add(llvm::createTargetTransformInfoWrapperPass(
-      target_machine->getTargetIRAnalysis()));
-
-  // The LLVM IR verifier performs sanity checking on the IR. This helps
-  // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions because of unfulfilled invariants.
-  module_passes.add(llvm::createVerifierPass());
-
-  // Create the function-level pass manager. It needs data layout information
-  // too.
-  llvm::legacy::FunctionPassManager function_passes(module);
-
-  int32 opt_level =
-      hlo_module_config.debug_options().xla_backend_optimization_level();
-
-  if (opt_level < 2) {
-    LOG(ERROR) << std::string(80, '*');
-    LOG(ERROR) << "The XLA GPU backend doesn't support unoptimized code "
-                  "generation but ";
-    LOG(ERROR) << "--xla_backend_optimization_level is set to " << opt_level
-               << "!";
-    LOG(ERROR) << "(Supported configuration is "
-                  "--xla_backend_optimization_level >= 2.)";
-    LOG(ERROR) << std::string(80, '*');
-  }
-
-  // Add optimization passes, and set inliner threshold.
-  AddOptimizationPasses(opt_level,
-                        /*size_level=*/0, target_machine.get(), &module_passes,
-                        &function_passes, kAMDGPUInlineThreshold);
-
-  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
-  // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunities such
-  // as more precise alias analysis and more function inlining (SROA may change
-  // the inlining cost of a function). For now, running SROA already emits good
-  // enough code for the evaluated benchmarks. We may want to run more
-  // optimizations later.
-  if (opt_level > 0) {
-    // LLVM's optimizer turns on SROA when the optimization level is greater
-    // than 0. We mimic this behavior here.
-    module_passes.add(llvm::createSROAPass());
-  }
-
-  // Verify that the module is well formed after optimizations ran.
-  module_passes.add(llvm::createVerifierPass());
-
-  // Done populating the pass managers. Now run them.
-
-  function_passes.doInitialization();
-  for (auto func = module->begin(); func != module->end(); ++func) {
-    function_passes.run(*func);
-  }
-  function_passes.doFinalization();
-  module_passes.run(*module);
-
-  return std::move(target_machine);
+std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
+    llvm::Triple target_triple, GpuVersion gpu_version,
+    const HloModuleConfig&) {
+  return std::move(GetTargetMachine(
+      target_triple, absl::StrCat("gfx", absl::get<int>(gpu_version)),
+      hlo_module_config, "-code-object-v3"));
 }
 
 }  // namespace amdgpu
