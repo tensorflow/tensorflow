@@ -40,7 +40,9 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#ifndef ENABLE_MKLDNN_V1
 using mkldnn::convolution_direct;
+#endif
 using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
@@ -136,8 +138,13 @@ class MklDnnConvUtil {
       CHECK_BOUNDS(input_cols_raw, "Input cols too large");
       int input_cols = static_cast<int>(input_cols_raw);
 
+#ifdef ENABLE_MKLDNN_V1
+      // MKL-DNN always requires input in NCHW format Conv2D.
+      std::vector<long int> mkldnn_sizes(4, -1);
+#else
       // MKL-DNN always requires input in NCHW format Conv2D.
       std::vector<int> mkldnn_sizes(4, -1);
+#endif
       mkldnn_sizes[MklDnnDims::Dim_N] = input_batch;
       mkldnn_sizes[MklDnnDims::Dim_C] = input_depth;
       mkldnn_sizes[MklDnnDims::Dim_H] = input_rows;
@@ -160,8 +167,13 @@ class MklDnnConvUtil {
       CHECK_BOUNDS(input_cols_raw, "Input cols too large");
       int input_cols = static_cast<int>(input_cols_raw);
 
+#ifdef ENABLE_MKLDNN_V1
+      // MKL-DNN always requires input in NCDHW format for Conv3D.
+      std::vector<long int> mkldnn_sizes(5, -1);
+#else
       // MKL-DNN always requires input in NCDHW format for Conv3D.
       std::vector<int> mkldnn_sizes(5, -1);
+#endif
       mkldnn_sizes[MklDnnDims3D::Dim3d_N] = input_batch;
       mkldnn_sizes[MklDnnDims3D::Dim3d_C] = input_depth;
       mkldnn_sizes[MklDnnDims3D::Dim3d_D] = input_planes;
@@ -196,9 +208,8 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < ((strides_.size() == 4) ? 3 : 5); i++) {
-      OP_REQUIRES(context_,
-                  FastBoundsCheck(filter_shape.dim_size(i),
-                                  std::numeric_limits<int>::max()),
+      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
+                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
     }
 
@@ -225,7 +236,11 @@ class MklDnnConvUtil {
       // GOIHW = (group, out_depth, in_depth, rows, cols)
       // Specifically for depthwise G=filter_indepth, O=filter_outdepth, I=1
       if (is_depthwise) {
+#ifdef ENABLE_MKLDNN_V1
+        std::vector<long int> mkldnn_sizes(5, -1);
+#else
         std::vector<int> mkldnn_sizes(5, -1);
+#endif
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_G] = filter_in_depth;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_O] = filter_out_depth;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_I] = 1;
@@ -234,7 +249,11 @@ class MklDnnConvUtil {
 
         *filter_dims = mkldnn_sizes;
       } else {
+#ifdef ENABLE_MKLDNN_V1
+        std::vector<long int> mkldnn_sizes(4, -1);
+#else
         std::vector<int> mkldnn_sizes(4, -1);
+#endif
         mkldnn_sizes[MklDnnDims::Dim_O] = filter_out_depth;
         mkldnn_sizes[MklDnnDims::Dim_I] = filter_in_depth;
         mkldnn_sizes[MklDnnDims::Dim_H] = filter_rows;
@@ -260,9 +279,15 @@ class MklDnnConvUtil {
       int filter_out_depth =
           static_cast<int>(filter_shape.dim_size(TF_3DFILTER_DIM_O));
 
+#ifdef ENABLE_MKLDNN_V1
+      // MKL-DNN always needs filter in OIDHW format.
+      // OIDHW = (out_depth, in_depth, planes, rows, cols)
+      std::vector<long int> mkldnn_sizes(5, -1);
+#else
       // MKL-DNN always needs filter in OIDHW format.
       // OIDHW = (out_depth, in_depth, planes, rows, cols)
       std::vector<int> mkldnn_sizes(5, -1);
+#endif
       mkldnn_sizes[MklDnnDims3D::Dim3d_O] = filter_out_depth;
       mkldnn_sizes[MklDnnDims3D::Dim3d_I] = filter_in_depth;
       mkldnn_sizes[MklDnnDims3D::Dim3d_D] = filter_planes;
@@ -451,15 +476,24 @@ class MklDnnConvUtil {
     *output_dims_tf_order = TFShapeToMklDnnDims(out_shape);
 
     if (is_conv2d) {
+#ifdef ENABLE_MKLDNN_V1
+      // For Conv2D, MKL-DNN always needs output in NCHW format.
+      std::vector<long int> mkldnn_sizes(4, -1);
+#else
       // For Conv2D, MKL-DNN always needs output in NCHW format.
       std::vector<int> mkldnn_sizes(4, -1);
+#endif
       mkldnn_sizes[MklDnnDims::Dim_N] = out_batch;
       mkldnn_sizes[MklDnnDims::Dim_C] = out_depth;
       mkldnn_sizes[MklDnnDims::Dim_H] = static_cast<int>(out_rows);
       mkldnn_sizes[MklDnnDims::Dim_W] = static_cast<int>(out_cols);
       *output_dims_mkl_order = mkldnn_sizes;
     } else {
+#ifdef ENABLE_MKLDNN_V1
+      std::vector<long int> mkldnn_sizes(5, -1);
+#else
       std::vector<int> mkldnn_sizes(5, -1);
+#endif
       mkldnn_sizes[MklDnnDims3D::Dim3d_N] = out_batch;
       mkldnn_sizes[MklDnnDims3D::Dim3d_C] = out_depth;
       mkldnn_sizes[MklDnnDims3D::Dim3d_D] = static_cast<int>(out_planes);
