@@ -17,7 +17,7 @@ target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
   MLIRAffineOps
-  MLIRAffineToGPU
+  MLIRLoopsToGPU
   MLIRAnalysis
   MLIREDSC
   MLIRFxpMathOps

@@ -31,7 +31,7 @@ namespace mlir {
 template <typename Range>
 bool areValuesDefinedAbove(Range values, Region &limit) {
   for (Value *v : values)
-    if (v->getContainingRegion()->isProperAncestor(&limit))
+    if (!v->getContainingRegion()->isProperAncestor(&limit))
       return false;
   return true;
 }

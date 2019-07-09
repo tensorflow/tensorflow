@@ -1,4 +1,4 @@
-//===- AffineToGPUPass.cpp - Convert an affine loop nest to a GPU kernel --===//
+//===- LoopsToGPUPass.cpp - Convert a loop nest to a GPU kernel -----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,14 +15,15 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/AffineToGPU/AffineToGPUPass.h"
+#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"
 #include "mlir/AffineOps/AffineOps.h"
-#include "mlir/Conversion/AffineToGPU/AffineToGPU.h"
+#include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
+#include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/Support/CommandLine.h"
 
-#define PASS_NAME "convert-affine-to-gpu"
+#define PASS_NAME "convert-loops-to-gpu"
 
 using namespace mlir;
 
@@ -46,11 +47,17 @@ struct AffineForGPUMapper : public FunctionPass<AffineForGPUMapper> {
 
   void runOnFunction() override {
     for (Block &block : getFunction())
-      for (Operation &op : llvm::make_early_inc_range(block))
-        if (auto forOp = dyn_cast<AffineForOp>(&op))
+      for (Operation &op : llvm::make_early_inc_range(block)) {
+        if (auto forOp = dyn_cast<AffineForOp>(&op)) {
           if (failed(convertAffineLoopNestToGPULaunch(forOp, numBlockDims,
                                                       numThreadDims)))
             signalPassFailure();
+        } else if (auto forOp = dyn_cast<linalg::ForOp>(&op)) {
+          if (failed(convertLinalgLoopNestToGPULaunch(forOp, numBlockDims,
+                                                      numThreadDims)))
+            signalPassFailure();
+        }
+      }
   }
 
   unsigned numBlockDims;
@@ -64,10 +71,10 @@ struct AffineForGPUMapperCLI : public AffineForGPUMapper {
 };
 } // namespace
 
-FunctionPassBase *mlir::createSimpleAffineToGPUPass(unsigned numBlockDims,
-                                                    unsigned numThreadDims) {
+FunctionPassBase *mlir::createSimpleLoopsToGPUPass(unsigned numBlockDims,
+                                                   unsigned numThreadDims) {
   return new AffineForGPUMapper(numBlockDims, numThreadDims);
 }
 
 static PassRegistration<AffineForGPUMapperCLI>
-    registration(PASS_NAME, "Convert top-level affine loops to GPU kernels");
+    registration(PASS_NAME, "Convert top-level loops to GPU kernels");

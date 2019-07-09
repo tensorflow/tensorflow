@@ -1,4 +1,4 @@
-//===- AffineToGPUPass.h - Pass converting loops to GPU kernels -*- C++ -*-===//
+//===- LoopsToGPUPass.h - Pass converting loops to GPU kernels --*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,22 +14,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef MLIR_CONVERSION_AFFINETOGPU_AFFINETOGPUPASS_H_
-#define MLIR_CONVERSION_AFFINETOGPU_AFFINETOGPUPASS_H_
+#ifndef MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_
+#define MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_
 
 namespace mlir {
 class FunctionPassBase;
 
 /// Create a pass that converts loop nests into GPU kernels.  It considers
-/// top-level affine.for operations as roots of loop nests and converts them
-/// to the gpu.launch operations if possible.
+/// top-level affine.for and linalg.for operations as roots of loop nests and
+/// converts them to the gpu.launch operations if possible.
 ///
 /// No check on the size of the block or grid, or on the validity of
 /// parallelization is performed, it is under the responsibility of the caller
 /// to strip-mine the loops and to perform the dependence analysis before
 /// calling the conversion.
-FunctionPassBase *createSimpleAffineToGPUPass(unsigned numBlockDims,
-                                              unsigned numThreadDims);
+FunctionPassBase *createSimpleLoopsToGPUPass(unsigned numBlockDims,
+                                             unsigned numThreadDims);
 } // namespace mlir
 
-#endif // MLIR_CONVERSION_AFFINETOGPU_AFFINETOGPUPASS_H_
+#endif // MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_
