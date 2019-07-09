@@ -770,6 +770,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "window_util_test",
+    srcs = ["window_util_test.cc"],
+    deps = [
+        ":window_util",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "reference_util",
     srcs = ["reference_util.cc"],
