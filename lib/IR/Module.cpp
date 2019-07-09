@@ -105,17 +105,6 @@ LogicalResult ModuleOp::verify() {
     }
   }
 
-  // Check that all functions are uniquely named.
-  llvm::StringMap<Location> nameToOrigLoc;
-  for (auto fn : getOps<FuncOp>()) {
-    auto it = nameToOrigLoc.try_emplace(fn.getName(), fn.getLoc());
-    if (!it.second)
-      return fn.emitError()
-          .append("redefinition of symbol named '", fn.getName(), "'")
-          .attachNote(it.first->second)
-          .append("see existing symbol definition here");
-  }
-
   return success();
 }
 

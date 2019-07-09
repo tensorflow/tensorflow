@@ -35,7 +35,7 @@ namespace mlir {
 /// allowed to implicitly capture global values, and all external references
 /// must use symbolic references via attributes(e.g. via a string name).
 class ModuleOp : public Op<ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                           OpTrait::IsIsolatedFromAbove> {
+                           OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable> {
 public:
   using Op::Op;
   using Op::print;
@@ -98,16 +98,7 @@ public:
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
   Function getNamedFunction(StringRef name) {
-    return getNamedFunction(Identifier::get(name, getContext()));
-  }
-
-  /// Look up a function with the specified name, returning null if no such
-  /// name exists. Function names never include the @ on them. Note: This
-  /// performs a linear scan of held symbols.
-  Function getNamedFunction(Identifier name) {
-    auto it = llvm::find_if(getOps<FuncOp>(),
-                            [name](FuncOp fn) { return fn.getName() == name; });
-    return it == end() ? nullptr : *it;
+    return lookupSymbol<FuncOp>(name);
   }
 };
 
@@ -141,24 +132,24 @@ public:
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names must never include the @ on them.
-  template <typename NameTy> Function getNamedFunction(NameTy &&name) const {
-    return symbolTable.lookup(name);
+  template <typename NameTy> FuncOp getNamedFunction(NameTy &&name) const {
+    return symbolTable.lookup<FuncOp>(name);
   }
 
   /// Insert a new symbol into the module, auto-renaming it as necessary.
-  void insert(Function function) {
-    symbolTable.insert(function);
-    module.push_back(function);
+  void insert(Operation *op) {
+    symbolTable.insert(op);
+    module.push_back(op);
   }
-  void insert(Block::iterator insertPt, Function function) {
-    symbolTable.insert(function);
-    module.insert(insertPt, function);
+  void insert(Block::iterator insertPt, Operation *op) {
+    symbolTable.insert(op);
+    module.insert(insertPt, op);
   }
 
   /// Remove the given symbol from the module symbol table and then erase it.
-  void erase(Function function) {
-    symbolTable.erase(function);
-    function.erase();
+  void erase(Operation *op) {
+    symbolTable.erase(op);
+    op->erase();
   }
 
   /// Return the internally held module.

@@ -55,7 +55,8 @@ Function FuncOp::create(Location location, StringRef name, FunctionType type,
 
 void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs) {
-  result->addAttribute("name", builder->getStringAttr(name));
+  result->addAttribute(SymbolTable::getSymbolAttrName(),
+                       builder->getStringAttr(name));
   result->addAttribute("type", builder->getTypeAttr(type));
   result->attributes.append(attrs.begin(), attrs.end());
   result->addRegion();
@@ -161,7 +162,8 @@ ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Parse the name as a function attribute.
   FunctionAttr nameAttr;
-  if (parser->parseAttribute(nameAttr, "name", result->attributes))
+  if (parser->parseAttribute(nameAttr, SymbolTable::getSymbolAttrName(),
+                             result->attributes))
     return failure();
   // Convert the parsed function attr into a string attr.
   result->attributes.back().second = builder.getStringAttr(nameAttr.getValue());
@@ -222,7 +224,8 @@ void FuncOp::print(OpAsmPrinter *p) {
   printFunctionSignature(p, *this);
 
   // Print out function attributes, if present.
-  SmallVector<StringRef, 2> ignoredAttrs = {"name", "type"};
+  SmallVector<StringRef, 2> ignoredAttrs = {SymbolTable::getSymbolAttrName(),
+                                            "type"};
 
   // Ignore any argument attributes.
   std::vector<SmallString<8>> argAttrStorage;
@@ -283,6 +286,17 @@ LogicalResult FuncOp::verify() {
              << "function signature(" << fnInputTypes[i] << ')';
 
   return success();
+}
+
+/// Returns the name of this function.
+StringRef FuncOp::getName() {
+  return getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()).getValue();
+}
+
+/// Set the name of this function.
+void FuncOp::setName(StringRef name) {
+  return setAttr(SymbolTable::getSymbolAttrName(),
+                 StringAttr::get(name, getContext()));
 }
 
 /// Add an entry block to an empty function, and set up the block arguments

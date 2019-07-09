@@ -69,12 +69,10 @@ public:
   LogicalResult verify();
 
   /// Returns the name of this function.
-  StringRef getName() { return getAttrOfType<StringAttr>("name").getValue(); }
+  StringRef getName();
 
   /// Set the name of this function.
-  void setName(StringRef name) {
-    return setAttr("name", StringAttr::get(name, getContext()));
-  }
+  void setName(StringRef name);
 
   /// Returns the type of this function.
   FunctionType getType() {
