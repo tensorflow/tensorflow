@@ -87,6 +87,11 @@ class FixedLossScaleTest(test.TestCase):
     loss_scale = loss_scale_module.FixedLossScale.from_config(config)
     self.assertEqual(self.evaluate(loss_scale()), 123.)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_call_type(self):
+    scalar = loss_scale_module.FixedLossScale(123)
+    self.assertIsInstance(scalar(), ops.Tensor)
+
 
 def _get_example_iter(inputs):
   dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
@@ -283,6 +288,10 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(scalar.increment_period, scalar2.increment_period)
     self.assertEqual(scalar.multiplier, scalar2.multiplier)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_call_type(self):
+    scalar = loss_scale_module.DynamicLossScale()
+    self.assertIsInstance(scalar(), ops.Tensor)
 
 if __name__ == '__main__':
   test.main()

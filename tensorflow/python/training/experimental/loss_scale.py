@@ -324,7 +324,7 @@ class DynamicLossScale(LossScale):
     return self._multiplier
 
   def __call__(self):
-    return self._current_loss_scale
+    return ops.convert_to_tensor(self._current_loss_scale)
 
   def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
