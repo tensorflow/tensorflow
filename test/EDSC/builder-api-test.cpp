@@ -81,15 +81,15 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   });
 
   // clang-format off
-  // CHECK-LABEL: func @builder_dynamic_for_func_args(%arg0: index, %arg1: index) {
-  //     CHECK:  affine.for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
-  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%arg0]
-  //     CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%arg0, %arg1]
-  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%arg0]
-  //     CHECK:  affine.for %i1 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 2 {
-  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((d0 + d1 * 3) floordiv 32)(%i0, %i1)
-  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> (((d0 + d1 * 3) floordiv 32) * 31)(%i0, %i1)
-  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((((d0 + d1 * 3) floordiv 32) * 31) ceildiv 32)(%i0, %i1)
+  // CHECK-LABEL: func @builder_dynamic_for_func_args(%{{.*}}: index, %{{.*}}: index) {
+  //     CHECK:  affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%{{.*}}) step 3 {
+  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%{{.*}}]
+  //     CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%{{.*}}, %{{.*}}]
+  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%{{.*}}]
+  //     CHECK:  affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%{{.*}}) step 2 {
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((d0 + d1 * 3) floordiv 32)(%{{.*}}, %{{.*}})
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> (((d0 + d1 * 3) floordiv 32) * 31)(%{{.*}}, %{{.*}})
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((((d0 + d1 * 3) floordiv 32) * 31) ceildiv 32)(%{{.*}}, %{{.*}})
   // CHECK-DAG:    [[rf1:%[0-9]+]] = addf {{.*}}, {{.*}} : f32
   // CHECK-DAG:    [[rf2:%[0-9]+]] = divf [[rf1]], {{.*}} : f32
   // CHECK-DAG:    [[rf3:%[0-9]+]] = remf [[rf2]], {{.*}} : f32
@@ -120,10 +120,10 @@ TEST_FUNC(builder_dynamic_for) {
   LoopBuilder(&i, a - b, c + d, 2)();
 
   // clang-format off
-  // CHECK-LABEL: func @builder_dynamic_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
-  // CHECK-DAG:    [[r0:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 - s1)()[%arg0, %arg1]
-  // CHECK-DAG:    [[r1:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 + s1)()[%arg2, %arg3]
-  // CHECK-NEXT:   affine.for %i0 = (d0) -> (d0)([[r0]]) to (d0) -> (d0)([[r1]]) step 2 {
+  // CHECK-LABEL: func @builder_dynamic_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
+  // CHECK-DAG:    [[r0:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 - s1)()[%{{.*}}, %{{.*}}]
+  // CHECK-DAG:    [[r1:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 + s1)()[%{{.*}}, %{{.*}}]
+  // CHECK-NEXT:   affine.for %{{.*}} = (d0) -> (d0)([[r0]]) to (d0) -> (d0)([[r1]]) step 2 {
   // clang-format on
   f.print(llvm::outs());
   f.erase();
@@ -145,8 +145,8 @@ TEST_FUNC(builder_max_min_for) {
   ret();
 
   // clang-format off
-  // CHECK-LABEL: func @builder_max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
-  // CHECK:  affine.for %i0 = max (d0, d1) -> (d0, d1)(%arg0, %arg1) to min (d0, d1) -> (d0, d1)(%arg2, %arg3) {
+  // CHECK-LABEL: func @builder_max_min_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
+  // CHECK:  affine.for %{{.*}} = max (d0, d1) -> (d0, d1)(%{{.*}}, %{{.*}}) to min (d0, d1) -> (d0, d1)(%{{.*}}, %{{.*}}) {
   // CHECK:  return
   // clang-format on
   f.print(llvm::outs());
@@ -184,14 +184,14 @@ TEST_FUNC(builder_blocks) {
 
   // clang-format off
   // CHECK-LABEL: @builder_blocks
-  // CHECK:        %c42_i32 = constant 42 : i32
-  // CHECK-NEXT:   %c1234_i32 = constant 1234 : i32
-  // CHECK-NEXT:   br ^bb1(%c42_i32, %c1234_i32 : i32, i32)
-  // CHECK-NEXT: ^bb1(%0: i32, %1: i32):   // 2 preds: ^bb0, ^bb2
-  // CHECK-NEXT:   %2 = addi %0, %1 : i32
-  // CHECK-NEXT:   br ^bb2(%0, %2 : i32, i32)
-  // CHECK-NEXT: ^bb2(%3: i32, %4: i32):   // pred: ^bb1
-  // CHECK-NEXT:   br ^bb1(%3, %4 : i32, i32)
+  // CHECK:        %{{.*}} = constant 42 : i32
+  // CHECK-NEXT:   %{{.*}} = constant 1234 : i32
+  // CHECK-NEXT:   br ^bb1(%{{.*}}, %{{.*}} : i32, i32)
+  // CHECK-NEXT: ^bb1(%{{.*}}: i32, %{{.*}}: i32):   // 2 preds: ^bb0, ^bb2
+  // CHECK-NEXT:   %{{.*}} = addi %{{.*}}, %{{.*}} : i32
+  // CHECK-NEXT:   br ^bb2(%{{.*}}, %{{.*}} : i32, i32)
+  // CHECK-NEXT: ^bb2(%{{.*}}: i32, %{{.*}}: i32):   // pred: ^bb1
+  // CHECK-NEXT:   br ^bb1(%{{.*}}, %{{.*}} : i32, i32)
   // CHECK-NEXT: }
   // clang-format on
   f.print(llvm::outs());
@@ -228,14 +228,14 @@ TEST_FUNC(builder_blocks_eager) {
   }
 
   // CHECK-LABEL: @builder_blocks_eager
-  // CHECK:        %c42_i32 = constant 42 : i32
-  // CHECK-NEXT:   %c1234_i32 = constant 1234 : i32
-  // CHECK-NEXT:   br ^bb1(%c42_i32, %c1234_i32 : i32, i32)
-  // CHECK-NEXT: ^bb1(%0: i32, %1: i32):   // 2 preds: ^bb0, ^bb2
-  // CHECK-NEXT:   %2 = addi %0, %1 : i32
-  // CHECK-NEXT:   br ^bb2(%0, %2 : i32, i32)
-  // CHECK-NEXT: ^bb2(%3: i32, %4: i32):   // pred: ^bb1
-  // CHECK-NEXT:   br ^bb1(%3, %4 : i32, i32)
+  // CHECK:        %{{.*}} = constant 42 : i32
+  // CHECK-NEXT:   %{{.*}} = constant 1234 : i32
+  // CHECK-NEXT:   br ^bb1(%{{.*}}, %{{.*}} : i32, i32)
+  // CHECK-NEXT: ^bb1(%{{.*}}: i32, %{{.*}}: i32):   // 2 preds: ^bb0, ^bb2
+  // CHECK-NEXT:   %{{.*}} = addi %{{.*}}, %{{.*}} : i32
+  // CHECK-NEXT:   br ^bb2(%{{.*}}, %{{.*}} : i32, i32)
+  // CHECK-NEXT: ^bb2(%{{.*}}: i32, %{{.*}}: i32):   // pred: ^bb1
+  // CHECK-NEXT:   br ^bb1(%{{.*}}, %{{.*}} : i32, i32)
   // CHECK-NEXT: }
   // clang-format on
   f.print(llvm::outs());
@@ -266,13 +266,13 @@ TEST_FUNC(builder_cond_branch) {
 
   // clang-format off
   // CHECK-LABEL: @builder_cond_branch
-  // CHECK:   %c32_i32 = constant 32 : i32
-  // CHECK-NEXT:   %c64_i64 = constant 64 : i64
-  // CHECK-NEXT:   %c42_i32 = constant 42 : i32
-  // CHECK-NEXT:   cond_br %arg0, ^bb1(%c32_i32 : i32), ^bb2(%c64_i64, %c42_i32 : i64, i32)
-  // CHECK-NEXT: ^bb1(%0: i32):   // pred: ^bb0
+  // CHECK:   %{{.*}} = constant 32 : i32
+  // CHECK-NEXT:   %{{.*}} = constant 64 : i64
+  // CHECK-NEXT:   %{{.*}} = constant 42 : i32
+  // CHECK-NEXT:   cond_br %{{.*}}, ^bb1(%{{.*}} : i32), ^bb2(%{{.*}}, %{{.*}} : i64, i32)
+  // CHECK-NEXT: ^bb1(%{{.*}}: i32):   // pred: ^bb0
   // CHECK-NEXT:   return
-  // CHECK-NEXT: ^bb2(%1: i64, %2: i32):  // pred: ^bb0
+  // CHECK-NEXT: ^bb2(%{{.*}}: i64, %{{.*}}: i32):  // pred: ^bb0
   // CHECK-NEXT:   return
   // clang-format on
   f.print(llvm::outs());
@@ -305,13 +305,13 @@ TEST_FUNC(builder_cond_branch_eager) {
   });
 
   // CHECK-LABEL: @builder_cond_branch_eager
-  // CHECK:   %c32_i32 = constant 32 : i32
-  // CHECK-NEXT:   %c64_i64 = constant 64 : i64
-  // CHECK-NEXT:   %c42_i32 = constant 42 : i32
-  // CHECK-NEXT:   cond_br %arg0, ^bb1(%c32_i32 : i32), ^bb2(%c64_i64, %c42_i32 : i64, i32)
-  // CHECK-NEXT: ^bb1(%0: i32):   // pred: ^bb0
+  // CHECK:   %{{.*}} = constant 32 : i32
+  // CHECK-NEXT:   %{{.*}} = constant 64 : i64
+  // CHECK-NEXT:   %{{.*}} = constant 42 : i32
+  // CHECK-NEXT:   cond_br %{{.*}}, ^bb1(%{{.*}} : i32), ^bb2(%{{.*}}, %{{.*}} : i64, i32)
+  // CHECK-NEXT: ^bb1(%{{.*}}: i32):   // pred: ^bb0
   // CHECK-NEXT:   return
-  // CHECK-NEXT: ^bb2(%1: i64, %2: i32):  // pred: ^bb0
+  // CHECK-NEXT: ^bb2(%{{.*}}: i64, %{{.*}}: i32):  // pred: ^bb0
   // CHECK-NEXT:   return
   // clang-format on
   f.print(llvm::outs());
@@ -352,22 +352,22 @@ TEST_FUNC(builder_helpers) {
   });
 
   // CHECK-LABEL: @builder_helpers
-  //      CHECK:   affine.for %i0 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  // CHECK-NEXT:     affine.for %i1 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  // CHECK-NEXT:       affine.for %i2 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  //  CHECK-DAG:         [[a:%.*]] = load %arg0[%i0, %i1, %i2] : memref<?x?x?xf32>
+  //      CHECK:   affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  // CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  // CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  //  CHECK-DAG:         [[a:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
-  //  CHECK-DAG:         [[c:%.*]] = load %arg1[%i0, %i1, %i2] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[c:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[d:%.*]] = addf [[b]], [[c]] : f32
-  // CHECK-NEXT:         store [[d]], %arg2[%i0, %i1, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:         store [[d]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // CHECK-NEXT:       }
-  // CHECK-NEXT:       affine.for %i3 = (d0) -> (d0)(%c0_1) to (d0) -> (d0)(%2) {
-  //  CHECK-DAG:         [[a:%.*]] = load %arg1[%i0, %i1, %i3] : memref<?x?x?xf32>
-  //  CHECK-DAG:         [[b:%.*]] = load %arg0[%i0, %i1, %i3] : memref<?x?x?xf32>
+  // CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%{{.*}}) {
+  //  CHECK-DAG:         [[a:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[b:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[c:%.*]] = addf [[b]], [[a]] : f32
-  //  CHECK-DAG:         [[d:%.*]] = load %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[d:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[e:%.*]] = addf [[d]], [[c]] : f32
-  // CHECK-NEXT:         store [[e]], %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
+  // CHECK-NEXT:         store [[e]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // clang-format on
   f.print(llvm::outs());
   f.erase();
@@ -402,8 +402,8 @@ TEST_FUNC(custom_ops) {
   });
 
   // CHECK-LABEL: @custom_ops
-  // CHECK: affine.for %i0 {{.*}}
-  // CHECK:   affine.for %i1 {{.*}}
+  // CHECK: affine.for %{{.*}} {{.*}}
+  // CHECK:   affine.for %{{.*}} {{.*}}
   // CHECK:     {{.*}} = "my_custom_op"{{.*}} : (index, index) -> index
   // CHECK:     "my_custom_op_0"{{.*}} : (index, index) -> ()
   // CHECK:     [[TWO:%[a-z0-9]+]]:2 = "my_custom_op_2"{{.*}} : (index, index) -> (index, index)
@@ -463,8 +463,8 @@ TEST_FUNC(select_op) {
   });
 
   // CHECK-LABEL: @select_op
-  //      CHECK: affine.for %i0 = 0 to 1 {
-  // CHECK-NEXT:   affine.for %i1 = 0 to 1 {
+  //      CHECK: affine.for %{{.*}} = 0 to 1 {
+  // CHECK-NEXT:   affine.for %{{.*}} = 0 to 1 {
   //  CHECK-DAG:     {{.*}} = cmpi "eq"
   //  CHECK-DAG:     {{.*}} = load
   //  CHECK-DAG:     {{.*}} = load
@@ -516,29 +516,29 @@ TEST_FUNC(tile_2d) {
   //       CHECK: %[[M:[0-9]+]] = dim %arg2, 0 : memref<?x?x?xf32>
   //  CHECK-NEXT: %[[N:[0-9]+]] = dim %arg2, 1 : memref<?x?x?xf32>
   //  CHECK-NEXT: %[[P:[0-9]+]] = dim %arg2, 2 : memref<?x?x?xf32>
-  //       CHECK:   affine.for %i0 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
-  //  CHECK-NEXT:     affine.for %i1 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
-  //  CHECK-NEXT:       affine.for %i2 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         affine.for %i3 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] step 16 {
-  //  CHECK-NEXT:           affine.for %i4 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] step 32 {
-  //  CHECK-NEXT:             affine.for %i5 = max (d0, d1)[s0] -> (s0, d0, d1)(%i1, %i4)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%i1, %i4)[%[[N]]] {
-  //  CHECK-NEXT:               affine.for %i6 = max (d0, d1)[s0] -> (s0, d0, d1)(%i0, %i3)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%i0, %i3)[%[[M]]] {
-  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
-  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  //       CHECK:   affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
+  //  CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
+  //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] step 16 {
+  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] step 32 {
+  //  CHECK-NEXT:             affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%{{.*}}, %{{.*}})[%[[N]]] {
+  //  CHECK-NEXT:               affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%{{.*}}, %{{.*}})[%[[M]]] {
+  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
-  //  CHECK-NEXT:                 store {{.*}}, {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //       CHECK:               }
   //  CHECK-NEXT:             }
   //  CHECK-NEXT:           }
   //  CHECK-NEXT:         }
   //  CHECK-NEXT:       }
-  //  CHECK-NEXT:       affine.for %i7 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         affine.for %i8 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] {
-  //  CHECK-NEXT:           affine.for %i9 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] {
-  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
-  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] {
+  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] {
+  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32
-  //  CHECK-NEXT:             store {{.*}}, {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // clang-format on
   f.print(llvm::outs());
   f.erase();
@@ -575,21 +575,21 @@ TEST_FUNC(vectorize_2d) {
   ret();
 
   // xCHECK-LABEL: func @vectorize_2d
-  //  xCHECK-NEXT: %[[M:.*]] = dim %arg0, 0 : memref<?x?x?xf32>
-  //  xCHECK-NEXT: %[[N:.*]] = dim %arg0, 1 : memref<?x?x?xf32>
-  //  xCHECK-NEXT: %[[P:.*]] = dim %arg0, 2 : memref<?x?x?xf32>
-  //  xCHECK-NEXT: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) {
-  //  xCHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 4 {
-  //  xCHECK-NEXT:     affine.for %i2 = 0 to (d0) -> (d0)(%[[P]]) step 4 {
-  //  xCHECK-NEXT:       %[[vA:.*]] = "vector.transfer_read"(%arg1, %i0, %i1,
-%i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (memref<?x?x?xf32>, index,
-index, index) -> vector<4x4xf32>
-  //  xCHECK-NEXT:       %[[vB:.*]] =  "vector.transfer_read"(%arg0, %i0, %i1,
-%i2) {permutation_map = (d0, d1,  d2) -> (d1, d2)} : (memref<?x?x?xf32>, index,
-index, index) -> vector<4x4xf32>
+  //  xCHECK-NEXT: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?x?xf32>
+  //  xCHECK-NEXT: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?x?xf32>
+  //  xCHECK-NEXT: %[[P:.*]] = dim %{{.*}}, 2 : memref<?x?x?xf32>
+  //  xCHECK-NEXT: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //  xCHECK-NEXT:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) step 4 {
+  //  xCHECK-NEXT:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[P]]) step 4 {
+  //  xCHECK-NEXT:       %[[vA:.*]] = "vector.transfer_read"(%{{.*}}, %{{.*}},
+%{{.*}}, %i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (memref<?x?x?xf32>,
+index, index, index) -> vector<4x4xf32>
+  //  xCHECK-NEXT:       %[[vB:.*]] =  "vector.transfer_read"(%{{.*}}, %{{.*}},
+%{{.*}}, %i2) {permutation_map = (d0, d1,  d2) -> (d1, d2)} :
+(memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
   //  xCHECK-NEXT:       %[[vRES:.*]] = addf %[[vB]], %[[vA]] : vector<4x4xf32>
-  //  xCHECK-NEXT:       "vector.transfer_write"(%[[vRES:.*]], %arg2, %i0, %i1,
-%i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (vector<4x4xf32>,
+  //  xCHECK-NEXT:       "vector.transfer_write"(%[[vRES:.*]], %{{.*}}, %{{.*}},
+%{{.*}}, %i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (vector<4x4xf32>,
 memref<?x?x?xf32>, index, index, index) -> ()
   // clang-format on
 

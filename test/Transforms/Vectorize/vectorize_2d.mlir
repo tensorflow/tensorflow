@@ -15,14 +15,14 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    %M = dim %A, 0 : memref<?x?x?xf32>
    %N = dim %A, 1 : memref<?x?x?xf32>
    %P = dim %A, 2 : memref<?x?x?xf32>
-   // CHECK: for  {{.*}} = 0 to %0 {
-   // CHECK:   for {{.*}} = 0 to %1 step 32
-   // CHECK:     for {{.*}} = 0 to %2 step 256
+   // CHECK: for  {{.*}} = 0 to %{{.*}} {
+   // CHECK:   for {{.*}} = 0 to %{{.*}} step 32
+   // CHECK:     for {{.*}} = 0 to %{{.*}} step 256
    // Example:
-   // affine.for %i0 = 0 to %0 {
-   //   affine.for %i1 = 0 to %1 step 32 {
-   //     affine.for %i2 = 0 to %2 step 256 {
-   //       %3 = "vector.transfer_read"(%arg0, %i0, %i1, %i2) : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
+   // affine.for %{{.*}} = 0 to %{{.*}} {
+   //   affine.for %{{.*}} = 0 to %{{.*}} step 32 {
+   //     affine.for %{{.*}} = 0 to %{{.*}} step 256 {
+   //       %{{.*}} = "vector.transfer_read"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (memref<?x?x?xf32>, index, index, index) -> vector<32x256xf32>
    affine.for %i0 = 0 to %M {
      affine.for %i1 = 0 to %N {
        affine.for %i2 = 0 to %P {
@@ -30,9 +30,9 @@ func @vec2d(%A : memref<?x?x?xf32>) {
        }
      }
    }
-   // CHECK: for  {{.*}} = 0 to %0 {
-   // CHECK:   for  {{.*}} = 0 to %1 {
-   // CHECK:     for  {{.*}} = 0 to %2 {
+   // CHECK: for  {{.*}} = 0 to %{{.*}} {
+   // CHECK:   for  {{.*}} = 0 to %{{.*}} {
+   // CHECK:     for  {{.*}} = 0 to %{{.*}} {
    // For the case: --test-fastest-varying=1 --test-fastest-varying=0 no
    // vectorization happens because of loop nesting order .
    affine.for %i3 = 0 to %M {
@@ -69,8 +69,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   }
   affine.for %i4 = 0 to %M {
     affine.for %i5 = 0 to %N {
-      // CHECK: [[A5:%.*]] = vector.transfer_read %0[{{.*}}] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<32x256xf32>
-      // CHECK: [[B5:%.*]] = vector.transfer_read %1[{{.*}}] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<32x256xf32>
+      // CHECK: [[A5:%.*]] = vector.transfer_read %{{.*}}[{{.*}}] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<32x256xf32>
+      // CHECK: [[B5:%.*]] = vector.transfer_read %{{.*}}[{{.*}}] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<32x256xf32>
       // CHECK: [[S5:%.*]] = addf [[A5]], [[B5]] : vector<32x256xf32>
       // CHECK: [[SPLAT1:%.*]] = constant dense<1.000000e+00> : vector<32x256xf32>
       // CHECK: [[S6:%.*]] = addf [[S5]], [[SPLAT1]] : vector<32x256xf32>
@@ -104,13 +104,13 @@ func @vectorize_matmul(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: me
   %K = dim %arg0, 1 : memref<?x?xf32>
   %N = dim %arg2, 1 : memref<?x?xf32>
   //      VECT: %[[C0:.*]] = constant 0 : index
-  // VECT-NEXT: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-  // VECT-NEXT: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
-  // VECT-NEXT: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
+  // VECT-NEXT: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+  // VECT-NEXT: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  // VECT-NEXT: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //      VECT: {{.*}} #[[map_id1]](%[[M]]) step 4 {
   // VECT-NEXT:   {{.*}} #[[map_id1]](%[[N]]) step 8 {
   //      VECT:     %[[VC0:.*]] = constant dense<0.000000e+00> : vector<4x8xf32>
-  // VECT-NEXT:     vector.transfer_write %[[VC0]], %arg2[%{{.*}}, %{{.*}}] {permutation_map = #[[map_id2]]} : vector<4x8xf32>, memref<?x?xf32>
+  // VECT-NEXT:     vector.transfer_write %[[VC0]], %{{.*}}[%{{.*}}, %{{.*}}] {permutation_map = #[[map_id2]]} : vector<4x8xf32>, memref<?x?xf32>
   affine.for %i0 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
     affine.for %i1 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
       %cst = constant 0.000000e+00 : f32
@@ -120,12 +120,12 @@ func @vectorize_matmul(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: me
   //      VECT:  affine.for %[[I2:.*]] = #[[map_id1]](%[[C0]]) to #[[map_id1]](%[[M]]) step 4 {
   // VECT-NEXT:    affine.for %[[I3:.*]] = #[[map_id1]](%[[C0]]) to #[[map_id1]](%[[N]]) step 8 {
   // VECT-NEXT:      affine.for %[[I4:.*]] = #map5(%[[C0]]) to #[[map_id1]](%[[K]]) {
-  // VECT-NEXT:        %[[A:.*]] = vector.transfer_read %arg1[%[[I4]], %[[I3]]] {permutation_map = #[[map_proj_d0d1_zerod1]]} : memref<?x?xf32>, vector<4x8xf32>
-  // VECT-NEXT:        %[[B:.*]] = vector.transfer_read %arg0[%[[I2]], %[[I4]]] {permutation_map = #[[map_proj_d0d1_d0zero]]} : memref<?x?xf32>, vector<4x8xf32>
+  // VECT-NEXT:        %[[A:.*]] = vector.transfer_read %{{.*}}[%[[I4]], %[[I3]]] {permutation_map = #[[map_proj_d0d1_zerod1]]} : memref<?x?xf32>, vector<4x8xf32>
+  // VECT-NEXT:        %[[B:.*]] = vector.transfer_read %{{.*}}[%[[I2]], %[[I4]]] {permutation_map = #[[map_proj_d0d1_d0zero]]} : memref<?x?xf32>, vector<4x8xf32>
   // VECT-NEXT:        %[[C:.*]] = mulf %[[B]], %[[A]] : vector<4x8xf32>
-  // VECT-NEXT:        %[[D:.*]] = vector.transfer_read %arg2[%[[I2]], %[[I3]]] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<4x8xf32>
+  // VECT-NEXT:        %[[D:.*]] = vector.transfer_read %{{.*}}[%[[I2]], %[[I3]]] {permutation_map = #[[map_id2]]} : memref<?x?xf32>, vector<4x8xf32>
   // VECT-NEXT:        %[[E:.*]] = addf %[[D]], %[[C]] : vector<4x8xf32>
-  // VECT-NEXT:        vector.transfer_write %[[E]], %arg2[%[[I2]], %[[I3]]] {permutation_map = #[[map_id2]]} : vector<4x8xf32>, memref<?x?xf32>
+  // VECT-NEXT:        vector.transfer_write %[[E]], %{{.*}}[%[[I2]], %[[I3]]] {permutation_map = #[[map_id2]]} : vector<4x8xf32>, memref<?x?xf32>
   affine.for %i2 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
     affine.for %i3 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
       affine.for %i4 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%K) {

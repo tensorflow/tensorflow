@@ -338,18 +338,18 @@ func @dyn_shape_fold(%L : index, %M : index) -> (memref<? x ? x i32>, memref<? x
   // CHECK-NEXT: %2 = alloc() : memref<512x1024xi32>
   %c = alloc(%K, %N) : memref<? x ? x i32>
 
-  // CHECK: affine.for %i0 =
+  // CHECK: affine.for
   affine.for %i = 0 to %L {
-    // CHECK-NEXT: affine.for %i1 =
+    // CHECK-NEXT: affine.for
     affine.for %j = 0 to 10 {
-      // CHECK-NEXT: %4 = load %0[%i0, %i1] : memref<?x1024xf32>
-      // CHECK-NEXT: store %4, %1[%c0, %c0, %i0, %i1, %c0] : memref<4x1024x8x512x?xf32>
+      // CHECK-NEXT: load %0[%arg2, %arg3] : memref<?x1024xf32>
+      // CHECK-NEXT: store %{{.*}}, %1[%c0, %c0, %arg2, %arg3, %c0] : memref<4x1024x8x512x?xf32>
       %v = load %a[%i, %j] : memref<?x?xf32>
       store %v, %b[%zero, %zero, %i, %j, %zero] : memref<4x?x8x?x?xf32>
     }
   }
 
-  // CHECK: %5 = alloc() : memref<9x9xf32>
+  // CHECK: alloc() : memref<9x9xf32>
   %d = alloc(%nine, %nine) : memref<? x ? x f32>
 
   return %c, %d : memref<? x ? x i32>, memref<? x ? x f32>
@@ -367,11 +367,11 @@ func @merge_constants() -> (index, index) {
 // CHECK-LABEL: func @hoist_constant
 func @hoist_constant(%arg0: memref<8xi32>) {
   // CHECK-NEXT: %c42_i32 = constant 42 : i32
-  // CHECK-NEXT: affine.for %i0 = 0 to 8 {
-  affine.for %i0 = 0 to 8 {
-    // CHECK-NEXT: store %c42_i32, %arg0[%i0]
+  // CHECK-NEXT: affine.for %arg1 = 0 to 8 {
+  affine.for %arg1 = 0 to 8 {
+    // CHECK-NEXT: store %c42_i32, %arg0[%arg1]
     %c42_i32 = constant 42 : i32
-    store %c42_i32, %arg0[%i0] : memref<8xi32>
+    store %c42_i32, %arg0[%arg1] : memref<8xi32>
   }
   return
 }

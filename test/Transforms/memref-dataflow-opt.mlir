@@ -16,9 +16,9 @@ func @simple_store_load() {
     %v1 = addf %v0, %v0 : f32
   }
   return
-// CHECK:       %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
-// CHECK-NEXT:    %0 = addf %cst, %cst : f32
+// CHECK:       %{{.*}} = constant 7.000000e+00 : f32
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:    %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
 }
@@ -41,13 +41,13 @@ func @multi_store_load() {
     %v4 = mulf %v2, %v3 : f32
   }
   return
-// CHECK:       %c0 = constant 0 : index
-// CHECK-NEXT:  %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  %cst_0 = constant 8.000000e+00 : f32
-// CHECK-NEXT:  %cst_1 = constant 9.000000e+00 : f32
-// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
-// CHECK-NEXT:    %0 = addf %cst, %cst : f32
-// CHECK-NEXT:    %1 = mulf %cst_1, %cst_1 : f32
+// CHECK:       %{{.*}} = constant 0 : index
+// CHECK-NEXT:  %{{.*}} = constant 7.000000e+00 : f32
+// CHECK-NEXT:  %{{.*}} = constant 8.000000e+00 : f32
+// CHECK-NEXT:  %{{.*}} = constant 9.000000e+00 : f32
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:    %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+// CHECK-NEXT:    %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
 
@@ -73,19 +73,19 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
   }
   // The memref and its stores won't be erased due to this memref return.
   return %m : memref<10x10xf32>
-// CHECK:       %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  %0 = alloc() : memref<10x10xf32>
-// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
-// CHECK-NEXT:    affine.for %i1 = 0 to 10 {
-// CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
-// CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1)
-// CHECK-NEXT:      %3 = affine.apply [[MAP2]](%1, %2)
-// CHECK-NEXT:      %4 = affine.apply [[MAP3]](%1, %2)
-// CHECK-NEXT:      affine.store %cst, %0[%3, %4] : memref<10x10xf32>
-// CHECK-NEXT:      %5 = addf %cst, %cst : f32
+// CHECK:       %{{.*}} = constant 7.000000e+00 : f32
+// CHECK-NEXT:  %{{.*}} = alloc() : memref<10x10xf32>
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:      %{{.*}} = affine.apply [[MAP0]](%{{.*}}, %{{.*}})
+// CHECK-NEXT:      %{{.*}} = affine.apply [[MAP1]](%{{.*}}, %{{.*}})
+// CHECK-NEXT:      %{{.*}} = affine.apply [[MAP2]](%{{.*}}, %{{.*}})
+// CHECK-NEXT:      %{{.*}} = affine.apply [[MAP3]](%{{.*}}, %{{.*}})
+// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x10xf32>
+// CHECK-NEXT:      %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  return %0 : memref<10x10xf32>
+// CHECK-NEXT:  return %{{.*}} : memref<10x10xf32>
 }
 
 // CHECK-LABEL: func @store_load_nested
@@ -100,10 +100,10 @@ func @store_load_nested(%N : index) {
     }
   }
   return
-// CHECK:       %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
-// CHECK-NEXT:    affine.for %i1 = 0 to %arg0 {
-// CHECK-NEXT:      %0 = addf %cst, %cst : f32
+// CHECK:       %{{.*}} = constant 7.000000e+00 : f32
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to %{{.*}} {
+// CHECK-NEXT:      %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
@@ -123,7 +123,7 @@ func @multi_store_load_nested_no_fwd(%N : index) {
       affine.store %cf8, %m[%i1] : memref<10xf32>
     }
     affine.for %i2 = 0 to %N {
-      // CHECK: %{{[0-9]+}} = affine.load %0[%i0] : memref<10xf32>
+      // CHECK: %{{[0-9]+}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
       %v0 = affine.load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
     }
@@ -141,7 +141,7 @@ func @store_load_store_nested_no_fwd(%N : index) {
   affine.for %i0 = 0 to 10 {
     affine.store %cf7, %m[%i0] : memref<10xf32>
     affine.for %i1 = 0 to %N {
-      // CHECK: %{{[0-9]+}} = affine.load %0[%i0] : memref<10xf32>
+      // CHECK: %{{[0-9]+}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
       %v0 = affine.load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
       affine.store %cf9, %m[%i0] : memref<10xf32>
@@ -235,15 +235,15 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
   // Due to this load, the memref isn't optimized away.
   %v3 = affine.load %m[%c1] : memref<10xf32>
   return %v3 : f32
-// CHECK:       %0 = alloc() : memref<10xf32>
-// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
-// CHECK-NEXT:    affine.store %cst, %0[%i0] : memref<10xf32>
-// CHECK-NEXT:    affine.for %i1 = 0 to %arg0 {
-// CHECK-NEXT:      %1 = addf %cst, %cst : f32
-// CHECK-NEXT:      %2 = affine.apply [[MAP4]](%i0)
-// CHECK-NEXT:      affine.store %cst_0, %0[%2] : memref<10xf32>
+// CHECK:       %{{.*}} = alloc() : memref<10xf32>
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+// CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[%{{.*}}] : memref<10xf32>
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to %{{.*}} {
+// CHECK-NEXT:      %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+// CHECK-NEXT:      %{{.*}} = affine.apply [[MAP4]](%{{.*}})
+// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[%{{.*}}] : memref<10xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  %3 = affine.load %0[%c1] : memref<10xf32>
-// CHECK-NEXT:  return %3 : f32
+// CHECK-NEXT:  %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
+// CHECK-NEXT:  return %{{.*}} : f32
 }

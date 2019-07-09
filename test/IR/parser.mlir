@@ -135,21 +135,21 @@ func @complex_types(complex<i1>) -> complex<f32>
 // CHECK: func @functions((memref<1x?x4x?x?xi32, #map0>, memref<8xi8>) -> (), () -> ())
 func @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<8xi8, #map1, 0>) -> (), ()->())
 
-// CHECK-LABEL: func @simpleCFG(%arg0: i32, %arg1: f32) -> i1 {
+// CHECK-LABEL: func @simpleCFG(%{{.*}}: i32, %{{.*}}: f32) -> i1 {
 func @simpleCFG(%arg0: i32, %f: f32) -> i1 {
-  // CHECK: %0 = "foo"() : () -> i64
+  // CHECK: %{{.*}} = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
-  // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
+  // CHECK: "bar"(%{{.*}}) : (i64) -> (i1, i1, i1)
   %2:3 = "bar"(%1) : (i64) -> (i1,i1,i1)
-  // CHECK: return %1#1
+  // CHECK: return %{{.*}}#1
   return %2#1 : i1
 // CHECK: }
 }
 
-// CHECK-LABEL: func @simpleCFGUsingBBArgs(%arg0: i32, %arg1: i64) {
+// CHECK-LABEL: func @simpleCFGUsingBBArgs(%{{.*}}: i32, %{{.*}}: i64) {
 func @simpleCFGUsingBBArgs(i32, i64) {
 ^bb42 (%arg0: i32, %f: i64):
-  // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
+  // CHECK: "bar"(%{{.*}}) : (i64) -> (i1, i1, i1)
   %2:3 = "bar"(%f) : (i64) -> (i1,i1,i1)
   // CHECK: return{{$}}
   return
@@ -172,51 +172,51 @@ func @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
-// CHECK-LABEL: func @func_with_one_arg(%arg0: i1) -> i2 {
+// CHECK-LABEL: func @func_with_one_arg(%{{.*}}: i1) -> i2 {
 func @func_with_one_arg(%c : i1) -> i2 {
-  // CHECK: %0 = "foo"(%arg0) : (i1) -> i2
+  // CHECK: %{{.*}} = "foo"(%{{.*}}) : (i1) -> i2
   %b = "foo"(%c) : (i1) -> (i2)
-  return %b : i2   // CHECK: return %0 : i2
+  return %b : i2   // CHECK: return %{{.*}} : i2
 } // CHECK: }
 
-// CHECK-LABEL: func @func_with_two_args(%arg0: f16, %arg1: i8) -> (i1, i32) {
+// CHECK-LABEL: func @func_with_two_args(%{{.*}}: f16, %{{.*}}: i8) -> (i1, i32) {
 func @func_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
-  // CHECK: %0:2 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
+  // CHECK: %{{.*}}:2 = "foo"(%{{.*}}, %{{.*}}) : (f16, i8) -> (i1, i32)
   %c:2 = "foo"(%a, %b) : (f16, i8)->(i1, i32)
-  return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
+  return %c#0, %c#1 : i1, i32  // CHECK: return %{{.*}}#0, %{{.*}}#1 : i1, i32
 } // CHECK: }
 
 // CHECK-LABEL: func @second_order_func() -> (() -> ()) {
 func @second_order_func() -> (() -> ()) {
-// CHECK-NEXT: %f = constant @emptyMLF : () -> ()
+// CHECK-NEXT: %{{.*}} = constant @emptyMLF : () -> ()
   %c = constant @emptyMLF : () -> ()
-// CHECK-NEXT: return %f : () -> ()
+// CHECK-NEXT: return %{{.*}} : () -> ()
   return %c : () -> ()
 }
 
 // CHECK-LABEL: func @third_order_func() -> (() -> (() -> ())) {
 func @third_order_func() -> (() -> (() -> ())) {
-// CHECK-NEXT:  %f = constant @second_order_func : () -> (() -> ())
+// CHECK-NEXT:  %{{.*}} = constant @second_order_func : () -> (() -> ())
   %c = constant @second_order_func : () -> (() -> ())
-// CHECK-NEXT:  return %f : () -> (() -> ())
+// CHECK-NEXT:  return %{{.*}} : () -> (() -> ())
   return %c : () -> (() -> ())
 }
 
-// CHECK-LABEL: func @identity_functor(%arg0: () -> ()) -> (() -> ())  {
+// CHECK-LABEL: func @identity_functor(%{{.*}}: () -> ()) -> (() -> ())  {
 func @identity_functor(%a : () -> ()) -> (() -> ())  {
-// CHECK-NEXT: return %arg0 : () -> ()
+// CHECK-NEXT: return %{{.*}} : () -> ()
   return %a : () -> ()
 }
 
 // CHECK-LABEL: func @func_ops_in_loop() {
 func @func_ops_in_loop() {
-  // CHECK: %0 = "foo"() : () -> i64
+  // CHECK: %{{.*}} = "foo"() : () -> i64
   %a = "foo"() : ()->i64
-  // CHECK: affine.for %i0 = 1 to 10 {
+  // CHECK: affine.for %{{.*}} = 1 to 10 {
   affine.for %i = 1 to 10 {
-    // CHECK: %1 = "doo"() : () -> f32
+    // CHECK: %{{.*}} = "doo"() : () -> f32
     %b = "doo"() : ()->f32
-    // CHECK: "bar"(%0, %1) : (i64, f32) -> ()
+    // CHECK: "bar"(%{{.*}}, %{{.*}}) : (i64, f32) -> ()
     "bar"(%a, %b) : (i64, f32) -> ()
   // CHECK: }
   }
@@ -228,9 +228,9 @@ func @func_ops_in_loop() {
 
 // CHECK-LABEL: func @loops() {
 func @loops() {
-  // CHECK: affine.for %i0 = 1 to 100 step 2 {
+  // CHECK: affine.for %{{.*}} = 1 to 100 step 2 {
   affine.for %i = 1 to 100 step 2 {
-    // CHECK: affine.for %i1 = 1 to 200 {
+    // CHECK: affine.for %{{.*}} = 1 to 200 {
     affine.for %j = 1 to 200 {
     }        // CHECK:     }
   }          // CHECK:   }
@@ -239,14 +239,14 @@ func @loops() {
 
 // CHECK-LABEL: func @complex_loops() {
 func @complex_loops() {
-  affine.for %i1 = 1 to 100 {      // CHECK:   affine.for %i0 = 1 to 100 {
-    affine.for %j1 = 1 to 100 {    // CHECK:     affine.for %i1 = 1 to 100 {
-       // CHECK: "foo"(%i0, %i1) : (index, index) -> ()
+  affine.for %i1 = 1 to 100 {      // CHECK:   affine.for %{{.*}} = 1 to 100 {
+    affine.for %j1 = 1 to 100 {    // CHECK:     affine.for %{{.*}} = 1 to 100 {
+       // CHECK: "foo"(%{{.*}}, %{{.*}}) : (index, index) -> ()
        "foo"(%i1, %j1) : (index,index) -> ()
     }                       // CHECK:     }
     "boo"() : () -> ()      // CHECK:     "boo"() : () -> ()
-    affine.for %j2 = 1 to 10 {     // CHECK:     affine.for %i2 = 1 to 10 {
-      affine.for %k2 = 1 to 10 {   // CHECK:       affine.for %i3 = 1 to 10 {
+    affine.for %j2 = 1 to 10 {     // CHECK:     affine.for %{{.*}} = 1 to 10 {
+      affine.for %k2 = 1 to 10 {   // CHECK:       affine.for %{{.*}} = 1 to 10 {
         "goo"() : () -> ()  // CHECK:         "goo"() : () -> ()
       }                     // CHECK:       }
     }                       // CHECK:     }
@@ -254,50 +254,50 @@ func @complex_loops() {
   return                    // CHECK:   return
 }                           // CHECK: }
 
-// CHECK: func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
+// CHECK: func @triang_loop(%{{.*}}: index, %{{.*}}: memref<?x?xi32>) {
 func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
-  %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
-  affine.for %i0 = 1 to %arg0 {      // CHECK: affine.for %i0 = 1 to %arg0 {
-    affine.for %i1 = (d0)[]->(d0)(%i0)[] to %arg0 {  // CHECK:   affine.for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
-      store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %c0_i32, %arg1[%i0, %i1]
+  %c = constant 0 : i32       // CHECK: %{{.*}} = constant 0 : i32
+  affine.for %i0 = 1 to %arg0 {      // CHECK: affine.for %{{.*}} = 1 to %{{.*}} {
+    affine.for %i1 = (d0)[]->(d0)(%i0)[] to %arg0 {  // CHECK:   affine.for %{{.*}} = #map{{[0-9]+}}(%{{.*}}) to %{{.*}} {
+      store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}]
     }          // CHECK:     }
   }            // CHECK:   }
   return       // CHECK:   return
 }              // CHECK: }
 
-// CHECK: func @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
+// CHECK: func @minmax_loop(%{{.*}}: index, %{{.*}}: index, %{{.*}}: memref<100xf32>) {
 func @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
-  // CHECK: affine.for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
+  // CHECK: affine.for %{{.*}} = max #map{{.*}}()[%{{.*}}] to min #map{{.*}}()[%{{.*}}] {
   affine.for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
-    // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
+    // CHECK: "foo"(%{{.*}}, %{{.*}}) : (memref<100xf32>, index) -> ()
     "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
   }      // CHECK:   }
   return // CHECK:   return
 }        // CHECK: }
 
-// CHECK-LABEL: func @loop_bounds(%arg0: index) {
+// CHECK-LABEL: func @loop_bounds(%{{.*}}: index) {
 func @loop_bounds(%N : index) {
-  // CHECK: %0 = "foo"(%arg0) : (index) -> index
+  // CHECK: %{{.*}} = "foo"(%{{.*}}) : (index) -> index
   %s = "foo"(%N) : (index) -> index
-  // CHECK: affine.for %i0 = %0 to %arg0
+  // CHECK: affine.for %{{.*}} = %{{.*}} to %{{.*}}
   affine.for %i = %s to %N {
-    // CHECK: affine.for %i1 = #map{{[0-9]+}}(%i0) to 0
+    // CHECK: affine.for %{{.*}} = #map{{[0-9]+}}(%{{.*}}) to 0
     affine.for %j = (d0)[]->(d0)(%i)[] to 0 step 1 {
-       // CHECK: %1 = affine.apply #map{{.*}}(%i0, %i1)[%0]
+       // CHECK: %{{.*}} = affine.apply #map{{.*}}(%{{.*}}, %{{.*}})[%{{.*}}]
        %w1 = affine.apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
-       // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i1)[%0]
+       // CHECK: %{{.*}} = affine.apply #map{{.*}}(%{{.*}}, %{{.*}})[%{{.*}}]
        %w2 = affine.apply(d0, d1)[s0] -> (s0+1) (%i, %j) [%s]
-       // CHECK: affine.for %i2 = #map{{.*}}(%1, %i0)[%arg0] to #map{{.*}}(%2, %i1)[%0] {
+       // CHECK: affine.for %{{.*}} = #map{{.*}}(%{{.*}}, %{{.*}})[%{{.*}}] to #map{{.*}}(%{{.*}}, %{{.*}})[%{{.*}}] {
        affine.for %k = #bound_map1 (%w1, %i)[%N] to (i, j)[s] -> (i + j + s) (%w2, %j)[%s] {
-          // CHECK: "foo"(%i0, %i1, %i2) : (index, index, index) -> ()
+          // CHECK: "foo"(%{{.*}}, %{{.*}}, %{{.*}}) : (index, index, index) -> ()
           "foo"(%i, %j, %k) : (index, index, index)->()
-          // CHECK: %c30 = constant 30 : index
+          // CHECK: %{{.*}} = constant 30 : index
           %c = constant 30 : index
-          // CHECK: %3 = affine.apply #map{{.*}}(%arg0, %c30)
+          // CHECK: %{{.*}} = affine.apply #map{{.*}}(%{{.*}}, %{{.*}})
           %u = affine.apply (d0, d1)->(d0+d1) (%N, %c)
-          // CHECK: affine.for %i3 = max #map{{.*}}(%i0)[%3] to min #map{{.*}}(%i2)[%c30] {
+          // CHECK: affine.for %{{.*}} = max #map{{.*}}(%{{.*}})[%{{.*}}] to min #map{{.*}}(%{{.*}})[%{{.*}}] {
           affine.for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
-            // CHECK: "bar"(%i3) : (index) -> ()
+            // CHECK: "bar"(%{{.*}}) : (index) -> ()
             "bar"(%l) : (index) -> ()
           } // CHECK:           }
        }    // CHECK:         }
@@ -306,20 +306,20 @@ func @loop_bounds(%N : index) {
   return    // CHECK:   return
 }           // CHECK: }
 
-// CHECK-LABEL: func @ifinst(%arg0: index) {
+// CHECK-LABEL: func @ifinst(%{{.*}}: index) {
 func @ifinst(%N: index) {
-  %c = constant 200 : index // CHECK   %c200 = constant 200
-  affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
-    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%i0)[%arg0, %c200] {
+  %c = constant 200 : index // CHECK   %{{.*}} = constant 200
+  affine.for %i = 1 to 10 {           // CHECK   affine.for %{{.*}} = 1 to 10 {
+    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%{{.*}})[%{{.*}}, %{{.*}}] {
       %x = constant 1 : i32
-       // CHECK: %c1_i32 = constant 1 : i32
-      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
-      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
+       // CHECK: %{{.*}} = constant 1 : i32
+      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %{{.*}} = "add"(%{{.*}}, %{{.*}}) : (i32, index) -> i32
+      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %{{.*}} = "mul"(%{{.*}}, %{{.*}}) : (i32, i32) -> i32
     } else { // CHECK } else {
-      affine.if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  affine.if (#set1(%i0)[%arg0]) {
-        // CHECK: %c1 = constant 1 : index
+      affine.if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  affine.if (#set1(%{{.*}})[%{{.*}}]) {
+        // CHECK: %{{.*}} = constant 1 : index
         %u = constant 1 : index
-        // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i0)[%c1]
+        // CHECK: %{{.*}} = affine.apply #map{{.*}}(%{{.*}}, %{{.*}})[%{{.*}}]
         %w = affine.apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
       } else {            // CHECK     } else {
         %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
@@ -329,15 +329,15 @@ func @ifinst(%N: index) {
   return    // CHECK   return
 }           // CHECK }
 
-// CHECK-LABEL: func @simple_ifinst(%arg0: index) {
+// CHECK-LABEL: func @simple_ifinst(%{{.*}}: index) {
 func @simple_ifinst(%N: index) {
-  %c = constant 200 : index // CHECK   %c200 = constant 200
-  affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
-    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%i0)[%arg0, %c200] {
+  %c = constant 200 : index // CHECK   %{{.*}} = constant 200
+  affine.for %i = 1 to 10 {           // CHECK   affine.for %{{.*}} = 1 to 10 {
+    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%{{.*}})[%{{.*}}, %{{.*}}] {
       %x = constant 1 : i32
-       // CHECK: %c1_i32 = constant 1 : i32
-      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
-      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
+       // CHECK: %{{.*}} = constant 1 : i32
+      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %{{.*}} = "add"(%{{.*}}, %{{.*}}) : (i32, index) -> i32
+      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %{{.*}} = "mul"(%{{.*}}, %{{.*}}) : (i32, i32) -> i32
     }       // CHECK     }
   }         // CHECK   }
   return    // CHECK   return
@@ -389,31 +389,31 @@ func @attributes() {
 
 // CHECK-LABEL: func @ssa_values() -> (i16, i8) {
 func @ssa_values() -> (i16, i8) {
-  // CHECK: %0:2 = "foo"() : () -> (i1, i17)
+  // CHECK: %{{.*}}:2 = "foo"() : () -> (i1, i17)
   %0:2 = "foo"() : () -> (i1, i17)
   br ^bb2
 
 ^bb1:       // CHECK: ^bb1: // pred: ^bb2
-  // CHECK: %1:2 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
+  // CHECK: %{{.*}}:2 = "baz"(%{{.*}}#1, %{{.*}}#0, %{{.*}}#1) : (f32, i11, i17) -> (i16, i8)
   %1:2 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
 
-  // CHECK: return %1#0, %1#1 : i16, i8
+  // CHECK: return %{{.*}}#0, %{{.*}}#1 : i16, i8
   return %1#0, %1#1 : i16, i8
 
 ^bb2:       // CHECK: ^bb2:  // pred: ^bb0
-  // CHECK: %2:2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
+  // CHECK: %{{.*}}:2 = "bar"(%{{.*}}#0, %{{.*}}#1) : (i1, i17) -> (i11, f32)
   %2:2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   br ^bb1
 }
 
 // CHECK-LABEL: func @bbargs() -> (i16, i8) {
 func @bbargs() -> (i16, i8) {
-  // CHECK: %0:2 = "foo"() : () -> (i1, i17)
+  // CHECK: %{{.*}}:2 = "foo"() : () -> (i1, i17)
   %0:2 = "foo"() : () -> (i1, i17)
   br ^bb1(%0#1, %0#0 : i17, i1)
 
-^bb1(%x: i17, %y: i1):       // CHECK: ^bb1(%1: i17, %2: i1):
-  // CHECK: %3:2 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
+^bb1(%x: i17, %y: i1):       // CHECK: ^bb1(%{{.*}}: i17, %{{.*}}: i1):
+  // CHECK: %{{.*}}:2 = "baz"(%{{.*}}, %{{.*}}, %{{.*}}#1) : (i17, i1, i17) -> (i16, i8)
   %1:2 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
   return %1#0, %1#1 : i16, i8
 }
@@ -421,20 +421,20 @@ func @bbargs() -> (i16, i8) {
 // CHECK-LABEL: func @verbose_terminators() -> (i1, i17)
 func @verbose_terminators() -> (i1, i17) {
   %0:2 = "foo"() : () -> (i1, i17)
-// CHECK:  br ^bb1(%0#0, %0#1 : i1, i17)
+// CHECK:  br ^bb1(%{{.*}}#0, %{{.*}}#1 : i1, i17)
   "std.br"()[^bb1(%0#0, %0#1 : i1, i17)] : () -> ()
 
 ^bb1(%x : i1, %y : i17):
-// CHECK:  cond_br %1, ^bb2(%2 : i17), ^bb3(%1, %2 : i1, i17)
+// CHECK:  cond_br %{{.*}}, ^bb2(%{{.*}} : i17), ^bb3(%{{.*}}, %{{.*}} : i1, i17)
   "std.cond_br"(%x)[^bb2(%y : i17), ^bb3(%x, %y : i1, i17)] : (i1) -> ()
 
 ^bb2(%a : i17):
   %true = constant 1 : i1
-// CHECK:  return %true, %3 : i1, i17
+// CHECK:  return %{{.*}}, %{{.*}} : i1, i17
   "std.return"(%true, %a) : (i1, i17) -> ()
 
 ^bb3(%b : i1, %c : i17):
-// CHECK:  return %4, %5 : i1, i17
+// CHECK:  return %{{.*}}, %{{.*}} : i1, i17
   "std.return"(%b, %c) : (i1, i17) -> ()
 }
 
@@ -443,7 +443,7 @@ func @condbr_simple() -> (i32) {
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
-  // CHECK: cond_br %0, ^bb1(%1 : i32), ^bb2(%2 : i64)
+  // CHECK: cond_br %{{.*}}, ^bb1(%{{.*}} : i32), ^bb2(%{{.*}} : i64)
   cond_br %cond, ^bb1(%a : i32), ^bb2(%b : i64)
 
 // CHECK: ^bb1({{.*}}: i32): // pred: ^bb0
@@ -461,7 +461,7 @@ func @condbr_moarargs() -> (i32) {
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
-  // CHECK: cond_br %0, ^bb1(%1, %2 : i32, i64), ^bb2(%2, %1, %1 : i64, i32, i32)
+  // CHECK: cond_br %{{.*}}, ^bb1(%{{.*}}, %{{.*}} : i32, i64), ^bb2(%{{.*}}, %{{.*}}, %{{.*}} : i64, i32, i32)
   cond_br %cond, ^bb1(%a, %b : i32, i64), ^bb2(%b, %a, %a : i64, i32, i32)
 
 ^bb1(%x : i32, %y : i64):
@@ -476,26 +476,26 @@ func @condbr_moarargs() -> (i32) {
 // Test pretty printing of constant names.
 // CHECK-LABEL: func @constants
 func @constants() -> (i32, i23, i23, i1, i1) {
-  // CHECK: %c42_i32 = constant 42 : i32
+  // CHECK: %{{.*}} = constant 42 : i32
   %x = constant 42 : i32
-  // CHECK: %c17_i23 = constant 17 : i23
+  // CHECK: %{{.*}} = constant 17 : i23
   %y = constant 17 : i23
 
   // This is a redundant definition of 17, the asmprinter gives it a unique name
-  // CHECK: %c17_i23_0 = constant 17 : i23
+  // CHECK: %{{.*}} = constant 17 : i23
   %z = constant 17 : i23
 
-  // CHECK: %true = constant 1 : i1
+  // CHECK: %{{.*}} = constant 1 : i1
   %t = constant 1 : i1
-  // CHECK: %false = constant 0 : i1
+  // CHECK: %{{.*}} = constant 0 : i1
   %f = constant 0 : i1
 
   // The trick to parse type declarations should not interfere with hex
   // literals.
-  // CHECK: %c3890_i32 = constant 3890 : i32
+  // CHECK: %{{.*}} = constant 3890 : i32
   %h = constant 0xf32 : i32
 
-  // CHECK: return %c42_i32, %c17_i23, %c17_i23_0, %true, %false
+  // CHECK: return %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}
   return %x, %y, %z, %t, %f : i32, i23, i23, i1, i1
 }
 
@@ -569,17 +569,17 @@ func @funcattrwithblock() -> ()
 #map_non_simple3 = ()[s0] -> (s0 + 3)
 func @funcsimplemap(%arg0: index, %arg1: index) -> () {
   affine.for %i0 = 0 to #map_simple0()[] {
-  // CHECK: affine.for %i0 = 0 to 10 {
+  // CHECK: affine.for %{{.*}} = 0 to 10 {
     affine.for %i1 = 0 to #map_simple1()[%arg1] {
-    // CHECK: affine.for %i1 = 0 to %arg1 {
+    // CHECK: affine.for %{{.*}} = 0 to %{{.*}} {
       affine.for %i2 = 0 to #map_non_simple0(%i0)[] {
-      // CHECK: affine.for %i2 = 0 to #map{{[a-z_0-9]*}}(%i0) {
+      // CHECK: affine.for %{{.*}} = 0 to #map{{[a-z_0-9]*}}(%{{.*}}) {
         affine.for %i3 = 0 to #map_non_simple1(%i0)[%arg1] {
-        // CHECK: affine.for %i3 = 0 to #map{{[a-z_0-9]*}}(%i0)[%arg1] {
+        // CHECK: affine.for %{{.*}} = 0 to #map{{[a-z_0-9]*}}(%{{.*}})[%{{.*}}] {
           affine.for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] {
-          // CHECK: affine.for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] {
+          // CHECK: affine.for %{{.*}} = 0 to #map{{[a-z_0-9]*}}()[%{{.*}}, %{{.*}}] {
             affine.for %i5 = 0 to #map_non_simple3()[%arg0] {
-            // CHECK: affine.for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] {
+            // CHECK: affine.for %{{.*}} = 0 to #map{{[a-z_0-9]*}}()[%{{.*}}] {
               %c42_i32 = constant 42 : i32
             }
           }
@@ -794,7 +794,7 @@ func @no_integer_set_constraints() {
 func @verbose_if(%N: index) {
   %c = constant 200 : index
 
-  // CHECK: affine.if #set{{.*}}(%c200)[%arg0, %c200] {
+  // CHECK: affine.if #set{{.*}}(%{{.*}})[%{{.*}}, %{{.*}}] {
   "affine.if"(%c, %N, %c) ({
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
@@ -821,7 +821,7 @@ func @terminator_with_regions() {
 
 // CHECK-LABEL: func @unregistered_term
 func @unregistered_term(%arg0 : i1) -> i1 {
-  // CHECK-NEXT: "unregistered_br"()[^bb1(%arg0 : i1)] : () -> ()
+  // CHECK-NEXT: "unregistered_br"()[^bb1(%{{.*}} : i1)] : () -> ()
   "unregistered_br"()[^bb1(%arg0 : i1)] : () -> ()
 
 ^bb1(%arg1 : i1):
@@ -841,7 +841,7 @@ func @_valid.function$name()
 // CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr = 10 : i64}, i32)
 func @external_func_arg_attrs(i32, i1 {dialect.attr = 10 : i64}, i32)
 
-// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr = 10 : i64})
+// CHECK-LABEL: func @func_arg_attrs(%{{.*}}: i1 {dialect.attr = 10 : i64})
 func @func_arg_attrs(%arg0: i1 {dialect.attr = 10 : i64}) {
   return
 }
@@ -860,7 +860,7 @@ func @tuple_nested(tuple<tuple<tuple<i32>>>)
 
 // CHECK-LABEL: func @pretty_form_multi_result
 func @pretty_form_multi_result() -> (i16, i16) {
-  // CHECK: %0:2 = "foo_div"() : () -> (i16, i16)
+  // CHECK: %{{.*}}:2 = "foo_div"() : () -> (i16, i16)
   %quot, %rem = "foo_div"() : () -> (i16, i16)
   return %quot, %rem : i16, i16
 }
@@ -893,23 +893,23 @@ func @pretty_dialect_attribute() {
 // CHECK-LABEL: func @pretty_dialect_type()
 func @pretty_dialect_type() {
 
-  // CHECK: %0 = "foo.unknown_op"() : () -> !foo.simpletype
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo.simpletype
   %0 = "foo.unknown_op"() : () -> !foo.simpletype
 
-  // CHECK: %1 = "foo.unknown_op"() : () -> !foo.complextype<abcd>
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo.complextype<abcd>
   %1 = "foo.unknown_op"() : () -> !foo.complextype<abcd>
 
-  // CHECK: %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
   %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
 
-  // CHECK: %3 = "foo.unknown_op"() : () -> !foo.complextype<abcd<[f]$$[32]>>
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo.complextype<abcd<[f]$$[32]>>
   %3 = "foo.unknown_op"() : () -> !foo.complextype<abcd<[f]$$[32]>>
 
-  // CHECK: %4 = "foo.unknown_op"() : () -> !foo.dialect<!x@#!@#>
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo.dialect<!x@#!@#>
   %4 = "foo.unknown_op"() : () -> !foo.dialect<!x@#!@#>
 
   // Extraneous extra > character can't use the pretty syntax.
-  // CHECK: %5 = "foo.unknown_op"() : () -> !foo<"dialect<!x@#!@#>>">
+  // CHECK: %{{.*}} = "foo.unknown_op"() : () -> !foo<"dialect<!x@#!@#>>">
   %5 = "foo.unknown_op"() : () -> !foo<"dialect<!x@#!@#>>">
 
   return

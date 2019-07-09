@@ -10,7 +10,7 @@ func @test0(%arg0 : index, %arg1 : index) {
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
       %1 = affine.load %0[%i0, %i1] : memref<100x100xf32>
-// CHECK: %1 = affine.load %0[%i0, %i1] : memref<100x100xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<100x100xf32>
     }
   }
   return
@@ -27,8 +27,8 @@ func @test1(%arg0 : index, %arg1 : index) {
     affine.for %i1 = 0 to 10 {
       %1 = affine.load %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
       affine.store %1, %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
-// CHECK: %1 = affine.load %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
-// CHECK: affine.store %1, %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}} + 3, %{{.*}} + 7] : memref<100x100xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}} + 3, %{{.*}} + 7] : memref<100x100xf32>
     }
   }
   return
@@ -46,8 +46,8 @@ func @test2(%arg0 : index, %arg1 : index) {
     affine.for %i1 = 0 to 10 {
       %1 = affine.load %0[%i0 + %arg0, %i1 + %arg1] : memref<100x100xf32>
       affine.store %1, %0[%i0 + %arg0, %i1 + %arg1] : memref<100x100xf32>
-// CHECK: %1 = affine.load %0[%i0 + %arg0, %i1 + %arg1] : memref<100x100xf32>
-// CHECK: affine.store %1, %0[%i0 + %arg0, %i1 + %arg1] : memref<100x100xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}} + %{{.*}}, %{{.*}} + %{{.*}}] : memref<100x100xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}} + %{{.*}}, %{{.*}} + %{{.*}}] : memref<100x100xf32>
     }
   }
   return
@@ -67,8 +67,8 @@ func @test3(%arg0 : index, %arg1 : index) {
         : memref<100x100xf32>
       affine.store %1, %0[%i0 + symbol(%arg0), %i1 + symbol(%arg1)]
         : memref<100x100xf32>
-// CHECK: %1 = affine.load %0[%i0 + symbol(%arg0), %i1 + symbol(%arg1)] : memref<100x100xf32>
-// CHECK: affine.store %1, %0[%i0 + symbol(%arg0), %i1 + symbol(%arg1)] : memref<100x100xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}} + symbol(%{{.*}}), %{{.*}} + symbol(%{{.*}})] : memref<100x100xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}} + symbol(%{{.*}}), %{{.*}} + symbol(%{{.*}})] : memref<100x100xf32>
     }
   }
   return
@@ -87,8 +87,8 @@ func @test4(%arg0 : index, %arg1 : index) {
                           (%i1 + symbol(%arg1)) mod 4 + 7] : memref<100x100xf32>
       affine.store %1, %0[(%i0 + symbol(%arg0)) floordiv 3 + 11,
                           (%i1 + symbol(%arg1)) mod 4 + 7] : memref<100x100xf32>
-// CHECK: %1 = affine.load %0[(%i0 + symbol(%arg0)) floordiv 3 + 11, (%i1 + symbol(%arg1)) mod 4 + 7] : memref<100x100xf32>
-// CHECK: affine.store %1, %0[(%i0 + symbol(%arg0)) floordiv 3 + 11, (%i1 + symbol(%arg1)) mod 4 + 7] : memref<100x100xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[(%{{.*}} + symbol(%{{.*}})) floordiv 3 + 11, (%{{.*}} + symbol(%{{.*}})) mod 4 + 7] : memref<100x100xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[(%{{.*}} + symbol(%{{.*}})) floordiv 3 + 11, (%{{.*}} + symbol(%{{.*}})) mod 4 + 7] : memref<100x100xf32>
     }
   }
   return
@@ -106,8 +106,8 @@ func @test5(%arg0 : index, %arg1 : index) {
       affine.for %i2 = 0 to 10 {
         %1 = affine.load %0[%i2, %i0, %i1] : memref<10x10x10xf32>
         affine.store %1, %0[%i2, %i0, %i1] : memref<10x10x10xf32>
-// CHECK: %1 = affine.load %0[%i2, %i0, %i1] : memref<10x10x10xf32>
-// CHECK: affine.store %1, %0[%i2, %i0, %i1] : memref<10x10x10xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<10x10x10xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<10x10x10xf32>
       }
     }
   }
@@ -130,8 +130,8 @@ func @test6(%arg0 : index, %arg1 : index) {
           : memref<10x10x10xf32>
         affine.store %1, %0[%i2 + %arg0, %i0 + %i1, %i1 + %arg0 + %arg1]
           : memref<10x10x10xf32>
-// CHECK: %1 = affine.load %0[%i2 + %arg0, %i0 + %i1, %i1 + %arg0 + %arg1] : memref<10x10x10xf32>
-// CHECK: affine.store %1, %0[%i2 + %arg0, %i0 + %i1, %i1 + %arg0 + %arg1] : memref<10x10x10xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}} + %{{.*}}, %{{.*}} + %{{.*}}, %{{.*}} + %{{.*}} + %{{.*}}] : memref<10x10x10xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}} + %{{.*}}, %{{.*}} + %{{.*}}, %{{.*}} + %{{.*}} + %{{.*}}] : memref<10x10x10xf32>
       }
     }
   }
@@ -159,8 +159,8 @@ func @test6(%arg0 : index, %arg1 : index) {
                              %i0 + %i1,
                              %i1 + symbol(%arg0) + symbol(%arg1)]
                               : memref<10x10x10xf32>
-// CHECK: %1 = affine.load %0[%i2 + symbol(%arg0), %i0 + %i1, %i1 + symbol(%arg0) + symbol(%arg1)] : memref<10x10x10xf32>
-// CHECK: affine.store %1, %0[%i2 + symbol(%arg0), %i0 + %i1, %i1 + symbol(%arg0) + symbol(%arg1)] : memref<10x10x10xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}} + symbol(%{{.*}}), %{{.*}} + %{{.*}}, %{{.*}} + symbol(%{{.*}}) + symbol(%{{.*}})] : memref<10x10x10xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}} + symbol(%{{.*}}), %{{.*}} + %{{.*}}, %{{.*}} + symbol(%{{.*}}) + symbol(%{{.*}})] : memref<10x10x10xf32>
       }
     }
   }
@@ -178,8 +178,8 @@ func @test7() {
     %1 = affine.apply (d1) -> (d1 + 1)(%i0)
     %2 = affine.load %0[%1] : memref<10xf32>
     affine.store %2, %0[%1] : memref<10xf32>
-// CHECK: affine.load %0[%1] : memref<10xf32>
-// CHECK: affine.store %2, %0[%1] : memref<10xf32>
+// CHECK: affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
+// CHECK: affine.store %{{.*}}, %{{.*}}[%{{.*}}] : memref<10xf32>
   }
   return
 }

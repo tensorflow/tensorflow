@@ -53,8 +53,8 @@ func @remap_multi(%arg0: i64, %unused: i16, %arg1: i64) -> (i64, i64) {
 func @remap_nested() {
   // CHECK-NEXT: "foo.region"
   "foo.region"() ({
-    // CHECK-NEXT: ^bb1(%i0: f64, %i1: f64):
-    ^bb1(%i0: i64, %unused: i16, %i1: i64):
+    // CHECK-NEXT: ^bb0(%{{.*}}: f64, %{{.*}}: f64):
+    ^bb0(%i0: i64, %unused: i16, %i1: i64):
       // CHECK-NEXT: "test.valid"{{.*}} : (f64, f64)
       "test.invalid"(%i0, %i1) : (i64, i64) -> ()
   }) : () -> ()

@@ -71,10 +71,10 @@ func @test_no_out_of_bounds() {
   affine.for %i = 0 to 256 {
     affine.for %j = 0 to 256 {
       // All of these accesses are in bound; check that no errors are emitted.
-      // CHECK: %3 = affine.apply {{#map.*}}(%i0, %i1)
-      // CHECK-NEXT: %4 = affine.load %0[%3, %c0] : memref<257x256xi32>
-      // CHECK-NEXT: %5 = affine.apply {{#map.*}}(%i0, %i0)
-      // CHECK-NEXT: %6 = affine.load %2[%5] : memref<1xi32>
+      // CHECK: %{{.*}} = affine.apply {{#map.*}}(%{{.*}}, %{{.*}})
+      // CHECK-NEXT: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<257x256xi32>
+      // CHECK-NEXT: %{{.*}} = affine.apply {{#map.*}}(%{{.*}}, %{{.*}})
+      // CHECK-NEXT: %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<1xi32>
       %idx0 = affine.apply (d0, d1) -> ( 64 * (d0 ceildiv 64))(%i, %j)
       // Without GCDTightenInequalities(), the upper bound on the region
       // accessed along first memref dimension would have come out as d0 <= 318

@@ -8,27 +8,27 @@
 // CHECK-DAG: [[IDENTITY:#map[0-9]+]] = (d0) -> (d0)
 
 // CHECK-LABEL: func @loop_tiling()
-// CHECK-NEXT:   affine.for %i0 = 0 to 256 step 32 {
-// CHECK-NEXT:     affine.for %i1 = 0 to 512 step 32 {
-// CHECK-NEXT:       affine.for %i2 = 0 to 1024 step 32 {
-// CHECK-NEXT:         affine.for %i3 = [[IDENTITY]](%i0) to [[MAP0]](%i0) {
-// CHECK-NEXT:           affine.for %i4 = [[IDENTITY]](%i1) to [[MAP0]](%i1) {
-// CHECK-NEXT:             affine.for %i5 = [[IDENTITY]](%i2) to [[MAP0]](%i2) {
-// CHECK-NEXT:               "foo"(%i3, %i4, %i5) : (index, index, index) -> ()
+// CHECK-NEXT:   affine.for %{{.*}} = 0 to 256 step 32 {
+// CHECK-NEXT:     affine.for %{{.*}} = 0 to 512 step 32 {
+// CHECK-NEXT:       affine.for %{{.*}} = 0 to 1024 step 32 {
+// CHECK-NEXT:         affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to [[MAP0]](%{{.*}}) {
+// CHECK-NEXT:           affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to [[MAP0]](%{{.*}}) {
+// CHECK-NEXT:             affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to [[MAP0]](%{{.*}}) {
+// CHECK-NEXT:               "foo"(%{{.*}}, %{{.*}}, %{{.*}}) : (index, index, index) -> ()
 // CHECK-NEXT:             }
 // CHECK-NEXT:           }
 // CHECK-NEXT:         }
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
-// CHECK-NEXT:   affine.for %i6 = 0 to 50 step 32 {
-// CHECK-NEXT:     affine.for %i7 = [[IDENTITY]](%i6) to min [[MAP1]](%i6) {
-// CHECK-NEXT:       "bar"(%i7, %i7) : (index, index) -> ()
+// CHECK-NEXT:   affine.for %{{.*}} = 0 to 50 step 32 {
+// CHECK-NEXT:     affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to min [[MAP1]](%{{.*}}) {
+// CHECK-NEXT:       "bar"(%{{.*}}, %{{.*}}) : (index, index) -> ()
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
-// CHECK-NEXT: affine.for %i8 = 0 to 21 step 32 {
-// CHECK-NEXT:    affine.for %i9 = [[IDENTITY]](%i8) to 21 {
-// CHECK-NEXT:      "foobar"(%i9) : (index) -> ()
+// CHECK-NEXT: affine.for %{{.*}} = 0 to 21 step 32 {
+// CHECK-NEXT:    affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to 21 {
+// CHECK-NEXT:      "foobar"(%{{.*}}) : (index) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
@@ -62,16 +62,16 @@ func @loop_tiling() {
 
 #lb = ()[s0] -> (0, s0)
 #ub = ()[s0, s1] -> (s0, 4096 floordiv s1)
-// CHECK-LABEL: func @loop_max_min_bound(%arg0: memref<?xi32>, %arg1: index, %arg2: index) {
+// CHECK-LABEL: func @loop_max_min_bound(%{{.*}}: memref<?xi32>, %{{.*}}: index, %{{.*}}: index) {
 func @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
   %M = dim %A, 0 : memref<? x i32>
   affine.for %iTT = max #lb()[%L] to min #ub()[%M, %U] {
       %out = affine.apply (d0) -> (d0) (%iTT)
   }
   return
-// CHECK:       affine.for %i0 = max [[LB]]()[%arg1] to min [[UB]]()[%0, %arg2] step 32 {
-// CHECK-NEXT:    affine.for %i1 = [[IDENTITY]](%i0) to min [[UB_INTRA_TILE]](%i0)[%0, %arg2] {
-// CHECK-NEXT:      %1 = affine.apply [[IDENTITY]](%i1)
+// CHECK:       affine.for %{{.*}} = max [[LB]]()[%{{.*}}] to min [[UB]]()[%{{.*}}, %{{.*}}] step 32 {
+// CHECK-NEXT:    affine.for %{{.*}} = [[IDENTITY]](%{{.*}}) to min [[UB_INTRA_TILE]](%{{.*}})[%{{.*}}, %{{.*}}] {
+// CHECK-NEXT:      %{{.*}} = affine.apply [[IDENTITY]](%{{.*}})
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 }
@@ -98,9 +98,9 @@ func @simple_matmul(%arg0: memref<256x256xvector<64xf32>>, %arg1: memref<256x256
   }
   return %arg2 : memref<256x256xvector<64xf32>>
 }
-// MODEL:       affine.for %i0 = 0 to 256 step 4 {
-// MODEL-NEXT:    affine.for %i1 = 0 to 256 step 4 {
-// MODEL-NEXT:      affine.for %i2 = 0 to 250 step 5 {
+// MODEL:       affine.for %{{.*}} = 0 to 256 step 4 {
+// MODEL-NEXT:    affine.for %{{.*}} = 0 to 256 step 4 {
+// MODEL-NEXT:      affine.for %{{.*}} = 0 to 250 step 5 {
 
 
 // -----
@@ -126,19 +126,19 @@ func @tile_with_symbolic_loop_upper_bounds(%arg0: memref<?x?xf32>, %arg1: memref
   return
 }
 
-// CHECK:       %0 = dim %arg0, 0 : memref<?x?xf32>
-// CHECK-NEXT:  affine.for %i0 = 0 to %0 step 32 {
-// CHECK-NEXT:    affine.for %i1 = 0 to %0 step 32 {
-// CHECK-NEXT:      affine.for %i2 = #map3(%i0) to min [[UBMAP]](%i0)[%0] {
-// CHECK-NEXT:        affine.for %i3 = #map3(%i1) to min [[UBMAP]](%i1)[%0] {
-// CHECK-NEXT:          affine.store %cst, %arg2[%i2, %i3] : memref<?x?xf32>
-// CHECK-NEXT:          affine.for %i4 = 0 to %0 {
-// CHECK-NEXT:            %1 = affine.load %arg0[%i2, %i4] : memref<?x?xf32>
-// CHECK-NEXT:            %2 = affine.load %arg1[%i4, %i3] : memref<?x?xf32>
-// CHECK-NEXT:            %3 = mulf %1, %2 : f32
-// CHECK-NEXT:            %4 = affine.load %arg2[%i2, %i3] : memref<?x?xf32>
-// CHECK-NEXT:            %5 = addf %4, %3 : f32
-// CHECK-NEXT:            affine.store %5, %arg2[%i2, %i3] : memref<?x?xf32>
+// CHECK:       %{{.*}} = dim %{{.*}}, 0 : memref<?x?xf32>
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to %{{.*}} step 32 {
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to %{{.*}} step 32 {
+// CHECK-NEXT:      affine.for %{{.*}} = #map3(%{{.*}}) to min [[UBMAP]](%{{.*}})[%{{.*}}] {
+// CHECK-NEXT:        affine.for %{{.*}} = #map3(%{{.*}}) to min [[UBMAP]](%{{.*}})[%{{.*}}] {
+// CHECK-NEXT:          affine.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+// CHECK-NEXT:          affine.for %{{.*}} = 0 to %{{.*}} {
+// CHECK-NEXT:            %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+// CHECK-NEXT:            %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+// CHECK-NEXT:            %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+// CHECK-NEXT:            %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+// CHECK-NEXT:            %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+// CHECK-NEXT:            affine.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
 // CHECK-NEXT:          }
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
@@ -160,10 +160,10 @@ func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: i
   return
 }
 
-// CHECK:       %0 = dim %arg0, 0 : memref<?xf32>
-// CHECK-NEXT:  affine.for %i0 = 0 to [[MAP1]]()[%0, %arg1] step 32 {
-// CHECK-NEXT:    affine.for %i1 = [[MAP0]](%i0) to min [[UBMAP]](%i0)[%0, %arg1] {
-// CHECK-NEXT:      %1 = affine.load %arg0[%i1] : memref<?xf32>
+// CHECK:       %{{.*}} = dim %{{.*}}, 0 : memref<?xf32>
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to [[MAP1]]()[%{{.*}}, %{{.*}}] step 32 {
+// CHECK-NEXT:    affine.for %{{.*}} = [[MAP0]](%{{.*}}) to min [[UBMAP]](%{{.*}})[%{{.*}}, %{{.*}}] {
+// CHECK-NEXT:      %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<?xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 
@@ -180,5 +180,5 @@ func @trip_count_1(%arg0: memref<196608x1xf32>, %arg1: memref<196608x1xf32>)
   return %arg1 : memref<196608x1xf32>
 }
 
-// CHECK: %0 = affine.load %arg0[%i2, %i3] : memref<196608x1xf32>
+// CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<196608x1xf32>
 

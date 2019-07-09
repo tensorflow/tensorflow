@@ -5,11 +5,11 @@
 // Check that `affine.terminator` is visible in the generic form.
 // CHECK-LABEL: @empty
 func @empty() {
-  // CHECK: affine.for %i
+  // CHECK: affine.for
   // CHECK-NEXT: } {some_attr = true}
   //
   // GENERIC:      "affine.for"()
-  // GENERIC-NEXT: ^bb1(%i0: index):
+  // GENERIC-NEXT: ^bb0(%{{.*}}: index):
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
   // GENERIC-NEXT: })
   affine.for %i = 0 to 10 {
@@ -46,11 +46,11 @@ func @empty() {
 // Check that no extra terminator is introduced.
 // CHEKC-LABEL: @affine_terminator
 func @affine_terminator() {
-  // CHECK: affine.for %i
+  // CHECK: affine.for
   // CHECK-NEXT: }
   //
   // GENERIC:      "affine.for"() ( {
-  // GENERIC-NEXT: ^bb1(%i0: index):	// no predecessors
+  // GENERIC-NEXT: ^bb0(%{{.*}}: index):	// no predecessors
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
   // GENERIC-NEXT: }) {lower_bound = #map0, step = 1 : index, upper_bound = #map1} : () -> ()
   affine.for %i = 0 to 10 {

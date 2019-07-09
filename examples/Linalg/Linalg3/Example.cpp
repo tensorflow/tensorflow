@@ -68,12 +68,12 @@ TEST_FUNC(matmul_as_matvec) {
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
   // clang-format off
-  // CHECK-LABEL: func @matmul_as_matvec(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
-  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
-  //       CHECK: %[[vA:.*]] = linalg.view %arg0[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[N]]) {
-  //       CHECK:   %[[vB:.*]] = linalg.view %arg1[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //       CHECK:   %[[vC:.*]] = linalg.view %arg2[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+  // CHECK-LABEL: func @matmul_as_matvec(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
+  //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+  //       CHECK:   %[[vC:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
   //       CHECK:   linalg.matvec(%[[vA]], %[[vB]], %[[vC]]) : !linalg.view<?xf32>
   // clang-format on
   cleanupAndPrintFunction(f);
@@ -87,14 +87,14 @@ TEST_FUNC(matmul_as_dot) {
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
   // clang-format off
-  // CHECK-LABEL: func @matmul_as_dot(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
-  //       CHECK: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[N]]) {
-  //       CHECK:   %[[vB:.*]] = linalg.view %arg1[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, !linalg.range, !linalg.view<?xf32>
-  //  CHECK-NEXT:     %[[vC:.*]] = linalg.view %arg2[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, index, !linalg.view<f32>
+  // CHECK-LABEL: func @matmul_as_dot(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
+  //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+  //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //       CHECK:     %[[vA:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, !linalg.range, !linalg.view<?xf32>
+  //  CHECK-NEXT:     %[[vC:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, index, !linalg.view<f32>
   //  CHECK-NEXT:     linalg.dot(%[[vA]], %[[vB]], %[[vC]]) : !linalg.view<f32>
   // clang-format on
   cleanupAndPrintFunction(f);
@@ -107,27 +107,27 @@ TEST_FUNC(matmul_as_loops) {
   lowerToLoops(f);
   composeSliceOps(f);
   // clang-format off
-  // CHECK-LABEL: func @matmul_as_loops(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
-  //       CHECK: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
-  //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
-  //       CHECK: %[[rM:.*]] = linalg.range %c0:%[[M]]:%c1 : !linalg.range
-  //       CHECK: %[[rN:.*]] = linalg.range %c0:%[[N]]:%c1 : !linalg.range
-  //       CHECK: %[[rK:.*]] = linalg.range %c0:%[[K]]:%c1 : !linalg.range
-  //       CHECK: %[[vA:.*]] = linalg.view %arg0[%[[rM]], %[[rK]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: %[[vB:.*]] = linalg.view %arg1[%[[rK]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: %[[vC:.*]] = linalg.view %arg2[%[[rM]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) {
-  //       CHECK:     affine.for %i2 = 0 to (d0) -> (d0)(%[[K]]) {
+  // CHECK-LABEL: func @matmul_as_loops(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
+  //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+  //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[rM:.*]] = linalg.range %{{.*}}:%[[M]]:%{{.*}} : !linalg.range
+  //       CHECK: %[[rN:.*]] = linalg.range %{{.*}}:%[[N]]:%{{.*}} : !linalg.range
+  //       CHECK: %[[rK:.*]] = linalg.range %{{.*}}:%[[K]]:%{{.*}} : !linalg.range
+  //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[%[[rM]], %[[rK]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK: %[[vB:.*]] = linalg.view %{{.*}}[%[[rK]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK: %[[vC:.*]] = linalg.view %{{.*}}[%[[rM]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
   //       CHECK:       %{{.*}} = cmpi "eq", %{{.*}} : index
-  //       CHECK:       %{{.*}} = linalg.load %[[vC]][%i0, %i1] : !linalg.view<?x?xf32>
+  //       CHECK:       %{{.*}} = linalg.load %[[vC]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   //       CHECK:       %{{.*}} = select {{.*}} : f32
-  //       CHECK:       %{{.*}} = linalg.load %[[vB]][%i2, %i1] : !linalg.view<?x?xf32>
-  //       CHECK:       %{{.*}} = linalg.load %[[vA]][%i0, %i2] : !linalg.view<?x?xf32>
+  //       CHECK:       %{{.*}} = linalg.load %[[vB]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
+  //       CHECK:       %{{.*}} = linalg.load %[[vA]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   //       CHECK:       %{{.*}} = mulf {{.*}} : f32
   //       CHECK:       %{{.*}} = addf {{.*}} : f32
-  //       CHECK:       linalg.store {{.*}}[%i0, %i1] : !linalg.view<?x?xf32>
+  //       CHECK:       linalg.store {{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   // clang-format on
   cleanupAndPrintFunction(f);
 }
@@ -141,24 +141,24 @@ TEST_FUNC(matmul_as_matvec_as_loops) {
   lowerToLoops(f);
   composeSliceOps(f);
   // clang-format off
-  // CHECK-LABEL: func @matmul_as_matvec_as_loops(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
-  //       CHECK: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
-  //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
-  //       CHECK: %[[vA:.*]] = linalg.view %arg0[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[N]]) {
-  //       CHECK:   %[[vB:.*]] = linalg.view %arg1[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //       CHECK:   %[[vC:.*]] = linalg.view %arg2[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //       CHECK:   affine.for %i1 = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:     affine.for %i2 = 0 to (d0) -> (d0)(%[[K]]) {
-  //       CHECK:        %{{.*}} = cmpi "eq", %i2, %{{.*}} : index
-  //       CHECK:        %[[C:.*]] = linalg.load %[[vC]][%i1] : !linalg.view<?xf32>
+  // CHECK-LABEL: func @matmul_as_matvec_as_loops(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
+  //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+  //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+  //       CHECK:   %[[vC:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK:        %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
+  //       CHECK:        %[[C:.*]] = linalg.load %[[vC]][%{{.*}}] : !linalg.view<?xf32>
   //       CHECK:        %[[C2:.*]] = select %{{.*}}, %{{.*}}, %[[C]] : f32
-  //       CHECK:        %[[B:.*]] = linalg.load %[[vB]][%i2] : !linalg.view<?xf32>
-  //       CHECK:        %[[A:.*]] = linalg.load %[[vA]][%i1, %i2] : !linalg.view<?x?xf32>
+  //       CHECK:        %[[B:.*]] = linalg.load %[[vB]][%{{.*}}] : !linalg.view<?xf32>
+  //       CHECK:        %[[A:.*]] = linalg.load %[[vA]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   //       CHECK:        %{{.*}} = mulf %[[A]], %[[B]] : f32
   //       CHECK:        %{{.*}} = addf %[[C2]], %{{.*}} : f32
-  //       CHECK:        linalg.store %{{.*}}, %{{.*}}[%i1] : !linalg.view<?xf32>
+  //       CHECK:        linalg.store %{{.*}}, %{{.*}}[%{{.*}}] : !linalg.view<?xf32>
   // clang-format on
   cleanupAndPrintFunction(f);
 }
@@ -177,24 +177,24 @@ TEST_FUNC(matmul_as_matvec_as_affine) {
     cleanupAndPrintFunction(f);
 
   // clang-format off
-  // CHECK-LABEL: func @matmul_as_matvec_as_affine(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
-  //       CHECK: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
-  //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[N]]) {
+  // CHECK-LABEL: func @matmul_as_matvec_as_affine(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
+  //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+  //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:   affine.for %i1 = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:     affine.for %i2 = 0 to (d0) -> (d0)(%[[K]]) {
-  //       CHECK:       %3 = cmpi "eq", %i2, %c0 : index
-  //       CHECK:       %4 = load %arg2[%i1, %i0] : memref<?x?xf32>
-  //       CHECK:       %5 = select %3, %cst, %4 : f32
+  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK:       %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
+  //       CHECK:       %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+  //       CHECK:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : f32
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:       %6 = load %arg1[%i2, %i0] : memref<?x?xf32>
-  //       CHECK:       %7 = load %arg0[%i1, %i2] : memref<?x?xf32>
-  //       CHECK:       %8 = mulf %7, %6 : f32
-  //       CHECK:       %9 = addf %5, %8 : f32
+  //       CHECK:       %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+  //       CHECK:       %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
+  //       CHECK:       %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+  //       CHECK:       %{{.*}} = addf %{{.*}}, %{{.*}} : f32
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:       store %9, %arg2[%i1, %i0] : memref<?x?xf32>
+  //       CHECK:       store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
   // clang-format on
 }
 

@@ -28,16 +28,16 @@ func @f2(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //   FUSE-0-NOT: linalg.for
 //
 // FUSE-2-LABEL: func @f2
-//       FUSE-2:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
-//       FUSE-2:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
+//       FUSE-2:   %[[C_0:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
+//       FUSE-2:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
 //       FUSE-2:     linalg.matmul
 //       FUSE-2:     linalg.matmul
 //
 // FUSE-23-LABEL: func @f2
 //       FUSE-23:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
 //       FUSE-23:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
-//       FUSE-23:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
-//       FUSE-23:     linalg.for %i1 = %c0 to %[[D_1]] step %c3 {
+//       FUSE-23:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
+//       FUSE-23:     linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
 //
@@ -45,9 +45,9 @@ func @f2(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //       FUSE-234:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
-//       FUSE-234:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
-//       FUSE-234:     linalg.for %i1 = %c0 to %[[D_1]] step %c3 {
-//       FUSE-234:       linalg.for %i2 = %c0 to %[[C_1]] step %c4 {
+//       FUSE-234:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
+//       FUSE-234:     linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
+//       FUSE-234:       linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
 
@@ -67,8 +67,8 @@ func @f3(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 // FUSE-23-LABEL: func @f3
 //       FUSE-23:   %[[D_0:.*]] = linalg.dim %arg3, 0 : !linalg.view<?x?xf32>
 //       FUSE-23:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
-//       FUSE-23:   linalg.for %i0 = %c0 to %[[D_0]] step %c2 {
-//       FUSE-23:     linalg.for %i1 = %c0 to %[[C_1]] step %c3 {
+//       FUSE-23:   linalg.for %{{.*}} = %{{.*}} to %[[D_0]] step %{{.*}} {
+//       FUSE-23:     linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
 //
@@ -76,9 +76,9 @@ func @f3(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //       FUSE-234:   %[[D_0:.*]] = linalg.dim %arg3, 0 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
-//       FUSE-234:   linalg.for %i0 = %c0 to %[[D_0]] step %c2 {
-//       FUSE-234:     linalg.for %i1 = %c0 to %[[C_1]] step %c3 {
-//       FUSE-234:       linalg.for %i2 = %c0 to %[[D_1]] step %c4 {
+//       FUSE-234:   linalg.for %{{.*}} = %{{.*}} to %[[D_0]] step %{{.*}} {
+//       FUSE-234:     linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
+//       FUSE-234:       linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
 
@@ -94,17 +94,17 @@ func @f4(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //
 // Read to %D does not get tiled along 1st dimension => no fusion
 // FUSE-2-LABEL: func @f4
-//       FUSE-2:   linalg.matmul(%arg0, %arg1, %arg3)
-//       FUSE-2:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
-//       FUSE-2:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
+//       FUSE-2:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
+//       FUSE-2:   %[[C_0:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
+//       FUSE-2:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
 //       FUSE-2:     linalg.matmul
 //       FUSE-2:     linalg.matmul
 //
 // FUSE-23-LABEL: func @f4
 //       FUSE-23:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
 //       FUSE-23:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
-//       FUSE-23:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
-//       FUSE-23:     linalg.for %i1 = %c0 to %[[D_1]] step %c3 {
+//       FUSE-23:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
+//       FUSE-23:     linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
@@ -113,9 +113,9 @@ func @f4(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //       FUSE-234:   %[[C_0:.*]] = linalg.dim %arg2, 0 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
-//       FUSE-234:   linalg.for %i0 = %c0 to %[[C_0]] step %c2 {
-//       FUSE-234:     linalg.for %i1 = %c0 to %[[D_1]] step %c3 {
-//       FUSE-234:       linalg.for %i2 = %c0 to %[[C_1]] step %c4 {
+//       FUSE-234:   linalg.for %{{.*}} = %{{.*}} to %[[C_0]] step %{{.*}} {
+//       FUSE-234:     linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
+//       FUSE-234:       linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
@@ -131,29 +131,29 @@ func @f5(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //   FUSE-0-NOT: linalg.for
 //
 // FUSE-2-LABEL: func @f5
-//       FUSE-2:   linalg.matmul(%arg0, %arg1, %arg2)
-//       FUSE-2:   %[[D_0:.*]] = linalg.dim %arg3, 0 : !linalg.view<?x?xf32>
-//       FUSE-2:   linalg.for %i0 = %c0 to %[[D_0]] step %c2 {
+//       FUSE-2:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
+//       FUSE-2:   %[[D_0:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
+//       FUSE-2:   linalg.for %{{.*}} = %{{.*}} to %[[D_0]] step %{{.*}} {
 //       FUSE-2:     linalg.matmul
 //       FUSE-2:     linalg.matmul
 //
 // FUSE-23-LABEL: func @f5
-//       FUSE-23:   linalg.matmul(%arg0, %arg1, %arg2)
+//       FUSE-23:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 //       FUSE-23:   %[[D_0:.*]] = linalg.dim %arg3, 0 : !linalg.view<?x?xf32>
 //       FUSE-23:   %[[B_1:.*]] = linalg.dim %arg1, 1 : !linalg.view<?x?xf32>
-//       FUSE-23:   linalg.for %i0 = %c0 to %[[D_0]] step %c2 {
-//       FUSE-23:     linalg.for %i1 = %c0 to %[[B_1]] step %c3 {
+//       FUSE-23:   linalg.for %{{.*}} = %{{.*}} to %[[D_0]] step %{{.*}} {
+//       FUSE-23:     linalg.for %{{.*}} = %{{.*}} to %[[B_1]] step %{{.*}} {
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
 //
 // FUSE-234-LABEL: func @f5
-//       FUSE-234:   linalg.matmul(%arg0, %arg1, %arg2)
+//       FUSE-234:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 //       FUSE-234:   %[[D_0:.*]] = linalg.dim %arg3, 0 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[D_1:.*]] = linalg.dim %arg3, 1 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[B_1:.*]] = linalg.dim %arg1, 1 : !linalg.view<?x?xf32>
-//       FUSE-234:   linalg.for %i0 = %c0 to %[[D_0]] step %c2 {
-//       FUSE-234:     linalg.for %i1 = %c0 to %[[B_1]] step %c3 {
-//       FUSE-234:       linalg.for %i2 = %c0 to %[[D_1]] step %c4 {
+//       FUSE-234:   linalg.for %{{.*}} = %{{.*}} to %[[D_0]] step %{{.*}} {
+//       FUSE-234:     linalg.for %{{.*}} = %{{.*}} to %[[B_1]] step %{{.*}} {
+//       FUSE-234:       linalg.for %{{.*}} = %{{.*}} to %[[D_1]] step %{{.*}} {
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
 
@@ -196,26 +196,26 @@ func @f7(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //   FUSE-2-NOT:   linalg.for
 //
 // FUSE-23-LABEL: func @f7
-//       FUSE-23:   linalg.matmul(%arg0, %arg2, %arg4)
+//       FUSE-23:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 //       FUSE-23:   %[[A_0:.*]] = linalg.dim %arg0, 0 : !linalg.view<?x?xf32>
 //       FUSE-23:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
-//       FUSE-23:   linalg.for %i0 = %c0 to %[[A_0]] step %c2 {
-//       FUSE-23:     linalg.for %i1 = %c0 to %[[C_1]] step %c3 {
+//       FUSE-23:   linalg.for %{{.*}} = %{{.*}} to %[[A_0]] step %{{.*}} {
+//       FUSE-23:     linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
 //       FUSE-23:       linalg.matmul
 //       FUSE-23:       linalg.matmul
-//       FUSE-23:   linalg.matmul(%arg2, %arg3, %arg4)
+//       FUSE-23:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 //
 // FUSE-234-LABEL: func @f7
-//       FUSE-234:   linalg.matmul(%arg0, %arg2, %arg4)
+//       FUSE-234:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 //       FUSE-234:   %[[A_0:.*]] = linalg.dim %arg0, 0 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[A_1:.*]] = linalg.dim %arg0, 1 : !linalg.view<?x?xf32>
 //       FUSE-234:   %[[C_1:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?xf32>
-//       FUSE-234:   linalg.for %i0 = %c0 to %[[A_0]] step %c2 {
-//       FUSE-234:     linalg.for %i1 = %c0 to %[[C_1]] step %c3 {
-//       FUSE-234:       linalg.for %i2 = %c0 to %[[A_1]] step %c4 {
+//       FUSE-234:   linalg.for %{{.*}} = %{{.*}} to %[[A_0]] step %{{.*}} {
+//       FUSE-234:     linalg.for %{{.*}} = %{{.*}} to %[[C_1]] step %{{.*}} {
+//       FUSE-234:       linalg.for %{{.*}} = %{{.*}} to %[[A_1]] step %{{.*}} {
 //       FUSE-234:         linalg.matmul
 //       FUSE-234:         linalg.matmul
-//       FUSE-234:   linalg.matmul(%arg2, %arg3, %arg4)
+//       FUSE-234:   linalg.matmul(%{{.*}}, %{{.*}}, %{{.*}})
 
 func @f8(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<?x?xf32>, %D: !linalg.view<?x?xf32>, %E: !linalg.view<?x?xf32>) -> !linalg.view<?x?xf32> {
   linalg.matmul(%A, %C, %D) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>

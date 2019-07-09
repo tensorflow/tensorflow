@@ -37,6 +37,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
@@ -71,7 +72,7 @@ static llvm::cl::opt<bool> printPrettyDebugInfo(
     llvm::cl::desc("Print pretty debug info in MLIR output"),
     llvm::cl::init(false));
 
-// Use the generic op output form in the function printer even if the custom
+// Use the generic op output form in the operation printer even if the custom
 // form is defined.
 static llvm::cl::opt<bool>
     printGenericOpForm("mlir-print-op-generic",
@@ -1126,7 +1127,7 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 }
 
 //===----------------------------------------------------------------------===//
-// Function printing
+// Operation printing
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
@@ -1251,73 +1252,99 @@ public:
 
 protected:
   void numberValueID(Value *value);
+  void numberValuesInRegion(Region &region);
   void numberValuesInBlock(Block &block);
   void printValueID(Value *value, bool printResultNo = true) const;
 
 private:
-  /// This is the value ID for each SSA value in the current function.  If this
-  /// returns ~0, then the valueID has an entry in valueNames.
+  /// Uniques the given value name within the printer. If the given name
+  /// conflicts, it is automatically renamed.
+  StringRef uniqueValueName(StringRef name);
+
+  /// This is the value ID for each SSA value. If this returns ~0, then the
+  /// valueID has an entry in valueNames.
   DenseMap<Value *, unsigned> valueIDs;
   DenseMap<Value *, StringRef> valueNames;
 
-  /// This is the block ID for each  block in the current function.
+  /// This is the block ID for each block in the current.
   DenseMap<Block *, unsigned> blockIDs;
 
   /// This keeps track of all of the non-numeric names that are in flight,
   /// allowing us to check for duplicates.
-  llvm::StringSet<> usedNames;
+  /// Note: the value of the map is unused.
+  llvm::ScopedHashTable<StringRef, char> usedNames;
+  llvm::BumpPtrAllocator usedNameAllocator;
 
   // This is the current indentation level for nested structures.
   unsigned currentIndent = 0;
 
   /// This is the next value ID to assign in numbering.
   unsigned nextValueID = 0;
-  /// This is the ID to assign to the next region entry block argument.
-  unsigned nextRegionArgumentID = 0;
-  /// This is the next ID to assign to a Function argument.
+  /// This is the next ID to assign to a region entry block argument.
   unsigned nextArgumentID = 0;
   /// This is the next ID to assign when a name conflict is detected.
   unsigned nextConflictID = 0;
-  /// This is the next block ID to assign in numbering.
-  unsigned nextBlockID = 0;
 };
 } // end anonymous namespace
 
 OperationPrinter::OperationPrinter(Operation *op, ModulePrinter &other)
     : ModulePrinter(other) {
-  for (auto *result : op->getResults())
-    numberValueID(result);
+  if (op->getNumResults() != 0)
+    numberValueID(op->getResult(0));
   for (auto &region : op->getRegions())
-    for (auto &block : region)
-      numberValuesInBlock(block);
+    numberValuesInRegion(region);
 }
 
 OperationPrinter::OperationPrinter(Region *region, ModulePrinter &other)
     : ModulePrinter(other) {
-  for (auto &block : *region)
-    numberValuesInBlock(block);
+  numberValuesInRegion(*region);
 }
 
-/// Number all of the SSA values in the specified block.  Values get numbered
-/// continuously throughout regions.  In particular, we traverse the regions
-/// held by operations and number values in depth-first pre-order.
-void OperationPrinter::numberValuesInBlock(Block &block) {
-  // Each block gets a unique ID, and all of the operations within it get
-  // numbered as well.
-  blockIDs[&block] = nextBlockID++;
+/// Number all of the SSA values in the specified region.
+void OperationPrinter::numberValuesInRegion(Region &region) {
+  // Save the current value ids to allow for numbering values in sibling regions
+  // the same.
+  unsigned curValueID = nextValueID;
+  unsigned curArgumentID = nextArgumentID;
+  unsigned curConflictID = nextConflictID;
 
+  // Push a new used names scope.
+  llvm::ScopedHashTable<StringRef, char>::ScopeTy usedNamesScope(usedNames);
+
+  // Number the values within this region in a breadth-first order.
+  unsigned nextBlockID = 0;
+  for (auto &block : region) {
+    // Each block gets a unique ID, and all of the operations within it get
+    // numbered as well.
+    blockIDs[&block] = nextBlockID++;
+    numberValuesInBlock(block);
+  }
+
+  // After that we traverse the nested regions.
+  // TODO: Rework this loop to not use recursion.
+  for (auto &block : region) {
+    for (auto &op : block)
+      for (auto &nestedRegion : op.getRegions())
+        numberValuesInRegion(nestedRegion);
+  }
+
+  // Restore the original value ids.
+  nextValueID = curValueID;
+  nextArgumentID = curArgumentID;
+  nextConflictID = curConflictID;
+}
+
+/// Number all of the SSA values in the specified block, without traversing
+/// nested regions.
+void OperationPrinter::numberValuesInBlock(Block &block) {
+  // Number the block arguments.
   for (auto *arg : block.getArguments())
     numberValueID(arg);
 
-  for (auto &op : block) {
-    // We number operation that have results, and we only number the first
-    // result.
+  // We number operation that have results, and we only number the first result.
+  for (auto &op : block)
     if (op.getNumResults() != 0)
       numberValueID(op.getResult(0));
-    for (auto &region : op.getRegions())
-      for (auto &block : region)
-        numberValuesInBlock(block);
-  }
 }
 
 void OperationPrinter::numberValueID(Value *value) {
@@ -1351,16 +1378,12 @@ void OperationPrinter::numberValueID(Value *value) {
   if (specialNameBuffer.empty()) {
     switch (value->getKind()) {
     case Value::Kind::BlockArgument:
-      // If this is an argument to the function, give it an 'arg' name. If the
-      // argument is to an entry block of an operation region, give it an 'i'
+      // If this is an argument to the entry block of a region, give it an 'arg'
       // name.
       if (auto *block = cast<BlockArgument>(value)->getOwner()) {
         auto *parentRegion = block->getParent();
         if (parentRegion && block == &parentRegion->front()) {
-          if (llvm::isa<FuncOp>(parentRegion->getContainingOp()))
-            specialName << "arg" << nextArgumentID++;
-          else
-            specialName << "i" << nextRegionArgumentID++;
+          specialName << "arg" << nextArgumentID++;
           break;
         }
       }
@@ -1377,28 +1400,33 @@ void OperationPrinter::numberValueID(Value *value) {
 
   // Ok, this value had an interesting name.  Remember it with a sentinel.
   valueIDs[value] = nameSentinel;
+  valueNames[value] = uniqueValueName(specialName.str());
+}
 
-  // Remember that we've used this name, checking to see if we had a conflict.
-  auto insertRes = usedNames.insert(specialName.str());
-  if (insertRes.second) {
-    // If this is the first use of the name, then we're successful!
-    valueNames[value] = insertRes.first->first();
-    return;
-  }
-
-  // Otherwise, we had a conflict - probe until we find a unique name.  This
-  // is guaranteed to terminate (and usually in a single iteration) because it
-  // generates new names by incrementing nextConflictID.
-  while (1) {
-    std::string probeName =
-        specialName.str().str() + "_" + llvm::utostr(nextConflictID++);
-    insertRes = usedNames.insert(probeName);
-    if (insertRes.second) {
-      // If this is the first use of the name, then we're successful!
-      valueNames[value] = insertRes.first->first();
-      return;
+/// Uniques the given value name within the printer. If the given name
+/// conflicts, it is automatically renamed.
+StringRef OperationPrinter::uniqueValueName(StringRef name) {
+  // Check to see if this name is already unique.
+  if (!usedNames.count(name)) {
+    name = name.copy(usedNameAllocator);
+  } else {
+    // Otherwise, we had a conflict - probe until we find a unique name. This
+    // is guaranteed to terminate (and usually in a single iteration) because it
+    // generates new names by incrementing nextConflictID.
+    SmallString<64> probeName(name);
+    probeName.push_back('_');
+    while (1) {
+      probeName.resize(name.size() + 1);
+      probeName += llvm::utostr(nextConflictID++);
+      if (!usedNames.count(probeName)) {
+        name = StringRef(probeName).copy(usedNameAllocator);
+        break;
+      }
     }
   }
+
+  usedNames.insert(name, char());
+  return name;
 }
 
 void OperationPrinter::print(Block *block, bool printBlockArgs,
@@ -1590,9 +1618,10 @@ void ModulePrinter::print(ModuleOp module) {
 
   // Print the module body without the terminator. The terminator is not printed
   // as part of the custom syntax for modules.
+  OperationPrinter opPrinter(module, *this);
   auto *moduleBody = module.getBody();
   for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end()))
-    OperationPrinter(&op, *this).print(&op);
+    opPrinter.print(&op);
 }
 
 //===----------------------------------------------------------------------===//

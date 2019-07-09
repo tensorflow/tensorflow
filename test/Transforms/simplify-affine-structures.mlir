@@ -73,10 +73,10 @@
 
 // CHECK-LABEL: func @test_gaussian_elimination_empty_set0() {
 func @test_gaussian_elimination_empty_set0() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
-      affine.if (d0, d1) : (2 == 0)(%i0, %i1) {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: [[SET_EMPTY_2D]](%arg0, %arg1)
+      affine.if (d0, d1) : (2 == 0)(%arg0, %arg1) {
       }
     }
   }
@@ -85,10 +85,10 @@ func @test_gaussian_elimination_empty_set0() {
 
 // CHECK-LABEL: func @test_gaussian_elimination_empty_set1() {
 func @test_gaussian_elimination_empty_set1() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
-      affine.if (d0, d1) : (1 >= 0, -1 >= 0) (%i0, %i1) {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: [[SET_EMPTY_2D]](%arg0, %arg1)
+      affine.if (d0, d1) : (1 >= 0, -1 >= 0) (%arg0, %arg1) {
       }
     }
   }
@@ -97,10 +97,10 @@ func @test_gaussian_elimination_empty_set1() {
 
 // CHECK-LABEL: func @test_gaussian_elimination_non_empty_set2() {
 func @test_gaussian_elimination_non_empty_set2() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: #set1(%i0, %i1)
-      affine.if #set2(%i0, %i1) {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: #set1(%arg0, %arg1)
+      affine.if #set2(%arg0, %arg1) {
       }
     }
   }
@@ -111,10 +111,10 @@ func @test_gaussian_elimination_non_empty_set2() {
 func @test_gaussian_elimination_empty_set3() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: #set2(%i0, %i1)[%c7, %c11]
-      affine.if #set3(%i0, %i1)[%c7, %c11] {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: #set2(%arg0, %arg1)[%c7, %c11]
+      affine.if #set3(%arg0, %arg1)[%c7, %c11] {
       }
     }
   }
@@ -125,10 +125,10 @@ func @test_gaussian_elimination_empty_set3() {
 func @test_gaussian_elimination_non_empty_set4() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: #set3(%i0, %i1)[%c7, %c11]
-      affine.if #set4(%i0, %i1)[%c7, %c11] {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: #set3(%arg0, %arg1)[%c7, %c11]
+      affine.if #set4(%arg0, %arg1)[%c7, %c11] {
       }
     }
   }
@@ -139,10 +139,10 @@ func @test_gaussian_elimination_non_empty_set4() {
 func @test_gaussian_elimination_empty_set5() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      // CHECK: #set2(%i0, %i1)[%c7, %c11]
-      affine.if #set5(%i0, %i1)[%c7, %c11] {
+  affine.for %arg0 = 1 to 10 {
+    affine.for %arg1 = 1 to 100 {
+      // CHECK: #set2(%arg0, %arg1)[%c7, %c11]
+      affine.if #set5(%arg0, %arg1)[%c7, %c11] {
       }
     }
   }
@@ -151,9 +151,9 @@ func @test_gaussian_elimination_empty_set5() {
 
 // CHECK-LABEL: func @test_fuzz_explosion
 func @test_fuzz_explosion(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : index) {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
-      affine.if #set_fuzz_virus(%i0, %i1, %arg0, %arg1, %arg2, %arg3) {
+  affine.for %arg4 = 1 to 10 {
+    affine.for %arg5 = 1 to 100 {
+      affine.if #set_fuzz_virus(%arg4, %arg5, %arg0, %arg1, %arg2, %arg3) {
       }
     }
   }
@@ -165,33 +165,33 @@ func @test_fuzz_explosion(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : i
 func @test_empty_set(%N : index) {
   affine.for %i = 0 to 10 {
     affine.for %j = 0 to 10 {
-      // CHECK: affine.if [[SET_EMPTY_2D]](%i0, %i1)
+      // CHECK: affine.if [[SET_EMPTY_2D]](%arg1, %arg2)
       affine.if (d0, d1) : (d0 - d1 >= 0, d1 - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_1D]](%i0)
+      // CHECK: affine.if [[SET_EMPTY_1D]](%arg1)
       affine.if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "bar"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_1D]](%i0)
+      // CHECK: affine.if [[SET_EMPTY_1D]](%arg1)
       affine.if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "foo"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_1D_2S]](%i0)[%arg0, %arg0]
+      // CHECK: affine.if [[SET_EMPTY_1D_2S]](%arg1)[%arg0, %arg0]
       affine.if (d0)[s0, s1] : (d0 >= 0, -d0 + s0 - 1 >= 0, -s0 >= 0)(%i)[%N, %N] {
         "bar"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_3D]](%i0, %i1, %arg0)
+      // CHECK: affine.if [[SET_EMPTY_3D]](%arg1, %arg2, %arg0)
       // The set below implies d0 = d1; so d1 >= d0, but d0 >= d1 + 1.
       affine.if (d0, d1, d2) : (d0 - d1 == 0, d2 - d0 >= 0, d0 - d1 - 1 >= 0)(%i, %j, %N) {
         "foo"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_2D]](%i0, %i1)
+      // CHECK: affine.if [[SET_EMPTY_2D]](%arg1, %arg2)
       // The set below has rational solutions but no integer solutions; GCD test catches it.
       affine.if (d0, d1) : (d0*2 -d1*2 - 1 == 0, d0 >= 0, -d0 + 100 >= 0, d1 >= 0, -d1 + 100 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-      // CHECK: affine.if [[SET_EMPTY_2D]](%i0, %i1)
+      // CHECK: affine.if [[SET_EMPTY_2D]](%arg1, %arg2)
       affine.if (d0, d1) : (d1 == 0, d0 - 1 >= 0, - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
@@ -201,12 +201,12 @@ func @test_empty_set(%N : index) {
   affine.for %k = 0 to 10 {
     affine.for %l = 0 to 10 {
       // Empty because no multiple of 8 lies between 4 and 7.
-      // CHECK: affine.if [[SET_EMPTY_1D]](%i2)
+      // CHECK: affine.if [[SET_EMPTY_1D]](%arg1)
       affine.if (d0) : (8*d0 - 4 >= 0, -8*d0 + 7 >= 0)(%k) {
         "foo"() : () -> ()
       }
       // Same as above but with equalities and inequalities.
-      // CHECK: affine.if [[SET_EMPTY_2D]](%i2, %i3)
+      // CHECK: affine.if [[SET_EMPTY_2D]](%arg1, %arg2)
       affine.if (d0, d1) : (d0 - 4*d1 == 0, 4*d1 - 5 >= 0, -4*d1 + 7 >= 0)(%k, %l) {
         "foo"() : () -> ()
       }
@@ -214,12 +214,12 @@ func @test_empty_set(%N : index) {
       // 8*d1 here is a multiple of 4, and so can't lie between 9 and 11. GCD
       // tightening will tighten constraints to 4*d0 + 8*d1 >= 12 and 4*d0 +
       // 8*d1 <= 8; hence infeasible.
-      // CHECK: affine.if [[SET_EMPTY_2D]](%i2, %i3)
+      // CHECK: affine.if [[SET_EMPTY_2D]](%arg1, %arg2)
       affine.if (d0, d1) : (4*d0 + 8*d1 - 9 >= 0, -4*d0 - 8*d1 + 11 >=  0)(%k, %l) {
         "foo"() : () -> ()
       }
       // Same as above but with equalities added into the mix.
-      // CHECK: affine.if [[SET_EMPTY_3D]](%i2, %i2, %i3)
+      // CHECK: affine.if [[SET_EMPTY_3D]](%arg1, %arg1, %arg2)
       affine.if (d0, d1, d2) : (d0 - 4*d2 == 0, d0 + 8*d1 - 9 >= 0, -d0 - 8*d1 + 11 >=  0)(%k, %k, %l) {
         "foo"() : () -> ()
       }
@@ -227,7 +227,7 @@ func @test_empty_set(%N : index) {
   }
 
   affine.for %m = 0 to 10 {
-    // CHECK: affine.if [[SET_EMPTY_1D]](%i{{[0-9]+}})
+    // CHECK: affine.if [[SET_EMPTY_1D]](%arg{{[0-9]+}})
     affine.if (d0) : (d0 mod 2 - 3 == 0) (%m) {
       "foo"() : () -> ()
     }

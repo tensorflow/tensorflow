@@ -12,10 +12,10 @@ func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
   linalg.matmul(%A, %B, %C) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
   return
 }
-// TILE-1D-LABEL: func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
-//       TILE-1D:   linalg.for %i0 = %c0 to %6 step %c2 {
-//       TILE-1D:     linalg.for %i1 = %c0 to %9 step %c3 {
-//       TILE-1D:       linalg.for %i2 = %c0 to %7 step %c4 {
+// TILE-1D-LABEL: func @matmul(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
+//       TILE-1D:   linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//       TILE-1D:     linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//       TILE-1D:       linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 //       TILE-1D:         %[[vA:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>
 //       TILE-1D:         %[[vB:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>
 //       TILE-1D:         %[[vC:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>

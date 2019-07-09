@@ -15,8 +15,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   %f1 = constant 1.0 : f32
   %f2 = constant 2.0 : f32
   // 4x unroll (jammed by construction).
-  // CHECK: affine.for %i0 = 0 to %arg0 {
-  // CHECK-NEXT:   affine.for %i1 = 0 to %arg1 step 32 {
+  // CHECK: affine.for %{{.*}} = 0 to %{{.*}} {
+  // CHECK-NEXT:   affine.for %{{.*}} = 0 to %{{.*}} step 32 {
   // CHECK-NEXT:     %[[CST0:.*]] = constant dense<1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[CST1:.*]] = constant dense<1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[CST2:.*]] = constant dense<1.000000e+00> : vector<8xf32>
@@ -41,8 +41,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
     }
   }
   // 4x unroll (jammed by construction).
-  // CHECK: affine.for %i2 = 0 to %arg0 {
-  // CHECK-NEXT:   affine.for %i3 = 0 to %arg1 step 32 {
+  // CHECK: affine.for %{{.*}} = 0 to %{{.*}} {
+  // CHECK-NEXT:   affine.for %{{.*}} = 0 to %{{.*}} step 32 {
   // CHECK-NEXT:     %[[CST0:.*]] = constant dense<2.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[CST1:.*]] = constant dense<2.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[CST2:.*]] = constant dense<2.000000e+00> : vector<8xf32>
@@ -67,8 +67,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
     }
   }
   // 4x unroll (jammed by construction).
-  // CHECK: affine.for %i4 = 0 to %arg0 {
-  // CHECK-NEXT:   affine.for %i5 = 0 to %arg1 step 32 {
+  // CHECK: affine.for %{{.*}} = 0 to %{{.*}} {
+  // CHECK-NEXT:   affine.for %{{.*}} = 0 to %{{.*}} step 32 {
   // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector.transfer_read

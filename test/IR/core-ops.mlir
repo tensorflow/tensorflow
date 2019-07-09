@@ -438,13 +438,13 @@ func @std_for(%arg0 : index, %arg1 : index, %arg2 : index) {
   return
 }
 // CHECK-LABEL: func @std_for(
-//  CHECK-NEXT:   for %i0 = %arg0 to %arg1 step %arg2 {
-//  CHECK-NEXT:     for %i1 = %arg0 to %arg1 step %arg2 {
-//  CHECK-NEXT:       %0 = cmpi "slt", %i0, %i1 : index
-//  CHECK-NEXT:       %1 = select %0, %i0, %i1 : index
-//  CHECK-NEXT:       %2 = cmpi "sge", %i0, %i1 : index
-//  CHECK-NEXT:       %3 = select %2, %i0, %i1 : index
-//  CHECK-NEXT:       for %i2 = %1 to %3 step %i1 {
+//  CHECK-NEXT:   for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:     for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:       %{{.*}} = cmpi "slt", %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       %{{.*}} = cmpi "sge", %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 
 func @std_if(%arg0: i1, %arg1: f32) {
   if %arg0 {
@@ -453,8 +453,8 @@ func @std_if(%arg0: i1, %arg1: f32) {
   return
 }
 // CHECK-LABEL: func @std_if(
-//  CHECK-NEXT:   if %arg0 {
-//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32
+//  CHECK-NEXT:   if %{{.*}} {
+//  CHECK-NEXT:     %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 
 func @std_if_else(%arg0: i1, %arg1: f32) {
   if %arg0 {
@@ -465,7 +465,7 @@ func @std_if_else(%arg0: i1, %arg1: f32) {
   return
 }
 // CHECK-LABEL: func @std_if_else(
-//  CHECK-NEXT:   if %arg0 {
-//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32
+//  CHECK-NEXT:   if %{{.*}} {
+//  CHECK-NEXT:     %{{.*}} = addf %{{.*}}, %{{.*}} : f32
 //  CHECK-NEXT:   } else {
-//  CHECK-NEXT:     %{{.*}} = addf %arg1, %arg1 : f32
+//  CHECK-NEXT:     %{{.*}} = addf %{{.*}}, %{{.*}} : f32

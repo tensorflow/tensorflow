@@ -36,17 +36,17 @@ func @slice_op(%arg0: memref<?x?xf32>) {
   }
   return
 }
-// CHECK-LABEL: func @slice_op(%arg0: memref<?x?xf32>) {
-//       CHECK:  %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
-//       CHECK:  %[[N:.*]] = dim %arg0, 1 : memref<?x?xf32>
-//       CHECK:  %[[r1:.*]] = linalg.range %c0:%[[M]]:%c1 : !linalg.range
-//       CHECK:  %[[r2:.*]] = linalg.range %c0:%[[N]]:%c1 : !linalg.range
-//       CHECK:  %[[V:.*]] = linalg.view %arg0[%[[r1]], %[[r2]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-//       CHECK:  affine.for %i0 = 0 to #map1(%0) {
-//       CHECK:    affine.for %i1 = 0 to #map1(%1) {
-//       CHECK:      {{.*}} = linalg.slice %[[V]][%i0] {dim = 1} : !linalg.view<?x?xf32>, index
-//       CHECK:      %[[V2:.*]] = linalg.slice %[[V]][%i1] {dim = 0} : !linalg.view<?x?xf32>, index
-//       CHECK:      {{.*}} = linalg.slice %[[V2]][%i0] {dim = 0} : !linalg.view<?xf32>, index
+// CHECK-LABEL: func @slice_op(%{{.*}}: memref<?x?xf32>) {
+//       CHECK:  %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
+//       CHECK:  %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
+//       CHECK:  %[[r1:.*]] = linalg.range %{{.*}}:%[[M]]:%{{.*}} : !linalg.range
+//       CHECK:  %[[r2:.*]] = linalg.range %{{.*}}:%[[N]]:%{{.*}} : !linalg.range
+//       CHECK:  %[[V:.*]] = linalg.view %{{.*}}[%[[r1]], %[[r2]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+//       CHECK:  affine.for %{{.*}} = 0 to #map1(%{{.*}}) {
+//       CHECK:    affine.for %{{.*}} = 0 to #map1(%{{.*}}) {
+//       CHECK:      {{.*}} = linalg.slice %[[V]][%{{.*}}] {dim = 1} : !linalg.view<?x?xf32>, index
+//       CHECK:      %[[V2:.*]] = linalg.slice %[[V]][%{{.*}}] {dim = 0} : !linalg.view<?x?xf32>, index
+//       CHECK:      {{.*}} = linalg.slice %[[V2]][%{{.*}}] {dim = 0} : !linalg.view<?xf32>, index
 
 func @rangeConversion(%arg0: index, %arg1: index, %arg2: index) {
   %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
