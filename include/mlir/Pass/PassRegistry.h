@@ -105,16 +105,21 @@ void registerPass(StringRef arg, StringRef description, const PassID *passID,
                   const PassAllocatorFunction &function);
 
 /// PassRegistration provides a global initializer that registers a Pass
-/// allocation routine for a concrete pass instance.
+/// allocation routine for a concrete pass instance.  The third argument is
+/// optional and provides a callback to construct a pass that does not have
+/// a default constructor.
 ///
 /// Usage:
 ///
 ///   // At namespace scope.
 ///   static PassRegistration<MyPass> Unused("unused", "Unused pass");
 template <typename ConcretePass> struct PassRegistration {
-  PassRegistration(StringRef arg, StringRef description) {
-    registerPass(arg, description, PassID::getID<ConcretePass>(),
-                 [] { return new ConcretePass(); });
+  PassRegistration(
+      StringRef arg, StringRef description,
+      const PassAllocatorFunction &constructor = [] {
+        return new ConcretePass();
+      }) {
+    registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
   }
 };
 

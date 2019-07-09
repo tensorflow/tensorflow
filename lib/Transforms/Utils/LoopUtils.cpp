@@ -351,20 +351,36 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
   return success();
 }
 
+// Collect perfectly nested loops starting from `rootForOps`.  Loops are
+// perfectly nested if each loop is the first and only non-terminator operation
+// in the parent loop.  Collect at most `maxLoops` loops and append them to
+// `forOps`.
+template <typename T>
+void getPerfectlyNestedLoopsImpl(
+    SmallVectorImpl<T> &forOps, T rootForOp,
+    unsigned maxLoops = std::numeric_limits<unsigned>::max()) {
+  for (unsigned i = 0; i < maxLoops; ++i) {
+    forOps.push_back(rootForOp);
+    // FIXME: ForOp and AffineForOp currently provide different names to access
+    // the region ("region" and "getRegion").  Remove this generic access when
+    // AffineForOp moves to ODS and also gets "region".
+    Block &body = rootForOp.getOperation()->getRegion(0).front();
+    if (body.begin() != std::prev(body.end(), 2))
+      return;
+
+    rootForOp = dyn_cast<T>(&body.front());
+    if (!rootForOp)
+      return;
+  }
+}
+
 /// Get perfectly nested sequence of loops starting at root of loop nest
 /// (the first op being another AffineFor, and the second op - a terminator).
 /// A loop is perfectly nested iff: the first op in the loop's body is another
 /// AffineForOp, and the second op is a terminator).
 void mlir::getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
                                    AffineForOp root) {
-  AffineForOp curr = root;
-  nestedLoops.push_back(curr);
-  auto *currBody = curr.getBody();
-  while (currBody->begin() == std::prev(currBody->end(), 2) &&
-         (curr = dyn_cast<AffineForOp>(curr.getBody()->front()))) {
-    nestedLoops.push_back(curr);
-    currBody = curr.getBody();
-  }
+  getPerfectlyNestedLoopsImpl(nestedLoops, root);
 }
 
 /// Unrolls this loop completely.
@@ -761,4 +777,145 @@ SmallVector<AffineForOp, 8> mlir::tile(ArrayRef<AffineForOp> forOps,
                                        ArrayRef<uint64_t> sizes,
                                        AffineForOp target) {
   return tile(forOps, sizes, ArrayRef<AffineForOp>{target})[0];
+}
+
+// Tile the given nest of standard for loops with the given (parametric) sizes.
+// Sizes are expected to be strictly positive values at runtime.  If more
+// sizes than loops provided, discard the trailing values in sizes.  When
+// applied to a loop nest
+//    for %i_0 = %lb_0 to %ub_0 step %s_0 {
+//      for %i_1 = %lb_1 to %ub_1 step %s_1 {
+//        "op"(%i0, %i1) : (index, index) -> () }}
+// this splits the loops into tile loops with step %sj * sizes[j] and the
+// original bounds, and the point loops iteration from %i_j to
+// min(%i_j + %s_j * sizes[j], %ub_j) with the original step.  No verification
+// of `forOps` being suitable for tiling is performed, this function only
+// applies the transformation.
+static void tile(MutableArrayRef<ForOp> forOps, ArrayRef<Value *> sizes) {
+  assert(sizes.size() >= forOps.size() && "insufficient number of tile sizes");
+  if (sizes.empty() || forOps.empty())
+    return;
+
+  ForOp rootForOp = forOps.front();
+  OpBuilder builder(rootForOp);
+
+  // Compute new steps for the outer loops.
+  SmallVector<Value *, 4> newSteps;
+  newSteps.reserve(sizes.size());
+  for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
+    auto op = forOps[i];
+    Value *newStep = builder.create<MulIOp>(op.getLoc(), op.step(), sizes[i]);
+    newSteps.push_back(newStep);
+  }
+
+  // Create new outer loops nested one into another.
+  SmallVector<ForOp, 4> outerForOps;
+  for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
+    auto outerForOp =
+        builder.create<ForOp>(forOps[i].getLoc(), forOps[i].lowerBound(),
+                              forOps[i].upperBound(), newSteps[i]);
+
+    builder.setInsertionPointToStart(outerForOp.body());
+
+    // FIXME: builder should do this for us.
+    ensureStdTerminator(outerForOp.getOperation()->getRegion(0), builder,
+                        forOps[i].getLoc());
+    outerForOp.body()->addArgument(builder.getIndexType());
+    builder.setInsertionPointToStart(outerForOp.body());
+
+    outerForOps.push_back(outerForOp);
+  }
+
+  // Move the outermost original loop into the innermost new outer loop.  Thus
+  // the body of the original loops does not need updating.
+  auto lastOuterForOp = outerForOps.back();
+  lastOuterForOp.body()->getOperations().splice(
+      lastOuterForOp.body()->getOperations().begin(),
+      rootForOp.getOperation()->getBlock()->getOperations(),
+      rootForOp.getOperation());
+
+  // Immediately before the (now sunk) outermost original loop, insert the
+  // computation of the upper bounds of the inner loops.  Update the bounds of
+  // the orginial loops to make them point loops.
+  builder.setInsertionPointToStart(lastOuterForOp.body());
+  for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
+    Value *stepped = builder.create<AddIOp>(
+        forOps[i].getLoc(), outerForOps[i].getInductionVar(), newSteps[i]);
+    Value *less = builder.create<CmpIOp>(forOps[i].getLoc(), CmpIPredicate::SLT,
+                                         forOps[i].upperBound(), stepped);
+    Value *upperBound = builder.create<SelectOp>(
+        forOps[i].getLoc(), less, forOps[i].upperBound(), stepped);
+    forOps[i].setLowerBound(outerForOps[i].getInductionVar());
+    forOps[i].setUpperBound(upperBound);
+  }
+}
+
+void mlir::tile(ForOp rootForOp, ArrayRef<Value *> sizes) {
+  // Collect prefectly nested loops.  If more size values provided than nested
+  // loops available, truncate `sizes`.
+  SmallVector<ForOp, 4> forOps;
+  forOps.reserve(sizes.size());
+  getPerfectlyNestedLoopsImpl(forOps, rootForOp, sizes.size());
+  if (forOps.size() < sizes.size())
+    sizes = sizes.take_front(forOps.size());
+
+  return ::tile(forOps, sizes);
+}
+
+// Build the IR that performs ceil division of a positive value by a constant:
+//    ceildiv(a, B) = divis(a + (B-1), B)
+// where divis is roundning-to-zero division.
+static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
+                              int64_t divisor) {
+  assert(divisor > 0 && "expected positive divisor");
+  assert(dividend->getType().isIndex() && "expected index-typed value");
+
+  Value *divisorMinusOneCst = builder.create<ConstantIndexOp>(loc, divisor - 1);
+  Value *divisorCst = builder.create<ConstantIndexOp>(loc, divisor);
+  Value *sum = builder.create<AddIOp>(loc, dividend, divisorMinusOneCst);
+  return builder.create<DivISOp>(loc, sum, divisorCst);
+}
+
+static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
+                              Value *divisor) {
+  assert(dividend->getType().isIndex() && "expected index-typed value");
+
+  Value *cstOne = builder.create<ConstantIndexOp>(loc, 1);
+  Value *divisorMinusOne = builder.create<SubIOp>(loc, divisor, cstOne);
+  Value *sum = builder.create<AddIOp>(loc, dividend, divisorMinusOne);
+  return builder.create<DivISOp>(loc, sum, divisor);
+}
+
+void mlir::extractFixedOuterLoops(ForOp rootForOp, ArrayRef<int64_t> sizes) {
+  // Collect prefectly nested loops.  If more size values provided than nested
+  // loops available, truncate `sizes`.
+  SmallVector<ForOp, 4> forOps;
+  forOps.reserve(sizes.size());
+  getPerfectlyNestedLoopsImpl(forOps, rootForOp, sizes.size());
+  if (forOps.size() < sizes.size())
+    sizes = sizes.take_front(forOps.size());
+
+  OpBuilder builder(rootForOp);
+  auto loc = rootForOp.getLoc();
+
+  // Compute the tile sizes such that i-th outer loop executes size[i]
+  // iterations.  Given that the loop current executes
+  //   numIterations = ceildiv((upperBound - lowerBound), step)
+  // iterations, we need to tile with size ceildiv(numIterations, size[i]).
+  SmallVector<Value *, 4> tileSizes;
+  tileSizes.reserve(sizes.size());
+  for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
+    assert(sizes[i] > 0 && "expected strictly positive size for strip-mining");
+
+    auto forOp = forOps[i];
+    Value *diff =
+        builder.create<SubIOp>(loc, forOp.upperBound(), forOp.lowerBound());
+    Value *numIterations = ceilDivPositive(builder, loc, diff, forOp.step());
+    Value *iterationsPerBlock =
+        ceilDivPositive(builder, loc, numIterations, sizes[i]);
+    tileSizes.push_back(iterationsPerBlock);
+  }
+
+  // Call parametric tiling with the given sizes.
+  return ::tile(forOps, tileSizes);
 }

@@ -697,6 +697,8 @@ def ForOp : Std_Op<"for"> {
     OpBuilder getBodyBuilder() {
       return OpBuilder(body(), std::prev(body()->end()));
     }
+    void setLowerBound(Value *bound) { getOperation()->setOperand(0, bound); }
+    void setUpperBound(Value *bound) { getOperation()->setOperand(1, bound); }
   }];
 }
 

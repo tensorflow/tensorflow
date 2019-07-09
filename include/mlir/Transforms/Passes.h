@@ -99,6 +99,12 @@ FunctionPassBase *createLowerAffinePass();
 /// Creates a pass to perform tiling on loop nests.
 FunctionPassBase *createLoopTilingPass(uint64_t cacheSizeBytes);
 
+/// Creates a pass that performs parametric tiling so that the outermost loops
+/// have the given fixed number of iterations.  Assumes outermost loop nests
+/// are permutable.
+FunctionPassBase *
+createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes);
+
 /// Promotes all accessed memref regions to the specified faster memory space
 /// while generating DMAs to move data.
 FunctionPassBase *createDmaGenerationPass(
