@@ -1097,7 +1097,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_n_op",
     prefix = "identity_n_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core:core_cpu_internal",
+    ],
 )
 
 tf_kernel_library(
