@@ -71,7 +71,7 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
-# RUN cd $HOME && git clone https://github.com/deven-amd/HIP.git
+# RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git
 # RUN cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Set up paths
