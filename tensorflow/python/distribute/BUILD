@@ -176,6 +176,7 @@ py_test(
         "no_rocm",
     ],
     deps = [
+        ":combinations",
         ":distribute_lib",
         ":input_lib",
         ":reduce_util",
@@ -352,6 +353,43 @@ py_library(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
     ],
+)
+
+py_library(
+    name = "mirrored_function_strategy",
+    srcs = ["mirrored_function_strategy.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":numpy_dataset",
+        ":values",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
+tf_py_test(
+    name = "mirrored_function_strategy_test",
+    srcs = ["mirrored_function_strategy_test.py"],
+    additional_deps = [
+        ":distribute_lib",
+        ":strategy_combinations",
+        ":mirrored_function_strategy",
+        ":values",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = ["no_pip"],
 )
 
 py_library(

@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/ops.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/logging.h"
 
 static void ComputeNewShape(TF_ShapeInferenceContext* ctx,
@@ -101,7 +102,7 @@ static void bitcast_shape_inference_fn(TF_ShapeInferenceContext* ctx,
   TF_DeleteShapeHandle(result);
 }
 
-static void RegisterBitcastOp() {
+void RegisterBitcastOp() {
   TF_Status* status = TF_NewStatus();
 
   TF_OpDefinitionBuilder* op_builder = TF_NewOpDefinitionBuilder("Bitcast");
@@ -127,6 +128,8 @@ static void RegisterBitcastOp() {
 }
 
 static bool IsBitcastOpRegistered = []() {
-  RegisterBitcastOp();
+  if (SHOULD_REGISTER_OP("Bitcast")) {
+    RegisterBitcastOp();
+  }
   return true;
 }();

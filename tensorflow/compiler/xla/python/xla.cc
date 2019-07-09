@@ -330,7 +330,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_infs)
       .def_property("xla_cpu_fast_math_honor_nans",
                     &DebugOptions::xla_cpu_fast_math_honor_nans,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans)
+      .def_property("xla_cpu_fast_math_honor_division",
+                    &DebugOptions::xla_cpu_fast_math_honor_division,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -478,6 +481,8 @@ PYBIND11_MODULE(xla_extension, m) {
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
                                 absl::Span<const int64>)>(&Reduce));
+  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
+          py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,

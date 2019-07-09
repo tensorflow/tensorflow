@@ -1985,7 +1985,11 @@ class UpSampling2D(Layer):
         interpolation=self.interpolation)
 
   def get_config(self):
-    config = {'size': self.size, 'data_format': self.data_format}
+    config = {
+        'size': self.size,
+        'data_format': self.data_format,
+        'interpolation': self.interpolation
+    }
     base_config = super(UpSampling2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 

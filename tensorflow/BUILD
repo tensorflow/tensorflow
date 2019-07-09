@@ -431,6 +431,13 @@ config_setting(
     values = {"cpu": "x64_windows"},
 )
 
+# This flag enables experimental MLIR support.
+config_setting(
+    name = "with_mlir_support",
+    values = {"define": "with_mlir_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -453,6 +460,7 @@ filegroup(
 
 cc_library(
     name = "grpc",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc_unsecure"],
         "//conditions:default": ["@grpc"],
@@ -461,6 +469,7 @@ cc_library(
 
 cc_library(
     name = "grpc++",
+    visibility = ["//visibility:public"],
     deps = select({
         ":linux_s390x": ["@grpc//:grpc++_unsecure"],
         "//conditions:default": ["@grpc//:grpc++"],

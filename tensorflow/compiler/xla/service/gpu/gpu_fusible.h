@@ -92,6 +92,10 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
+// Determines the fusion kind to be used when fusing `producer` and `consumer`.
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
+
 }  // namespace gpu
 }  // namespace xla
 

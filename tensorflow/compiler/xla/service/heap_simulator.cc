@@ -565,23 +565,12 @@ HeapSimulator::HeapSimulator(
       options_(options),
       schedule_(schedule),
       memory_by_computation_(memory_by_computation) {
-  for (const BufferValueFlatSet& value_set : options.must_alias_sets) {
-    auto group = std::make_shared<SharedGroup>();
-    group->refcount = 0;
-    VLOG(2) << "Shared buffers:";
-    for (const BufferValue* buffer_value : value_set) {
-      VLOG(2) << "    " << buffer_value->ToString();
-      shared_buffers_.emplace(buffer_value, group);
-      // Refcounts are not incremented here as buffers are shared but not
-      // referenced yet.
-    }
-  }
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
 HeapSimulator::~HeapSimulator() {}
 
-bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
+bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
   // Buffers for constants are ignored unless the alloc_constants option is
   // set. Also ignore buffers that we're not meant to assign.
   //
@@ -595,7 +584,7 @@ bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
 }
 
 // Alloc always calls the underlying heap algorithm.
-void HeapSimulator::Alloc(const BufferValue* buffer,
+void HeapSimulator::Alloc(const HloValue* buffer,
                           const HloInstruction* instruction) {
   CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
@@ -614,7 +603,7 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 // buffers whose group liveness has expired.  Shared group liveness is tracked
 // by maintaining a refcount; the Free call on the last buffer in the group
 // causes Free to be called on the underlying algorithm.
-void HeapSimulator::Free(const BufferValue* buffer,
+void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
   const int64 size = size_fn_(*buffer);
   algorithm_->Free(buffer, size);
@@ -627,8 +616,7 @@ void HeapSimulator::Free(const BufferValue* buffer,
 // to Alloc.  The 'shared' buffer must be a previously allocated or shared
 // buffer. Both 'buffer' and 'shared' will be associated with the same
 // SharedGroup.
-void HeapSimulator::ShareBuffer(const BufferValue* buffer,
-                                const BufferValue* shared,
+void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
   algorithm_->ShareWith(buffer, shared, size_fn_(*shared));
   no_fragmentation_stats_->ShareWith(buffer, shared, size_fn_(*shared));
@@ -661,9 +649,9 @@ HeapSimulator::Result HeapSimulator::Finish() {
 }
 
 void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
-                                   const BufferValue* buffer,
+                                   const HloValue* buffer,
                                    const HloInstruction* instruction,
-                                   const BufferValue* share_with_canonical) {
+                                   const HloValue* share_with_canonical) {
   HeapSimulatorTrace::Event* event = debug_trace_.add_events();
   event->set_kind(kind);
   event->set_buffer_id(buffer->id());
@@ -677,7 +665,7 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
+void NoFragmentationStatsHeap::Alloc(const HloValue* buffer, int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
@@ -712,7 +700,7 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
 }
 
-void NoFragmentationStatsHeap::Free(const BufferValue* buffer, int64 size) {
+void NoFragmentationStatsHeap::Free(const HloValue* buffer, int64 size) {
   current_heap_size_ -= size;
 }
 
@@ -724,7 +712,7 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
-void GlobalDecreasingSizeBestFitHeap::Alloc(const BufferValue* buffer,
+void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
@@ -738,8 +726,8 @@ void GlobalDecreasingSizeBestFitHeap::Alloc(const BufferValue* buffer,
   ++current_time_;
 }
 
-void GlobalDecreasingSizeBestFitHeap::ShareWith(const BufferValue* buffer,
-                                                const BufferValue* share_with,
+void GlobalDecreasingSizeBestFitHeap::ShareWith(const HloValue* buffer,
+                                                const HloValue* share_with,
                                                 int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
@@ -754,25 +742,24 @@ void GlobalDecreasingSizeBestFitHeap::ShareWith(const BufferValue* buffer,
   ++current_time_;
 }
 
-absl::flat_hash_set<const BufferValue*>
+absl::flat_hash_set<const HloValue*>
 GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations(
-    const BufferInterval& interval) {
-  absl::flat_hash_set<const BufferValue*> result;
+    const BufferInterval& interval) const {
+  absl::flat_hash_set<const HloValue*> result;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
     const BufferInterval* item = worklist.back();
     worklist.pop_back();
-    for (const BufferValue* buffer_colocated : item->colocations) {
+    for (const HloValue* buffer_colocated : item->colocations) {
       result.insert(buffer_colocated);
-      worklist.push_back(&buffer_intervals_[buffer_colocated]);
+      worklist.push_back(&buffer_intervals_.at(buffer_colocated));
     }
   }
 
   return result;
 }
 
-void GlobalDecreasingSizeBestFitHeap::Free(const BufferValue* buffer,
-                                           int64 size) {
+void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     return;
@@ -788,106 +775,88 @@ void GlobalDecreasingSizeBestFitHeap::Free(const BufferValue* buffer,
   ++current_time_;
 }
 
-namespace {
+using Chunk = HeapSimulator::Chunk;
 
-// Node in BufferIntervalTree that stores the alloc and free times of a
-// buffer, and the chunk assigned to it.
-struct BufferIntervalTreeNode {
-  // Alloc time.
-  int64 start;
-  // Free time.
-  int64 end;
-  // Maximum free time of all nodes in the subtree where this node is the
-  // root.
-  int64 subtree_end;
-  // Allocated chunk for the buffer.
-  HeapSimulator::Chunk chunk;
-  // Left child.
-  BufferIntervalTreeNode* left;
-  // Right child.
-  BufferIntervalTreeNode* right;
-};
+void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
+    int64 start, int64 end, const Chunk& chunk) {
+  node_storage_.emplace_back(
+      BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr});
 
-// An interval tree that can query buffers overlapping in time.
-class BufferIntervalTree {
- public:
-  explicit BufferIntervalTree(int capacity) : node_storage_(capacity) {}
-
-  using Chunk = HeapSimulator::Chunk;
-
-  // Adds a buffer to the interval tree, with the time interval and allocated
-  // chunk specified.
-  void Add(int64 start, int64 end, const Chunk& chunk) {
-    int index = node_count_;
-    DCHECK_LT(index, node_storage_.size());
-    ++node_count_;
-
-    node_storage_[index] =
-        BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr};
-
-    if (index == 0) {
-      // This is root.
-      return;
-    }
-
-    BufferIntervalTreeNode* parent = &node_storage_[0];
-    while (true) {
-      parent->subtree_end = std::max(parent->subtree_end, end);
-      if (parent->start > start) {
-        if (parent->left == nullptr) {
-          parent->left = &node_storage_[index];
-          return;
-        }
-        parent = parent->left;
-      } else {
-        if (parent->right == nullptr) {
-          parent->right = &node_storage_[index];
-          return;
-        }
-        parent = parent->right;
-      }
-    }
+  if (node_storage_.size() == 1) {
+    // This is root.
+    return;
   }
 
-  // Returns vector of allocated chunks that overlap with the given time
-  // interval.
-  std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) {
-    std::vector<Chunk> result;
-    if (node_count_ == 0) {
-      return result;
+  BufferIntervalTreeNode* parent = &node_storage_.front();
+  while (true) {
+    parent->subtree_end = std::max(parent->subtree_end, end);
+    if (parent->start > start) {
+      if (parent->left == nullptr) {
+        parent->left = &node_storage_.back();
+        return;
+      }
+      parent = parent->left;
+    } else {
+      if (parent->right == nullptr) {
+        parent->right = &node_storage_.back();
+        return;
+      }
+      parent = parent->right;
     }
-    std::vector<BufferIntervalTreeNode*> visiting_stack;
-    visiting_stack.push_back(&node_storage_[0]);
-    while (!visiting_stack.empty()) {
-      BufferIntervalTreeNode* top = visiting_stack.back();
-      visiting_stack.pop_back();
-      if (start > top->subtree_end) {
-        continue;
-      }
-      if (top->left != nullptr) {
-        visiting_stack.push_back(top->left);
-      }
-      if (top->start <= end && top->end >= start) {
-        result.push_back(top->chunk);
-      }
-      if (end < top->start) {
-        continue;
-      }
-      if (top->right != nullptr) {
-        visiting_stack.push_back(top->right);
-      }
-    }
+  }
+}
+
+std::vector<Chunk>
+GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::ChunksOverlappingInTime(
+    int64 start, int64 end) const {
+  std::vector<Chunk> result;
+  if (node_storage_.empty()) {
     return result;
   }
-
- private:
-  int64 node_count_ = 0;
-  std::vector<BufferIntervalTreeNode> node_storage_;
-};
-
-}  // namespace
+  std::vector<const BufferIntervalTreeNode*> visiting_stack;
+  visiting_stack.push_back(&node_storage_.front());
+  while (!visiting_stack.empty()) {
+    const BufferIntervalTreeNode* top = visiting_stack.back();
+    visiting_stack.pop_back();
+    if (start > top->subtree_end) {
+      continue;
+    }
+    if (top->left != nullptr) {
+      visiting_stack.push_back(top->left);
+    }
+    if (top->start <= end && top->end >= start) {
+      result.push_back(top->chunk);
+    }
+    if (end < top->start) {
+      continue;
+    }
+    if (top->right != nullptr) {
+      visiting_stack.push_back(top->right);
+    }
+  }
+  return result;
+}
 
 HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
+  std::vector<BufferInterval> sorted_buffer_intervals =
+      GetSortedBufferIntervals();
+
+  for (auto& buffer_interval : sorted_buffer_intervals) {
+    if (!buffer_interval.need_allocation) {
+      continue;
+    }
+
+    ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
+    // This implementation of the heap algorithm does not have a notion of
+    // maximum heap size, so it just commits.
+    CommitChunk(buffer_interval, chunk_candidate);
+  }
+  VLOG(1) << "result heap_size: " << result_.heap_size;
+  return result_;
+}
+
+std::vector<GlobalDecreasingSizeBestFitHeap::BufferInterval>
+GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   std::vector<BufferInterval> sorted_buffer_intervals;
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
@@ -901,12 +870,14 @@ HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
                  [&](const BufferInterval& x, const BufferInterval& y) {
                    int64 x_end = x.end;
                    for (auto colocation : GetTransitiveColocations(x)) {
-                     x_end = std::max(x_end, buffer_intervals_[colocation].end);
+                     x_end =
+                         std::max(x_end, buffer_intervals_.at(colocation).end);
                    }
 
                    int64 y_end = y.end;
                    for (auto colocation : GetTransitiveColocations(y)) {
-                     y_end = std::max(y_end, buffer_intervals_[colocation].end);
+                     y_end =
+                         std::max(y_end, buffer_intervals_.at(colocation).end);
                    }
 
                    if (x_end - x.start != y_end - y.start) {
@@ -934,99 +905,105 @@ HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
                  });
   }
 
-  BufferIntervalTree interval_tree(sorted_buffer_intervals.size());
-  for (auto& buffer_interval : sorted_buffer_intervals) {
-    if (!buffer_interval.need_allocation) {
-      continue;
-    }
-    VLOG(1) << "Finding chunks for buffer: "
-            << buffer_interval.buffer->ToString();
-    VLOG(1) << "Size " << buffer_interval.size << ", start "
-            << buffer_interval.start << ", end " << buffer_interval.end;
-    auto chunks_overlapping_in_time = interval_tree.ChunksOverlappingInTime(
-        buffer_interval.start, buffer_interval.end);
-    // Get all colocated buffers and gather all interferenced chunks.
-    //
-    // Imagine that we've already allocated three chunks : a, b and c.  And now
-    // we want to allocate d. Since e is colocated with d, we have to allocate
-    // chunks for them together at the same address. To do this, we first gather
-    // all chunks that overlap with d and e on the time dimension, in this case
-    // the overlapped chunks are a and b (c doesn't overlap with either of d and
-    // e), then find create a new chunk that doesn't overlap with a and b on the
-    // space dimension.
-    //
-    // space
-    //   ^
-    //   |+--d---+      +---e---+
-    //   |
-    //   |+---+  +---------------+  +-------+
-    //   ||   |  |               |  |       |
-    //   ||   |  |               |  |       |
-    //   |+-a-+  +-------b-------+  +---c---+
-    //   ----------------------------------------> time
-    for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-      auto colocation_interval = buffer_intervals_[colocation];
-      auto colocation_overlapping = interval_tree.ChunksOverlappingInTime(
-          colocation_interval.start, colocation_interval.end);
-      VLOG(1) << "  Alias size " << colocation_interval.size << ", start "
-              << colocation_interval.start << ", end "
-              << colocation_interval.end << " "
-              << colocation_interval.buffer->ToString();
-      chunks_overlapping_in_time.insert(chunks_overlapping_in_time.end(),
-                                        colocation_overlapping.begin(),
-                                        colocation_overlapping.end());
-    }
-    absl::c_sort(
-        chunks_overlapping_in_time,
-        [](const Chunk& x, const Chunk& y) { return x.offset < y.offset; });
+  return sorted_buffer_intervals;
+}
 
-    // Find the minimum free chunk that can hold this buffer.
-    Chunk min_fit_chunk{-1, INT64_MAX};
-    auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
-      if (free_size < buffer_interval.size) {
-        return;
-      }
-
-      if (free_size < min_fit_chunk.size) {
-        min_fit_chunk = {free_offset, free_size};
-      }
-    };
-
-    int64 offset = 0;
-    for (auto& chunk : chunks_overlapping_in_time) {
-      if (offset < chunk.offset) {
-        use_free_chunk_if_smaller(offset, chunk.offset - offset);
-      }
-      offset =
-          std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
-    }
-    use_free_chunk_if_smaller(offset, result_.heap_size - offset);
-
-    if (min_fit_chunk.offset == -1) {
-      // Increase the heap size to fit in the last free chunk.
-      result_.heap_size = offset + buffer_interval.size;
-      min_fit_chunk = {offset, buffer_interval.size};
-    }
-
-    min_fit_chunk.size = buffer_interval.size;
-    const auto emplace_result =
-        result_.chunk_map.emplace(buffer_interval.buffer, min_fit_chunk);
-
-    DCHECK(emplace_result.second);
-
-    interval_tree.Add(buffer_interval.start, buffer_interval.end,
-                      min_fit_chunk);
-    for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-      const auto emplace_result =
-          result_.chunk_map.emplace(colocation, min_fit_chunk);
-      DCHECK(emplace_result.second);
-      auto colocation_interval = buffer_intervals_[colocation];
-      interval_tree.Add(colocation_interval.start, colocation_interval.end,
-                        min_fit_chunk);
-    }
+GlobalDecreasingSizeBestFitHeap::ChunkCandidate
+GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval)
+    const {
+  VLOG(1) << "Finding chunks for buffer: "
+          << buffer_interval.buffer->ToString();
+  VLOG(1) << "Size " << buffer_interval.size << ", start "
+          << buffer_interval.start << ", end " << buffer_interval.end;
+  auto chunks_overlapping_in_time = interval_tree_.ChunksOverlappingInTime(
+      buffer_interval.start, buffer_interval.end);
+  // Get all colocated buffers and gather all interferenced chunks.
+  //
+  // Imagine that we've already allocated three chunks : a, b and c.  And now
+  // we want to allocate d. Since e is colocated with d, we have to allocate
+  // chunks for them together at the same address. To do this, we first gather
+  // all chunks that overlap with d and e on the time dimension, in this case
+  // the overlapped chunks are a and b (c doesn't overlap with either of d and
+  // e), then find create a new chunk that doesn't overlap with a and b on the
+  // space dimension.
+  //
+  // space
+  //   ^
+  //   |+--d---+      +---e---+
+  //   |
+  //   |+---+  +---------------+  +-------+
+  //   ||   |  |               |  |       |
+  //   ||   |  |               |  |       |
+  //   |+-a-+  +-------b-------+  +---c---+
+  //   ----------------------------------------> time
+  for (auto colocation : GetTransitiveColocations(buffer_interval)) {
+    auto colocation_interval = buffer_intervals_.at(colocation);
+    auto colocation_overlapping = interval_tree_.ChunksOverlappingInTime(
+        colocation_interval.start, colocation_interval.end);
+    VLOG(1) << "  Alias size " << colocation_interval.size << ", start "
+            << colocation_interval.start << ", end " << colocation_interval.end
+            << " " << colocation_interval.buffer->ToString();
+    chunks_overlapping_in_time.insert(chunks_overlapping_in_time.end(),
+                                      colocation_overlapping.begin(),
+                                      colocation_overlapping.end());
   }
-  VLOG(1) << "result heap_size: " << result_.heap_size;
-  return result_;
+  absl::c_sort(chunks_overlapping_in_time, [](const Chunk& x, const Chunk& y) {
+    return x.offset < y.offset;
+  });
+
+  // Find the minimum free chunk that can hold this buffer.
+  ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
+  Chunk& min_fit_chunk = chunk_candidate.chunk;
+  auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
+    if (free_size < buffer_interval.size) {
+      return;
+    }
+
+    if (free_size < min_fit_chunk.size) {
+      min_fit_chunk = {free_offset, free_size};
+    }
+  };
+
+  int64 offset = 0;
+  for (auto& chunk : chunks_overlapping_in_time) {
+    if (offset < chunk.offset) {
+      use_free_chunk_if_smaller(offset, chunk.offset - offset);
+    }
+    offset = std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
+  }
+  use_free_chunk_if_smaller(offset, result_.heap_size - offset);
+
+  if (min_fit_chunk.offset == -1) {
+    // Increase the heap size to fit in the last free chunk.
+    chunk_candidate.heap_size = offset + buffer_interval.size;
+    min_fit_chunk = {offset, buffer_interval.size};
+  }
+
+  min_fit_chunk.size = buffer_interval.size;
+  return chunk_candidate;
+}
+
+void GlobalDecreasingSizeBestFitHeap::CommitChunk(
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
+    GlobalDecreasingSizeBestFitHeap::ChunkCandidate chunk_candidate) {
+  // Update the maximum heap size according to the one determined by the chunk
+  // candidate.
+  result_.heap_size = chunk_candidate.heap_size;
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
+                     chunk_candidate.chunk);
+  for (auto colocation : GetTransitiveColocations(buffer_interval)) {
+    const auto emplace_result =
+        result_.chunk_map.emplace(colocation, chunk_candidate.chunk);
+    DCHECK(emplace_result.second);
+    auto colocation_interval = buffer_intervals_[colocation];
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       chunk_candidate.chunk);
+  }
+
+  const auto emplace_result =
+      result_.chunk_map.emplace(buffer_interval.buffer, chunk_candidate.chunk);
+  DCHECK(emplace_result.second);
 }
 
 HeapSimulator::Result ChooseBestHeapAlgorithm::Finish() {

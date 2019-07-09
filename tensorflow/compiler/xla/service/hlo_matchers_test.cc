@@ -196,7 +196,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),
@@ -246,6 +246,36 @@ TEST(HloMatchersTest, ComparisonMatcher) {
   EXPECT_THAT(Explain(eq.get(), op::Add()), Eq(""));
   EXPECT_THAT(Explain(eq.get(), op::Ne()),
               Eq("has wrong comparison direction (got EQ, want NE)"));
+}
+
+TEST(HloMatchersTest, AsyncCopyMatcher) {
+  Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
+      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, /*memory_space=*/1);
+  Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
+      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, /*memory_space=*/2);
+
+  auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
+  auto copy_start = HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape(
+          {shape_memspace2, ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, p0.get());
+  auto copy_done = HloInstruction::CreateUnary(
+      shape_memspace2, HloOpcode::kCopyDone, copy_start.get());
+
+  EXPECT_THAT(copy_done.get(), op::AsyncCopy(2, 1, op::Parameter(0)));
+
+  EXPECT_THAT(Explain(copy_start.get(), op::AsyncCopy(2, 1, op::Parameter(0))),
+              Eq(""));
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(3, 1, op::Parameter(0))),
+              "%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
+              "%copy-start) "
+              "copies to memory space 2, expected 3");
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(2, 3, op::Parameter(0))),
+              "%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
+              "%copy-start) "
+              "is in the memory space 1, expected 3");
 }
 
 }  // namespace

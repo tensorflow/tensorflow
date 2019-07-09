@@ -445,7 +445,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
-      tensorflow::Logger::Singleton()->LogProto(log);
+      tensorflow::Logger::GetSingleton()->LogProto(log);
     }
   }
 

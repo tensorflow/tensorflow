@@ -27,6 +27,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -124,6 +125,14 @@ class AddLayerWithoutAutoCast(AddLayer):
     return self._add(inputs, math_ops.cast(self.v, inputs.dtype))
 
 
+class AddLayerWithFunction(AddLayer):
+  """Same as AddLayer, but _add is decorated with a tf.function."""
+
+  @def_function.function
+  def _add(self, x, y):
+    return super(AddLayerWithFunction, self)._add(x, y)
+
+
 class IdentityRegularizer(regularizers.Regularizer):
 
   def __call__(self, x):
@@ -180,6 +189,30 @@ class KerasLayerTest(keras_parameterized.TestCase):
         self.assertEqual(y.dtype, dtypes.float16)
         self.evaluate(variables.global_variables_initializer())
         self.assertEqual(self.evaluate(y), 2.)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_layer_calling_tf_function(self, strategy_fn):
+    x = constant_op.constant([1.], dtype=dtypes.float16)
+    with strategy_fn().scope():
+      with policy.policy_scope('infer_float32_vars'):
+        layer = AddLayerWithFunction(assert_type=dtypes.float16)
+        y = layer(x)
+        self.assertEqual(layer.v.dtype, dtypes.float32)
+        self.assertEqual(y.dtype, dtypes.float16)
+        self.evaluate(variables.global_variables_initializer())
+        self.assertEqual(self.evaluate(y), 2.)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_not_casted_for_int_inputs(self, strategy_fn):
+    x = constant_op.constant([[1]], dtype=dtypes.int32)
+    with strategy_fn().scope():
+      with policy.policy_scope('infer_float32_vars'):
+        layer = layers.Embedding(input_dim=10, output_dim=32)
+        y = layer(x)
+        self.assertEqual(layer.embeddings.dtype, dtypes.float32)
+        self.assertEqual(y.dtype, dtypes.float32)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -314,17 +347,22 @@ class KerasModelTest(keras_parameterized.TestCase):
       'testcase_name': 'nocloning',
       'strategy_fn': create_mirrored_strategy,
       'cloning': False
+  }, {
+      'testcase_name': 'function',
+      'strategy_fn': create_mirrored_strategy,
+      'layer_with_tf_function': True
   })
   def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
-                 cloning=True):
+                 cloning=True, layer_with_tf_function=False):
     if not self._is_strategy_supported(strategy_fn):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
+    layer_class = AddLayerWithFunction if layer_with_tf_function else AddLayer
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
         x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
-        layer = AddLayer(assert_type=dtypes.float16, use_operator=use_operator,
-                         regularizer=regularizer)
+        layer = layer_class(assert_type=dtypes.float16,
+                            use_operator=use_operator, regularizer=regularizer)
         y = layer(x)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)

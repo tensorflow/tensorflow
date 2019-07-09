@@ -99,7 +99,7 @@ class ImagenetModelEvaluator {
     virtual void OnSingleImageEvaluationComplete(
         uint64_t shard_id,
         const tflite::evaluation::TopkAccuracyEvalMetrics& metrics,
-        const string& image) = 0;
+        const std::string& image) = 0;
 
     virtual ~Observer() = default;
   };

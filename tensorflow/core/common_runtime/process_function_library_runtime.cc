@@ -71,16 +71,18 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
+      flr_map_(new std::unordered_map<Device*,
+                                      std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
       parent_(parent) {
   if (device_mgr == nullptr) {
-    flr_map_[nullptr] = NewFunctionLibraryRuntime(
+    (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
         optimizer_options, custom_kernel_creator, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d] = NewFunctionLibraryRuntime(
+    (*flr_map_)[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
         optimizer_options, custom_kernel_creator, this);
   }
@@ -197,8 +199,8 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
       return nullptr;
     }
   }
-  const auto& iter = flr_map_.find(device);
-  if (iter == flr_map_.end()) {
+  const auto& iter = flr_map_->find(device);
+  if (iter == flr_map_->end()) {
     LOG(ERROR) << "Could not find device: " << device_name;
     return nullptr;
   }
@@ -707,7 +709,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     if (VLOG_IS_ON(1)) {
       DumpGraphDefToFile(
           strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph)),
+                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
+                          pair.first),
           optimized_subgraph->ToGraphDefDebug());
     }
   }
@@ -1036,6 +1039,9 @@ Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
 
 Status ProcessFunctionLibraryRuntime::ReleaseHandle(
     FunctionLibraryRuntime::Handle handle) {
+  // Return directly if all function handles has already been released.
+  if (flr_map_ == nullptr) return Status::OK();
+
   if (IsMultiDevice(handle)) {
     return ReleaseMultiDeviceHandle(handle);
   }

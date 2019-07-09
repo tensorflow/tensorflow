@@ -148,6 +148,13 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+
+// Like TFE_Py_TapeSetShouldRecord but with a ternary return:
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecord is false)
+//   - 1 if first-order gradients may be requested
+//   - 2 if higher-order gradients may be requested
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
+
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 

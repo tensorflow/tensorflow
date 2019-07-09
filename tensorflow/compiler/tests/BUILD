@@ -217,6 +217,29 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "complex_div_test",
+    size = "medium",
+    srcs = ["complex_div_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 2,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],
@@ -311,6 +334,21 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "matrix_inverse_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_inverse_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -748,6 +786,7 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
+    shard_count = 5,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -900,8 +939,9 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateful_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -915,7 +955,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateless_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     tags = ["optonly"],
     deps = [
@@ -984,6 +1024,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["notap"],  # b/136030724
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

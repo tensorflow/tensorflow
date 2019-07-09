@@ -1564,7 +1564,10 @@ class ResourceVariable(BaseResourceVariable):
             is_initialized_op = (
                 gen_resource_variable_ops.var_is_initialized_op(handle))
           if initial_value is not None:
-            with ops.name_scope("Assign") as n, ops.colocate_with(handle):
+            # pylint: disable=g-backslash-continuation
+            with ops.name_scope("Assign") as n, \
+                 ops.colocate_with(None, ignore_existing=True), \
+                 ops.device(handle.device):
               # pylint: disable=protected-access
               initializer_op = (
                   gen_resource_variable_ops.assign_variable_op(
@@ -1574,7 +1577,8 @@ class ResourceVariable(BaseResourceVariable):
                           initial_value),
                       name=n))
               # pylint: enable=protected-access
-          with ops.name_scope("Read"), ops.colocate_with(handle):
+            # pylint: enable=g-backslash-continuation
+          with ops.name_scope("Read"):
             # Manually assign reads to the handle's device to avoid log
             # messages.
             with ops.device(handle.device):
@@ -1755,7 +1759,7 @@ class UninitializedVariable(BaseResourceVariable):
             name=name, graph_mode=self._in_graph_mode,
             extra_handle_data=extra_handle_data)
         if not context.executing_eagerly():
-          with ops.name_scope("Read"), ops.colocate_with(handle):
+          with ops.name_scope("Read"):
             # Manually assign reads to the handle's device to avoid log
             # messages.
             with ops.device(handle.device):

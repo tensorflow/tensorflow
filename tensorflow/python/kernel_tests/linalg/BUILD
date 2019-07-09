@@ -368,6 +368,8 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
+        "no_cuda_on_cpu_tap",  # flaky, b/135701551
+        "no_gpu",  # flaky, b/135701551
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],

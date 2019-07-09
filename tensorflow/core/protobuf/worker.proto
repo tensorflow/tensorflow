@@ -485,14 +485,18 @@ message RecvBufRequest {
 
   // Optional, implementation-specific data.
   google.protobuf.Any transport_options = 7;
-  // Optional, for annotating the timeline.
+  // For annotating timeline and device incarnation check.
   string src_device = 8;
+  // Optional, for annotating the timeline.
   string dst_device = 9;
 
   // Depending on the RPC system in use, it may be necessary to set this
   // id to detect resends of RPCs where the server is not aware that
   // the prior RPC failed.
   int64 request_id = 10;
+
+  // Incarnation number of the source device, used to detect worker failures.
+  uint64 src_incarnation = 11;
 }
 
 message RecvBufResponse {

@@ -6,6 +6,10 @@ degradation in model accuracy. These techniques can be performed on an
 already-trained float TensorFlow model and applied during TensorFlow Lite
 conversion.
 
+### Optimization options
+
+![post-training optimization options](images/optimization.jpg)
+
 ### Quantizing weights
 
 The simplest form of post-training quantization quantizes weights from floating

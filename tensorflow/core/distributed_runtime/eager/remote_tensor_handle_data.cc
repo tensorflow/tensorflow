@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 
-#include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,7 +29,7 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
                                int output_num) {
   auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
 
-  if (!ctx->HasActiveRemoteContext(context_id)) {
+  if (ctx->GetContextId() != context_id) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
     // nothing we can do.
@@ -45,7 +45,7 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
 
   if (ctx->Async()) {
     tensorflow::uint64 id = ctx->NextId();
-    ctx->ExecutorAdd(absl::make_unique<eager::RemoteExecuteNode>(
+    ctx->ExecutorAdd(absl::make_unique<eager::DestroyTensorHandleNode>(
         id, std::move(request), eager_client));
   } else {
     eager::EnqueueRequest* actual_request = request.release();

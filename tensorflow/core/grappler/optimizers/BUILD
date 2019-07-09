@@ -503,6 +503,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -593,9 +594,9 @@ cc_library(
         ":debug_stripper",
         ":dependency_optimizer",
         ":function_optimizer",
+        ":generic_layout_optimizer",
         ":graph_optimizer",
         ":implementation_selector",
-        ":layout_optimizer",
         ":loop_optimizer",
         ":memory_optimizer",
         ":model_pruner",

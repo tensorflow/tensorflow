@@ -327,6 +327,14 @@ message RPCOptions {
   // If compression_algorithm is set, the compression level to be used.
   // From 0 (no compression), up to 3.
   int32 compression_level = 3;
+
+  // Setting cache_rpc_response to true will enable sender side caching of
+  // response for RecvTensorAsync and RecvBufAsync to allow receiver to retry
+  // requests . This is only necessary when the network fabric is experiencing a
+  // significant error rate.  Without it we'll fail a step on an network error,
+  // while with it we'll be able to complete long steps (like complex
+  // initializations) in the face of some network errors during RecvTensor.
+  bool cache_rpc_response = 4;
 }
 
 // Metadata about the session.
@@ -521,6 +529,14 @@ message ConfigProto {
     //
     // NOTE: This is currently used and propagated only by the direct session.
     SessionMetadata session_metadata = 11;
+
+    // If true, the session may treat the graph as being static for optimization
+    // purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef must be passed in a single call to Session::Create(), and
+    // Session::Extend() may not be supported.
+    bool optimize_for_static_graph = 12;
   };
 
   Experimental experimental = 16;

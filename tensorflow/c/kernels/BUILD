@@ -56,9 +56,14 @@ tf_cc_test(
 #
 # LINT.IfChange
 filegroup(
-    name = "android_all_ops",
+    name = "android_all_op_kernels",
     srcs = [
         "bitcast_op.cc",
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
+
+filegroup(
+    name = "android_all_ops",
+    srcs = ["ops/bitcast.cc"],
+)

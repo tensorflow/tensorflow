@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/impl/codegen/async_stream.h"
 #include "grpcpp/impl/codegen/async_unary_call.h"
 #include "grpcpp/impl/codegen/client_context.h"
+#include "grpcpp/impl/codegen/completion_queue.h"
 #include "grpcpp/impl/codegen/proto_utils.h"
 #include "grpcpp/impl/codegen/rpc_method.h"
 #include "grpcpp/impl/codegen/server_context.h"

@@ -31,7 +31,7 @@ from tensorflow.python.util import tf_stack
 from tensorflow.tools.compatibility import all_renames_v2
 
 
-_PER_MODULE_WARNING_LIMIT = 5
+_PER_MODULE_WARNING_LIMIT = 1
 
 
 def get_rename_v2(name):
@@ -84,26 +84,26 @@ class DeprecationWrapper(types.ModuleType):
   """Wrapper for TensorFlow modules to support deprecation messages."""
 
   def __init__(self, wrapped, module_name):  # pylint: disable=super-on-old-class
+    super(DeprecationWrapper, self).__init__(wrapped.__name__)
+    self.__dict__.update(wrapped.__dict__)
     # Prefix all local attributes with _dw_ so that we can
     # handle them differently in attribute access methods.
     self._dw_wrapped_module = wrapped
     self._dw_module_name = module_name
-    self._dw_deprecated_printed = set()  # names we already printed warning for
-    self.__file__ = wrapped.__file__
-    self.__name__ = wrapped.__name__
-    if hasattr(self._dw_wrapped_module, '__all__'):
-      self.__all__ = self._dw_wrapped_module.__all__
-    else:
-      self.__all__ = dir(self._dw_wrapped_module)
+    # names we already checked for deprecation
+    self._dw_deprecated_checked = set()
     self._dw_warning_count = 0
-    super(DeprecationWrapper, self).__init__(wrapped.__name__)
 
-  def __getattr__(self, name):
-    if name.startswith('_dw_'):
-      raise AttributeError('Accessing local variables before they are created.')
-    attr = getattr(self._dw_wrapped_module, name)
+  def __getattribute__(self, name):  # pylint: disable=super-on-old-class
+    attr = super(DeprecationWrapper, self).__getattribute__(name)
+    if name.startswith('__') or name.startswith('_dw_'):
+      return attr
+
     if (self._dw_warning_count < _PER_MODULE_WARNING_LIMIT and
-        name not in self._dw_deprecated_printed):
+        name not in self._dw_deprecated_checked):
+
+      self._dw_deprecated_checked.add(name)
+
       if self._dw_module_name:
         full_name = 'tf.%s.%s' % (self._dw_module_name, name)
       else:
@@ -116,7 +116,6 @@ class DeprecationWrapper(types.ModuleType):
           logging.warning(
               'From %s: The name %s is deprecated. Please use %s instead.\n',
               _call_location(), full_name, rename)
-          self._dw_deprecated_printed.add(name)
           self._dw_warning_count += 1
     return attr
 
@@ -125,6 +124,7 @@ class DeprecationWrapper(types.ModuleType):
       super(DeprecationWrapper, self).__setattr__(arg, val)
     else:
       setattr(self._dw_wrapped_module, arg, val)
+      self.__dict__[arg] = val
 
   def __dir__(self):
     return dir(self._dw_wrapped_module)

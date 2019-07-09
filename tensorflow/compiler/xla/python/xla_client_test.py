@@ -1109,6 +1109,14 @@ class SingleOpTest(ComputationTest):
     self._ExecuteAndCompareExact(
         c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
 
+  def testReducePrecision(self):
+    c = self._NewComputation()
+    c.ReducePrecision(
+        c.Constant(NumpyArrayF32([float.fromhex("0x1.32fffep-3")])),
+        exponent_bits=8,
+        mantissa_bits=7)
+    self._ExecuteAndCompareClose(c, expected=[float.fromhex("0x1.32p-3")])
+
   def testClampF32(self):
     c = self._NewComputation()
     c.Clamp(

@@ -220,12 +220,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     def apply_fn():
       # We do not want DistributionStrategy to unwrap any MirroredVariables in
       # grads_and_vars, because even in a replica context, the wrapped optimizer
-      # expects mirrored variables. So we wrap grads_and_vars with an
+      # expects mirrored variables. So we wrap the variables with an
       # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
       # MirroredVariables.
-      wrapped_grads_and_vars = _UnwrapPreventer(grads_and_vars)
+      wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
-          self._apply_gradients, args=(wrapped_grads_and_vars, name))
+          self._apply_gradients, args=(grads, wrapped_vars, name))
 
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
@@ -236,9 +236,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
                                            control_flow_ops.no_op)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
-  def _apply_gradients(self, wrapped_grads_and_vars, name):
-    grads_and_vars = wrapped_grads_and_vars.value
-    return self._optimizer.apply_gradients(grads_and_vars, name)
+  def _apply_gradients(self, grads, wrapped_vars, name):
+    return self._optimizer.apply_gradients(list(zip(grads, wrapped_vars.value)),
+                                           name)
 
   @property
   def iterations(self):

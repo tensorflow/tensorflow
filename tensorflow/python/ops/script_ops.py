@@ -64,8 +64,6 @@ class EagerFunc(object):
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
 
-    context.ensure_initialized()
-
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
 
@@ -104,8 +102,11 @@ class EagerFunc(object):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
     with context.eager_mode(), backprop.GradientTape() as tape:
+      # Only watch tensors with a floating dtype.
       for tensor in args:
-        tape.watch(tensor)
+        for t in nest.flatten(tensor):
+          if t.dtype.is_floating:
+            tape.watch(t)
       ret = self._func(*args)
       # Use tf.identity to copy the returned tensors to device if neccesary.
       with ops.device(device):
@@ -136,6 +137,13 @@ class FuncRegistry(object):
     # Only store weakrefs to the functions. The strong reference is stored in
     # the graph.
     self._funcs = weakref.WeakValueDictionary()
+
+  @property
+  def _ctx(self):
+    # N.B. This is needed to support calling py_func with GPU tensors,
+    # which must be transferred to CPU if used in any of the NumPy APIs.
+    context.ensure_initialized()
+    return context.context()._handle  # pylint: disable=protected-access
 
   def insert(self, func):
     """Registers `func` and returns a unique token for this entry."""

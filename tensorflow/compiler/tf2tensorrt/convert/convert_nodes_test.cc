@@ -447,39 +447,49 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  std::unordered_map<string, OpConverter>& op_validators() {
-    return validator_.op_validators_;
+  std::unordered_map<string, OpConverter>& op_validators(
+      TrtNodeValidator* validator) {
+    return validator->op_validators_;
   }
 
-  Status ConvertToTensorOrWeights(
-      const NodeDef& node_def, int output_port,
-      const grappler::GraphProperties& graph_properties,
-      TRT_TensorOrWeights* tensor_or_weights) {
-    return validator_.ConvertToTensorOrWeights(
-        node_def, output_port, graph_properties, tensor_or_weights);
+  Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
+                                  int output_port,
+                                  TRT_TensorOrWeights* tensor_or_weights) {
+    grappler::GrapplerItem item;
+    TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
+    grappler::GraphProperties graph_properties(item);
+    TF_EXPECT_OK(graph_properties.InferStatically(true));
+
+    TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
+                               /*use_calibration=*/false);
+    return validator.ConvertToTensorOrWeights(node->def(), output_port,
+                                              tensor_or_weights);
   }
 
-  const std::set<string>* GetQuantizeOps() { return validator_.quantize_ops; }
-
- protected:
-  TrtNodeValidator validator_;
+  const std::set<string>* GetQuantizeOps(TrtNodeValidator* validator) {
+    return validator->quantize_ops;
+  }
 };
 
 TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
-  for (const string& quantize_op : *GetQuantizeOps()) {
-    QCHECK(op_validators().count(quantize_op));
+  grappler::GrapplerItem item;
+  grappler::GraphProperties graph_properties(item);
+  TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
+                             /*use_calibration=*/false);
+  for (const string& quantize_op : *GetQuantizeOps(&validator)) {
+    QCHECK(op_validators(&validator).count(quantize_op));
   }
 }
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
   {
-    NodeDef node_def = MakeConstNodeDef<float>("my_const", {1.0f, 2.0f});
+    Scope s = Scope::NewRootScope();
+    auto node =
+        ops::Const(s.WithOpName("my_const"), {1.0f, 2.0f}, TensorShape({2}));
     TRT_TensorOrWeights output;
-    grappler::GrapplerItem item;
-    grappler::GraphProperties graph_properties(item);
-    ExpectStatus(ConvertToTensorOrWeights(node_def, /*output_port=*/0,
-                                          graph_properties, &output));
+    ExpectStatus(ConvertToTensorOrWeights(s, node.op().node(),
+                                          /*output_port=*/0, &output));
     ValidateWeights<float>(output.weights(), {2}, {1.0, 2.0});
   }
 
@@ -490,14 +500,8 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     const auto attrs = ops::Placeholder::Shape(PartialTensorShape{dims});
     auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT, attrs);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
-
-    grappler::GrapplerItem item;
-    TF_EXPECT_OK(s.ToGraphDef(&item.graph));
-    grappler::GraphProperties graph_properties(item);
-    TF_EXPECT_OK(graph_properties.InferStatically(true));
-    const NodeDef& node_def = add.operation.node()->def();
-    return this->ConvertToTensorOrWeights(node_def, /*output_port=*/0,
-                                          graph_properties, output);
+    return this->ConvertToTensorOrWeights(s, add.operation.node(),
+                                          /*output_port=*/0, output);
   };
   // Convert non-Const with #dims > nvinfer1::Dims::MAX_DIMS+1.
   {
@@ -529,9 +533,19 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   }
 }
 
-TEST_F(ValidatorTest, ValidateNode) {
+TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
+  Scope s = Scope::NewRootScope();
+  auto input =
+      ops::Const(s.WithOpName("const"), {1.0f, 2.0f}, TensorShape({2}));
+  auto add = ops::Add(s.WithOpName("add"), input, input);
+  const Node* add_node = add.operation.node();
+
   grappler::GrapplerItem item;
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
   grappler::GraphProperties graph_properties(item);
+  TF_EXPECT_OK(graph_properties.InferStatically(true));
+  TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
+                             /*use_calibration=*/false);
 
   bool start_conversion = false;
   bool should_fail = false;
@@ -541,32 +555,96 @@ TEST_F(ValidatorTest, ValidateNode) {
     if (!params->validation_only) start_conversion = true;
     return Status::OK();
   };
-  NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
   // Validator not registered.
-  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
-                                       graph_properties),
-               error::UNIMPLEMENTED, "Op type MyOp is not supported.");
+  ASSERT_EQ(1, op_validators(&validator).erase("Add"));
+  ExpectStatus(validator.IsTensorRTCandidate(add_node), error::UNIMPLEMENTED,
+               "Op type Add is not supported.");
 
   // Register validator.
-  op_validators()["MyOp"] = op_converter;
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
-                                       graph_properties));
+  op_validators(&validator)["Add"] = op_converter;
+  TF_EXPECT_OK(validator.IsTensorRTCandidate(add_node));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
-                                       graph_properties),
+  ExpectStatus(validator.IsTensorRTCandidate(add_node),
                error::INVALID_ARGUMENT);
+}
 
-  // Test quantization ops, they're only supported in INT8 mode. The success
-  // case is tested in OpConverterTest.ConvertQuantize.
-  node_def = MakeNodeDef("my_op", "FakeQuantWithMinMaxArgs", {});
-  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
-                                       graph_properties),
-               error::UNIMPLEMENTED,
-               "Op type FakeQuantWithMinMaxArgs is not supported.");
+TEST(TrtNodeValidator, IsTensorRTCandidate) {
+  // Create a graph containing both TRT-compatible and TRT-incompatible nodes
+  // and use it to test TrtNodeValidator::IsTensorRTCandidate().
+  const std::vector<int32> input_shape_array{2, 2};
+  TensorShape input_shape;
+  TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_shape_array, &input_shape));
+
+  Scope s = Scope::NewRootScope();
+  ops::Placeholder::Attrs feed_attrs;
+  TF_EXPECT_OK(
+      TensorShapeUtils::MakeShape(input_shape_array, &feed_attrs.shape_));
+
+  // Compatible input.
+  auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT, feed_attrs);
+  auto const_1 = ops::Const(s.WithOpName("const_1"), 1.0f, input_shape);
+
+  // Compatible MatMul.
+  auto matmul = ops::MatMul(s.WithOpName("matmul"), feed, const_1);
+
+  // Incompatible MatMul.
+  ops::MatMul::Attrs matmul_attrs;
+  matmul_attrs.transpose_a_ = true;
+  auto incompatible_matmul = ops::MatMul(s.WithOpName("incompatible_matmul"),
+                                         feed, const_1, matmul_attrs);
+
+  // Unsupported op.
+  auto unsupported_op = ops::Erf(s.WithOpName("sin"), feed);
+
+  // Incompatible input.
+  auto incompatible_feed = ops::Placeholder(s.WithOpName("feed"), DT_DOUBLE);
+  auto const_2 = ops::Const(s.WithOpName("const_2"), 1.0, input_shape);
+  // Compatible op with incompatible input.
+  auto matmul_with_incompatible_input =
+      ops::MatMul(s.WithOpName("matmul_with_incompatible_input"),
+                  incompatible_feed, const_2);
+
+  // Quantize ops.
+  auto quantize_attrs = ops::FakeQuantWithMinMaxArgs::Min(-6.0f).Max(6.0f);
+  auto quantize = ops::FakeQuantWithMinMaxArgs(s.WithOpName("quantize"), feed,
+                                               quantize_attrs);
+
+  // Get GrapplerItem and GraphProperties.
+  grappler::GrapplerItem item;
+  TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+  Tensor feed_tensor(DT_FLOAT, input_shape);
+  item.feed.push_back(std::make_pair("feed", feed_tensor));
+  grappler::GraphProperties graph_properties(item);
+  TF_EXPECT_OK(graph_properties.InferStatically(true));
+
+  for (const TrtPrecisionMode precision_mode :
+       {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
+    TrtNodeValidator validator(graph_properties, precision_mode,
+                               /*use_calibration=*/false);
+    TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
+    ExpectStatus(
+        validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
+        error::INVALID_ARGUMENT,
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
+    ExpectStatus(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
+                 error::UNIMPLEMENTED, "Op type Erf is not supported");
+    ExpectStatus(validator.IsTensorRTCandidate(
+                     matmul_with_incompatible_input.operation.node()),
+                 error::INTERNAL,
+                 "Failed to convert input feed_1 to a TRT_TensorOrWeights");
+    if (precision_mode == TrtPrecisionMode::INT8) {
+      TF_EXPECT_OK(validator.IsTensorRTCandidate(quantize.operation.node()));
+    } else {
+      ExpectStatus(validator.IsTensorRTCandidate(quantize.operation.node()),
+                   error::UNIMPLEMENTED,
+                   "Op type FakeQuantWithMinMaxArgs is not supported");
+    }
+  }
 }
 
 class ConverterTest : public ::testing::Test {
@@ -987,17 +1065,19 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
-                                      &operand_2_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
+                             &operand_1_new_dims, &operand_2_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
-                                      &operand_1_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
+                             &operand_2_new_dims, &operand_1_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
@@ -1162,7 +1242,6 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void Reset() {
-    validator_.reset(nullptr);
     converter_.reset(nullptr);
 
     // Reset the INetworkDefinition.
@@ -1172,14 +1251,12 @@ class OpConverterTest : public ::testing::Test {
     network_.reset(builder_->createNetwork());
     builder_->setMaxWorkspaceSize(1 << 26);
 
-    // Reset the validator and converter.
-    validator_.reset(new TrtNodeValidator);
+    // Reset the converter.
     converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
                                    /*use_calibration=*/false));
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();
-    validator_inputs_.clear();
   }
 
   void CheckDataTypeMatches(const DataVec& datas) {
@@ -1285,7 +1362,7 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &attrs.shape_));
     attrs.shape_.InsertDim(0, batch_size);
     auto input = ops::Placeholder(scope_.WithOpName(name), tf_dtype, attrs);
-    validator_inputs_[name] = input.operation.node()->def();
+    node_inputs_[name] = input.output;
 
     // Add a real ITensor for conversion conditionally.
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
@@ -1300,6 +1377,13 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values) {
+    // Add weights for validation.
+    TensorShape shape;
+    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
+    Tensor t = test::AsTensor<T>(values, shape);
+    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
+
+    // Add weights for conversion.
     const nvinfer1::DataType dtype = TfDataTypeToTrt(DataTypeToEnum<T>::v());
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
@@ -1312,38 +1396,27 @@ class OpConverterTest : public ::testing::Test {
           << weights.size_bytes() << " vs " << sizeof(T) * values.size();
       memcpy(weights.GetValues(), values.data(), weights.size_bytes());
     }
-    // Add weights for validation.
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
-    validator_inputs_[name] = MakeConstNodeDef<T>(name, values, shape);
-    // Add weights for conversion.
     TF_EXPECT_OK(
         converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
   }
 
   // Test validation in validation-only mode.
-  void RunValidation(const NodeDef& node_def,
-                     error::Code expected_code = error::OK,
+  void RunValidation(const Node* node, error::Code expected_code = error::OK,
                      const char* expected_msg_substr = nullptr) {
-    std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
-    for (const string& input : node_def.input()) {
-      input_node_and_ports.emplace_back(&validator_inputs_[input], 0);
-    }
     grappler::GrapplerItem item;
     TF_EXPECT_OK(scope_.ToGraphDef(&item.graph));
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    ExpectStatus(
-        validator_->ValidateNode(node_def, input_node_and_ports,
-                                 precision_mode_to_test_, graph_properties),
-        expected_code, expected_msg_substr);
+    TrtNodeValidator validator(graph_properties, precision_mode_to_test_,
+                               /*use_calibration=*/false);
+    ExpectStatus(validator.IsTensorRTCandidate(node), expected_code,
+                 expected_msg_substr);
   }
 
-  void RunConversion(const NodeDef& node_def,
-                     error::Code expected_code = error::OK,
+  void RunConversion(const Node* node, error::Code expected_code = error::OK,
                      const char* expected_msg_substr = nullptr) {
-    ExpectStatus(converter_->ConvertNode(node_def), expected_code,
+    ExpectStatus(converter_->ConvertNode(node->def()), expected_code,
                  expected_msg_substr);
   }
 
@@ -1353,9 +1426,25 @@ class OpConverterTest : public ::testing::Test {
                                   error::Code expected_code = error::OK,
                                   const char* expected_msg_substr = nullptr,
                                   bool should_run_conversion = true) {
-    RunValidation(node_def, expected_code, expected_msg_substr);
+    // Add the node to the graph.
+    // TODO(laigd): we should accept a function that adds the node using
+    // `scope_`, so individual test case can reuse the scope object and we don't
+    // need to add the edges here by ourselves.
+    Graph* graph = scope_.graph();
+    Status status;
+    Node* node = graph->AddNode(std::move(node_def), &status);
+    TF_EXPECT_OK(status);
+    for (int i = 0; i < node_def.input().size(); ++i) {
+      const string& input_name = node_def.input(i);
+      const auto& itr = node_inputs_.find(input_name);
+      QCHECK(itr != node_inputs_.end());
+      const Output& input = itr->second;
+      graph->AddEdge(input.node(), input.index(), node, i);
+    }
+
+    RunValidation(node, expected_code, expected_msg_substr);
     if (should_run_conversion) {
-      RunConversion(node_def, expected_code, expected_msg_substr);
+      RunConversion(node, expected_code, expected_msg_substr);
     }
   }
 
@@ -1365,7 +1454,6 @@ class OpConverterTest : public ::testing::Test {
   }
 
   std::unique_ptr<Converter> converter_;
-  std::unique_ptr<TrtNodeValidator> validator_;
 
  protected:
   // TODO(laigd): parameterize the test and make the precision mode a parameter.
@@ -1381,9 +1469,8 @@ class OpConverterTest : public ::testing::Test {
   // created placeholders will be used as inputs to the node to be verified,
   // thus we need the shape and data type information to get a non-empty
   // GraphProperties.
-  // TODO(laigd): consider use this Scope to create the NodeDef to verify.
   Scope scope_;
-  std::unordered_map<string, NodeDef> validator_inputs_;
+  std::unordered_map<string, Output> node_inputs_;
 };
 
 template <typename T>
@@ -1491,14 +1578,6 @@ void TestConvertConst(OpConverterTest* test) {
 TEST_F(OpConverterTest, ConvertConst) {
   {
     Reset();
-    NodeDef node_def = MakeNodeDef("my_const", "Const", {"input"});
-    AddTestTensor("input", {1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Constant node is expected to have empty input list: my_const");
-  }
-  {
-    Reset();
     NodeDef node_def = MakeConstNodeDef<double>("my_const", {});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Unsupported data type double");
@@ -1533,14 +1612,6 @@ TEST_F(OpConverterTest, ConvertConst) {
 }
 
 TEST_F(OpConverterTest, ConvertTranspose) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_transpose", "Transpose", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Transpose got 0 inputs but expected 2, at my_transpose");
-  }
-
   // Get the NodeDef for Transpose.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
@@ -1595,14 +1666,6 @@ TEST_F(OpConverterTest, ConvertTranspose) {
 }
 
 TEST_F(OpConverterTest, ConvertReshape) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_reshape", "Reshape", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Reshape got 0 inputs but expected 2, at my_reshape");
-  }
-
   // Get the NodeDef for Reshape.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
@@ -1733,16 +1796,9 @@ void TestMatMulHelper(
       test->AddTestTensor("input", {2}, /*batch_size=*/1);
       test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
-        if (transpose_a || transpose_b) {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension for "
-              "BatchMatMul, at my_matmul");
-        } else {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension");
-        }
+        test->RunValidationAndConversion(
+            node_def, error::UNIMPLEMENTED,
+            "TensorRT does not support batched constants.");
         continue;
       } else if (transpose_a) {
         test->RunValidationAndConversion(
@@ -1774,16 +1830,9 @@ void TestMatMulHelper(
     test->AddTestTensor("input", {2}, /*batch_size=*/1);
     test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
-      if (transpose_b) {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension for "
-            "BatchMatMul, at my_matmul");
-      } else {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension");
-      }
+      test->RunValidationAndConversion(
+          node_def, error::UNIMPLEMENTED,
+          "TensorRT does not support batched constants.");
       continue;
     }
     test->RunValidationAndConversion(node_def);
@@ -1802,15 +1851,19 @@ void TestMatMulHelper(
   }
 }
 
-TEST_F(OpConverterTest, ConvertMatMul) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_matmul", "MatMul", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "MatMul got 0 inputs but expected 2, at my_matmul");
+template <typename LayerType>
+void CheckAddedLayers(OpConverterTest* test, bool expect_found) {
+  bool layer_found = false;
+  for (int i = 0; i < test->converter_->network()->getNbLayers(); i++) {
+    nvinfer1::ILayer* layer = test->converter_->network()->getLayer(i);
+    if (dynamic_cast<LayerType*>(layer)) {
+      layer_found = true;
+    }
   }
+  EXPECT_EQ(expect_found, layer_found);
+}
 
+TEST_F(OpConverterTest, ConvertMatMul) {
   // Get the NodeDef for MatMul.
   auto get_matmul_nodedef = [](DataType dtype, bool transpose_a,
                                bool transpose_b) -> NodeDef {
@@ -1857,18 +1910,35 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::INVALID_ARGUMENT,
         "Cannot currently transpose constant input if it is not 2 dimensional");
   }
+  {
+    // Make sure that INT8 mode uses IFullyConnectedLayer when possible.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {2, 1, 1});
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, false);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, true);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
+  {
+    // Make sure that INT8 mode doesn't try to use IFullyConnectedLayer when not
+    // compatible. In this case we can't use FC because weights is a tensor.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {2, 1, 1});
+    AddTestTensor("weights", {2, 2});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, true);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, false);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
   TestMatMulHelper(this, get_matmul_nodedef, "MatMul");
 }
 
 TEST_F(OpConverterTest, ConvertBatchMatMul) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_matmul", "BatchMatMul", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "BatchMatMul got 0 inputs but expected 2, at my_matmul");
-  }
-
   // Get the NodeDef for BatchMatMul.
   auto get_batch_matmul_nodedef = [](DataType dtype, bool transpose_a,
                                      bool transpose_b) -> NodeDef {
@@ -1881,6 +1951,30 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
                                    matmul_attrs);
     return matmul.operation.node()->def();
   };
+
+  {
+    // Can't broadcast two tensor inputs of different rank.
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {1, 2, 2}, /*batch_size=*/2);
+    AddTestTensor("weights", {2}, /*batch_size=*/2);
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Inputs must have the same rank if they are both tensors.");
+  }
+  {
+    // Make sure that INT8 mode doesn't try to use IFullyConnectedLayer when not
+    // compatible. In this case we can't use FC because transpose_a is true.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestTensor("input", {1, 2, 2});
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, true);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, false);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
 
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
@@ -1995,14 +2089,6 @@ void TestConvertBiasAdd(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertBiasAdd) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_biasadd", "BiasAdd", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "BiasAdd got 0 inputs but expected 2, at my_biasadd");
-  }
-
   // OK. Note that kINT32 is not supported by IScaleLayer, so we don't test
   // DT_INT32 type here.
   TestConvertBiasAdd<DT_FLOAT>(this);
@@ -2017,21 +2103,6 @@ NodeDef GetBinaryOpNodeDef(const string& input_name_l,
   auto input_r = ops::Placeholder(s.WithOpName(input_name_r), dtype);
   auto op = OpType(s.WithOpName("my_binary"), input_l, input_r);
   return op.operation.node()->def();
-}
-
-void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
-  bool element_wise_layer_found = false;
-  bool scale_layer_found = false;
-  for (int i = 0; i < test->converter_->network()->getNbLayers(); i++) {
-    nvinfer1::ILayer* layer = test->converter_->network()->getLayer(i);
-    if (dynamic_cast<nvinfer1::IScaleLayer*>(layer)) {
-      scale_layer_found = true;
-    } else if (dynamic_cast<nvinfer1::IElementWiseLayer*>(layer)) {
-      element_wise_layer_found = true;
-    }
-  }
-  EXPECT_EQ(expect_scale_layer, scale_layer_found);
-  EXPECT_NE(expect_scale_layer, element_wise_layer_found);
 }
 
 template <typename OpType, DataType dtype>
@@ -2124,17 +2195,6 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
 TEST_F(OpConverterTest, ConvertBinary) {
   AttrValue dtype;
   dtype.set_type(DT_FLOAT);
-  // Input size doesn't match, should fail.
-  for (size_t num_inputs = 0; num_inputs < 2; ++num_inputs) {
-    Reset();
-    NodeDef node_def =
-        MakeNodeDef("my_add", "Add", {num_inputs, "input"}, {{"T", dtype}});
-    AddTestTensor("input", {1}, /*batch_size=*/1, nvinfer1::DataType::kFLOAT);
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               StrCat("Add got ", std::to_string(num_inputs),
-                                      " inputs but expected 2, at my_add")
-                                   .c_str());
-  }
   {
     // Both inputs are weights.
     Reset();
@@ -2276,22 +2336,9 @@ TEST_F(OpConverterTest, ConvertAddN) {
 
 TEST_F(OpConverterTest, ConvertQuantize) {
   precision_mode_to_test_ = TrtPrecisionMode::INT8;
-  const std::pair<string, int> op_with_num_inputs[4] = {
-      {"FakeQuantWithMinMaxArgs", 1},
-      {"FakeQuantWithMinMaxVars", 3},
-      {"QuantizeAndDequantizeV2", 3},
-      {"QuantizeAndDequantizeV3", 4}};
-  for (const auto& pair : op_with_num_inputs) {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_quantize", pair.first, {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        StrCat(pair.first, " got 0 inputs but expected ",
-               std::to_string(pair.second), ", at my_quantize")
-            .c_str());
-  }
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
+    Reset();
     NodeDef node_def =
         MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
     AddTestTensor("input", {1, 2, 3});
@@ -2441,13 +2488,6 @@ void TestConvertSquare(OpConverterTest* test) {
 
 TEST_F(OpConverterTest, ConvertSquare) {
   {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_square", "Square", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Square got 0 inputs but expected 1, at my_square");
-  }
-  {
     // Input is weights, should fail.
     Reset();
     Scope s = Scope::NewRootScope();
@@ -2468,13 +2508,6 @@ TEST_F(OpConverterTest, ConvertSquare) {
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 TEST_F(OpConverterTest, ConvertCombinedNMS) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_nms", "CombinedNonMaxSuppression", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "CombinedNonMaxSuppression got 0 inputs but expected 6, at my_nms");
-  }
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = []() -> NodeDef {
     Scope s = Scope::NewRootScope();
@@ -2575,12 +2608,6 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
 #endif  // CombinedNonMaxSuppression
 
 TEST_F(OpConverterTest, ConvertActivation) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_act", "Relu", {});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Relu got 0 inputs but expected 1, at my_act");
-  }
   {
     // Input is weights, should fail.
     Reset();
@@ -2706,14 +2733,6 @@ TEST_F(OpConverterTest, ConvertActivation) {
 }
 
 TEST_F(OpConverterTest, ConvertExpandDims) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_expanddims", "ExpandDims", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "ExpandDims got 0 inputs but expected 2, at my_expanddims");
-  }
-
   // Get the NodeDef for ExpandDims.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
@@ -2818,13 +2837,6 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
 }
 
 TEST_F(OpConverterTest, ConvertSqueeze) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_squeeze", "Squeeze", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Squeeze got 0 inputs but expected 1, at my_squeeze");
-  }
   {
     // No attrs, should fail.
     Reset();
@@ -2948,14 +2960,6 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
 }
 
 TEST_F(OpConverterTest, ConvertStridedSlice) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_strided_slice", "StridedSlice", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "StridedSlice got 0 inputs but expected 4, at my_strided_slice");
-  }
-
   // Get nodedef for StridedSlice layer.
   auto get_strided_slice_nodedef =
       [](int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
@@ -3088,6 +3092,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     int begin_mask;
     int end_mask;
     int ellipsis_mask;
+    int new_axis_mask;
+    int shrink_axis_mask;
     std::vector<int> expected_output_dims;
     std::vector<float> expected_output;
   };
@@ -3104,9 +3110,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
 #if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  const int kStridedSliceOKCases = 28;
+  const int kStridedSliceOKCases = 31;
 #else
-  const int kStridedSliceOKCases = 24;
+  const int kStridedSliceOKCases = 27;
 #endif
   // Ok.
   TestParams ok_params[kStridedSliceOKCases] = {
@@ -3119,6 +3125,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3130,6 +3138,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3141,6 +3151,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3153,6 +3165,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{1, 2},
     },
@@ -3164,6 +3178,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{5, 6},
     },
@@ -3175,6 +3191,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3186,6 +3204,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3198,6 +3218,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3209,6 +3231,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3221,6 +3245,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 2},
         /*expected_output=*/{1, 2, 4, 5},
     },
@@ -3232,6 +3258,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 3},
         /*expected_output=*/{4, 5, 6},
     },
@@ -3244,6 +3272,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3, 1},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3255,6 +3285,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3, 1},
         /*expected_output=*/{4, 5, 6},
     },
@@ -3267,6 +3299,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3278,6 +3312,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3},
         /*expected_output=*/{3, 4, 5},
     },
@@ -3289,6 +3325,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3, 1},
         /*expected_output=*/{3, 4, 5},
     },
@@ -3301,6 +3339,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3, 1},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3312,6 +3352,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{5, 1},
         /*expected_output=*/{1, 2, 3, 4, 5},
     },
@@ -3324,6 +3366,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 3},
         /*expected_output=*/{1, 2, 3, 4, 5, 6},
     },
@@ -3337,6 +3381,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 3, 5},
     },
@@ -3348,6 +3394,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 3, 5},
     },
@@ -3359,6 +3407,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{2, 4, 6},
     },
@@ -3370,6 +3420,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{2},
         /*expected_output=*/{3, 6},
     },
@@ -3383,6 +3435,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3394,6 +3448,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({1, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3405,6 +3461,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3416,6 +3474,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3427,16 +3487,59 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
+    },
+    // shrink_axis_mask
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 0, 1},
+        /*end=*/{0, 0, 0, 2},
+        /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({1, 1, 1, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
+        /*expected_output_dims=*/{1, 2},
+        /*expected_output=*/{2, 5},
+    },
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 0, 1},
+        /*end=*/{0, 1, 2, 2},
+        /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({1, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
+        /*expected_output_dims=*/{2},
+        /*expected_output=*/{2, 5},
+    },
+    TestParams{
+        /*input_dims=*/{6},
+        /*begin=*/{0, 0},
+        /*end=*/{0, 1},
+        /*strides=*/{1, 1},
+        /*begin_mask=*/get_mask({1, 0}),
+        /*end_mask=*/get_mask({1, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 1}),
+        /*expected_output_dims=*/{},
+        /*expected_output=*/{1},
     },
   };
 
   for (int i = 0; i < kStridedSliceOKCases; i++) {
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask,
-                                                 ok_params[i].end_mask,
-                                                 ok_params[i].ellipsis_mask);
+    NodeDef node_def = get_strided_slice_nodedef(
+        ok_params[i].begin_mask, ok_params[i].end_mask,
+        ok_params[i].ellipsis_mask, ok_params[i].new_axis_mask,
+        ok_params[i].shrink_axis_mask);
     AddTestTensor("input", ok_params[i].input_dims);
     AddTestWeights<int32>("begin",
                           {static_cast<int>(ok_params[i].begin.size())},
@@ -3607,14 +3710,6 @@ TEST_F(OpConverterTest, ConvertSlice) {
 }
 
 TEST_F(OpConverterTest, ConvertConv2D) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_conv2d", "Conv2D", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Conv2D got 0 inputs but expected 2, at my_conv2d");
-  }
-
   // Get nodedef for Conv2D layer.
   auto get_conv2d_nodedef =
       [](std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
@@ -3877,14 +3972,6 @@ TEST_F(OpConverterTest, ConvertConv2D) {
 }
 
 TEST_F(OpConverterTest, ConvertTopK) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_topk", "TopKV2", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "TopKV2 got 0 inputs but expected 2, at my_topk");
-  }
-
   // TODO(tmorris): This test isn't setting the input dtype properly. TopK with
   // int32 is unsupported by TRT.
   for (const auto dtype : {DT_FLOAT}) {
@@ -4120,14 +4207,6 @@ void TestConvertGather(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertGather) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_gather", "GatherV2", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "GatherV2 got 0 inputs but expected 3, at my_gather");
-  }
-
   // Get the NodeDef for GatherV2.
   Scope s = Scope::NewRootScope();
   auto params = ops::Placeholder(s.WithOpName("params"), DT_FLOAT);
@@ -4193,12 +4272,6 @@ TEST_F(OpConverterTest, ConvertGather) {
 }
 
 TEST_F(OpConverterTest, ConvertUnary) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_unary", "Neg", {});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Neg got 0 inputs but expected 1, at my_unary");
-  }
   {
     // Input is weights, should fail.
     Reset();
@@ -4641,13 +4714,6 @@ void TestConvertSplit(OpConverterTest* test) {
 
 TEST_F(OpConverterTest, ConvertSplit) {
   {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_split", "Split", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Split got 0 inputs but expected 2, at my_split");
-  }
-  {
     // Axis is a tensor, should fail.
     Reset();
     NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
@@ -4827,13 +4893,6 @@ void TestConvertUnpack(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertUnpack) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_unpack", "Unpack", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Unpack got 0 inputs but expected 1, at my_unpack");
-  }
   {
     // Value is weights, should fail.
     Reset();
@@ -5162,13 +5221,6 @@ void TestConvertArgMinMax(OpConverterTest* test) {
 
 TEST_F(OpConverterTest, ConvertArgMinMax) {
   {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_argmax", "ArgMax", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "ArgMax got 0 inputs but expected 2, at my_argmax");
-  }
-  {
     // Dimension is a tensor, should fail.
     Reset();
     NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT32);
@@ -5314,13 +5366,6 @@ void TestConvertDepthToSpace(OpConverterTest* test) {
 
 TEST_F(OpConverterTest, ConvertDepthToSpace) {
   {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_shuffle", "DepthToSpace", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "DepthToSpace got 0 inputs but expected 1, at my_shuffle");
-  }
-  {
     // Input is a weight, should fail.
     Reset();
     NodeDef node_def =
@@ -5419,13 +5464,6 @@ void TestConvertSpaceToDepth(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertSpaceToDepth) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_shuffle", "SpaceToDepth", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "SpaceToDepth got 0 inputs but expected 1, at my_shuffle");
-  }
   {
     // Input is a weight, should fail.
     Reset();
@@ -5554,13 +5592,6 @@ void TestConvertClipByValue(OpConverterTest* test) {
 
 TEST_F(OpConverterTest, ConvertClipByValue) {
   {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_clip", "ClipByValue", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "ClipByValue got 0 inputs but expected 3, at my_clip");
-  }
-  {
     // Input is a weight, should fail.
     Reset();
     NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
@@ -5670,13 +5701,6 @@ void TestConvertSquaredDifference(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertSquaredDifference) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_squared_diff", "SquaredDifference", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "SquaredDifference got 0 inputs but expected 2, at my_squared_diff");
-  }
   {
     // Input is a weight, should fail.
     Reset();
@@ -5792,13 +5816,6 @@ void TestConvertResize(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertResize) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_resize", "ResizeBilinear", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "ResizeBilinear got 0 inputs but expected 2, at my_resize");
-  }
   {
     // First input is weight, should fail.
     Reset();

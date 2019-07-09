@@ -43,21 +43,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-# For testing deserialization of Datasets represented as functions
-class _RevivedDataset(dataset_ops.DatasetV2):
-
-  def __init__(self, variant, element_structure):
-    self._structure = element_structure
-    super(_RevivedDataset, self).__init__(variant)
-
-  def _inputs(self):
-    return []
-
-  @property
-  def _element_structure(self):
-    return self._structure
-
-
 @test_util.run_all_in_graph_and_eager_modes
 class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -75,8 +60,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn = original_dataset._trace_variant_creation()
       variant = fn()
 
-      revived_dataset = _RevivedDataset(
-          variant, original_dataset._element_structure)
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
       self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
 
   def testAsFunctionWithMapInFlatMap(self):
@@ -88,8 +73,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn = original_dataset._trace_variant_creation()
       variant = fn()
 
-      revived_dataset = _RevivedDataset(
-          variant, original_dataset._element_structure)
+      revived_dataset = dataset_ops._VariantDataset(
+          variant, original_dataset.element_spec)
       self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
   @staticmethod

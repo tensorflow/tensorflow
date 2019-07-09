@@ -15,13 +15,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -73,7 +76,7 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
@@ -216,7 +219,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   OpKernelContext* context_;  // not owned
   int output_index_;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <bool IsSame, typename Y, typename X, typename T>
 struct CastIfNecessary {
@@ -423,14 +426,14 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
   }
 };
 
-#ifndef GOOGLE_CUDA
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -848,7 +851,7 @@ DECLARE_GPU_SPEC(Eigen::half, float);
 
 #undef DECLARE_GPU_SPEC
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace functor
 
 template <typename Device, typename T, typename U>
@@ -1250,7 +1253,7 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<CPUDevice, Eigen::half, float>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("FusedBatchNorm").Device(DEVICE_GPU).TypeConstraint<float>("T"),

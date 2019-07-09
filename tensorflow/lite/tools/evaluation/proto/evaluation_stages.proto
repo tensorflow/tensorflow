@@ -194,3 +194,46 @@ message InferenceProfilerMetrics {
   //   across all Runs.
   repeated AccuracyMetrics output_errors = 3;
 }
+
+// Proto containing information about all the objects (predicted or
+// ground-truth) contained in an image.
+//
+// Next ID: 3
+message ObjectDetectionResult {
+  // One instance of an object detected in an image.
+  // Next ID: 4
+  message ObjectInstance {
+    // Defines the bounding box for a detected object.
+    // Next ID: 5
+    message NormalizedBoundingBox {
+      // All boundaries defined below are required.
+      // Each boundary value should be normalized with respect to the image
+      // dimensions. This helps evaluate detections independent of image size.
+      // For example, normalized_top = top_boundary / image_height.
+      optional float normalized_top = 1;
+      optional float normalized_bottom = 2;
+      optional float normalized_left = 3;
+      optional float normalized_right = 4;
+    }
+
+    // Required.
+    optional int32 class_id = 1;
+    // Required
+    optional NormalizedBoundingBox bounding_box = 2;
+    // Value in (0, 1.0] denoting confidence in this prediction.
+    // Default value of 1.0 for ground-truth data.
+    optional float score = 3 [default = 1.0];
+  }
+
+  repeated ObjectInstance objects = 1;
+  // Required for ground-truth data, to compare against inference results.
+  optional string image_name = 2;
+}
+
+// Proto containing ground-truth ObjectsSets for all images in a COCO validation
+// set.
+//
+// Next ID: 2
+message ObjectDetectionGroundTruth {
+  repeated ObjectDetectionResult detection_results = 1;
+}

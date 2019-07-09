@@ -9,7 +9,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'shape\', \'dtype\', \'indices_dtype\', \'dense_shape_dtype\', \'indices_shape\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \"<dtype: \'int64\'>\", \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'indices_dtype\', \'dense_shape_dtype\', \'indices_shape\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \"<dtype: \'int64\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "is_compatible_with"

@@ -1159,13 +1159,14 @@ class TestDelegate : public ::testing::Test {
         for (int exec_index = 0; exec_index < execution_plan->size;
              exec_index++) {
           int node_index = execution_plan->data[exec_index];
-          // Check that we are an identity map to start.
-          TFLITE_CHECK_EQ(exec_index, node_index);
           TfLiteNode* node;
           TfLiteRegistration* reg;
           context->GetNodeAndRegistration(context, node_index, &node, &reg);
-          TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
-          TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+          if (exec_index == node_index) {
+            // Check op details only if it wasn't delegated already.
+            TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
+            TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+          }
         }
 
         context->ReplaceNodeSubsetsWithDelegateKernels(
@@ -1209,15 +1210,43 @@ class TestDelegate : public ::testing::Test {
       reg.invoke = [](TfLiteContext* context,
                       TfLiteNode* node) -> TfLiteStatus {
         // Copy input data to output data.
-        TfLiteTensor* a0 = &context->tensors[node->inputs->data[0]];
-        TfLiteTensor* a1 = &context->tensors[node->inputs->data[1]];
+        TfLiteTensor* a0;
+        TfLiteTensor* a1;
+        if (node->inputs->size == 2) {
+          a0 = &context->tensors[node->inputs->data[0]];
+          a1 = &context->tensors[node->inputs->data[1]];
+        } else {
+          a0 = &context->tensors[node->inputs->data[0]];
+          a1 = a0;
+        }
         TfLiteTensor* out = &context->tensors[node->outputs->data[0]];
-        int num = a0->dims->data[0];
+        int num = 1;
+        for (int i = 0; i < a0->dims->size; ++i) {
+          num *= a0->dims->data[i];
+        }
         for (int i = 0; i < num; i++) {
           out->data.f[i] = a0->data.f[i] + a1->data.f[i];
         }
         // Make the data stale so that CopyFromBufferHandle can be invoked
         out->data_is_stale = true;
+        return kTfLiteOk;
+      };
+
+      reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+        // Set output size to input size
+        TfLiteTensor* input1;
+        TfLiteTensor* input2;
+        if (node->inputs->size == 2) {
+          input1 = &context->tensors[node->inputs->data[0]];
+          input2 = &context->tensors[node->inputs->data[1]];
+        } else {
+          input1 = &context->tensors[node->inputs->data[0]];
+          input2 = input1;
+        }
+        TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+
+        TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+            context, output, TfLiteIntArrayCopy(input1->dims)));
         return kTfLiteOk;
       };
       return reg;
@@ -1230,7 +1259,7 @@ class TestDelegate : public ::testing::Test {
     TfLiteDelegate delegate_;
   };
   std::unique_ptr<Interpreter> interpreter_;
-  std::unique_ptr<SimpleDelegate> delegate_;
+  std::unique_ptr<SimpleDelegate> delegate_, delegate2_;
 };
 
 TEST_F(TestDelegate, BasicDelegate) {
@@ -1266,13 +1295,6 @@ TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
-
-  // As the delegate doesn't support dynamic resizing, further graph mutation is
-  // prohibited.
-  ASSERT_NE(interpreter_->ResizeInputTensor(0, {0}), kTfLiteOk);
-  ASSERT_NE(
-      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
-      kTfLiteOk);
 
   // Deliberately try to set tensor params with quantization while immutable,
   // ensuring quantization is properly freed.
@@ -1366,14 +1388,115 @@ TEST_F(TestDelegate, SetInvalidHandleToTensor) {
   EXPECT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
 }
 
-TEST_F(TestDelegate, ResizeInputWithNonDynamicDelegateShouldFail) {
+TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
-  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 2}), kTfLiteOk);
-  ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 2}), kTfLiteOk);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
-  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 2}), kTfLiteError);
+
+  // Try resizing input to same shape as before (which should be a No-op).
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  // This should fail, since the previous application of the delegate will be
+  // re-done automatically, making the graph immutable again.
+  ASSERT_NE(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  // Ensure graph has been restored to its valid delegated state.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
+  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f, 8.0f};
+  constexpr int kOutputTensorIndex = 3;
+  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+
+  // Verify Invoke() behavior.
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  interpreter_->Invoke();
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
+
+  // Resize again, but call AllocateTensors as usual afterwards.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
+  interpreter_->Invoke();
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
+}
+
+TEST_F(TestDelegate, TestResizeInputWithMultipleDelegates) {
+  // First delegate only supports node 0.
+  // This delegate should support dynamic tensors, otherwise the second won't be
+  // applied.
+  delegate_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({0}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  // Second delegate supports nodes 1 & 2, and makes the graph immutable.
+  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({1, 2}));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  // Should be two delegates nodes.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  // Try resizing input to same shape as before (which should be a No-op).
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  // Resizing input tensors should temporarily restore original execution plan
+  // of 3 nodes.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  // This should fail, since the previous application of the delegate will be
+  // re-done automatically, making the graph immutable again.
+  ASSERT_NE(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  // Ensure graph has been restored to its valid delegated state.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f, 8.0f};
+  constexpr int kOutputTensorIndex = 2;
+  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+
+  // Verify Invoke() behavior.
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  interpreter_->Invoke();
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
+
+  // Resize again, but call AllocateTensors as usual afterwards.
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
+  interpreter_->Invoke();
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
 }
 
 TEST_F(TestDelegate, TestCopyFromBufferInvoke) {

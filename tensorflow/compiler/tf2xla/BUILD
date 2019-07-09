@@ -1,4 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 package(
     default_visibility = [":internal"],
@@ -25,13 +31,6 @@ package_group(
         "//tensorflow/...",
     ],
 )
-
-load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 cc_library(
     name = "tf2xla_supported_ops_lib",
@@ -265,6 +264,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -561,6 +561,7 @@ cc_library(
     srcs = [
         "functionalize_control_flow_pass_registration.cc",
     ],
+    visibility = [":friends"],
     deps = [
         ":functionalize_control_flow",
     ],
@@ -726,5 +727,40 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "resource_util",
+    srcs = ["resource_util.cc"],
+    hdrs = ["resource_util.h"],
+    visibility = [":friends"],
+    deps = [
+        ":resource_operation_table",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resource_util_test",
+    size = "small",
+    srcs = ["resource_util_test.cc"],
+    deps = [
+        ":resource_util",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
     ],
 )

@@ -355,12 +355,14 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   }
 
   // Do not change precision for instructions related to entry and exit of a
-  // computation, side-effecting instructions, and control flow, because this
-  // pass might break the interfaces or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      hlo->HasSideEffectNoRecurse() ||             //
+  // computation, side-effecting instructions, control flow, and
+  // bitcast-convert, because this pass might break the interfaces or
+  // assumptions for them.
+  if (hlo->opcode() == HloOpcode::kCustomCall ||      //
+      hlo->opcode() == HloOpcode::kCall ||            //
+      hlo->opcode() == HloOpcode::kConditional ||     //
+      hlo->opcode() == HloOpcode::kBitcastConvert ||  //
+      hlo->HasSideEffectNoRecurse() ||                //
       (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
