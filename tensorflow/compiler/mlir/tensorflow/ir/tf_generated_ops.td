@@ -2635,34 +2635,6 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
-  let summary = "List of the given size with empty elements.";
-
-  let description = [{
-element_shape: the shape of the future elements of the list
-num_elements: the number of elements to reserve
-handle: the output list
-element_dtype: the desired type of elements in the list.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements,
-
-    TypeAttr:$element_dtype
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
-}
-
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 
