@@ -47,6 +47,7 @@ class ScatterUpdateOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 };
+
 class ScatterSubOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_ref_type, DataType index_type) {
@@ -271,7 +272,7 @@ static void BM_ScatterHelper(int iters, int embedding_size, const char* op,
   for (int i = 0; i < kRows * embedding_size; i++) {
     values.push_back(i);
   }
-  int kNumUpdates = big_num_updates ? 1000000 : 1000;
+  const int kNumUpdates = big_num_updates ? 1000000 : 1000;
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<Index> indices;

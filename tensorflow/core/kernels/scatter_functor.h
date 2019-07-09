@@ -207,8 +207,7 @@ struct ScatterFunctorBase {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     mutex mu_;
-    Index bad_index GUARDED_BY(mu_);
-    bool found_bad_index = false GUARDED_BY(mu_);
+    Index bad_index = -1 GUARDED_BY(mu_);
     auto ParallelScatter = [&](Index start, Index end) LOCKS_EXCLUDED(mu_){
       for (Index i = start; i < end; i++) {
         // Grab the index and check its validity.  Do this carefully,
@@ -219,7 +218,6 @@ struct ScatterFunctorBase {
         if (!FastBoundsCheck(index, limit)) {
           mutex_lock lock(mu_);
           bad_index = i;
-          found_bad_index = true;
           return;
         }
         // Copy last Ndim-1 dimensions of updates[i] to params[index]
@@ -231,8 +229,7 @@ struct ScatterFunctorBase {
         *(c->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, N, 35.0,
           ParallelScatter);  // Cost is arbitrary for now.
-    if (found_bad_index) return bad_index;
-    return -1;
+    return bad_index;
   }
 };
 
