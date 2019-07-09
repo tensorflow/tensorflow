@@ -4545,9 +4545,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "deprecation_wrapper_test",
+    name = "module_wrapper_test",
     size = "small",
-    srcs = ["util/deprecation_wrapper_test.py"],
+    srcs = ["util/module_wrapper_test.py"],
     additional_deps = [
         ":client_testlib",
         ":util",
