@@ -34,7 +34,7 @@ class IotaR1Test
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
-TEST_P(IotaR1Test, DoIt) {
+XLA_TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
@@ -63,7 +63,7 @@ class IotaR2Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR2Test, DoIt) {
+XLA_TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
@@ -95,7 +95,7 @@ class IotaR3Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR3Test, DoIt) {
+XLA_TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
