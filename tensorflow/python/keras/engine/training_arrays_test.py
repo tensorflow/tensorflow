@@ -110,7 +110,7 @@ class PrintTrainingInfoTest(parameterized.TestCase):
     if do_validation:
       self.assertIn(", validate on 50 samples", mock_stdout.getvalue())
 
-  def test_dict_input(self):
+  def test_dict_validation_input(self):
     """Test case for GitHub issue 30122."""
     train_input_0 = np.random.rand(1000, 1)
     train_input_1 = np.random.rand(1000, 1)
@@ -139,13 +139,11 @@ class PrintTrainingInfoTest(parameterized.TestCase):
     model = my_model()
     model.compile(loss="mae", optimizer="adam")
 
-    mock_stdout = six.StringIO()
-    with test.mock.patch.object(sys, "stdout", mock_stdout):
-      model.fit(
-          x={'input_0': train_input_0, 'input_1': train_input_1},
-          y=train_labels,
-          validation_data=(
-              {'input_0': val_input_0, 'input_1': val_input_1}, val_labels))
+    model.fit(
+        x={'input_0': train_input_0, 'input_1': train_input_1},
+        y=train_labels,
+        validation_data=(
+            {'input_0': val_input_0, 'input_1': val_input_1}, val_labels))
 
 
 if __name__ == "__main__":
