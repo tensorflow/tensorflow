@@ -34,10 +34,10 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
+FuncOp makeFunctionWithAMatmulOp(Module module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
-  mlir::Function f = linalg::common::makeFunction(
+  mlir::FuncOp f = linalg::common::makeFunction(
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
@@ -65,7 +65,7 @@ Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
 TEST_FUNC(matmul_tiled_loops) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
-  mlir::Function f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_loops");
+  mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_loops");
   lowerToTiledLoops(f, {8, 9});
   PassManager pm;
   pm.addPass(createLowerLinalgLoadStorePass());
@@ -96,7 +96,7 @@ TEST_FUNC(matmul_tiled_loops) {
 TEST_FUNC(matmul_tiled_views) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
-  mlir::Function f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_views");
+  mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_views");
   OpBuilder b(f.getBody());
   lowerToTiledViews(f, {b.create<ConstantIndexOp>(f.getLoc(), 8),
                         b.create<ConstantIndexOp>(f.getLoc(), 9)});
@@ -125,7 +125,7 @@ TEST_FUNC(matmul_tiled_views) {
 TEST_FUNC(matmul_tiled_views_as_loops) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
-  mlir::Function f =
+  mlir::FuncOp f =
       makeFunctionWithAMatmulOp(*module, "matmul_tiled_views_as_loops");
   OpBuilder b(f.getBody());
   lowerToTiledViews(f, {b.create<ConstantIndexOp>(f.getLoc(), 8),

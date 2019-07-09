@@ -236,9 +236,6 @@ private:
     return getAttrOfType<DictionaryAttr>(getArgAttrName(index, nameOut));
   }
 };
-
-/// Temporary forward declaration of FuncOp to the legacy Function.
-using Function = FuncOp;
 } // end namespace mlir
 
 namespace llvm {

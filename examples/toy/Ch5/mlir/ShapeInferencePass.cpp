@@ -104,7 +104,7 @@ namespace {
 ///     a) Take the last inserted function in the worklist.
 ///     b) Run the intra-procedural shape inference on this function.
 ///     c) If the intra-procedural shape inference can't complete, it returns
-///        a Function that needs to be inferred first. In this case, queue this
+///        a FuncOp that needs to be inferred first. In this case, queue this
 ///        new function and continue. Otherwise the inference succeeded and we
 ///        can pop from the queue.
 ///
@@ -114,7 +114,7 @@ public:
   // function to process, the mangled name for this specialization, and the
   // types of the arguments on which to specialize.
   struct FunctionToSpecialize {
-    mlir::Function function;
+    mlir::FuncOp function;
     std::string mangledName;
     SmallVector<mlir::Type, 4> argumentsType;
   };
@@ -141,8 +141,8 @@ public:
 
     // Delete any generic function left
     // FIXME: we may want this as a separate pass.
-    for (mlir::Function function :
-         llvm::make_early_inc_range(module.getOps<mlir::Function>())) {
+    for (mlir::FuncOp function :
+         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
       if (auto genericAttr =
               function.getAttrOfType<mlir::BoolAttr>("toy.generic")) {
         if (genericAttr.getValue())
@@ -157,7 +157,7 @@ public:
   specialize(SmallVectorImpl<FunctionToSpecialize> &funcWorklist,
              mlir::ModuleManager &moduleManager) {
     FunctionToSpecialize &functionToSpecialize = funcWorklist.back();
-    mlir::Function f = functionToSpecialize.function;
+    mlir::FuncOp f = functionToSpecialize.function;
 
     // Check if cloning for specialization is needed (usually anything but main)
     // We will create a new function with the concrete types for the parameters
@@ -165,7 +165,7 @@ public:
     if (!functionToSpecialize.mangledName.empty()) {
       if (moduleManager.getNamedFunction(functionToSpecialize.mangledName)) {
         funcWorklist.pop_back();
-        // Function already specialized, move on.
+        // FuncOp already specialized, move on.
         return mlir::success();
       }
       // Create a new function with a generic array return type, it will be
@@ -174,8 +174,8 @@ public:
                                           {ToyArrayType::get(&getContext())},
                                           &getContext());
       auto newFunction =
-          mlir::Function::create(f.getLoc(), functionToSpecialize.mangledName,
-                                 type, f.getDialectAttrs());
+          mlir::FuncOp::create(f.getLoc(), functionToSpecialize.mangledName,
+                               type, f.getDialectAttrs());
       moduleManager.insert(newFunction);
 
       // Clone the function body

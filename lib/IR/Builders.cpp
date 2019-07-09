@@ -177,7 +177,7 @@ IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
 
 TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
 
-FunctionAttr Builder::getFunctionAttr(Function value) {
+FunctionAttr Builder::getFunctionAttr(FuncOp value) {
   return getFunctionAttr(value.getName());
 }
 FunctionAttr Builder::getFunctionAttr(StringRef value) {
@@ -337,14 +337,14 @@ OpBuilder::~OpBuilder() {}
 /// Add new block and set the insertion point to the end of it.  If an
 /// 'insertBefore' block is passed, the block will be placed before the
 /// specified block.  If not, the block will be appended to the end of the
-/// current function.
+/// current region.
 Block *OpBuilder::createBlock(Block *insertBefore) {
   Block *b = new Block();
 
   // If we are supposed to insert before a specific block, do so, otherwise add
-  // the block to the end of the function.
+  // the block to the end of the region.
   if (insertBefore)
-    region->getBlocks().insert(Function::iterator(insertBefore), b);
+    region->getBlocks().insert(Region::iterator(insertBefore), b);
   else
     region->push_back(b);
 

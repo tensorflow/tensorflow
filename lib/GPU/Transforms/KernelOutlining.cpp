@@ -40,7 +40,7 @@ static void createForAllDimensions(OpBuilder &builder, Location loc,
 
 // Add operations generating block/thread ids and gird/block dimensions at the
 // beginning of `kernelFunc` and replace uses of the respective function args.
-static void injectGpuIndexOperations(Location loc, Function kernelFunc) {
+static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   OpBuilder OpBuilder(kernelFunc.getBody());
   SmallVector<Value *, 12> indexOps;
   createForAllDimensions<gpu::BlockId>(OpBuilder, loc, indexOps);
@@ -58,14 +58,14 @@ static void injectGpuIndexOperations(Location loc, Function kernelFunc) {
 
 // Outline the `gpu.launch` operation body into a kernel function. Replace
 // `gpu.return` operations by `std.return` in the generated functions.
-static Function outlineKernelFunc(gpu::LaunchOp launchOp) {
+static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   Location loc = launchOp.getLoc();
   SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
   FunctionType type =
       FunctionType::get(kernelOperandTypes, {}, launchOp.getContext());
   std::string kernelFuncName =
       Twine(launchOp.getParentOfType<FuncOp>().getName(), "_kernel").str();
-  Function outlinedFunc = Function::create(loc, kernelFuncName, type);
+  FuncOp outlinedFunc = FuncOp::create(loc, kernelFuncName, type);
   outlinedFunc.getBody().takeBody(launchOp.getBody());
   Builder builder(launchOp.getContext());
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
@@ -81,8 +81,7 @@ static Function outlineKernelFunc(gpu::LaunchOp launchOp) {
 
 // Replace `gpu.launch` operations with an `gpu.launch_func` operation launching
 // `kernelFunc`.
-static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp,
-                                  Function kernelFunc) {
+static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   OpBuilder builder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues(
       launchOp.getKernelOperandValues());
@@ -100,7 +99,7 @@ public:
     ModuleManager moduleManager(getModule());
     for (auto func : getModule().getOps<FuncOp>()) {
       func.walk<mlir::gpu::LaunchOp>([&](mlir::gpu::LaunchOp op) {
-        Function outlinedFunc = outlineKernelFunc(op);
+        FuncOp outlinedFunc = outlineKernelFunc(op);
         moduleManager.insert(outlinedFunc);
         convertToLaunchFuncOp(op, outlinedFunc);
       });

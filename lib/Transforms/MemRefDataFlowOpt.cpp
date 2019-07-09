@@ -213,7 +213,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(AffineLoadOp loadOp) {
 
 void MemRefDataFlowOpt::runOnFunction() {
   // Only supports single block functions at the moment.
-  Function f = getFunction();
+  FuncOp f = getFunction();
   if (f.getBlocks().size() != 1) {
     markAllAnalysesPreserved();
     return;

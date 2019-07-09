@@ -29,7 +29,7 @@ struct StripDebugInfo : public FunctionPass<StripDebugInfo> {
 } // end anonymous namespace
 
 void StripDebugInfo::runOnFunction() {
-  Function func = getFunction();
+  FuncOp func = getFunction();
   auto unknownLoc = UnknownLoc::get(&getContext());
 
   // Strip the debug info from the function and its operations.

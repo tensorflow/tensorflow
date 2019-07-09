@@ -25,6 +25,7 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class FuncOp;
 class OpBuilder;
 class Type;
 
@@ -145,12 +146,12 @@ public:
 
   /// Verify an attribute from this dialect on the given function. Returns
   /// failure if the verification failed, success otherwise.
-  virtual LogicalResult verifyFunctionAttribute(Function, NamedAttribute);
+  virtual LogicalResult verifyFunctionAttribute(FuncOp, NamedAttribute);
 
   /// Verify an attribute from this dialect on the argument at 'argIndex' for
   /// the given function. Returns failure if the verification failed, success
   /// otherwise.
-  virtual LogicalResult verifyFunctionArgAttribute(Function, unsigned argIndex,
+  virtual LogicalResult verifyFunctionArgAttribute(FuncOp, unsigned argIndex,
                                                    NamedAttribute);
 
   /// Verify an attribute from this dialect on the given operation. Returns

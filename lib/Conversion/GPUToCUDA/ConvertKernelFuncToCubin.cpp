@@ -75,12 +75,12 @@ public:
 
 private:
   static OwnedCubin compilePtxToCubinForTesting(const std::string &ptx,
-                                                Function &function);
+                                                FuncOp &function);
 
   std::string translateModuleToPtx(llvm::Module &module,
                                    llvm::TargetMachine &target_machine);
-  OwnedCubin convertModuleToCubin(llvm::Module &llvmModule, Function &function);
-  LogicalResult translateGpuKernelToCubinAnnotation(Function &function);
+  OwnedCubin convertModuleToCubin(llvm::Module &llvmModule, FuncOp &function);
+  LogicalResult translateGpuKernelToCubinAnnotation(FuncOp &function);
 
   CubinGenerator cubinGenerator;
 };
@@ -104,13 +104,13 @@ std::string GpuKernelToCubinPass::translateModuleToPtx(
 
 OwnedCubin
 GpuKernelToCubinPass::compilePtxToCubinForTesting(const std::string &ptx,
-                                                  Function &function) {
+                                                  FuncOp &function) {
   const char data[] = "CUBIN";
   return llvm::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
 }
 
 OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
-                                                      Function &function) {
+                                                      FuncOp &function) {
   std::unique_ptr<llvm::TargetMachine> targetMachine;
   {
     std::string error;
@@ -136,7 +136,7 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
 }
 
 LogicalResult
-GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(Function &function) {
+GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   Builder builder(function.getContext());
 
   OwningModuleRef module = builder.createModule();

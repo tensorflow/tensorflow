@@ -153,11 +153,11 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
   return success();
 }
 
-/// Promotes all single iteration for op's in the Function, i.e., moves
+/// Promotes all single iteration for op's in the FuncOp, i.e., moves
 /// their body into the containing Block.
-void mlir::promoteSingleIterationLoops(Function *f) {
+void mlir::promoteSingleIterationLoops(FuncOp f) {
   // Gathers all innermost loops through a post order pruned walk.
-  f->walk<AffineForOp>(
+  f.walk<AffineForOp>(
       [](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
 }
 

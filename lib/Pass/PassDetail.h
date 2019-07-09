@@ -48,7 +48,7 @@ public:
   FunctionPassExecutor(const FunctionPassExecutor &rhs);
 
   /// Run the executor on the given function.
-  LogicalResult run(Function function, FunctionAnalysisManager &fam);
+  LogicalResult run(FuncOp function, FunctionAnalysisManager &fam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.

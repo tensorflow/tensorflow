@@ -42,7 +42,7 @@ using namespace mlir::detail;
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-LogicalResult FunctionPassBase::run(Function fn, FunctionAnalysisManager &fam) {
+LogicalResult FunctionPassBase::run(FuncOp fn, FunctionAnalysisManager &fam) {
   // Initialize the pass state.
   passState.emplace(fn, fam);
 
@@ -110,7 +110,7 @@ FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
 }
 
 /// Run all of the passes in this manager over the current function.
-LogicalResult detail::FunctionPassExecutor::run(Function function,
+LogicalResult detail::FunctionPassExecutor::run(FuncOp function,
                                                 FunctionAnalysisManager &fam) {
   // Run each of the held passes.
   for (auto &pass : passes)
@@ -135,8 +135,7 @@ LogicalResult detail::ModulePassExecutor::run(Module module,
 
 /// Utility to run the given function and analysis manager on a provided
 /// function pass executor.
-static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe,
-                                         Function func,
+static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe, FuncOp func,
                                          FunctionAnalysisManager &fam) {
   // Run the function pipeline over the provided function.
   auto result = fpe.run(func, fam);
@@ -184,7 +183,7 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
   // Run a prepass over the module to collect the functions to execute a over.
   // This ensures that an analysis manager exists for each function, as well as
   // providing a queue of functions to execute over.
-  std::vector<std::pair<Function, FunctionAnalysisManager>> funcAMPairs;
+  std::vector<std::pair<FuncOp, FunctionAnalysisManager>> funcAMPairs;
   for (auto func : getModule().getOps<FuncOp>())
     if (!func.isExternal())
       funcAMPairs.emplace_back(func, mam.slice(func));
@@ -340,13 +339,13 @@ PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
 }
 
 /// Create an analysis slice for the given child function.
-FunctionAnalysisManager ModuleAnalysisManager::slice(Function func) {
+FunctionAnalysisManager ModuleAnalysisManager::slice(FuncOp func) {
   assert(func.getModule() == moduleAnalyses.getIRUnit() &&
          "function has a different parent module");
   auto it = functionAnalyses.find(func);
   if (it == functionAnalyses.end()) {
-    it = functionAnalyses.try_emplace(func, new AnalysisMap<Function>(func))
-             .first;
+    it =
+        functionAnalyses.try_emplace(func, new AnalysisMap<FuncOp>(func)).first;
   }
   return {this, it->second.get()};
 }

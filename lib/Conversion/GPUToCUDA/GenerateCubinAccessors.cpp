@@ -59,10 +59,10 @@ private:
     return LLVM::LLVMType::getIntNTy(llvmDialect, bits);
   }
 
-  Function getMallocHelper(Location loc, Builder &builder) {
-    Function result = getModule().getNamedFunction(kMallocHelperName);
+  FuncOp getMallocHelper(Location loc, Builder &builder) {
+    FuncOp result = getModule().getNamedFunction(kMallocHelperName);
     if (!result) {
-      result = Function::create(
+      result = FuncOp::create(
           loc, kMallocHelperName,
           builder.getFunctionType(ArrayRef<Type>{getIndexType()},
                                   LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
@@ -75,13 +75,13 @@ private:
   // data from blob. As there are currently no global constants, this uses a
   // sequence of store operations.
   // TODO(herhut): Use global constants instead.
-  Function generateCubinAccessor(Builder &builder, Function &orig,
-                                 StringAttr blob) {
+  FuncOp generateCubinAccessor(Builder &builder, FuncOp &orig,
+                               StringAttr blob) {
     Location loc = orig.getLoc();
     SmallString<128> nameBuffer(orig.getName());
     nameBuffer.append(kCubinGetterSuffix);
     // Generate a function that returns void*.
-    Function result = Function::create(
+    FuncOp result = FuncOp::create(
         loc, mlir::Identifier::get(nameBuffer, &getContext()),
         builder.getFunctionType(ArrayRef<Type>{},
                                 LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
@@ -127,7 +127,7 @@ public:
     for (auto it = functions.begin(); it != functions.end();) {
       // Move iterator to after the current function so that potential insertion
       // of the accessor is after the kernel with cubin iself.
-      Function orig = *it++;
+      FuncOp orig = *it++;
       StringAttr cubinBlob = orig.getAttrOfType<StringAttr>(kCubinAnnotation);
       if (!cubinBlob)
         continue;

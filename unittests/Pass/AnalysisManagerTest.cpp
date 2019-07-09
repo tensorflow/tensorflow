@@ -25,11 +25,11 @@ using namespace mlir::detail;
 namespace {
 /// Minimal class definitions for two analyses.
 struct MyAnalysis {
-  MyAnalysis(Function) {}
+  MyAnalysis(FuncOp) {}
   MyAnalysis(Module) {}
 };
 struct OtherAnalysis {
-  OtherAnalysis(Function) {}
+  OtherAnalysis(FuncOp) {}
   OtherAnalysis(Module) {}
 };
 
@@ -59,9 +59,9 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
 
   // Create a function and a module.
   OwningModuleRef module(Module::create(&context));
-  Function func1 =
-      Function::create(builder.getUnknownLoc(), "foo",
-                       builder.getFunctionType(llvm::None, llvm::None));
+  FuncOp func1 =
+      FuncOp::create(builder.getUnknownLoc(), "foo",
+                     builder.getFunctionType(llvm::None, llvm::None));
   module->push_back(func1);
 
   // Test fine grain invalidation of the function analysis manager.
@@ -87,9 +87,9 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
 
   // Create a function and a module.
   OwningModuleRef module(Module::create(&context));
-  Function func1 =
-      Function::create(builder.getUnknownLoc(), "foo",
-                       builder.getFunctionType(llvm::None, llvm::None));
+  FuncOp func1 =
+      FuncOp::create(builder.getUnknownLoc(), "foo",
+                     builder.getFunctionType(llvm::None, llvm::None));
   module->push_back(func1);
 
   // Test fine grain invalidation of a function analysis from within a module

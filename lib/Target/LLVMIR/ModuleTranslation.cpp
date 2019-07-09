@@ -275,7 +275,7 @@ static Value *getPHISourceValue(Block *current, Block *pred,
              : terminator.getSuccessorOperand(1, index);
 }
 
-void ModuleTranslation::connectPHINodes(Function func) {
+void ModuleTranslation::connectPHINodes(FuncOp func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
@@ -306,7 +306,7 @@ static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
 }
 
 // Sort function blocks topologically.
-static llvm::SetVector<Block *> topologicalSort(Function f) {
+static llvm::SetVector<Block *> topologicalSort(FuncOp f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
@@ -320,7 +320,7 @@ static llvm::SetVector<Block *> topologicalSort(Function f) {
   return blocks;
 }
 
-bool ModuleTranslation::convertOneFunction(Function func) {
+bool ModuleTranslation::convertOneFunction(FuncOp func) {
   // Clear the block and value mappings, they are only relevant within one
   // function.
   blockMapping.clear();
@@ -375,7 +375,7 @@ bool ModuleTranslation::convertOneFunction(Function func) {
 bool ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (Function function : mlirModule.getOps<FuncOp>()) {
+  for (FuncOp function : mlirModule.getOps<FuncOp>()) {
     mlir::BoolAttr isVarArgsAttr =
         function.getAttrOfType<BoolAttr>("std.varargs");
     bool isVarArgs = isVarArgsAttr && isVarArgsAttr.getValue();
@@ -392,7 +392,7 @@ bool ModuleTranslation::convertFunctions() {
   }
 
   // Convert functions.
-  for (Function function : mlirModule.getOps<FuncOp>()) {
+  for (FuncOp function : mlirModule.getOps<FuncOp>()) {
     // Ignore external functions.
     if (function.isExternal())
       continue;

@@ -150,7 +150,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 // MemRefDependenceGraph is a graph data structure where graph nodes are
-// top-level operations in a Function which contain load/store ops, and edges
+// top-level operations in a FuncOp which contain load/store ops, and edges
 // are memref dependences between the nodes.
 // TODO(andydavis) Add a more flexible dependece graph representation.
 // TODO(andydavis) Add a depth parameter to dependence graph construction.
@@ -257,7 +257,7 @@ public:
 
   // Initializes the dependence graph based on operations in 'f'.
   // Returns true on success, false otherwise.
-  bool init(Function f);
+  bool init(FuncOp f);
 
   // Returns the graph node for 'id'.
   Node *getNode(unsigned id) {
@@ -637,7 +637,7 @@ public:
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
-bool MemRefDependenceGraph::init(Function f) {
+bool MemRefDependenceGraph::init(FuncOp f) {
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
 
   // TODO: support multi-block functions.

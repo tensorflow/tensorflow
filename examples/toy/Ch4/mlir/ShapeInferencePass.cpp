@@ -114,7 +114,7 @@ public:
   // function to process, the mangled name for this specialization, and the
   // types of the arguments on which to specialize.
   struct FunctionToSpecialize {
-    mlir::Function function;
+    mlir::FuncOp function;
     std::string mangledName;
     SmallVector<mlir::Type, 4> argumentsType;
   };
@@ -140,8 +140,8 @@ public:
 
     // Delete any generic function left
     // FIXME: we may want this as a separate pass.
-    for (mlir::Function function :
-         llvm::make_early_inc_range(module.getOps<mlir::Function>())) {
+    for (mlir::FuncOp function :
+         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
       if (auto genericAttr =
               function.getAttrOfType<mlir::BoolAttr>("toy.generic")) {
         if (genericAttr.getValue())
@@ -155,7 +155,7 @@ public:
   mlir::LogicalResult
   specialize(SmallVectorImpl<FunctionToSpecialize> &funcWorklist) {
     FunctionToSpecialize &functionToSpecialize = funcWorklist.back();
-    mlir::Function f = functionToSpecialize.function;
+    mlir::FuncOp f = functionToSpecialize.function;
 
     // Check if cloning for specialization is needed (usually anything but main)
     // We will create a new function with the concrete types for the parameters
@@ -172,8 +172,8 @@ public:
                                           {ToyArrayType::get(&getContext())},
                                           &getContext());
       auto newFunction =
-          mlir::Function::create(f.getLoc(), functionToSpecialize.mangledName,
-                                 type, f.getDialectAttrs());
+          mlir::FuncOp::create(f.getLoc(), functionToSpecialize.mangledName,
+                               type, f.getDialectAttrs());
       getModule().push_back(newFunction);
 
       // Clone the function body

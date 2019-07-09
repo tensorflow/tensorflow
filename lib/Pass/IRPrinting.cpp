@@ -61,8 +61,8 @@ private:
 static void printIR(const llvm::Any &ir, bool printModuleScope,
                     raw_ostream &out) {
   // Check for printing at module scope.
-  if (printModuleScope && llvm::any_isa<Function>(ir)) {
-    Function function = llvm::any_cast<Function>(ir);
+  if (printModuleScope && llvm::any_isa<FuncOp>(ir)) {
+    FuncOp function = llvm::any_cast<FuncOp>(ir);
 
     // Print the function name and a newline before the Module.
     out << " (function: " << function.getName() << ")\n";
@@ -74,8 +74,8 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
   out << "\n";
 
   // Print the given function.
-  if (llvm::any_isa<Function>(ir)) {
-    llvm::any_cast<Function>(ir).print(out);
+  if (llvm::any_isa<FuncOp>(ir)) {
+    llvm::any_cast<FuncOp>(ir).print(out);
     return;
   }
 

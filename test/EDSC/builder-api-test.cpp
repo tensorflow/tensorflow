@@ -43,11 +43,11 @@ static MLIRContext &globalContext() {
   return context;
 }
 
-static Function makeFunction(StringRef name, ArrayRef<Type> results = {},
-                             ArrayRef<Type> args = {}) {
+static FuncOp makeFunction(StringRef name, ArrayRef<Type> results = {},
+                           ArrayRef<Type> args = {}) {
   auto &ctx = globalContext();
-  auto function = Function::create(UnknownLoc::get(&ctx), name,
-                                   FunctionType::get(args, results, &ctx));
+  auto function = FuncOp::create(UnknownLoc::get(&ctx), name,
+                                 FunctionType::get(args, results, &ctx));
   function.addEntryBlock();
   return function;
 }
@@ -556,7 +556,7 @@ TEST_FUNC(vectorize_2d) {
   auto owningF =
       makeFunction("vectorize_2d", {}, {memrefType, memrefType, memrefType});
 
-  mlir::Function f = owningF;
+  mlir::FuncOp f = owningF;
   mlir::OwningModuleRef module = Module::create(&globalContext());
   module->push_back(f);
 

@@ -229,7 +229,7 @@ inter-procedural flow that wraps the intra-procedural inference:
     -   Take the last inserted function in the worklist.
     -   Run the intra-procedural shape inference on this function.
     -   If the intra-procedural shape inference can't complete, it returns a
-        Function that needs to be inferred first. In this case, queue this new
+        FuncOp that needs to be inferred first. In this case, queue this new
         function and continue. Otherwise the inference succeeded and we can pop
         from the queue.
 

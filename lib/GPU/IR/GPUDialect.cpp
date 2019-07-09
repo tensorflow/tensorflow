@@ -32,7 +32,7 @@ using namespace mlir::gpu;
 
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
-bool GPUDialect::isKernel(Function function) {
+bool GPUDialect::isKernel(FuncOp function) {
   UnitAttr isKernelAttr =
       function.getAttrOfType<UnitAttr>(getKernelFuncAttrName());
   return static_cast<bool>(isKernelAttr);
@@ -84,25 +84,25 @@ void LaunchOp::build(Builder *builder, OperationState *result, Value *gridSizeX,
 Region &LaunchOp::getBody() { return getOperation()->getRegion(0); }
 
 KernelDim3 LaunchOp::getBlockIds() {
-  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
+  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[0], args[1], args[2]};
 }
 
 KernelDim3 LaunchOp::getThreadIds() {
-  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
+  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[3], args[4], args[5]};
 }
 
 KernelDim3 LaunchOp::getGridSize() {
-  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
+  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[6], args[7], args[8]};
 }
 
 KernelDim3 LaunchOp::getBlockSize() {
-  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
+  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[9], args[10], args[11]};
 }
@@ -378,10 +378,9 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
-                         Function kernelFunc, Value *gridSizeX,
-                         Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                         Value *blockSizeY, Value *blockSizeZ,
-                         ArrayRef<Value *> kernelOperands) {
+                         FuncOp kernelFunc, Value *gridSizeX, Value *gridSizeY,
+                         Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
+                         Value *blockSizeZ, ArrayRef<Value *> kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result->addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -391,7 +390,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
-                         Function kernelFunc, KernelDim3 gridSize,
+                         FuncOp kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize,
                          ArrayRef<Value *> kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
@@ -427,7 +426,7 @@ LogicalResult LaunchFuncOp::verify() {
   }
 
   auto module = getParentOfType<ModuleOp>();
-  Function kernelFunc = module.getNamedFunction(kernel());
+  FuncOp kernelFunc = module.getNamedFunction(kernel());
   if (!kernelFunc)
     return emitError() << "kernel function '" << kernelAttr << "' is undefined";
 

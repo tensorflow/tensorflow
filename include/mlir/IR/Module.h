@@ -97,9 +97,7 @@ public:
   /// Look up a function with the specified name, returning null if no such
   /// name exists. Function names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
-  Function getNamedFunction(StringRef name) {
-    return lookupSymbol<FuncOp>(name);
-  }
+  FuncOp getNamedFunction(StringRef name) { return lookupSymbol<FuncOp>(name); }
 };
 
 /// The ModuleTerminatorOp is a special terminator operation for the body of a

@@ -36,8 +36,8 @@ TEST_FUNC(linalg_ops) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
   auto indexType = mlir::IndexType::get(&context);
-  mlir::Function f = makeFunction(*module, "linalg_ops",
-                                  {indexType, indexType, indexType}, {});
+  mlir::FuncOp f = makeFunction(*module, "linalg_ops",
+                                {indexType, indexType, indexType}, {});
 
   OpBuilder builder(f.getBody());
   ScopedContext scope(builder, f.getLoc());
@@ -75,8 +75,8 @@ TEST_FUNC(linalg_ops_folded_slices) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
   auto indexType = mlir::IndexType::get(&context);
-  mlir::Function f = makeFunction(*module, "linalg_ops_folded_slices",
-                                  {indexType, indexType, indexType}, {});
+  mlir::FuncOp f = makeFunction(*module, "linalg_ops_folded_slices",
+                                {indexType, indexType, indexType}, {});
 
   OpBuilder builder(f.getBody());
   ScopedContext scope(builder, f.getLoc());

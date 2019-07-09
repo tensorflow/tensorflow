@@ -667,7 +667,7 @@ static bool emitSlice(MaterializationState *state,
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
 /// TODO(ntv): please document return value.
-static bool materialize(Function f, const SetVector<Operation *> &terminators,
+static bool materialize(FuncOp f, const SetVector<Operation *> &terminators,
                         MaterializationState *state) {
   DenseSet<Operation *> seen;
   DominanceInfo domInfo(f);
@@ -731,7 +731,7 @@ void MaterializeVectorsPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
-  Function f = getFunction();
+  FuncOp f = getFunction();
   if (f.getBlocks().size() != 1)
     return;
 

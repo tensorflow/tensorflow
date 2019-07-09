@@ -73,8 +73,8 @@ protected:
 private:
 
   bool convertFunctions();
-  bool convertOneFunction(Function func);
-  void connectPHINodes(Function func);
+  bool convertOneFunction(FuncOp func);
+  void connectPHINodes(FuncOp func);
   bool convertBlock(Block &bb, bool ignoreArguments);
 
   template <typename Range>

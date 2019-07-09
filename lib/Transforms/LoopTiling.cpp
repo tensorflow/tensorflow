@@ -261,7 +261,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 // Identify valid and profitable bands of loops to tile. This is currently just
 // a temporary placeholder to test the mechanics of tiled code generation.
 // Returns all maximal outermost perfect loop nests to tile.
-static void getTileableBands(Function f,
+static void getTileableBands(FuncOp f,
                              std::vector<SmallVector<AffineForOp, 6>> *bands) {
   // Get maximal perfect nest of 'affine.for' insts starting from root
   // (inclusive).

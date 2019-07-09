@@ -43,7 +43,7 @@ public:
       : sizes(outerLoopSizes.begin(), outerLoopSizes.end()) {}
 
   void runOnFunction() override {
-    Function func = getFunction();
+    FuncOp func = getFunction();
 
     func.walk<ForOp>([this](ForOp op) {
       // Ignore nested loops.

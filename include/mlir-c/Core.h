@@ -34,7 +34,7 @@ extern "C" {
 typedef void *mlir_context_t;
 /// Opaque C type for mlir::Type.
 typedef const void *mlir_type_t;
-/// Opaque C type for mlir::Function*.
+/// Opaque C type for mlir::FuncOp.
 typedef void *mlir_func_t;
 /// Opaque C type for mlir::Attribute.
 typedef const void *mlir_attr_t;

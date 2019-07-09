@@ -34,13 +34,12 @@ writeAsTiledViews(mlir::Operation *op, llvm::ArrayRef<mlir::Value *> tileSizes);
 /// Apply `writeAsTiledLoops` on all linalg ops. This is a convenience function
 /// and is not exposed as a pass because a fixed set of tile sizes for all ops
 /// in a function can generally not be specified.
-void lowerToTiledLoops(mlir::Function f, llvm::ArrayRef<uint64_t> tileSizes);
+void lowerToTiledLoops(mlir::FuncOp f, llvm::ArrayRef<uint64_t> tileSizes);
 
 /// Apply `writeAsTiledViews` on all linalg ops. This is a convenience function
 /// and is not exposed as a pass because a fixed set of tile sizes for all ops
 /// in a function can generally not be specified.
-void lowerToTiledViews(mlir::Function f,
-                       llvm::ArrayRef<mlir::Value *> tileSizes);
+void lowerToTiledViews(mlir::FuncOp f, llvm::ArrayRef<mlir::Value *> tileSizes);
 
 } // namespace linalg
 

@@ -130,15 +130,15 @@ private:
 
   /// Create the prototype for an MLIR function with as many arguments as the
   /// provided Toy AST prototype.
-  mlir::Function mlirGen(PrototypeAST &proto) {
+  mlir::FuncOp mlirGen(PrototypeAST &proto) {
     // This is a generic function, the return type will be inferred later.
     llvm::SmallVector<mlir::Type, 4> ret_types;
     // Arguments type is uniformly a generic array.
     llvm::SmallVector<mlir::Type, 4> arg_types(proto.getArgs().size(),
                                                getType(VarType{}));
     auto func_type = mlir::FunctionType::get(arg_types, ret_types, &context);
-    auto function = mlir::Function::create(loc(proto.loc()), proto.getName(),
-                                           func_type, /* attrs = */ {});
+    auto function = mlir::FuncOp::create(loc(proto.loc()), proto.getName(),
+                                         func_type, /* attrs = */ {});
 
     // Mark the function as generic: it'll require type specialization for every
     // call site.
@@ -149,12 +149,12 @@ private:
   }
 
   /// Emit a new function and add it to the MLIR module.
-  mlir::Function mlirGen(FunctionAST &funcAST) {
+  mlir::FuncOp mlirGen(FunctionAST &funcAST) {
     // Create a scope in the symbol table to hold variable declarations.
     ScopedHashTableScope<llvm::StringRef, mlir::Value *> var_scope(symbolTable);
 
     // Create an MLIR function for the given prototype.
-    mlir::Function function(mlirGen(*funcAST.getProto()));
+    mlir::FuncOp function(mlirGen(*funcAST.getProto()));
     if (!function)
       return nullptr;
 

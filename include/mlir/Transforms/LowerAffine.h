@@ -24,7 +24,6 @@ namespace mlir {
 class AffineExpr;
 class AffineForOp;
 class FuncOp;
-using Function = FuncOp;
 class Location;
 struct LogicalResult;
 class OpBuilder;
@@ -38,7 +37,7 @@ Value *expandAffineExpr(OpBuilder &builder, Location loc, AffineExpr expr,
 
 /// Convert from the Affine dialect to the Standard dialect, in particular
 /// convert structured affine control flow into CFG branch-based control flow.
-LogicalResult lowerAffineConstructs(Function function);
+LogicalResult lowerAffineConstructs(FuncOp function);
 
 /// Emit code that computes the lower bound of the given affine loop using
 /// standard arithmetic operations.

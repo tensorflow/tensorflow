@@ -136,7 +136,7 @@ public:
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
-    Function printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
+    FuncOp printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
 
     auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();
@@ -205,7 +205,7 @@ private:
 
   /// Return the prototype declaration for printf in the module, create it if
   /// necessary.
-  Function getPrintf(Module module) const {
+  FuncOp getPrintf(Module module) const {
     auto printfFunc = module.getNamedFunction("printf");
     if (printfFunc)
       return printfFunc;
@@ -218,7 +218,7 @@ private:
     auto llvmI32Ty = LLVM::LLVMType::getInt32Ty(dialect);
     auto llvmI8PtrTy = LLVM::LLVMType::getInt8Ty(dialect).getPointerTo();
     auto printfTy = builder.getFunctionType({llvmI8PtrTy}, {llvmI32Ty});
-    printfFunc = Function::create(builder.getUnknownLoc(), "printf", printfTy);
+    printfFunc = FuncOp::create(builder.getUnknownLoc(), "printf", printfTy);
     // It should be variadic, but we don't support it fully just yet.
     printfFunc.setAttr("std.varargs", builder.getBoolAttr(true));
     module.push_back(printfFunc);

@@ -111,11 +111,11 @@ struct PythonValueHandle {
 struct PythonFunction {
   PythonFunction() : function{nullptr} {}
   PythonFunction(mlir_func_t f) : function{f} {}
-  PythonFunction(mlir::Function f)
+  PythonFunction(mlir::FuncOp f)
       : function(const_cast<void *>(f.getAsOpaquePointer())) {}
   operator mlir_func_t() { return function; }
   std::string str() {
-    mlir::Function f = mlir::Function::getFromOpaquePointer(function);
+    mlir::FuncOp f = mlir::FuncOp::getFromOpaquePointer(function);
     std::string res;
     llvm::raw_string_ostream os(res);
     f.print(os);
@@ -126,7 +126,7 @@ struct PythonFunction {
   // declaration, add the entry block, transforming the declaration into a
   // definition.  Return true if the block was added, false otherwise.
   bool define() {
-    auto f = mlir::Function::getFromOpaquePointer(function);
+    auto f = mlir::FuncOp::getFromOpaquePointer(function);
     if (!f.getBlocks().empty())
       return false;
 
@@ -135,7 +135,7 @@ struct PythonFunction {
   }
 
   PythonValueHandle arg(unsigned index) {
-    auto f = mlir::Function::getFromOpaquePointer(function);
+    auto f = mlir::FuncOp::getFromOpaquePointer(function);
     assert(index < f.getNumArguments() && "argument index out of bounds");
     return PythonValueHandle(ValueHandle(f.getArgument(index)));
   }
@@ -252,7 +252,7 @@ struct PythonFunctionContext {
 
   PythonFunction enter() {
     assert(function.function && "function is not set up");
-    auto mlirFunc = mlir::Function::getFromOpaquePointer(function.function);
+    auto mlirFunc = mlir::FuncOp::getFromOpaquePointer(function.function);
     contextBuilder.emplace(mlirFunc.getBody());
     context = new mlir::edsc::ScopedContext(*contextBuilder, mlirFunc.getLoc());
     return function;
@@ -595,7 +595,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
   }
 
   // Create the function itself.
-  auto func = mlir::Function::create(
+  auto func = mlir::FuncOp::create(
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
@@ -653,7 +653,7 @@ PYBIND11_MODULE(pybind, m) {
     return ValueHandle::create<ConstantFloatOp>(value, floatType);
   });
   m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
-    auto function = Function::getFromOpaquePointer(func.function);
+    auto function = FuncOp::getFromOpaquePointer(func.function);
     auto attr = FunctionAttr::get(function.getName(), function.getContext());
     return ValueHandle::create<ConstantOp>(function.getType(), attr);
   });
@@ -723,8 +723,7 @@ PYBIND11_MODULE(pybind, m) {
           return ValueHandle::create(name, operandHandles, types, attrs);
         });
 
-  py::class_<PythonFunction>(m, "Function",
-                             "Wrapping class for mlir::Function.")
+  py::class_<PythonFunction>(m, "Function", "Wrapping class for mlir::FuncOp.")
       .def(py::init<PythonFunction>())
       .def("__str__", &PythonFunction::str)
       .def("define", &PythonFunction::define,
@@ -773,13 +772,13 @@ PYBIND11_MODULE(pybind, m) {
           "Creates an mlir::IntegerAttr of the given type with the given value "
           "in the context associated with this MLIR module.")
       .def("declare_function", &PythonMLIRModule::declareFunction,
-           "Declares a new mlir::Function in the current mlir::Module.  The "
+           "Declares a new mlir::FuncOp in the current mlir::Module.  The "
            "function arguments can have attributes.  The function has no "
            "definition and can be linked to an external library.")
       .def("make_function", &PythonMLIRModule::makeFunction,
-           "Defines a new mlir::Function in the current mlir::Module.")
+           "Defines a new mlir::FuncOp in the current mlir::Module.")
       .def("function_context", &PythonMLIRModule::makeFunctionContext,
-           "Defines a new mlir::Function in the mlir::Module and creates the "
+           "Defines a new mlir::FuncOp in the mlir::Module and creates the "
            "function context for building the body of the function.")
       .def("get_function", &PythonMLIRModule::getNamedFunction,
            "Looks up the function with the given name in the module.")

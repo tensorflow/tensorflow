@@ -379,8 +379,8 @@ public:
   /// constraint system. Returns failure for the yet unimplemented/unsupported
   /// cases.  Any new identifiers that are found in the bound operands of the
   /// 'affine.for' operation are added as trailing identifiers (either
-  /// dimensional or symbolic depending on whether the operand is a valid ML
-  /// Function symbol).
+  /// dimensional or symbolic depending on whether the operand is a valid
+  /// symbol).
   //  TODO(bondhugula): add support for non-unit strides.
   LogicalResult addAffineForOpDomain(AffineForOp forOp);
 

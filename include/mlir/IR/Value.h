@@ -28,8 +28,6 @@
 
 namespace mlir {
 class Block;
-class FuncOp;
-using Function = FuncOp;
 class Operation;
 class Region;
 class Value;

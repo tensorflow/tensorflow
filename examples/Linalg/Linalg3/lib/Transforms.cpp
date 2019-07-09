@@ -35,7 +35,7 @@ using namespace mlir::edsc::intrinsics;
 using namespace linalg;
 using namespace linalg::intrinsics;
 
-void linalg::composeSliceOps(mlir::Function f) {
+void linalg::composeSliceOps(mlir::FuncOp f) {
   f.walk<SliceOp>([](SliceOp sliceOp) {
     auto *sliceResult = sliceOp.getResult();
     auto viewOp = emitAndReturnFullyComposedView(sliceResult);
@@ -44,7 +44,7 @@ void linalg::composeSliceOps(mlir::Function f) {
   });
 }
 
-void linalg::lowerToFinerGrainedTensorContraction(mlir::Function f) {
+void linalg::lowerToFinerGrainedTensorContraction(mlir::FuncOp f) {
   f.walk([](Operation *op) {
     if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
       matmulOp.writeAsFinerGrainTensorContraction();
@@ -211,7 +211,7 @@ linalg::writeAsLoops(Operation *op) {
   return llvm::None;
 }
 
-void linalg::lowerToLoops(mlir::Function f) {
+void linalg::lowerToLoops(mlir::FuncOp f) {
   f.walk([](Operation *op) {
     if (writeAsLoops(op))
       op->erase();

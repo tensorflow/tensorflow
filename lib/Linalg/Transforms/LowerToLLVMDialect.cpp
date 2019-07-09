@@ -171,11 +171,11 @@ public:
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     // Insert the `malloc` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    Function mallocFunc = module.getNamedFunction("malloc");
+    FuncOp mallocFunc = module.getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
       mallocFunc =
-          Function::create(rewriter.getUnknownLoc(), "malloc", mallocType);
+          FuncOp::create(rewriter.getUnknownLoc(), "malloc", mallocType);
       module.push_back(mallocFunc);
     }
 
@@ -232,10 +232,10 @@ public:
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    Function freeFunc = module.getNamedFunction("free");
+    FuncOp freeFunc = module.getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(voidPtrTy, {});
-      freeFunc = Function::create(rewriter.getUnknownLoc(), "free", freeType);
+      freeFunc = FuncOp::create(rewriter.getUnknownLoc(), "free", freeType);
       module.push_back(freeFunc);
     }
 
@@ -573,7 +573,7 @@ public:
 
 // Create a function definition which takes as argument pointers to the input
 // types and returns pointers to the output types.
-static Function getLLVMLibraryCallImplDefinition(Function libFn) {
+static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
   auto implFnName = (libFn.getName().str() + "_impl");
   auto module = libFn.getModule();
   if (auto f = module.getNamedFunction(implFnName)) {
@@ -589,7 +589,7 @@ static Function getLLVMLibraryCallImplDefinition(Function libFn) {
   auto implFnType = FunctionType::get(fnArgTypes, {}, libFn.getContext());
 
   // Insert the implementation function definition.
-  auto implFnDefn = Function::create(libFn.getLoc(), implFnName, implFnType);
+  auto implFnDefn = FuncOp::create(libFn.getLoc(), implFnName, implFnType);
   module.push_back(implFnDefn);
   return implFnDefn;
 }
@@ -597,9 +597,9 @@ static Function getLLVMLibraryCallImplDefinition(Function libFn) {
 // Get function definition for the LinalgOp. If it doesn't exist, insert a
 // definition.
 template <typename LinalgOp>
-static Function getLLVMLibraryCallDeclaration(Operation *op,
-                                              LLVMTypeConverter &lowering,
-                                              PatternRewriter &rewriter) {
+static FuncOp getLLVMLibraryCallDeclaration(Operation *op,
+                                            LLVMTypeConverter &lowering,
+                                            PatternRewriter &rewriter) {
   assert(isa<LinalgOp>(op));
   auto fnName = LinalgOp::getLibraryCallName();
   auto module = op->getParentOfType<ModuleOp>();
@@ -619,14 +619,14 @@ static Function getLLVMLibraryCallDeclaration(Operation *op,
          "Library call for linalg operation can be generated only for ops that "
          "have void return types");
   auto libFnType = FunctionType::get(inputTypes, {}, op->getContext());
-  auto libFn = Function::create(op->getLoc(), fnName, libFnType);
+  auto libFn = FuncOp::create(op->getLoc(), fnName, libFnType);
   module.push_back(libFn);
   // Return after creating the function definition. The body will be created
   // later.
   return libFn;
 }
 
-static void getLLVMLibraryCallDefinition(Function fn,
+static void getLLVMLibraryCallDefinition(FuncOp fn,
                                          LLVMTypeConverter &lowering) {
   // Generate the implementation function definition.
   auto implFn = getLLVMLibraryCallImplDefinition(fn);
@@ -666,17 +666,15 @@ public:
     return convertLinalgType(t, *this);
   }
 
-  void addLibraryFnDeclaration(Function fn) {
+  void addLibraryFnDeclaration(FuncOp fn) {
     libraryFnDeclarations.push_back(fn);
   }
 
-  ArrayRef<Function> getLibraryFnDeclarations() {
-    return libraryFnDeclarations;
-  }
+  ArrayRef<FuncOp> getLibraryFnDeclarations() { return libraryFnDeclarations; }
 
 private:
   /// List of library functions declarations needed during dialect conversion
-  SmallVector<Function, 2> libraryFnDeclarations;
+  SmallVector<FuncOp, 2> libraryFnDeclarations;
 };
 } // end anonymous namespace
 
@@ -727,7 +725,7 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 // This is currently written as a standalone function because the lowering to
 // affine will look different than lowering to LLVM and it is still unclear how
 // everything will be eventually structured.
-static void lowerLinalgSubViewOps(Function &f) {
+static void lowerLinalgSubViewOps(FuncOp &f) {
   f.walk<SubViewOp>([&](SubViewOp op) {
     OpBuilder b(op);
     ScopedContext scope(b, op.getLoc());
@@ -750,7 +748,7 @@ static void lowerLinalgSubViewOps(Function &f) {
 
 // Converts a `linalg.for` op to CFG form before actual conversion to the LLVM
 // dialect starts.
-static void lowerLinalgForToCFG(Function &f) {
+static void lowerLinalgForToCFG(FuncOp &f) {
   // Collect all the For operations. We do this as a prepass to avoid
   // invalidating the walker with our rewrite.
   SmallVector<linalg::ForOp, 8> instsToRewrite;

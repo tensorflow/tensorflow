@@ -45,7 +45,7 @@ extern int run(int argc, char **argv,
                llvm::function_ref<LogicalResult(Module)>);
 
 inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
-                            CUresult error, Function &function) {
+                            CUresult error, FuncOp &function) {
   function.emitError(message.concat(" failed with error code ")
                          .concat(llvm::Twine{error})
                          .concat("[")
@@ -62,7 +62,7 @@ inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
     }                                                                          \
   }
 
-OwnedCubin compilePtxToCubin(const std::string ptx, Function &function) {
+OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   char jitErrorBuffer[4096] = {0};
 
   RETURN_ON_CUDA_ERROR(cuInit(0), "cuInit");

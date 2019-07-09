@@ -482,7 +482,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
   return tileLinalgOp(op, tileSizeValues, folder, viewsToPromote);
 }
 
-static void tileLinalgOps(Function f, ArrayRef<int64_t> tileSizes,
+static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
                           bool promoteViews) {
   OperationFolder folder;
   f.walk<LinalgOp>([promoteViews, tileSizes, &folder](LinalgOp op) {

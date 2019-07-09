@@ -420,7 +420,7 @@ private:
 /// patterns in a greedy work-list driven manner. Return true if no more
 /// patterns can be matched in the result function.
 ///
-bool applyPatternsGreedily(Function fn, OwningRewritePatternList &&patterns);
+bool applyPatternsGreedily(FuncOp fn, OwningRewritePatternList &&patterns);
 
 /// Helper class to create a list of rewrite patterns given a list of their
 /// types and a list of attributes perfect-forwarded to each of the conversion

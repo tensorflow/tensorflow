@@ -37,10 +37,10 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
+FuncOp makeFunctionWithAMatmulOp(Module module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
-  mlir::Function f = linalg::common::makeFunction(
+  mlir::FuncOp f = linalg::common::makeFunction(
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
@@ -67,7 +67,7 @@ Function makeFunctionWithAMatmulOp(Module module, StringRef name) {
 TEST_FUNC(foo) {
   MLIRContext context;
   OwningModuleRef module = Module::create(&context);
-  mlir::Function f = makeFunctionWithAMatmulOp(*module, "matmul_as_loops");
+  mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_as_loops");
   lowerToLoops(f);
 
   convertLinalg3ToLLVM(*module);

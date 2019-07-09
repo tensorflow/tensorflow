@@ -849,7 +849,7 @@ struct FunctionConverter {
   /// error, success otherwise. If 'signatureConversion' is provided, the
   /// arguments of the entry block are updated accordingly.
   LogicalResult
-  convertFunction(Function f,
+  convertFunction(FuncOp f,
                   TypeConverter::SignatureConversion *signatureConversion);
 
   /// Converts the given region starting from the entry block and following the
@@ -957,7 +957,7 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
 }
 
 LogicalResult FunctionConverter::convertFunction(
-    Function f, TypeConverter::SignatureConversion *signatureConversion) {
+    FuncOp f, TypeConverter::SignatureConversion *signatureConversion) {
   // If this is an external function, there is nothing else to do.
   if (f.isExternal())
     return success();
@@ -1131,14 +1131,14 @@ LogicalResult
 mlir::applyConversionPatterns(Module module, ConversionTarget &target,
                               TypeConverter &converter,
                               OwningRewritePatternList &&patterns) {
-  SmallVector<Function, 32> allFunctions(module.getOps<FuncOp>());
+  SmallVector<FuncOp, 32> allFunctions(module.getOps<FuncOp>());
   return applyConversionPatterns(allFunctions, target, converter,
                                  std::move(patterns));
 }
 
 /// Convert the given functions with the provided conversion patterns.
 LogicalResult mlir::applyConversionPatterns(
-    MutableArrayRef<Function> fns, ConversionTarget &target,
+    MutableArrayRef<FuncOp> fns, ConversionTarget &target,
     TypeConverter &converter, OwningRewritePatternList &&patterns) {
   if (fns.empty())
     return success();
@@ -1174,7 +1174,7 @@ LogicalResult mlir::applyConversionPatterns(
 /// convert as many of the operations within 'fn' as possible given the set of
 /// patterns.
 LogicalResult
-mlir::applyConversionPatterns(Function fn, ConversionTarget &target,
+mlir::applyConversionPatterns(FuncOp fn, ConversionTarget &target,
                               OwningRewritePatternList &&patterns) {
   // Convert the body of this function.
   FunctionConverter converter(fn.getContext(), target, patterns);

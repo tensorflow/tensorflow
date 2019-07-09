@@ -39,7 +39,7 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
   emitSourceFileHeader("Reference implementation file", os);
   const auto &defs = recordKeeper.getAllDerivedDefinitions("Op");
 
-  os << "void printRefImplementation(StringRef opName, mlir::Function *f) {\n"
+  os << "void printRefImplementation(StringRef opName, mlir::FuncOp *f) {\n"
      << "  using namespace ::mlir::edsc;\n"
      << "if (false) {}";
   for (auto *def : defs) {

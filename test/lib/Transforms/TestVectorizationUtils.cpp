@@ -256,7 +256,7 @@ void VectorizerTestPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // Only support single block functions at this point.
-  Function f = getFunction();
+  FuncOp f = getFunction();
   if (f.getBlocks().size() != 1)
     return;
 

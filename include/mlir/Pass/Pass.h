@@ -90,7 +90,7 @@ struct PassExecutionState {
 /// FunctionPass class.
 class FunctionPassBase : public Pass {
   using PassStateT =
-      detail::PassExecutionState<Function, FunctionAnalysisManager>;
+      detail::PassExecutionState<FuncOp, FunctionAnalysisManager>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -107,7 +107,7 @@ protected:
   virtual FunctionPassBase *clone() const = 0;
 
   /// Return the current function being transformed.
-  Function getFunction() { return getPassState().irAndPassFailed.getPointer(); }
+  FuncOp getFunction() { return getPassState().irAndPassFailed.getPointer(); }
 
   /// Return the MLIR context for the current function being transformed.
   MLIRContext &getContext() { return *getFunction().getContext(); }
@@ -126,7 +126,7 @@ protected:
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(Function fn, FunctionAnalysisManager &fam);
+  LogicalResult run(FuncOp fn, FunctionAnalysisManager &fam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -249,7 +249,7 @@ protected:
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnFunction()' method.
 template <typename T>
-struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
+struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
   /// Returns the analysis for the parent module if it exists.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedModuleAnalysis() {
@@ -270,7 +270,7 @@ struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
 template <typename T>
 struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
   /// Returns the analysis for a child function.
-  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(Function f) {
+  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(FuncOp f) {
     return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(
         f);
   }
@@ -278,7 +278,7 @@ struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
   /// Returns an existing analysis for a child function if it exists.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysis(Function f) {
+  getCachedFunctionAnalysis(FuncOp f) {
     return this->getAnalysisManager()
         .template getCachedFunctionAnalysis<AnalysisT>(f);
   }

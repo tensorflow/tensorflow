@@ -58,11 +58,11 @@ inline mlir::MemRefType floatMemRefType(mlir::MLIRContext *context,
 }
 
 /// A basic function builder
-inline mlir::Function makeFunction(mlir::Module module, llvm::StringRef name,
-                                   llvm::ArrayRef<mlir::Type> types,
-                                   llvm::ArrayRef<mlir::Type> resultTypes) {
+inline mlir::FuncOp makeFunction(mlir::Module module, llvm::StringRef name,
+                                 llvm::ArrayRef<mlir::Type> types,
+                                 llvm::ArrayRef<mlir::Type> resultTypes) {
   auto *context = module.getContext();
-  auto function = mlir::Function::create(
+  auto function = mlir::FuncOp::create(
       mlir::UnknownLoc::get(context), name,
       mlir::FunctionType::get({types}, resultTypes, context));
   function.addEntryBlock();
@@ -84,7 +84,7 @@ inline std::unique_ptr<mlir::PassManager> cleanupPassManager() {
 /// llvm::outs() for FileCheck'ing.
 /// If an error occurs, dump to llvm::errs() and do not print to llvm::outs()
 /// which will make the associated FileCheck test fail.
-inline void cleanupAndPrintFunction(mlir::Function f) {
+inline void cleanupAndPrintFunction(mlir::FuncOp f) {
   bool printToOuts = true;
   auto check = [&f, &printToOuts](mlir::LogicalResult result) {
     if (failed(result)) {

@@ -27,8 +27,6 @@
 #include "mlir/IR/Dialect.h"
 
 namespace mlir {
-class FuncOp;
-using Function = FuncOp;
 class Operation;
 class Value;
 

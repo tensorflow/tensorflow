@@ -726,7 +726,7 @@ public:
 
 } // end namespace
 
-LogicalResult mlir::lowerAffineConstructs(Function function) {
+LogicalResult mlir::lowerAffineConstructs(FuncOp function) {
   OwningRewritePatternList patterns;
   RewriteListBuilder<AffineApplyLowering, AffineDmaStartLowering,
                      AffineDmaWaitLowering, AffineLoadLowering,

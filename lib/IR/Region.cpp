@@ -17,7 +17,6 @@
 
 #include "mlir/IR/Region.h"
 #include "mlir/IR/BlockAndValueMapping.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 using namespace mlir;
 

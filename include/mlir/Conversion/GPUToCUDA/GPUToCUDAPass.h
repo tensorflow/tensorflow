@@ -26,11 +26,9 @@ namespace mlir {
 
 class ModulePassBase;
 class FuncOp;
-using Function = FuncOp;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
-using CubinGenerator =
-    std::function<OwnedCubin(const std::string &, Function &)>;
+using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
 
 /// Creates a pass to convert kernel functions into CUBIN blobs.
 ///

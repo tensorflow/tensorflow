@@ -33,22 +33,22 @@ using namespace mlir;
 // Function Operation.
 //===----------------------------------------------------------------------===//
 
-Function FuncOp::create(Location location, StringRef name, FunctionType type,
-                        ArrayRef<NamedAttribute> attrs) {
+FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
+                      ArrayRef<NamedAttribute> attrs) {
   OperationState state(location, "func");
   Builder builder(location->getContext());
-  Function::build(&builder, &state, name, type, attrs);
+  FuncOp::build(&builder, &state, name, type, attrs);
   return llvm::cast<FuncOp>(Operation::create(state));
 }
-Function FuncOp::create(Location location, StringRef name, FunctionType type,
-                        llvm::iterator_range<dialect_attr_iterator> attrs) {
+FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
+                      llvm::iterator_range<dialect_attr_iterator> attrs) {
   SmallVector<NamedAttribute, 8> attrRef(attrs);
   return create(location, name, type, llvm::makeArrayRef(attrRef));
 }
-Function FuncOp::create(Location location, StringRef name, FunctionType type,
-                        ArrayRef<NamedAttribute> attrs,
-                        ArrayRef<NamedAttributeList> argAttrs) {
-  Function func = create(location, name, type, attrs);
+FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
+                      ArrayRef<NamedAttribute> attrs,
+                      ArrayRef<NamedAttributeList> argAttrs) {
+  FuncOp func = create(location, name, type, attrs);
   func.setAllArgAttrs(argAttrs);
   return func;
 }
@@ -74,7 +74,7 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
 }
 
 /// Get the parent module.
-ModuleOp Function::getModule() {
+ModuleOp FuncOp::getModule() {
   auto *parent = getOperation()->getContainingRegion();
   return parent ? parent->getParentOfType<ModuleOp>() : nullptr;
 }

@@ -32,7 +32,6 @@ class AffineMap;
 class AffineForOp;
 class ForOp;
 class FuncOp;
-using Function = FuncOp;
 class OpBuilder;
 class Value;
 
@@ -72,7 +71,7 @@ LogicalResult promoteIfSingleIteration(AffineForOp forOp);
 
 /// Promotes all single iteration AffineForOp's in the Function, i.e., moves
 /// their body into the containing Block.
-void promoteSingleIterationLoops(Function *f);
+void promoteSingleIterationLoops(FuncOp f);
 
 /// Computes the cleanup loop lower bound of the loop being unrolled with
 /// the specified unroll factor; this bound will also be upper bound of the main

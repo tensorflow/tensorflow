@@ -54,7 +54,7 @@ namespace {
 struct MyFunctionPass : public FunctionPass<MyFunctionPass> {
   void runOnFunction() override {
     // Get the current function being operated on.
-    Function f = getFunction();
+    FuncOp f = getFunction();
 
     // Operate on the operations within the function.
     f.walk([](Operation *inst) {
@@ -114,7 +114,7 @@ static PassRegistration<MyModulePass> pass(
 
 An important concept, along with transformation passes, are analyses. These are
 conceptually similar to transformation passes, except that they compute
-information on a specific Function, or Module, without modifying it. In MLIR,
+information on a specific FuncOp, or Module, without modifying it. In MLIR,
 analyses are not passes but free standing classes that are computed lazily
 on-demand and cached to avoid unnecessary recomputation. An analysis in MLIR
 must adhere to the following:
@@ -143,7 +143,7 @@ above, let's see some examples:
 /// An interesting function analysis.
 struct MyFunctionAnalysis {
   // Compute this analysis with the provided function.
-  MyFunctionAnalysis(Function function);
+  MyFunctionAnalysis(FuncOp function);
 };
 
 /// An interesting module analysis.

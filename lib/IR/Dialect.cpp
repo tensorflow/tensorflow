@@ -71,14 +71,14 @@ Dialect::~Dialect() {}
 
 /// Verify an attribute from this dialect on the given function. Returns
 /// failure if the verification failed, success otherwise.
-LogicalResult Dialect::verifyFunctionAttribute(Function, NamedAttribute) {
+LogicalResult Dialect::verifyFunctionAttribute(FuncOp, NamedAttribute) {
   return success();
 }
 
 /// Verify an attribute from this dialect on the argument at 'argIndex' for
 /// the given function. Returns failure if the verification failed, success
 /// otherwise.
-LogicalResult Dialect::verifyFunctionArgAttribute(Function, unsigned argIndex,
+LogicalResult Dialect::verifyFunctionArgAttribute(FuncOp, unsigned argIndex,
                                                   NamedAttribute) {
   return success();
 }

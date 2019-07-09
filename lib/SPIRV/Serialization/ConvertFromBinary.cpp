@@ -36,7 +36,7 @@ using namespace mlir;
 // block. The created block will be terminated by `std.return`.
 Block *createOneBlockFunction(Builder builder, Module module) {
   auto fnType = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
-  auto fn = Function::create(builder.getUnknownLoc(), "spirv_module", fnType);
+  auto fn = FuncOp::create(builder.getUnknownLoc(), "spirv_module", fnType);
   module.push_back(fn);
 
   fn.addEntryBlock();
