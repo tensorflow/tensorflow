@@ -443,6 +443,10 @@ class TFRecordIteratorTest(TFCompressionTestCase):
       for _ in tf_record.tf_record_iterator(fn_truncated):
         pass
 
+def ChildProcess(writer, rs):
+  for r in rs:
+    writer.write(r)
+  writer.flush()
 
 class TFRecordWriterCloseAndFlushTests(test.TestCase):
   """TFRecordWriter close and flush tests"""
@@ -481,13 +485,8 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
     """test Flush"""
     records = list(map(self._Record, range(self._num_records)))
 
-    def childProcess(writer, rs):
-      for r in rs:
-        writer.write(r)
-      writer.flush()
-
     write_process = multiprocessing.Process(
-        target=childProcess, args=(self._writer, records))
+        target=ChildProcess, args=(self._writer, records))
     write_process.start()
     write_process.join()
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
