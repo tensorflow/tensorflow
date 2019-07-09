@@ -488,9 +488,11 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::InvokeBackend(std::unique_ptr<HloModule> module,
-                             llvm::Module* llvm_module,
-                             GpuVersion gpu_version) {
+NVPTXCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
+                                   llvm::Module* llvm_module,
+                                   GpuVersion gpu_version) {
+  std::pair<int, int> compute_capability = absl::get<std::pair<int, int>>(gpu_version);
+
   string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
@@ -523,8 +525,9 @@ NVPTXCompiler::InvokeBackend(std::unique_ptr<HloModule> module,
     DumpToFileInDirOrStdout(*module, "ptx", ptx);
   }
 
-  const std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
-      stream_exec, ptx, cc_major, cc_minor, module->config());
+  std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
+      stream_exec, ptx, compute_capability.first, compute_capability.second,
+      module->config());
 
   return std::pair<std::string, std::vector<uint8>>(ptx, cubin);
 }
