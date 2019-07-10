@@ -299,7 +299,6 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static("from_python", &PyLocalBuffer::FromPython)
-      .def_static("from_python_values", &PyLocalBuffer::FromPythonValues)
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
       .def("copy_to_device", &PyLocalBuffer::CopyToDevice)
       .def("delete", &PyLocalBuffer::Delete)
