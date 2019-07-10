@@ -1465,18 +1465,6 @@ void mlir::extractForInductionVars(ArrayRef<AffineForOp> forInsts,
 // AffineIfOp
 //===----------------------------------------------------------------------===//
 
-void AffineIfOp::build(Builder *builder, OperationState *result,
-                       IntegerSet condition,
-                       ArrayRef<Value *> conditionOperands) {
-  result->addAttribute(getConditionAttrName(), IntegerSetAttr::get(condition));
-  result->addOperands(conditionOperands);
-
-  // Reserve 2 regions, one for the 'then' and one for the 'else' regions.
-  result->regions.reserve(2);
-  result->addRegion(nullptr);
-  result->addRegion(nullptr);
-}
-
 LogicalResult AffineIfOp::verify() {
   // Verify that we have a condition attribute.
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());

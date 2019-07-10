@@ -592,9 +592,6 @@ public:
   using Op::Op;
 
   // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result,
-                    IntegerSet condition, ArrayRef<Value *> conditionOperands);
-
   static StringRef getOperationName() { return "affine.if"; }
   static StringRef getConditionAttrName() { return "condition"; }
 
