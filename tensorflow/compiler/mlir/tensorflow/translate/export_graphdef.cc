@@ -448,7 +448,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
       // definition library
       // TODO(prakalps): If two functions have cyclic dependence, this will
       // introduce an infinite loop.
-      auto func = function.getModule().getNamedFunction(op_name.ValueOrDie());
+      auto func = function.getParentOfType<mlir::ModuleOp>().getNamedFunction(
+          op_name.ValueOrDie());
       if (func != nullptr) {
         TF_RETURN_IF_ERROR(ConvertLibFunction(confs, tf_dialect, func, flib));
         TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
@@ -511,7 +512,9 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
   if (auto attr = function.getAttrOfType<mlir::FunctionAttr>(grad_string)) {
-    auto grad_func = function.getModule().getNamedFunction(attr.getValue());
+    auto grad_func =
+        function.getParentOfType<mlir::ModuleOp>().getNamedFunction(
+            attr.getValue());
     TF_RETURN_IF_ERROR(
         ConvertLibFunction(configs, tf_dialect, grad_func, flib));
     GradientDef grad;
