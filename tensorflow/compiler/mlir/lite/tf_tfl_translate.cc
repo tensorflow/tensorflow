@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using mlir::MLIRContext;
-using mlir::Module;
+using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
 using tensorflow::Status;
 
@@ -47,7 +47,7 @@ static llvm::cl::opt<bool> print_function_result_mapping(
 enum TranslationStatus { kTrSuccess, kTrFailure };
 
 static int PrintFunctionResultMapping(const std::string &result,
-                                      Module module) {
+                                      ModuleOp module) {
   // Build model from the resultant string to extract the return values from
   // their source of truth.
   auto model =
