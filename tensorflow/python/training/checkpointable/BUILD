@@ -82,6 +82,7 @@ py_test(
     name = "data_structures_test",
     srcs = ["data_structures_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":data_structures",
         "//tensorflow/python:array_ops",

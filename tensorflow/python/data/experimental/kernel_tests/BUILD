@@ -559,6 +559,7 @@ py_test(
     name = "sleep_test",
     srcs = ["sleep_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",

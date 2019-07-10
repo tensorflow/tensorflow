@@ -223,6 +223,7 @@ cuda_py_test(
         "no_mac",
         # disable to avoid false positives from scipy.
         "nomsan",
+        "no_oss",
     ],
 )
 

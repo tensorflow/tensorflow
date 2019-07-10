@@ -56,4 +56,5 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+    tags = ["no_oss"],
 )

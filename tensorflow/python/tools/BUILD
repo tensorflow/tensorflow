@@ -89,6 +89,7 @@ py_test(
     size = "small",
     srcs = ["freeze_graph_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":freeze_graph",
         "//tensorflow/core:protos_all_py",

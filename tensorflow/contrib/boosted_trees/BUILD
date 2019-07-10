@@ -124,6 +124,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "notsan",  # b/62863147
+        "no_oss",
     ],
     deps = [
         ":gbdt_batch",
