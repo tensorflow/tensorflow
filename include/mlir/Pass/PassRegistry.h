@@ -114,11 +114,13 @@ void registerPass(StringRef arg, StringRef description, const PassID *passID,
 ///   // At namespace scope.
 ///   static PassRegistration<MyPass> Unused("unused", "Unused pass");
 template <typename ConcretePass> struct PassRegistration {
-  PassRegistration(
-      StringRef arg, StringRef description,
-      const PassAllocatorFunction &constructor = [] {
-        return new ConcretePass();
-      }) {
+  PassRegistration(StringRef arg, StringRef description,
+                   const PassAllocatorFunction &constructor) {
+    registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
+  }
+
+  PassRegistration(StringRef arg, StringRef description) {
+    PassAllocatorFunction constructor = [] { return new ConcretePass(); };
     registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
   }
 };
