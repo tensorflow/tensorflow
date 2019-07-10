@@ -280,6 +280,9 @@ def _RGBToHSVGrad(op, grad):
                   green_smallest * _CustomReciprocal(blues - greens))
 
   dh_dr = dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
+  # Converting from degrees to [0,1] scale as specified in
+  # https://www.tensorflow.org/api_docs/python/tf/image/rgb_to_hsv
+  dh_dr = dh_dr / 360
 
   # for green, dh_dg -> dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
   # dh_dg_1 ->
@@ -318,6 +321,9 @@ def _RGBToHSVGrad(op, grad):
                   red_smallest * -1 * _CustomReciprocal(blues - reds))
 
   dh_dg = dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
+  # Converting from degrees to [0,1] scale as specified in
+  # https://www.tensorflow.org/api_docs/python/tf/image/rgb_to_hsv
+  dh_dg = dh_dg / 360
 
   # for blue, dh_db -> dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
   # dh_db_1 ->
@@ -356,6 +362,9 @@ def _RGBToHSVGrad(op, grad):
                   red_smallest * _CustomReciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
+  # Converting from degrees to [0,1] scale as specified in
+  # https://www.tensorflow.org/api_docs/python/tf/image/rgb_to_hsv
+  dh_db = dh_db / 360
 
   # Gradients wrt to inputs
   dv_drgb = array_ops.stack([grad[..., 2] * dv_dr,
@@ -369,5 +378,4 @@ def _RGBToHSVGrad(op, grad):
                              grad[..., 0] * dh_db], axis=-1)
 
   gradient_input = math_ops.add(math_ops.add(dv_drgb, ds_drgb), dh_drgb)
-
   return gradient_input
