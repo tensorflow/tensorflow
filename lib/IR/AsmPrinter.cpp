@@ -1616,14 +1616,9 @@ void ModulePrinter::print(ModuleOp module) {
   state.printAttributeAliases(os);
   state.printTypeAliases(os);
 
-  // Print the module body without the terminator. The terminator is not printed
-  // as part of the custom syntax for modules.
-  OperationPrinter opPrinter(module, *this);
-  auto *moduleBody = module.getBody();
-  for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end())) {
-    opPrinter.print(&op);
-    os << "\n\n";
-  }
+  // Print the module.
+  OperationPrinter(module, *this).print(module);
+  os << '\n';
 }
 
 //===----------------------------------------------------------------------===//

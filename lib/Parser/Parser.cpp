@@ -3951,8 +3951,30 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
       break;
 
     // If we got to the end of the file, then we're done.
-    case Token::eof:
-      return opParser.finalize();
+    case Token::eof: {
+      if (opParser.finalize())
+        return failure();
+
+      // Handle the case where the top level module was explicitly defined.
+      auto &bodyBlocks = module.getBodyRegion().getBlocks();
+      auto &operations = bodyBlocks.front().getOperations();
+      assert(!operations.empty() && "expected a valid module terminator");
+
+      // Check that the first operation is a module, and it is the only
+      // non-terminator operation.
+      ModuleOp nested = dyn_cast<ModuleOp>(operations.front());
+      if (nested && std::next(operations.begin(), 2) == operations.end()) {
+        // Merge the data of the nested module operation into 'module'.
+        module.setLoc(nested.getLoc());
+        module.setAttrs(nested.getOperation()->getAttrList());
+        bodyBlocks.splice(bodyBlocks.end(), nested.getBodyRegion().getBlocks());
+
+        // Erase the original module body.
+        bodyBlocks.pop_front();
+      }
+
+      return success();
+    }
 
     // If we got an error token, then the lexer already emitted an error, just
     // stop.  Someday we could introduce error recovery if there was demand
