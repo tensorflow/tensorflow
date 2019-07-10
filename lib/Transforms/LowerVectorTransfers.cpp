@@ -289,7 +289,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     local(ivs) = remote(clip(transfer, view, ivs));
   });
-  ValueHandle vectorValue = load(vec, {constant_index(0)});
+  ValueHandle vectorValue = affine_load(vec, {constant_index(0)});
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
@@ -345,7 +345,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
-  store(vectorValue, vec, {constant_index(0)});
+  affine_store(vectorValue, vec, {constant_index(0)});
   LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     remote(clip(transfer, view, ivs)) = local(ivs);

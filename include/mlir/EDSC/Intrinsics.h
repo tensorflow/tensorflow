@@ -188,16 +188,16 @@ template <typename Op> struct OperationBuilder : public OperationHandle {
 
 using alloc = ValueBuilder<AllocOp>;
 using affine_apply = ValueBuilder<AffineApplyOp>;
+using affine_load = ValueBuilder<AffineLoadOp>;
+using affine_store = OperationBuilder<AffineStoreOp>;
 using constant_float = ValueBuilder<ConstantFloatOp>;
 using constant_index = ValueBuilder<ConstantIndexOp>;
 using constant_int = ValueBuilder<ConstantIntOp>;
 using dealloc = OperationBuilder<DeallocOp>;
 using dim = ValueBuilder<DimOp>;
-using load = ValueBuilder<LoadOp>;
 using muli = ValueBuilder<MulIOp>;
 using ret = OperationBuilder<ReturnOp>;
 using select = ValueBuilder<SelectOp>;
-using store = OperationBuilder<StoreOp>;
 using subi = ValueBuilder<SubIOp>;
 using vector_type_cast = ValueBuilder<VectorTypeCastOp>;
 

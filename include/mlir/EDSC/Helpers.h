@@ -34,7 +34,8 @@ template <typename Load, typename Store> class TemplatedIndexedValue;
 
 // By default, edsc::IndexedValue provides an index notation around the affine
 // load and stores.
-using IndexedValue = TemplatedIndexedValue<intrinsics::load, intrinsics::store>;
+using IndexedValue =
+    TemplatedIndexedValue<intrinsics::affine_load, intrinsics::affine_store>;
 
 // Base class for MemRefView and VectorView.
 class View {

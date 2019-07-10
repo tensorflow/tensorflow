@@ -355,19 +355,19 @@ TEST_FUNC(builder_helpers) {
   //      CHECK:   affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  //  CHECK-DAG:         [[a:%.*]] = load %arg0[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[a:%.*]] = affine.load %arg0[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
-  //  CHECK-DAG:         [[c:%.*]] = load %arg1[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[c:%.*]] = affine.load %arg1[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[d:%.*]] = addf [[b]], [[c]] : f32
-  // CHECK-NEXT:         store [[d]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  // CHECK-NEXT:         affine.store [[d]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // CHECK-NEXT:       }
   // CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%{{.*}}) {
-  //  CHECK-DAG:         [[a:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
-  //  CHECK-DAG:         [[b:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[a:%.*]] = affine.load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[b:%.*]] = affine.load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[c:%.*]] = addf [[b]], [[a]] : f32
-  //  CHECK-DAG:         [[d:%.*]] = load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[d:%.*]] = affine.load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-DAG:         [[e:%.*]] = addf [[d]], [[c]] : f32
-  // CHECK-NEXT:         store [[e]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  // CHECK-NEXT:         affine.store [[e]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // clang-format on
   f.print(llvm::outs());
   f.erase();
@@ -444,7 +444,7 @@ TEST_FUNC(select_op) {
   using namespace edsc::intrinsics;
   using namespace edsc::op;
   auto f32Type = FloatType::getF32(&globalContext());
-  auto memrefType = MemRefType::get({-1, -1, -1}, f32Type, {}, 0);
+  auto memrefType = MemRefType::get({-1, -1}, f32Type, {}, 0);
   auto f = makeFunction("select_op", {}, {memrefType});
 
   OpBuilder builder(f.getBody());
@@ -466,8 +466,8 @@ TEST_FUNC(select_op) {
   //      CHECK: affine.for %{{.*}} = 0 to 1 {
   // CHECK-NEXT:   affine.for %{{.*}} = 0 to 1 {
   //  CHECK-DAG:     {{.*}} = cmpi "eq"
-  //  CHECK-DAG:     {{.*}} = load
-  //  CHECK-DAG:     {{.*}} = load
+  //  CHECK-DAG:     {{.*}} = affine.load
+  //  CHECK-DAG:     {{.*}} = affine.load
   // CHECK-NEXT:     {{.*}} = select
   // clang-format on
   f.print(llvm::outs());
@@ -523,10 +523,10 @@ TEST_FUNC(tile_2d) {
   //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] step 32 {
   //  CHECK-NEXT:             affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%{{.*}}, %{{.*}})[%[[N]]] {
   //  CHECK-NEXT:               affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%{{.*}}, %{{.*}})[%[[M]]] {
-  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
-  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
-  //  CHECK-NEXT:                 store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 affine.store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //       CHECK:               }
   //  CHECK-NEXT:             }
   //  CHECK-NEXT:           }
@@ -535,10 +535,10 @@ TEST_FUNC(tile_2d) {
   //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
   //  CHECK-NEXT:         affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] {
   //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] {
-  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
-  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32
-  //  CHECK-NEXT:             store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             affine.store {{.*}}, {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   // clang-format on
   f.print(llvm::outs());
   f.erase();

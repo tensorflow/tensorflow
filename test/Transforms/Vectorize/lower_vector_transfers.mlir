@@ -20,7 +20,7 @@ func @materialize_read_1d() {
       // CHECK: %[[FILTERED1:.*]] = select
       // CHECK: {{.*}} = select
       // CHECK: %[[FILTERED2:.*]] = select
-      // CHECK-NEXT: %{{.*}} = load {{.*}}[%[[FILTERED1]], %[[FILTERED2]]] : memref<7x42xf32>
+      // CHECK-NEXT: %{{.*}} = affine.load {{.*}}[%[[FILTERED1]], %[[FILTERED2]]] : memref<7x42xf32>
     }
   }
   return
@@ -94,12 +94,12 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, %[[C0]] : index
   // CHECK-NEXT:                %[[L3:.*]] = select
   //
-  // CHECK-NEXT:                {{.*}} = load %{{.*}}[%[[L0]], %[[L1]], %[[L2]], %[[L3]]] : memref<?x?x?x?xf32>
+  // CHECK-NEXT:                {{.*}} = affine.load %{{.*}}[%[[L0]], %[[L1]], %[[L2]], %[[L3]]] : memref<?x?x?x?xf32>
   // CHECK-NEXT:                store {{.*}}, %[[ALLOC]][%[[I6]], %[[I5]], %[[I4]]] : memref<5x4x3xf32>
   // CHECK-NEXT:              }
   // CHECK-NEXT:            }
   // CHECK-NEXT:          }
-  //      CHECK:          {{.*}} = load %[[VECTOR_VIEW]][{{.*}}] : memref<1xvector<5x4x3xf32>>
+  //      CHECK:          {{.*}} = affine.load %[[VECTOR_VIEW]][{{.*}}] : memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:          dealloc %[[ALLOC]] : memref<5x4x3xf32>
   // CHECK-NEXT:        }
   // CHECK-NEXT:      }
@@ -170,7 +170,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, %[[C0]] : index
   // CHECK-NEXT:                %[[S3:.*]] = select {{.*}}, %[[C0]], {{.*}} : index
   //
-  // CHECK-NEXT:                {{.*}} = load {{.*}}[%[[I6]], %[[I5]], %[[I4]]] : memref<5x4x3xf32>
+  // CHECK-NEXT:                {{.*}} = affine.load {{.*}}[%[[I6]], %[[I5]], %[[I4]]] : memref<5x4x3xf32>
   //      CHECK:                store {{.*}}, {{.*}}[%[[S0]], %[[S1]], %[[S2]], %[[S3]]] : memref<?x?x?x?xf32>
   // CHECK-NEXT:              }
   // CHECK-NEXT:            }

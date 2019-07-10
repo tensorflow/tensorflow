@@ -313,9 +313,11 @@ class EdscTest:
     # CHECK-LABEL: testIndexedValue
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
-    #       CHECK:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x42xf32>
+    #       CHECK: "affine.load"
+    #  CHECK-SAME: memref<10x42xf32>
     #       CHECK:  %{{.*}} = addf %{{.*}}, %{{.*}} : f32
-    #       CHECK:  store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x42xf32>
+    #       CHECK:  "affine.store"
+    #  CHECK-SAME:  memref<10x42xf32>
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (42)}
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (10)}
 
@@ -433,10 +435,11 @@ class EdscTest:
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
     #       CHECK: "affine.for"()
-    #   CHECK-DAG:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
-    #   CHECK-DAG:  %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
+    #   CHECK-DAG:  %{{.*}} = "affine.load"
+    #   CHECK-DAG:  %{{.*}} = "affine.load"
     #       CHECK:  %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
-    #       CHECK:  store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<32x32xf32>
+    #       CHECK:  "affine.store"
+    #  CHECK-SAME:  memref<32x32xf32>
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
     #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
