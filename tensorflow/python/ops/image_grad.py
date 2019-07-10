@@ -157,13 +157,12 @@ def _CropAndResizeGrad(op, grad):
 
 def _CustomReciprocal(x):
   """
-  Performs reciprocal with an eps added to the input. This is to avoid
-  inversion errors or divide by zeros or NaNs.
-  Inputs:
-    x -> input tensor to be reciprocat-ed
-    my_eps -> custom machine precision epsilon
+  Wrapper function around `math_ops.div_no_nan()` to perform a "safe"
+  reciprocal incase the input is zero. Avoids divide by zero and NaNs.
+  Input:
+    x -> input tensor to be reciprocat-ed.
   Returns:
-    x_reciprocal -> reciprocal of x added with my_eps
+    x_reciprocal -> reciprocal of x without NaNs.
   """
   return math_ops.div_no_nan(1.0, x)
 
