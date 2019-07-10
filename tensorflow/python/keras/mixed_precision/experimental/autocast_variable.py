@@ -30,9 +30,8 @@ class AutoCastVariable(trackable.Trackable):
 
   This class wraps a floating-point tf.Variable. It emulates the variable
   interface and delegates to the wrapped variable, but it additionally will cast
-  the wrapped variable to `auto_cast_variable._read_dtype`. `_read_dtype`
-  defaults to the wrapped Variable's dtype, meaning the casts are a no-op, but
-  `_read_dtype` can be set to a different value,
+  the wrapped variable under a `Graph._enable_variable_auto_cast(dtype)` context
+  manager.
 
   For example:
 
@@ -40,15 +39,14 @@ class AutoCastVariable(trackable.Trackable):
   v = tf.Variable(1.0, dtype=tf.float32)
   v = AutoCastVariable(v)
   print(tf.identity(v).dtype)  # tf.float32
-  v._read_dtype = tf.float16
-  print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
-  print(v.dtype)  # tf.float16, as v.dtype also changes
+  with ops.get_default_graph()._enable_variable_auto_cast(tf.float16):
+    print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
+    print(v.dtype)  # tf.float16, as v.dtype also changes under the ctx manager.
   ```
 
   The purpose of this class is to allow Keras layers to create variables in
   float32, and automatically cast them to float16 or bfloat16 when the layer is
-  called. Keras layers will set `_read_dtype` to the appropriate dtype when
-  called, then set it back to None when the call returns.
+  called.
   """
 
   def __init__(self, variable):
@@ -68,11 +66,6 @@ class AutoCastVariable(trackable.Trackable):
                        'type: %s' % variable.dtype.name)
     self._variable = variable
 
-    # The dtype this variable will be read in. This is public to other internal
-    # classes, but not externally. It can be accessed externally via the `dtype`
-    # property.
-    self._read_dtype = self._variable.dtype
-
     # Delegate to the underlying variable for checkpointing.
     self._gather_saveables_for_checkpoint = (
         self._variable._gather_saveables_for_checkpoint)  # pylint: disable=protected-access
@@ -81,10 +74,21 @@ class AutoCastVariable(trackable.Trackable):
   def name(self):
     return self._variable.name
 
+  def _should_cast(self):
+    """Returns True if this variable should be casted when accessed."""
+    g = ops.get_default_graph()
+    # pylint:disable=protected-access
+    return (g._auto_cast_variable_read_dtype is not None and
+            self.true_dtype != g._auto_cast_variable_read_dtype)
+    # pylint:enable=protected-access
+
   @property
   def dtype(self):
     """The dtype this variable will be casted to when read."""
-    return self._read_dtype
+    if self._should_cast():
+      return ops.get_default_graph()._auto_cast_variable_read_dtype  # pylint:disable=protected-access
+    else:
+      return self._variable.dtype
 
   @property
   def true_dtype(self):
@@ -93,6 +97,8 @@ class AutoCastVariable(trackable.Trackable):
 
   def value(self):
     val = self._variable.value()
+    if not self._should_cast():
+      return val
     # We colocate_with(None) to ignore the existing device constraints, so that
     # the cast is always done on the variable's device
     with ops.colocate_with(None, ignore_existing=True):
@@ -101,11 +107,15 @@ class AutoCastVariable(trackable.Trackable):
 
   def read_value(self):
     val = self._variable.read_value()
+    if not self._should_cast():
+      return val
     return math_ops.cast(val, self.dtype)
 
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     val = self._variable.sparse_read(indices, name=name)
+    if not self._should_cast():
+      return val
     return math_ops.cast(val, self.dtype)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
@@ -128,7 +138,7 @@ class AutoCastVariable(trackable.Trackable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts this variable to a tensor."""
-    if self.dtype == self.true_dtype:
+    if not self._should_cast():
       return ops.internal_convert_to_tensor(self._variable, dtype, name,
                                             as_ref)
     # TODO(reedwm): Support as_ref?
