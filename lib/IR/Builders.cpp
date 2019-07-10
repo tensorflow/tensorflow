@@ -32,8 +32,6 @@ Identifier Builder::getIdentifier(StringRef str) {
   return Identifier::get(str, context);
 }
 
-Module Builder::createModule() { return Module::create(context); }
-
 //===----------------------------------------------------------------------===//
 // Locations.
 //===----------------------------------------------------------------------===//

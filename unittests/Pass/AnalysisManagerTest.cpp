@@ -37,7 +37,7 @@ TEST(AnalysisManagerTest, FineGrainModuleAnalysisPreservation) {
   MLIRContext context;
 
   // Test fine grain invalidation of the module analysis manager.
-  OwningModuleRef module(Module::create(&context));
+  OwningModuleRef module(Module::create(UnknownLoc::get(&context)));
   ModuleAnalysisManager mam(*module, /*passInstrumentor=*/nullptr);
 
   // Query two different analyses, but only preserve one before invalidating.
@@ -58,7 +58,7 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
   Builder builder(&context);
 
   // Create a function and a module.
-  OwningModuleRef module(Module::create(&context));
+  OwningModuleRef module(Module::create(UnknownLoc::get(&context)));
   FuncOp func1 =
       FuncOp::create(builder.getUnknownLoc(), "foo",
                      builder.getFunctionType(llvm::None, llvm::None));
@@ -86,7 +86,7 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
   Builder builder(&context);
 
   // Create a function and a module.
-  OwningModuleRef module(Module::create(&context));
+  OwningModuleRef module(Module::create(UnknownLoc::get(&context)));
   FuncOp func1 =
       FuncOp::create(builder.getUnknownLoc(), "foo",
                      builder.getFunctionType(llvm::None, llvm::None));

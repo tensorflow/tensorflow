@@ -63,7 +63,6 @@ public:
   MLIRContext *getContext() const { return context; }
 
   Identifier getIdentifier(StringRef str);
-  Module createModule();
 
   // Locations.
   Location getUnknownLoc();

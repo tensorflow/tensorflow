@@ -44,8 +44,8 @@ public:
 
   static void build(Builder *builder, OperationState *result);
 
-  /// Construct a module from the given context.
-  static ModuleOp create(MLIRContext *context);
+  /// Construct a module from the given location.
+  static ModuleOp create(Location loc);
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser *parser, OperationState *result);

@@ -38,9 +38,9 @@ void ModuleOp::build(Builder *builder, OperationState *result) {
 }
 
 /// Construct a module from the given context.
-ModuleOp ModuleOp::create(MLIRContext *context) {
-  OperationState state(UnknownLoc::get(context), "module");
-  Builder builder(context);
+ModuleOp ModuleOp::create(Location loc) {
+  OperationState state(loc, "module");
+  Builder builder(loc->getContext());
   ModuleOp::build(&builder, &state);
   return llvm::cast<ModuleOp>(Operation::create(state));
 }

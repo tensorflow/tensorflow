@@ -80,7 +80,8 @@ OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
   // converted SPIR-V ModuleOp inside a MLIR module. This should be changed to
   // return the SPIR-V ModuleOp directly after module and function are migrated
   // to be general ops.
-  OwningModuleRef module(builder.createModule());
+  OwningModuleRef module(Module::create(
+      FileLineColLoc::get(inputFilename, /*line=*/0, /*column=*/0, context)));
   Block *block = createOneBlockFunction(builder, module.get());
   block->push_front(spirvModule->getOperation());
 

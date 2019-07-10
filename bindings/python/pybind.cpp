@@ -146,7 +146,8 @@ struct PythonFunction {
 /// Trivial C++ wrappers make use of the EDSC C API.
 struct PythonMLIRModule {
   PythonMLIRModule()
-      : mlirContext(), module(mlir::Module::create(&mlirContext)),
+      : mlirContext(),
+        module(mlir::Module::create(mlir::UnknownLoc::get(&mlirContext))),
         moduleManager(*module) {}
 
   PythonType makeScalarType(const std::string &mlirElemType,

@@ -3982,9 +3982,11 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
 /// null.
 Module mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
                              MLIRContext *context) {
+  auto sourceBuf = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
 
   // This is the result module we are parsing into.
-  OwningModuleRef module(Module::create(context));
+  OwningModuleRef module(Module::create(FileLineColLoc::get(
+      sourceBuf->getBufferIdentifier(), /*line=*/0, /*column=*/0, context)));
 
   ParserState state(sourceMgr, context);
   if (ModuleParser(state).parseModule(*module))

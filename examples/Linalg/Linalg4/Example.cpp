@@ -64,7 +64,7 @@ FuncOp makeFunctionWithAMatmulOp(Module module, StringRef name) {
 
 TEST_FUNC(matmul_tiled_loops) {
   MLIRContext context;
-  OwningModuleRef module = Module::create(&context);
+  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
   mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_loops");
   lowerToTiledLoops(f, {8, 9});
   PassManager pm;
@@ -95,7 +95,7 @@ TEST_FUNC(matmul_tiled_loops) {
 
 TEST_FUNC(matmul_tiled_views) {
   MLIRContext context;
-  OwningModuleRef module = Module::create(&context);
+  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
   mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_views");
   OpBuilder b(f.getBody());
   lowerToTiledViews(f, {b.create<ConstantIndexOp>(f.getLoc(), 8),
@@ -124,7 +124,7 @@ TEST_FUNC(matmul_tiled_views) {
 
 TEST_FUNC(matmul_tiled_views_as_loops) {
   MLIRContext context;
-  OwningModuleRef module = Module::create(&context);
+  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
   mlir::FuncOp f =
       makeFunctionWithAMatmulOp(*module, "matmul_tiled_views_as_loops");
   OpBuilder b(f.getBody());

@@ -109,7 +109,7 @@ TEST_FUNC(execution) {
   // linalg.matmul operation and lower it all the way down to the LLVM IR
   // dialect through partial conversions.
   MLIRContext context;
-  OwningModuleRef module = Module::create(&context);
+  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
   mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_as_loops");
   lowerToLoops(f);
   convertLinalg3ToLLVM(*module);
