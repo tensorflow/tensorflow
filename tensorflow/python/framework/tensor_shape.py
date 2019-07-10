@@ -591,11 +591,11 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `other` modulo `self`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
-    return other % self
+    other = as_dimension(other)
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(other.value % self._value)
 
   def __lt__(self, other):
     """Returns True if `self` is known to be less than `other`.
