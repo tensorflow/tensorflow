@@ -111,7 +111,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:batch_dot_simplification",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:cholesky_expander",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
