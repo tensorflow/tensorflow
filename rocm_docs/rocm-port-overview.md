@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document serves as the overall document to explain what was changed to allow TensorFlow 1.8.0 running on ROCm platform.
+This document serves as the overall document to explain what was changed to allow TensorFlow 1.14.0 running on ROCm platform.
 
 In this port efforts were made to try ensure logic for existing CUDA / NVPTX path stay as-is. Places where platform neutrality were broken are marked as **XXX**.
 
