@@ -33,7 +33,6 @@ string ToString(CompressionType compression_type) {
     case CompressionType::UNCOMPRESSED:
       return "";
   }
-  return "UNDEFINED";
 }
 
 io::ZlibCompressionOptions GetZlibCompressionOptions(
@@ -45,32 +44,40 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
       return io::ZlibCompressionOptions::GZIP();
     case CompressionType::RAW:
       return io::ZlibCompressionOptions::RAW();
-    default:
+    case CompressionType::UNCOMPRESSED:
       LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
                    << ToString(compression_type);
+      return io::ZlibCompressionOptions::DEFAULT();
   }
-  return io::ZlibCompressionOptions::DEFAULT();
+}
+
+Status WriteDataToFile(const string& filename, const char* data) {
+  CompressionParams params;
+  params.compression_type = CompressionType::UNCOMPRESSED;
+  return WriteDataToFile(filename, data, params);
 }
 
 Status WriteDataToFile(const string& filename, const char* data,
-                       int input_buffer_size, int output_buffer_size,
-                       const CompressionType& compression_type) {
+                       const CompressionParams& params) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
   TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
-  if (compression_type == CompressionType::UNCOMPRESSED) {
+  if (params.compression_type == CompressionType::UNCOMPRESSED) {
     TF_RETURN_IF_ERROR(file_writer->Append(data));
-  } else if (compression_type == CompressionType::ZLIB ||
-             compression_type == CompressionType::GZIP) {
-    auto zlib_compression_options = GetZlibCompressionOptions(compression_type);
-    io::ZlibOutputBuffer out(file_writer.get(), input_buffer_size,
-                             output_buffer_size, zlib_compression_options);
+  } else if (params.compression_type == CompressionType::ZLIB ||
+             params.compression_type == CompressionType::GZIP ||
+             params.compression_type == CompressionType::RAW) {
+    auto zlib_compression_options =
+        GetZlibCompressionOptions(params.compression_type);
+    io::ZlibOutputBuffer out(file_writer.get(), params.input_buffer_size,
+                             params.output_buffer_size,
+                             zlib_compression_options);
     TF_RETURN_IF_ERROR(out.Init());
     TF_RETURN_IF_ERROR(out.Append(data));
     TF_RETURN_IF_ERROR(out.Close());
   } else {
-    return tensorflow::errors::InvalidArgument("Unsupported compression_type: ",
-                                               ToString(compression_type));
+    return tensorflow::errors::InvalidArgument(
+        "Unsupported compression_type: ", ToString(params.compression_type));
   }
 
   TF_RETURN_IF_ERROR(file_writer->Flush());

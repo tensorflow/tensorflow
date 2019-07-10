@@ -57,14 +57,26 @@ struct TestCase {
   std::vector<int> breakpoints;
 };
 
-std::vector<string> ToStringVector(const std::vector<Tensor>& str_tensors) {
-  std::vector<string> str_vec;
-  for (const Tensor& tensor : str_tensors) {
-    for (int i = 0; i < tensor.NumElements(); ++i) {
-      str_vec.push_back(tensor.flat<string>()(i));
+Status CreateTestFiles(const TestCase& test_case) {
+  if (test_case.filenames.size() != test_case.texts.size()) {
+    return tensorflow::errors::InvalidArgument(
+        "The number of files does not match with the contents");
+  }
+  if (test_case.compression_type == CompressionType::UNCOMPRESSED) {
+    for (int i = 0; i < test_case.filenames.size(); ++i) {
+      TF_RETURN_IF_ERROR(
+          WriteDataToFile(test_case.filenames[i], test_case.texts[i].data()));
+    }
+  } else {
+    CompressionParams params;
+    params.compression_type = test_case.compression_type;
+    params.input_buffer_size = test_case.buffer_size;
+    params.output_buffer_size = test_case.buffer_size;
+    for (int i = 0; i < test_case.filenames.size(); ++i) {
+      TF_RETURN_IF_ERROR(WriteDataToFile(test_case.filenames[i],
+                                         test_case.texts[i].data(), params));
     }
   }
-  return str_vec;
 }
 
 // Test case 1: multiple text files with ZLIB compression.
@@ -156,14 +168,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, GetNext) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -213,14 +218,7 @@ TEST_F(TextLineDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -253,14 +251,7 @@ TEST_F(TextLineDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -294,14 +285,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -335,14 +319,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -376,14 +353,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -416,14 +386,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -462,14 +425,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -511,14 +467,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -560,14 +509,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -610,14 +552,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
-  for (int i = 0; i < test_case.filenames.size(); ++i) {
-    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
-                                 test_case.texts[i].data(),
-                                 test_case.buffer_size, test_case.buffer_size,
-                                 test_case.compression_type));
-  }
+  TF_ASSERT_OK(CreateTestFiles(test_case));
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
