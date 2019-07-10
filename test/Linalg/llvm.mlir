@@ -1,11 +1,14 @@
 // RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | FileCheck %s
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
+  %c1 = constant 1 : index
   %s = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
+  %t = addi %s, %c1 : index
   return
 }
 // CHECK-LABEL: func @buffer_size(%{{.*}}: !llvm<"{ float*, i64 }">) {
 //       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[1] : !llvm<"{ float*, i64 }">
+//  CHECK-NEXT:   %{{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
 
 func @range(%arg0: index) {
   %c0 = constant 0 : index

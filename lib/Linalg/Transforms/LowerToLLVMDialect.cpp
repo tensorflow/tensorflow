@@ -262,7 +262,7 @@ public:
 
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
-    auto int64Ty = lowering.convertType(operands[0]->getType());
+    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     edsc::ScopedContext context(rewriter, op->getLoc());
     rewriter.replaceOp(
         op, {extractvalue(int64Ty, operands[0], positionAttr(rewriter, 1))});
