@@ -46,7 +46,7 @@ from tensorflow.python.tools import module_util as _module_util
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
-_API_MODULE = sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
+_API_MODULE = _sys.modules[__name__].bitwise
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
 _current_module = _sys.modules[__name__]
 
