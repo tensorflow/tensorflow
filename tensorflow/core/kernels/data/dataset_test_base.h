@@ -60,9 +60,9 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
 // `input_buffer_size` and `output_buffer_size` specify the input and output
 // buffer size when ZLIB and GZIP compression is used.
 struct CompressionParams {
-  CompressionType compression_type;
-  int32 input_buffer_size;
-  int32 output_buffer_size;
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  int32 input_buffer_size = 0;
+  int32 output_buffer_size = 0;
 };
 
 // Writes the input data into the file without compression.

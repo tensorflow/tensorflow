@@ -77,6 +77,7 @@ Status CreateTestFiles(const TestCase& test_case) {
                                          test_case.texts[i].data(), params));
     }
   }
+  return Status::OK();
 }
 
 // Test case 1: multiple text files with ZLIB compression.

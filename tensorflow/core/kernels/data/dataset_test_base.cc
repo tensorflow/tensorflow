@@ -52,9 +52,7 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
 }
 
 Status WriteDataToFile(const string& filename, const char* data) {
-  CompressionParams params;
-  params.compression_type = CompressionType::UNCOMPRESSED;
-  return WriteDataToFile(filename, data, params);
+  return WriteDataToFile(filename, data, CompressionParams());
 }
 
 Status WriteDataToFile(const string& filename, const char* data,
