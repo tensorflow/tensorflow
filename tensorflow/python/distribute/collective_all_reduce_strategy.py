@@ -157,12 +157,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
     # TODO(yuefengz): remove num_gpus_per_worker from CollectiveAllReduce.
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys)
+    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
 
     self._cluster_spec = None
     self._task_type = None
@@ -257,13 +257,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       local_devices = (self._worker_device,)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
-    self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(self._worker_device, self.worker_devices)])
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys)
+    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    self._input_workers = input_lib.InputWorkers(
+        self._device_map, [(self._worker_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.

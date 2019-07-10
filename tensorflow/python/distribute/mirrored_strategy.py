@@ -400,8 +400,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._local_mode = True
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
-    self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
-        devices)
+    self._inferred_cross_device_ops = None if self._cross_device_ops else (
+        cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
 
   def _initialize_multi_worker(self, devices):
