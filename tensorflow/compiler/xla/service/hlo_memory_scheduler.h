@@ -91,9 +91,9 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     int64* peak_memory);
 
 // Returns an HloSchedule which seeks to minimize the memory required for the
-// computation. size_function is the function returning the number of bytes
-// required for a LogicalBuffer. peak_memory (if not nullptr) is set to the peak
-// memory of the resulting schedule according to the HeapSimulator.
+// module. size_function is the function returning the number of bytes required
+// for a LogicalBuffer. peak_memory (if not nullptr) is set to the largest peak
+// memory (according to the HeapSimulator) of all computations in the module.
 StatusOr<HloSchedule> ScheduleModule(
     HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const MemorySchedulerAlgorithm& algorithm = {},

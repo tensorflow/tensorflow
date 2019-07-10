@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <queue>
@@ -608,21 +609,24 @@ StatusOr<HloSchedule> ScheduleModule(
   absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   for (auto* computation : module->MakeComputationPostOrder()) {
     if (!computation->IsFusionComputation()) {
-      // peak_memory may be nullptr.
-      int64 peak_memory_internal;
+      int64 computation_peak_memory;
       TF_ASSIGN_OR_RETURN(
           HloInstructionSequence computation_sequence,
           ScheduleComputationHelper(
               computation, *points_to_analysis, *alias_analysis, size_function,
-              algorithm, memory_by_computation, &peak_memory_internal));
-      memory_by_computation[computation] = peak_memory_internal;
-      if (peak_memory) {
-        *peak_memory = peak_memory_internal;
-      }
+              algorithm, memory_by_computation, &computation_peak_memory));
+      memory_by_computation[computation] = computation_peak_memory;
       schedule.set_sequence(computation, std::move(computation_sequence));
     }
   }
   VLOG(1) << "Module schedule:\n" << schedule;
+
+  if (peak_memory) {
+    *peak_memory = 0;
+    for (const auto& computation_and_peak : memory_by_computation) {
+      *peak_memory = std::max(*peak_memory, computation_and_peak.second);
+    }
+  }
 
   TF_RETURN_IF_ERROR(schedule.Verify());
 
