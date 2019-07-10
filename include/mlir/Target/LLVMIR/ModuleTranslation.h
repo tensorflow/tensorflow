@@ -34,6 +34,7 @@
 
 namespace mlir {
 class Attribute;
+class FuncOp;
 class Location;
 class ModuleOp;
 class Operation;

@@ -225,7 +225,7 @@ struct PythonMLIRModule {
   }
 
   PythonFunction getNamedFunction(const std::string &name) {
-    return moduleManager.getNamedFunction(name);
+    return moduleManager.lookupSymbol<FuncOp>(name);
   }
 
   PythonFunctionContext

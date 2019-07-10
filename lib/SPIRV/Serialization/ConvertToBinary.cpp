@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/SPIRV/SPIRVOps.h"
 #include "mlir/SPIRV/Serialization.h"

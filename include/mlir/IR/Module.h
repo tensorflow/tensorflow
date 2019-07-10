@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_MODULE_H
 #define MLIR_IR_MODULE_H
 
-#include "mlir/IR/Function.h"
 #include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
@@ -93,11 +92,6 @@ public:
       insertPt = Block::iterator(body->getTerminator());
     body->getOperations().insert(insertPt, op);
   }
-
-  /// Look up a function with the specified name, returning null if no such
-  /// name exists. Function names never include the @ on them. Note: This
-  /// performs a linear scan of held symbols.
-  FuncOp getNamedFunction(StringRef name) { return lookupSymbol<FuncOp>(name); }
 };
 
 /// The ModuleTerminatorOp is a special terminator operation for the body of a
@@ -130,8 +124,8 @@ public:
 
   /// Look up a symbol with the specified name, returning null if no such
   /// name exists. Names must never include the @ on them.
-  template <typename NameTy> FuncOp getNamedFunction(NameTy &&name) const {
-    return symbolTable.lookup<FuncOp>(name);
+  template <typename T, typename NameTy> T lookupSymbol(NameTy &&name) const {
+    return symbolTable.lookup<T>(name);
   }
 
   /// Insert a new symbol into the module, auto-renaming it as necessary.

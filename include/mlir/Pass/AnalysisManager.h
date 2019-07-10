@@ -18,6 +18,7 @@
 #ifndef MLIR_PASS_ANALYSISMANAGER_H
 #define MLIR_PASS_ANALYSISMANAGER_H
 
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassInstrumentation.h"
 #include "mlir/Support/LLVM.h"

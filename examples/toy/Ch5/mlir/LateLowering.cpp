@@ -206,7 +206,7 @@ private:
   /// Return the prototype declaration for printf in the module, create it if
   /// necessary.
   FuncOp getPrintf(ModuleOp module) const {
-    auto printfFunc = module.getNamedFunction("printf");
+    auto printfFunc = module.lookupSymbol<FuncOp>("printf");
     if (printfFunc)
       return printfFunc;
 

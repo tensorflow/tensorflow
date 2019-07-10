@@ -171,7 +171,7 @@ public:
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     // Insert the `malloc` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    FuncOp mallocFunc = module.getNamedFunction("malloc");
+    FuncOp mallocFunc = module.lookupSymbol<FuncOp>("malloc");
     if (!mallocFunc) {
       auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
       mallocFunc =
@@ -232,7 +232,7 @@ public:
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    FuncOp freeFunc = module.getNamedFunction("free");
+    FuncOp freeFunc = module.lookupSymbol<FuncOp>("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(voidPtrTy, {});
       freeFunc = FuncOp::create(rewriter.getUnknownLoc(), "free", freeType);
@@ -576,7 +576,7 @@ public:
 static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
   auto implFnName = (libFn.getName().str() + "_impl");
   auto module = libFn.getParentOfType<ModuleOp>();
-  if (auto f = module.getNamedFunction(implFnName)) {
+  if (auto f = module.lookupSymbol<FuncOp>(implFnName)) {
     return f;
   }
   SmallVector<Type, 4> fnArgTypes;
@@ -603,7 +603,7 @@ static FuncOp getLLVMLibraryCallDeclaration(Operation *op,
   assert(isa<LinalgOp>(op));
   auto fnName = LinalgOp::getLibraryCallName();
   auto module = op->getParentOfType<ModuleOp>();
-  if (auto f = module.getNamedFunction(fnName)) {
+  if (auto f = module.lookupSymbol<FuncOp>(fnName)) {
     return f;
   }
 

@@ -60,7 +60,7 @@ private:
   }
 
   FuncOp getMallocHelper(Location loc, Builder &builder) {
-    FuncOp result = getModule().getNamedFunction(kMallocHelperName);
+    FuncOp result = getModule().lookupSymbol<FuncOp>(kMallocHelperName);
     if (!result) {
       result = FuncOp::create(
           loc, kMallocHelperName,

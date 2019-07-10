@@ -122,7 +122,7 @@ public:
   void runOnModule() override {
     auto module = getModule();
     mlir::ModuleManager moduleManager(module);
-    auto main = moduleManager.getNamedFunction("main");
+    auto main = moduleManager.lookupSymbol<mlir::FuncOp>("main");
     if (!main) {
       emitError(mlir::UnknownLoc::get(module.getContext()),
                 "Shape inference failed: can't find a main function\n");
@@ -163,7 +163,8 @@ public:
     // We will create a new function with the concrete types for the parameters
     // and clone the body into it.
     if (!functionToSpecialize.mangledName.empty()) {
-      if (moduleManager.getNamedFunction(functionToSpecialize.mangledName)) {
+      if (moduleManager.lookupSymbol<mlir::FuncOp>(
+              functionToSpecialize.mangledName)) {
         funcWorklist.pop_back();
         // FuncOp already specialized, move on.
         return mlir::success();
@@ -298,7 +299,7 @@ public:
       // restart after the callee is processed.
       if (auto callOp = llvm::dyn_cast<GenericCallOp>(op)) {
         auto calleeName = callOp.getCalleeName();
-        auto callee = moduleManager.getNamedFunction(calleeName);
+        auto callee = moduleManager.lookupSymbol<mlir::FuncOp>(calleeName);
         if (!callee) {
           signalPassFailure();
           return f.emitError("Shape inference failed, call to unknown '")
@@ -307,7 +308,8 @@ public:
         auto mangledName = mangle(calleeName, op->getOpOperands());
         LLVM_DEBUG(llvm::dbgs() << "Found callee to infer: '" << calleeName
                                 << "', mangled: '" << mangledName << "'\n");
-        auto mangledCallee = moduleManager.getNamedFunction(mangledName);
+        auto mangledCallee =
+            moduleManager.lookupSymbol<mlir::FuncOp>(mangledName);
         if (!mangledCallee) {
           // Can't find the target, this is where we queue the request for the
           // callee and stop the inference for the current function now.

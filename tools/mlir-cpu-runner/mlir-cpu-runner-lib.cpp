@@ -164,7 +164,7 @@ static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
 static Error compileAndExecuteFunctionWithMemRefs(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.getNamedFunction(entryPoint);
+  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
   if (!mainFunction || mainFunction.getBlocks().empty()) {
     return make_string_error("entry point not found");
   }
@@ -207,7 +207,7 @@ static Error compileAndExecuteFunctionWithMemRefs(
 static Error compileAndExecuteSingleFloatReturnFunction(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.getNamedFunction(entryPoint);
+  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
   if (!mainFunction || mainFunction.isExternal()) {
     return make_string_error("entry point not found");
   }

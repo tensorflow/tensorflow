@@ -426,7 +426,7 @@ LogicalResult LaunchFuncOp::verify() {
   }
 
   auto module = getParentOfType<ModuleOp>();
-  FuncOp kernelFunc = module.getNamedFunction(kernel());
+  FuncOp kernelFunc = module.lookupSymbol<FuncOp>(kernel());
   if (!kernelFunc)
     return emitError() << "kernel function '" << kernelAttr << "' is undefined";
 
