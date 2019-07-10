@@ -440,11 +440,6 @@ class BufferAssignment {
   bool HaveDisjointSlices(const HloInstruction* hlo_a,
                           const HloInstruction* hlo_b) const;
 
-  // Returns the underlying points-to analysis used for this assignment.
-  const TuplePointsToAnalysis& points_to_analysis() const {
-    return liveness_->points_to_analysis();
-  }
-
   const HloDataflowAnalysis& dataflow_analysis() const {
     return alias_analysis_->dataflow_analysis();
   }

@@ -256,7 +256,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
     HloExecutionProfile* hlo_execution_profile, bool block_host_until_done) {
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
-  if (GetRootPointsToSet().IsAmbiguous()) {
+  if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
@@ -327,20 +327,20 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
-        const auto& sources = this->GetRootPointsToSet().element(index);
+        const auto& sources = this->GetRootValueSet().element(index);
         // The points-to set is unambiguous so the set should be a
         // singleton. That is, we know exactly which instruction
         // produced the array at this element.
-        CHECK_EQ(1, sources.size());
-        auto src_hlo = sources[0]->instruction();
+        CHECK_EQ(1, sources.values().size());
+        auto src_hlo = sources.values()[0]->instruction();
 
-        VLOG(4) << "Looking at: " << sources[0];
+        VLOG(4) << "Looking at: " << sources.values()[0];
 
         // The source instruction should have a non-parameter buffer
         // assigned.
-        TF_ASSIGN_OR_RETURN(
-            const BufferAllocation::Slice slice,
-            this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
+        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                            this->assignment_->GetUniqueSlice(
+                                src_hlo, sources.values()[0]->index()));
 
         se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
@@ -398,8 +398,8 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return Execute(run_options, arguments, nullptr, block_host_until_done);
 }
 
-const PointsToSet& GpuExecutable::GetRootPointsToSet() const {
-  return assignment_->points_to_analysis().GetPointsToSet(
+const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
+  return assignment_->dataflow_analysis().GetInstructionValueSet(
       module().entry_computation()->root_instruction());
 }
 
