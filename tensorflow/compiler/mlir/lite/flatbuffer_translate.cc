@@ -247,7 +247,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
-  FuncOp main_fn = module.getNamedFunction("main");
+  FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
@@ -944,7 +944,7 @@ Optional<std::string> Translator::TranslateInternal() {
   functions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
-  FuncOp main_fn = module_.getNamedFunction("main");
+  FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
   for (auto fn : module_.getOps<FuncOp>()) {

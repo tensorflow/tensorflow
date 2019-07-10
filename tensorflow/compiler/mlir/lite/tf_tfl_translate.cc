@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
@@ -83,7 +85,7 @@ static int PrintFunctionResultMapping(const std::string &result,
     std::cout << '\'' << subgraph_name << "' outputs:\n";
     mlir::Operation *terminator = nullptr;
     if (subgraph->name()) {
-      if (auto fn = module.getNamedFunction(subgraph->name()->str()))
+      if (auto fn = module.lookupSymbol<FuncOp>(subgraph->name()->str()))
         terminator = fn.back().getTerminator();
     }
     i = 0;

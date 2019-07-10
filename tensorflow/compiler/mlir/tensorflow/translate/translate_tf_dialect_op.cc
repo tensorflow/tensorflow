@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -23,7 +24,7 @@ limitations under the License.
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
-  mlir::FuncOp fn = module.getNamedFunction("main");
+  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;

@@ -615,7 +615,7 @@ StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_.getNamedFunction(mlir_func_name);
+  auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
   return builder_->getFunctionAttr(func);
 }
 
@@ -721,7 +721,7 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_.getNamedFunction(mlir_grad_func_name);
+    auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
     auto gradient_attr = builder_->getFunctionAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));

@@ -88,7 +88,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 }
 
 bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.getNamedFunction("main")) {
+  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
     return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
            mlir::Attribute();
   }
