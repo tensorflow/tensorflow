@@ -62,16 +62,19 @@ from __future__ import print_function
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 
 LIMIT_PYTHON_ITERATIONS = True
@@ -137,8 +140,12 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
     Tuple containing the final state.
   """
   if tensor_util.is_tensor(iter_):
-    return _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
-                                  init_vars)
+    if tensors.is_range_tensor(iter_):
+      return _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
+                                init_vars)
+    else:
+      return _known_len_tf_for_stmt(iter_, extra_test, body, get_state,
+                                    set_state, init_vars)
 
   if isinstance(iter_, dataset_ops.DatasetV2):
     return _tf_dataset_for_stmt(iter_, extra_test, body, get_state, set_state,
@@ -207,8 +214,59 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
       init_vars=(0,) + init_vars,
       opts=dict(maximum_iterations=n))
 
-  # Dropping the iteration index because it's not syntactically visible.
-  # TODO(mdan): Don't.
+  # Note: the iteration index is not returned by the while loop, however
+  # if a symbol with the same name exists outside the loop, it will be captured
+  # by the loop variables and ultimately updated correctly.
+  if isinstance(results, (tuple, list)):
+    assert len(results) >= 1  # Has at least the iterate.
+    if len(results) > 1:
+      results = results[1:]
+  else:
+    results = ()
+
+  return results
+
+
+def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
+                       init_vars):
+  """Overload of for_stmt that iterates over a TF range (and elides it)."""
+  _disallow_undefs_into_loop(*init_vars)
+
+  start, limit, delta = iter_.op.inputs
+
+  def while_body(iterate, *loop_vars):
+    new_vars = body(iterate, *loop_vars)
+
+    loop_vars = (iterate + delta,)
+    if new_vars:
+      loop_vars += new_vars
+
+    return loop_vars
+
+  def while_cond(iterate, *loop_vars):
+    main_test = math_ops.logical_or(
+        math_ops.logical_and(delta >= 0, iterate < limit),
+        math_ops.logical_and(delta < 0, iterate > limit))
+    if extra_test is not None:
+      return control_flow_ops.cond(
+          main_test, lambda: extra_test(*loop_vars), lambda: False)
+    return main_test
+
+  # This specific dtype is required by while_loop.
+  maximum_iterations = math_ops.cast(
+      misc.get_range_len(start, limit, delta), dtypes.int32)
+
+  results = _tf_while_stmt(
+      while_cond,
+      while_body,
+      get_state,
+      set_state,
+      init_vars=(start,) + init_vars,
+      opts=dict(maximum_iterations=maximum_iterations))
+
+  # Note: the iteration index is not returned by the while loop, however
+  # if a symbol with the same name exists outside the loop, it will be captured
+  # by the loop variables and ultimately updated correctly.
   if isinstance(results, (tuple, list)):
     assert len(results) >= 1  # Has at least the iterate.
     if len(results) > 1:
