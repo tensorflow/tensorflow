@@ -788,15 +788,6 @@ void VirtualScheduler::AddOutputNodesToReadyQueue(
 
     for (auto* output_node : port_num_output_pair.second) {
       auto& output_state = node_map_[output_node];
-      // Skip if this input node has already been seen.
-      if (IsMerge(*node) && (output_state.input_nodes_seen.find(node) !=
-                             output_state.input_nodes_seen.end())) {
-        LOG(WARNING) << "Output node [ " << output_node->name()
-                     << " ] has alread seen this input node [ " << node->name()
-                     << " -- possibly due to Swith-Merge in previous "
-                     << "nodes. Skip to increment num_inputs_ready.";
-        continue;
-      }
       output_state.num_inputs_ready++;
       // Execute a node as soon as all its inputs are ready. Merge nodes are
       // special since they run as soon as one of their inputs becomes
@@ -807,18 +798,6 @@ void VirtualScheduler::AddOutputNodesToReadyQueue(
         output_state.time_ready = curr_time;
         ready_nodes_->AddNode(output_node);
         VLOG(3) << "  Add output: " << output_node->name();
-      }
-    }
-  }
-
-  // Update input_nodes_seen. We update it only for the outputs of Merge node,
-  // as in other cases, using only counter based checking works.
-  if (IsMerge(*node)) {
-    for (const auto& port_num_output_pair : node_state.outputs) {
-      if (slot >= 0 && port_num_output_pair.first != slot) continue;
-      for (auto* output_node : port_num_output_pair.second) {
-        auto& output_state = node_map_[output_node];
-        output_state.input_nodes_seen.insert(node);
       }
     }
   }

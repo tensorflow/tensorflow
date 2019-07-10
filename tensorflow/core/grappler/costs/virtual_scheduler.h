@@ -41,7 +41,6 @@ struct NodeState {
   // List of output nodes (a list of nodes that takes this output port as input)
   // keyed by port_num. Note that port_num -1 is used for control dependency.
   std::unordered_map<int, std::vector<const NodeDef*>> outputs;
-  std::unordered_set<const NodeDef*> input_nodes_seen;
 
   // Info from GraphProperties.
   std::vector<OpInfo::TensorProperties> input_properties;
