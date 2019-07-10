@@ -105,6 +105,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
+    tags = ["no_oss"],
 )
 
 cuda_py_test(

@@ -87,5 +87,8 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
 )

@@ -2763,6 +2763,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
+    tags = ["no_oss"],
 )
 
 cuda_py_test(

@@ -70,6 +70,7 @@ py_test(
     size = "small",
     srcs = ["trainer_hooks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":trainer_hooks",
         "//tensorflow/contrib/framework:framework_py",
@@ -119,6 +120,7 @@ py_test(
     size = "small",
     srcs = ["custom_export_strategy_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":custom_export_strategy",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
@@ -179,6 +181,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_oss",
         "no_pip_gpu",
         "notsan",
     ],
@@ -198,6 +201,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_oss",
         "no_pip_gpu",
         "notsan",
     ],
