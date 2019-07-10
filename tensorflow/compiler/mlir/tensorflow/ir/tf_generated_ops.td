@@ -2638,6 +2638,31 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes hyperbolic tangent of `x` element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes hyperbolic tangent of every
+  element in the tensor. Input range is `[-inf, inf]` and
+  output range is `[-1,1]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
+  tf.math.tanh(x) ==> [-1. -0.99990916 -0.46211717 0.7615942 0.8336547 0.9640276 0.9950547 1.]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.

@@ -1692,9 +1692,10 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  // TODO(haoliang): missing Uint8.
+  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TensorOf<[F32, I16, I8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,

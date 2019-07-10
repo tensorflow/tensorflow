@@ -849,3 +849,11 @@ func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> 
   // CHECK:  %0 = "tfl.mirror_pad"(%arg0, %arg1) {mode = "REFLECT"} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return %0 : tensor<?xf32>
 }
+
+func @Tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  %2 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %2: tensor<1xf32>
+
+// CHECK-LABEL: Tanh
+// CHECK:  %0 = "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+}
