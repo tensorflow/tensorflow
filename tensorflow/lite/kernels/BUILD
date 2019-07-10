@@ -1149,6 +1149,7 @@ cc_test(
     name = "log_softmax_test",
     size = "small",
     srcs = ["log_softmax_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

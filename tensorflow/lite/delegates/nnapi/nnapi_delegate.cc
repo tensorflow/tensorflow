@@ -1953,6 +1953,20 @@ class NNAPIDelegateKernel {
           };
         }
       } break;
+      case kTfLiteBuiltinLogSoftmax: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            input_type == kTfLiteFloat32) {
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            // Scaling and axis are hardcoded to respectively 1 and -1
+            // in TFLite.
+            mapping_args.builder->AddScalarFloat32Operand(1);
+            mapping_args.builder->AddScalarInt32Operand(-1);
+            return ANEURALNETWORKS_LOG_SOFTMAX;
+          };
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
