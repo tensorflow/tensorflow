@@ -578,8 +578,9 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  # TODO(b/137148281): reenable
   @test_util.run_gpu_only
-  def testDeviceAnnotationRespected(self):
+  def DISABLED_testDeviceAnnotationRespected(self):
     a = []
 
     @def_function.function()
