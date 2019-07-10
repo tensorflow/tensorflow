@@ -1291,7 +1291,8 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const NodeSpecs& specs) {
-  mlir::OwningModuleRef module = mlir::Module::create(context);
+  mlir::OwningModuleRef module =
+      mlir::Module::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   Importer importer(flib_def, debug_info, specs, module.get(),
                     &tf_name_to_mlir_name);
