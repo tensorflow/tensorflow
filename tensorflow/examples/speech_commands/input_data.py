@@ -122,7 +122,7 @@ def load_wav_file(filename):
   Returns:
     Numpy array holding the sample data as floats between -1.0 and 1.0.
   """
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     wav_filename_placeholder = tf.placeholder(tf.string, [])
     wav_loader = io_ops.read_file(wav_filename_placeholder)
     wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
@@ -139,7 +139,7 @@ def save_wav_file(filename, wav_data, sample_rate):
     wav_data: 2D array of float PCM-encoded audio data.
     sample_rate: Samples per second to encode in the file.
   """
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     wav_filename_placeholder = tf.placeholder(tf.string, [])
     sample_rate_placeholder = tf.placeholder(tf.int32, [])
     wav_data_placeholder = tf.placeholder(tf.float32, [None, 1])
@@ -349,7 +349,7 @@ class AudioProcessor(object):
     background_dir = os.path.join(self.data_dir, BACKGROUND_NOISE_DIR_NAME)
     if not os.path.exists(background_dir):
       return self.background_data
-    with tf.Session(graph=tf.Graph()) as sess:
+    with tf.compat.v1.Session(graph=tf.Graph()) as sess:
       wav_filename_placeholder = tf.placeholder(tf.string, [])
       wav_loader = io_ops.read_file(wav_filename_placeholder)
       wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
@@ -654,7 +654,7 @@ class AudioProcessor(object):
     words_list = self.words_list
     data = np.zeros((sample_count, desired_samples))
     labels = []
-    with tf.Session(graph=tf.Graph()) as sess:
+    with tf.compat.v1.Session(graph=tf.Graph()) as sess:
       wav_filename_placeholder = tf.placeholder(tf.string, [])
       wav_loader = io_ops.read_file(wav_filename_placeholder)
       wav_decoder = contrib_audio.decode_wav(
