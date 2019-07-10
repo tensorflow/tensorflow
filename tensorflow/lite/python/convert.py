@@ -153,7 +153,18 @@ def toco_convert_protos(model_flags_str,
       fp_toco.write(toco_flags_str)
       fp_input.write(input_data_str)
       debug_info_str = debug_info_str if debug_info_str else ""
-      fp_debug.write(debug_info_str)
+      # if debug_info_str contains a "string value", then the call to
+      # fp_debug.write(debug_info_str) will fail with the following error
+      #
+      # TypeError: a bytes-like object is required, not 'str'
+      #
+      # Some of the subtests within the "convert_test" unit-test fail
+      # with the error shown above. So watch out for that scenario and
+      # convert debug_info_str to bytes where needed
+      if isinstance(debug_info_str, str):
+        fp_debug.write(debug_info_str.encode('utf-8'))
+      else:
+        fp_debug.write(debug_info_str)
 
     # Reserve an output file
     with _tempfile.NamedTemporaryFile(delete=False) as fp:
