@@ -627,9 +627,10 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SoftmaxOp op) {
-  if (!IsOfRankOrUnranked(op.logits(), 2))
-    return op.emitOpError("requires operand to be 2D tensor");
-
+  if (!IsOfRankOrUnranked(op.logits(), 1) &&
+      !IsOfRankOrUnranked(op.logits(), 2)) {
+    return op.emitOpError("requires operand to be 1D/2D tensor");
+  }
   return success();
 }
 
