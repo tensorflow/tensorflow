@@ -3807,36 +3807,19 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if compat.forward_compatible(2019, 8, 10):
-    if axis is None:
-      axis = batch_dims
-    if axis != 0:
-      return gen_array_ops.gather_v2(
-          params, indices, axis, batch_dims=batch_dims, name=name)
-    try:
-      # TODO(apassos) find a less bad way of detecting resource variables
-      # without introducing a circular dependency.
-      return params.sparse_read(indices, name=name)
-    except AttributeError:
-      return gen_array_ops.gather_v2(
-          params, indices, axis, name=name)
 
-  if batch_dims != 0:
-    with ops.name_scope(name, "Gather", [params, indices, axis]):
-      return _batch_gather(params, indices, batch_dims, axis)
   if axis is None:
     axis = batch_dims
   if axis != 0:
-    # Note that we do a sparse_read here to avoid snapshotting the entire
-    # resource variable and doing a gather, which can be inefficient and lead to
-    # subtle race conditions. TODO(apassos) implement axis != 0 on sparse_read
-    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+    return gen_array_ops.gather_v2(
+        params, indices, axis, batch_dims=batch_dims, name=name)
   try:
-    # TODO(apassos) find a less bad way of detecting resource variables without
-    # introducing a circular dependency.
+    # TODO(apassos) find a less bad way of detecting resource variables
+    # without introducing a circular dependency.
     return params.sparse_read(indices, name=name)
   except AttributeError:
-    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+    return gen_array_ops.gather_v2(
+        params, indices, axis, name=name)
 
 
 @tf_export("gather", v1=[])
