@@ -90,6 +90,14 @@ class OptimizationOptions(options.OptionsBase):
       "When autotuning is enabled (through `autotune`), identifies the "
       "algorithm to use for the autotuning optimization.")
 
+  autotune_buffers = options.create_option(
+      name="autotune_buffers",
+      ty=bool,
+      docstring=
+      "When autotuning is enabled (through `autotune`), determines whether to "
+      "also autotune buffer sizes for datasets with parallelism. If None,"
+      " defaults to False.")
+
   autotune_cpu_budget = options.create_option(
       name="autotune_cpu_budget",
       ty=int,
@@ -205,6 +213,9 @@ class OptimizationOptions(options.OptionsBase):
 
     if self.map_vectorization is not None:
       result.update(self.map_vectorization._static_optimizations())  # pylint: disable=protected-access
+
+    if self.autotune is not False and self.autotune_buffers:  # pylint: disable=g-bool-id-comparison
+      result.add("inject_prefetch")
     return sorted(list(result))
 
   def _static_optimization_configs(self):
