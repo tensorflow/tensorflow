@@ -19,6 +19,7 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "byte_swap.h",
+        "byte_swap.cc",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
