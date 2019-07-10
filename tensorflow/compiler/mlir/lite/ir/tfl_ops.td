@@ -1965,6 +1965,25 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   let hasOptions = 1;
 }
 
+def TFL_CastOp : TFL_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Cast operator";
+
+  let description = [{
+    Casts input from input type to output type.
+  }];
+
+  // TODO(b/135538711): Add complex types here.
+  let arguments = (ins
+    TensorOf<[F32, I1, I32, I64]>:$input
+  );
+
+  let results = (outs TensorOf<[F32, I1, I32, I64]>:$output);
+
+  // TFLite's cast op does not utilize CastOptions, instead derives types
+  // from the TfLiteTensors.
+  let hasOptions = 0;
+}
+
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      NoSideEffect, TFL_OperandHasRank<1, 2>]> {
