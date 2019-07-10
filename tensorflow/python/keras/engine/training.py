@@ -61,6 +61,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -1703,7 +1704,13 @@ class Model(network.Network):
         if steps is None:
           batch_size = static_batch_size
 
-    if batch_size is None and steps is None:
+    if (batch_size is None
+        and steps is None
+        and not isinstance(x, (dataset_ops.DatasetV2,
+                               iterator_ops.Iterator,
+                               iterator_ops.IteratorV2,
+                               data_utils.Sequence))
+        and not tf_inspect.isgenerator(x)):
       # Backwards compatibility
       batch_size = 32
     return batch_size

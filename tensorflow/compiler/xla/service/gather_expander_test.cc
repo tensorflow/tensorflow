@@ -36,7 +36,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
 
   Status status = GatherExpander{}.Run(module.get()).status();
   EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
@@ -63,7 +63,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, GatherExpander{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
@@ -121,7 +121,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
   OpMetadata metadata;
   metadata.set_op_name("Gather");
   module->entry_computation()->root_instruction()->set_metadata(metadata);

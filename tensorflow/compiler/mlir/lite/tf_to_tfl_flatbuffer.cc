@@ -88,7 +88,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 }
 
 bool ShouldRunQuantizePasses(mlir::Module m) {
-  if (mlir::Function main_fn = m.getNamedFunction("main")) {
+  if (mlir::FuncOp main_fn = m.getNamedFunction("main")) {
     return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
            mlir::Attribute();
   }
@@ -100,6 +100,16 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
                                 bool lower_tensor_list_ops,
                                 mlir::PassManager *pass_manager) {
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+
+  if (lower_tensor_list_ops) {
+    // Execute this pass before `CanonicalizerPass` in case some TensorList
+    // ops are constant folded into variant types.
+    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
+    // handle constant ops that produce `TensorList`.
+    // TODO(haoliang): Add this pass by default.
+    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  }
+
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize
@@ -112,10 +122,6 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
   if (emit_builtin_tflite_ops) {
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    // TODO(haoliang): Add this pass by default.
-    if (lower_tensor_list_ops) {
-      pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-    }
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());

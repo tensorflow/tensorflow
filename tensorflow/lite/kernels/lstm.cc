@@ -863,13 +863,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace basic
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  cpu_backend_support::IncrementUsageCounter(context);
-
   const auto* params = reinterpret_cast<const TfLiteLSTMParams*>(buffer);
   switch (params->kernel_type) {
     case kTfLiteLSTMFullKernel:
+      cpu_backend_support::IncrementUsageCounter(context);
       return full::Init(context, buffer, length);
     case kTfLiteLSTMBasicKernel:
+      cpu_backend_support::IncrementUsageCounter(context);
       return basic::Init(context, buffer, length);
     default:
       return nullptr;

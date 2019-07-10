@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -307,9 +309,22 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("to_py", &PyLocalBuffer::ToPython)
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
-      .def("is_deleted", [](const PyLocalBuffer& buffer) {
-        return buffer.DeviceBuffer() == nullptr;
-      });
+      .def("is_deleted",
+           [](const PyLocalBuffer& buffer) {
+             return buffer.DeviceBuffer() == nullptr;
+           })
+      .def("unsafe_buffer_pointer",
+           [](const PyLocalBuffer& buffer) -> StatusOr<std::uintptr_t> {
+             TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer,
+                                 buffer.AsShapedBuffer());
+             if (shaped_buffer.on_device_shape().IsTuple()) {
+               return Unimplemented(
+                   "unsafe_buffer_pointer is not implemented for tuple "
+                   "buffers.");
+             }
+             return absl::bit_cast<std::uintptr_t>(
+                 shaped_buffer.root_buffer().opaque());
+           });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
@@ -330,7 +345,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_infs)
       .def_property("xla_cpu_fast_math_honor_nans",
                     &DebugOptions::xla_cpu_fast_math_honor_nans,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans)
+      .def_property("xla_cpu_fast_math_honor_division",
+                    &DebugOptions::xla_cpu_fast_math_honor_division,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())

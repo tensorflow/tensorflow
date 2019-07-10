@@ -336,6 +336,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "Save",
           "SaveSlices",
           "SaveV2",
+          "ScatterNd",
           "SegmentMax",
           "SegmentMean",
           "SegmentMin",

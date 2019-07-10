@@ -1514,15 +1514,12 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
 // Utils.
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
-  std::set<string> default_layout_sensitive_ops = {"AvgPool",
-                                                   "BiasAdd",
-                                                   "Conv2D",
-                                                   "DepthToSpace",
-                                                   "FusedBatchNorm",
-                                                   "FusedBatchNormV2",
-                                                   "FusedConv2DBiasActivation",
-                                                   "MaxPool",
-                                                   "SpaceToDepth"};
+  std::set<string> default_layout_sensitive_ops = {
+      "AvgPool",          "BiasAdd",
+      "Conv2D",           "DepthToSpace",
+      "FusedBatchNorm",   "FusedBatchNormV2",
+      "FusedBatchNormV3", "FusedConv2DBiasActivation",
+      "MaxPool",          "SpaceToDepth"};
   return default_layout_sensitive_ops.find(node.op()) !=
          default_layout_sensitive_ops.end();
 }

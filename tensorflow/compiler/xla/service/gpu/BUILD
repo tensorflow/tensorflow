@@ -477,11 +477,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -927,8 +927,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "nvptx_constants",
-    hdrs = ["nvptx_constants.h"],
+    name = "target_constants",
+    hdrs = ["target_constants.h"],
 )
 
 cc_library(
@@ -937,8 +937,8 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
-        ":nvptx_constants",
         ":outfeed_manager",
+        ":target_constants",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_tree",
@@ -985,10 +985,10 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
-        ":nvptx_constants",
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",
+        ":target_constants",
         ":variadic_op_splitter",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",

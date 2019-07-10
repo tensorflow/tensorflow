@@ -31,14 +31,14 @@ namespace tensorflow {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(uint64 id, EagerContext* ctx,
+  ExecuteNode(EagerContext* ctx,
               const tensorflow::gtl::InlinedVector<TensorHandle*, 4>& inputs,
               core::RefCountPtr<KernelAndDevice> kernel,
               NodeExecStats* maybe_stats, StepStats* maybe_step_stats,
               GraphCollector* graph_collector,
               const DataTypeVector& output_dtypes,
               const tensorflow::gtl::InlinedVector<TensorHandle*, 2>& retvals)
-      : EagerNode(id),
+      : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
         kernel_(std::move(kernel)),

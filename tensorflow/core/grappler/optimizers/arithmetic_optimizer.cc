@@ -190,6 +190,13 @@ bool GetElementUnexhaustive(const Tensor& t, int i, const std::set<int>& dtypes,
   }
 }
 
+bool NodeIsOnCpu(const NodeDef& node) {
+  string task;
+  string device;
+  return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
+         absl::StrContains(device, DEVICE_CPU);
+}
+
 // Graph optimizer context extension specific to ArithmeticOptimizer.
 struct ArithmeticOptimizerContext {
   explicit ArithmeticOptimizerContext(SetVector<NodeDef*>* nodes_to_simplify)
@@ -887,7 +894,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     // them, it's possible that rewritten node already exists in a graph
     return rewritten_nodes_.find(node->name()) != rewritten_nodes_.end() ||
            ctx().node_map->NodeExists(OuterNodeName(node, false)) ||
-           ctx().node_map->NodeExists(OuterNodeName(node, true));
+           ctx().node_map->NodeExists(OuterNodeName(node, true)) ||
+           ctx().node_map->NodeExists(InnerAddNodeName(node));
   }
 
   // keep names of the nodes that were optimized by this stage
@@ -2360,13 +2368,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
     const DataType type = GetDataTypeFromAttr(*node, "T");
     bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
 
-    string task;
-    string device;
-    bool is_on_cpu =
-        DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-        absl::StrContains(device, DEVICE_CPU);
-
-    if (!is_complex || is_on_cpu) {
+    if (!is_complex || NodeIsOnCpu(*node)) {
       NodeDef* new_square_node = AddCopyNode(optimized_node_name, node);
       new_square_node->set_op("Square");
       for (int i = 1; i < new_square_node->input_size(); ++i) {
@@ -2527,6 +2529,30 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
       node->set_input(1, AsControlDependency(y->name()));
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
+    } else if (curr == complex128(3, 0)) {
+      // TODO(courbet): Use 'Cube' when it's added to TF ops.
+      if (NodeIsOnCpu(*node)) {
+        // We create an inner square node: inner_square = square(x)
+        const NodeScopeAndName scope_and_name =
+            ParseNodeScopeAndName(node->name());
+        const string inner_square_name =
+            OptimizedNodeName(scope_and_name, "_inner");
+        NodeDef* inner_square_node = ctx().node_map->GetNode(inner_square_name);
+        if (inner_square_node == nullptr) {
+          inner_square_node = AddCopyNode(inner_square_name, node);
+          inner_square_node->set_op("Square");
+          inner_square_node->mutable_input()->RemoveLast();
+        }
+        ctx().node_map->AddOutput(x->name(), inner_square_node->name());
+        // We modify `node`: node = mul(x, inner_square);
+        node->set_op("Mul");
+        node->set_input(1, inner_square_node->name());
+        node->add_input(AsControlDependency(y->name()));
+
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(inner_square_node);
+        AddToOptimizationQueue(y);
+      }
     } else if (curr == complex128(1, 0) &&
                ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
       // Pow could be used to broadcast, so make sure the shapes of the two
@@ -2984,17 +3010,6 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
              DrivesControlDependency(node));
   }
 
-  // UnaryOpsComposition is defined only for CPU.
-  bool NodeIsOnCpu(const NodeDef& node) const {
-    using absl::StartsWith;
-
-    string task;
-    string device;
-
-    return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
-           StartsWith(device, DEVICE_CPU);
-  }
-
   bool NodeIsAlreadyFused(const NodeDef& node) const {
     return fused_nodes_.count(node.name()) > 0;
   }
@@ -3239,10 +3254,9 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
                       int slice_start_value, int pack_axis,
                       string* simplified_node_name) {
+    const string& input_slice = pack->input(slice_start_value);
+
     OpInfo::TensorProperties input_slice_properties;
-    NodeDef* input_slice;
-    TF_RETURN_IF_ERROR(
-        GetInputNode(pack->input(slice_start_value), &input_slice));
     TF_RETURN_IF_ERROR(GetTensorProperties(pack->input(slice_start_value),
                                            &input_slice_properties));
     PartialTensorShape input_slice_shape(input_slice_properties.shape());
@@ -3257,7 +3271,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("Identity");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties.dtype(), "T", output);
-      output->add_input(input_slice->name());
+      output->add_input(input_slice);
     } else {
       NodeDef* axis = AddEmptyNode(
           OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
@@ -3272,7 +3286,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("ExpandDims");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties.dtype(), "T", output);
-      output->add_input(input_slice->name());
+      output->add_input(input_slice);
       output->add_input(axis->name());
     }
 

@@ -1394,6 +1394,10 @@ TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
 
+  // Try resizing input to same shape as before (which should be a No-op).
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {3}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
   ASSERT_EQ(interpreter_->ResizeInputTensor(0, {1, 3}), kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(1, {1, 3}), kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);
@@ -1448,6 +1452,10 @@ TEST_F(TestDelegate, TestResizeInputWithMultipleDelegates) {
       interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
       kTfLiteOk);
   // Should be two delegates nodes.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+
+  // Try resizing input to same shape as before (which should be a No-op).
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {3}), kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 2);
 
   // Resizing input tensors should temporarily restore original execution plan

@@ -397,6 +397,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::size_t> elements_per_stride_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),
     ParseExampleDatasetOp);

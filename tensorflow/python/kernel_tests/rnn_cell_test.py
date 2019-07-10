@@ -989,10 +989,10 @@ class LSTMTest(test.TestCase):
             scope=scope)
       self.assertTrue(isinstance(state_static, rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(state_dynamic, rnn_cell.LSTMStateTuple))
-      self.assertEqual(state_static[0], state_static.c)
-      self.assertEqual(state_static[1], state_static.h)
-      self.assertEqual(state_dynamic[0], state_dynamic.c)
-      self.assertEqual(state_dynamic[1], state_dynamic.h)
+      self.assertIs(state_static[0], state_static.c)
+      self.assertIs(state_static[1], state_static.h)
+      self.assertIs(state_dynamic[0], state_dynamic.c)
+      self.assertIs(state_dynamic[1], state_dynamic.h)
 
       if in_graph_mode:
         variables_lib.global_variables_initializer().run()

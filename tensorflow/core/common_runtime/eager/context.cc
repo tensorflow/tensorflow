@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
@@ -77,6 +78,7 @@ EagerContext::EagerContext(
           opts.config.graph_options().optimizer_options(), thread_pool_.get(),
           cluster_flr, custom_kernel_creator_)),
       log_device_placement_(opts.config.log_device_placement()),
+      allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
       async_default_(async),
       log_memory_(LogMemory::IsEnabled()),
@@ -552,26 +554,43 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
+bool EagerContext::IsLocalDeviceName(
+    const DeviceNameUtils::ParsedName& device_name) const {
+  if ((!device_name.has_job && !device_name.has_replica &&
+       !device_name.has_task) ||
+      remote_device_mgr() == nullptr)
+    return true;
+  auto& host_cpu_name = HostCPU()->parsed_name();
+  return device_name.job == host_cpu_name.job &&
+         device_name.replica == host_cpu_name.replica &&
+         device_name.task == host_cpu_name.task;
+}
+
 #if !defined(IS_MOBILE_PLATFORM)
 Status EagerContext::GetClient(Device* device, eager::EagerClient** client) {
+  return GetClient(device->parsed_name(), client);
+}
+
+Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
+                               eager::EagerClient** client) {
   if (remote_eager_workers_ == nullptr) {
     return errors::Internal(
         "Haven't set up remote eager worker in this eager context yet.");
   }
-  auto it = device_to_client_cache_.find(device);
-  if (it != device_to_client_cache_.end()) {
-    *client = it->second;
-    return Status::OK();
-  }
   string device_task_name;
-  TF_RETURN_IF_ERROR(GetTaskName(device, &device_task_name));
+  if (!DeviceNameUtils::GetTaskName(device_name, &device_task_name)) {
+    return errors::InvalidArgument(
+        "Task is not fully specified in device name: ",
+        DeviceNameUtils::ParsedNameToString(device_name));
+  }
 
   TF_RETURN_IF_ERROR(
       remote_eager_workers_->GetClient(device_task_name, client));
 
   if (*client == nullptr) {
     return errors::InvalidArgument(
-        "Unable to find eager client corresponding to device ", device->name());
+        "Unable to find eager client corresponding to device ",
+        DeviceNameUtils::ParsedNameToString(device_name));
   }
 
   if (std::find(remote_contexts_.begin(), remote_contexts_.end(),
@@ -579,8 +598,6 @@ Status EagerContext::GetClient(Device* device, eager::EagerClient** client) {
     return errors::Internal("Unable to find a context for handle on task: ",
                             device_task_name, ". This should not be possible");
   }
-
-  device_to_client_cache_.insert({device, *client});
 
   return Status::OK();
 }
@@ -624,7 +641,9 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-    DistributedFunctionLibraryRuntime* cluster_flr) {
+    DistributedFunctionLibraryRuntime* cluster_flr,
+    std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+        remote_mgr) {
   mutex_lock l(remote_state_mu_);
 
   if (!remote_contexts_.empty()) {
@@ -656,11 +675,11 @@ Status EagerContext::InitializeRemoteMaster(
   }
 
   server_ = std::move(server);
+  remote_mgr_ = std::move(remote_mgr);
   worker_env_ = worker_env;
   worker_session_ = worker_session;
   remote_eager_workers_ = std::move(remote_eager_workers);
 
-  device_to_client_cache_.clear();
   remote_device_manager_ = std::move(remote_device_manager);
 
   InitDeviceMapAndAsync();
@@ -733,7 +752,9 @@ Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const DeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    std::function<Rendezvous*(const int64)> rendezvous_creator) {
+    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+        remote_mgr) {
   mutex_lock l(remote_state_mu_);
 
   if (remote_device_manager_ != nullptr || server_ != nullptr ||
@@ -748,8 +769,8 @@ Status EagerContext::InitializeRemoteWorker(
 
   rendezvous_creator_ = std::move(rendezvous_creator);
   remote_eager_workers_ = std::move(remote_eager_workers);
+  remote_mgr_ = std::move(remote_mgr);
 
-  device_to_client_cache_.clear();
   remote_unowned_device_manager_ = remote_device_mgr;
   InitDeviceMapAndAsync();
 

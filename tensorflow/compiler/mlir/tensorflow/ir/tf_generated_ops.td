@@ -1348,6 +1348,53 @@ def TF_MinimumOp : TF_Op<"Minimum", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect]> {
+  let summary = "Pads a tensor with mirrored values.";
+
+  let description = [{
+This operation pads a `input` with mirrored values according to the `paddings`
+you specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many values to add before the contents of `input` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of `input`
+in that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater
+than `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true
+(if false, respectively).
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1]], [2, 2]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
+                      [2, 1, 1, 2, 3, 3, 2]
+                      [5, 4, 4, 5, 6, 6, 5]
+                      [5, 4, 4, 5, 6, 6, 5]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    TF_AnyStrAttrOf<["REFLECT", "SYMMETRIC"]>:$mode
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
+
 def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
@@ -1568,6 +1615,33 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
+  let summary = [{
+Computes the product of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TF_NumberTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2606,34 +2680,6 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
-  let summary = "List of the given size with empty elements.";
-
-  let description = [{
-element_shape: the shape of the future elements of the list
-num_elements: the number of elements to reserve
-handle: the output list
-element_dtype: the desired type of elements in the list.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements,
-
-    TypeAttr:$element_dtype
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

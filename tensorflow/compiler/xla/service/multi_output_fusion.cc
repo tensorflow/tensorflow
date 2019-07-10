@@ -128,6 +128,8 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
+    CHECK_EQ(0, fused->user_count());
+    TF_CHECK_OK(computation()->RemoveInstruction(fused));
   }
   return remaining;
 }

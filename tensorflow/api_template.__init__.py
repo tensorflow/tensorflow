@@ -41,12 +41,15 @@ from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
+# WRAPPER_PLACEHOLDER
+
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
-_API_MODULE = bitwise  # pylint: disable=undefined-variable
-_current_module = _sys.modules[__name__]
+_API_MODULE = sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
+_current_module = _sys.modules[__name__]
+
 if not hasattr(_current_module, '__path__'):
   __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:
@@ -57,6 +60,7 @@ try:
   from tensorboard.summary._tf import summary
   _current_module.__path__ = (
       [_module_util.get_parent_dir(summary)] + _current_module.__path__)
+  setattr(_current_module, "summary", summary)
 except ImportError:
   _logging.warning(
       "Limited tf.summary API due to missing TensorBoard installation.")
@@ -65,6 +69,7 @@ try:
   from tensorflow_estimator.python.estimator.api._v2 import estimator
   _current_module.__path__ = (
       [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
 except ImportError:
   pass
 
@@ -72,6 +77,7 @@ try:
   from tensorflow.python.keras.api._v2 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
 except ImportError:
   pass
 
@@ -122,25 +128,17 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
-  if '__all__' in vars():
-    vars()['__all__'].remove('python')
-  del core
-  if '__all__' in vars():
-    vars()['__all__'].remove('core')
 except NameError:
-  # Don't fail if these modules are not available.
-  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-  # does not have 'python', 'core' directories. Then, it will be copied
-  # to tensorflow/ which does have these two directories.
   pass
-# Similarly for compiler. Do it separately to make sure we do this even if the
-# others don't exist.
+try:
+  del core
+except NameError:
+  pass
 try:
   del compiler
-  if '__all__' in vars():
-    vars()['__all__'].remove('compiler')
 except NameError:
   pass
+# pylint: enable=undefined-variable
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):
@@ -148,6 +146,10 @@ if hasattr(_current_module, 'keras'):
   metrics = keras.metrics
   optimizers = keras.optimizers
   initializers = keras.initializers
+  setattr(_current_module, "losses", losses)
+  setattr(_current_module, "metrics", metrics)
+  setattr(_current_module, "optimizers", optimizers)
+  setattr(_current_module, "initializers", initializers)
 
-compat.v2.compat.v1 = compat.v1
+_current_module.compat.v2.compat.v1 = _current_module.compat.v1
 # pylint: enable=undefined-variable

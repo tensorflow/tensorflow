@@ -44,9 +44,8 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   handle_to_decref->set_output_num(output_num);
 
   if (ctx->Async()) {
-    tensorflow::uint64 id = ctx->NextId();
     ctx->ExecutorAdd(absl::make_unique<eager::DestroyTensorHandleNode>(
-        id, std::move(request), eager_client));
+        std::move(request), eager_client));
   } else {
     eager::EnqueueRequest* actual_request = request.release();
     eager::EnqueueResponse* response = new eager::EnqueueResponse;

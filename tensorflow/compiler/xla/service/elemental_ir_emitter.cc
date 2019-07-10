@@ -1954,8 +1954,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (primitive_util::IsIntegralType(component_element_type) ||
-            component_element_type == PRED) {
+        if (primitive_util::IsIntegralType(component_element_type)) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),

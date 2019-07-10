@@ -23,6 +23,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
@@ -664,17 +665,30 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
-    variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
-        filenames=self._filenames,
-        record_defaults=self._record_defaults,
-        buffer_size=self._buffer_size,
-        header=self._header,
-        output_shapes=self._flat_shapes,
-        field_delim=self._field_delim,
-        use_quote_delim=self._use_quote_delim,
-        na_value=self._na_value,
-        select_cols=self._select_cols,
-        compression_type=self._compression_type)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          compression_type=self._compression_type)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
@@ -957,9 +971,14 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         query, dtype=dtypes.string, name="query")
     self._element_spec = nest.map_structure(
         lambda dtype: structure.TensorStructure(dtype, []), output_types)
-    variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
-        self._driver_name, self._data_source_name, self._query,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = gen_experimental_dataset_ops.sql_dataset(
+          self._driver_name, self._data_source_name, self._query,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
+          self._driver_name, self._data_source_name, self._query,
+          **self._flat_structure)
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property

@@ -517,6 +517,7 @@ class MklFusedBatchNormOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    depth_ = 0;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -864,6 +865,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    depth_ = 0;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1087,7 +1089,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
  private:
   float epsilon_;
   TensorFormat tensor_format_;
-  int depth_;  // batch normalization is done for per channel.
+  size_t depth_;  // batch normalization is done for per channel.
   bool is_training_;
   engine cpu_engine = engine(engine::cpu, 0);
 

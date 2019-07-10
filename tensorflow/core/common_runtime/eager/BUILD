@@ -48,6 +48,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -86,6 +87,7 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":tensor_handle",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -241,6 +243,7 @@ cc_library(
         ":context",
         ":copy_to_device_node",
         ":eager_executor",
+        ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
@@ -251,6 +254,7 @@ cc_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -261,6 +265,24 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
         ],
     }),
+)
+
+cc_library(
+    name = "eager_op_rewrite_registry",
+    srcs = ["eager_op_rewrite_registry.cc"],
+    hdrs = ["eager_op_rewrite_registry.h"],
+    deps = [":eager_operation"],
+)
+
+tf_cc_test(
+    name = "eager_op_rewrite_registry_test",
+    srcs = ["eager_op_rewrite_registry_test.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_library(
@@ -315,6 +337,9 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*_test.cc"],
+        exclude = [
+            "*_test.cc",
+            "remote_*",
+        ],
     ),
 )

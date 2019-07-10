@@ -28,12 +28,11 @@ namespace eager {
 // an operation via RPC in a remote EagerService.
 class RemoteExecuteNode : public tensorflow::EagerNode {
  public:
-  RemoteExecuteNode(tensorflow::uint64 node_id,
-                    std::unique_ptr<EnqueueRequest> request,
+  RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request,
                     EagerClient* eager_client,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     TensorHandle** retvals, int num_retvals)
-      : tensorflow::EagerNode(node_id),
+      : tensorflow::EagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client),
         inputs_(inputs) {

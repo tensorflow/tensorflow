@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
-  mlir::Function fn = module.getNamedFunction("main");
+  mlir::FuncOp fn = module.getNamedFunction("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;
@@ -38,14 +38,14 @@ static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
   return &block.front();
 }
 
-static bool MlirToTfNodeDef(Module module, llvm::StringRef filename) {
+static LogicalResult MlirToTfNodeDef(Module module, llvm::StringRef filename) {
   auto* context = module.getContext();
 
   auto file = openOutputFile(filename);
   if (!file) {
     emitError(UnknownLoc::get(context))
         << "failed to open output file " << filename;
-    return true;
+    return failure();
   }
 
   Operation* op = ExtractOnlyOp(module);
@@ -54,19 +54,19 @@ static bool MlirToTfNodeDef(Module module, llvm::StringRef filename) {
               "modules with exactly one op other than terminator in a "
               "'main' function's "
               "only block are supported");
-    return true;
+    return failure();
   }
 
   auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(op, "node_name");
   if (!node_def_or.ok()) {
     op->emitError("failed to convert to TF NodeDef:")
         << node_def_or.status().ToString();
-    return true;
+    return failure();
   }
 
   file->os() << node_def_or.ValueOrDie()->DebugString();
   file->keep();
-  return false;
+  return success();
 }
 
 // Test only translation to convert a simple MLIR module with a single TF

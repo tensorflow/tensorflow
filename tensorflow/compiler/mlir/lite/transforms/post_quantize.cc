@@ -48,7 +48,7 @@ class PostQuantizePass : public FunctionPass<PostQuantizePass> {
   bool emit_quant_adaptor_ops_;
 };
 
-void RemoveQuantizationAdaptorOps(Function func) {
+void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.getBlocks().front();
   auto* terminator = bb.getTerminator();

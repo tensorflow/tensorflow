@@ -26,6 +26,83 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+// TODO(ezhulenev): Use CUB reductions on GPU.
+template <typename T, typename U>
+struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
+  void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
+                  const Tensor& x_input, const Tensor& scale_input,
+                  const Tensor& pop_mean_input,
+                  const Tensor& pop_variance_input, U epsilon,
+                  Tensor* x_backprop_output, Tensor* scale_backprop_output,
+                  Tensor* offset_backprop_output) {
+    typename TTypes<T, 4>::ConstTensor y_backprop(
+        y_backprop_input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
+    typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
+    typename TTypes<U>::ConstVec pop_mean(pop_mean_input.vec<U>());
+    typename TTypes<U>::ConstVec pop_var(pop_variance_input.vec<U>());
+    typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
+    typename TTypes<U>::Vec scale_backprop(scale_backprop_output->vec<U>());
+    typename TTypes<U>::Vec offset_backprop(offset_backprop_output->vec<U>());
+
+    const int depth = pop_mean.dimension(0);
+    const int rest_size = input.size() / depth;
+
+    // Allocate two temporary workspaces of [depth] shape.
+    Tensor scratch1_vec, scratch2_vec;
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
+                                                   {depth}, &scratch1_vec));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
+                                                   {depth}, &scratch2_vec));
+
+    typename TTypes<U>::Vec scratch1(scratch1_vec.vec<U>());
+    typename TTypes<U>::Vec scratch2(scratch2_vec.vec<U>());
+
+    const GPUDevice& d = context->eigen_device<GPUDevice>();
+
+    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
+    Eigen::array<int, 1> reduction_axis{0};
+    Eigen::array<int, 2> rest_by_one({rest_size, 1});
+#else
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > rest_by_one;
+    rest_by_one.set(0, rest_size);
+#endif
+
+    // offset_backprop  = sum(y_backprop)
+    // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
+    // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
+
+    auto y_backprop_rest_by_depth =
+        y_backprop.reshape(rest_by_depth).template cast<U>();
+    auto input_rest_by_depth = input.reshape(rest_by_depth).template cast<U>();
+
+    offset_backprop.device(d) = y_backprop_rest_by_depth.sum(reduction_axis);
+
+    // scratch1 = rsqrt(pop_var + epsilon)
+    scratch1.device(d) = (pop_var + pop_var.constant(epsilon)).rsqrt();
+
+    // scratch2 = sum(y_backprop * (x - mean))
+    scratch2.device(d) =
+        (y_backprop_rest_by_depth *
+         (input_rest_by_depth -
+          pop_mean.reshape(one_by_depth).broadcast(rest_by_one)))
+            .sum(reduction_axis);
+
+    x_backprop.reshape(rest_by_depth).device(d) =
+        (y_backprop_rest_by_depth * ((scratch1 * scale)
+                                         .eval()
+                                         .reshape(one_by_depth)
+                                         .broadcast(rest_by_one)))
+            .template cast<T>();
+    scale_backprop.device(d) = scratch2 * scratch1;
+  }
+};
+
 template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
 

@@ -1,12 +1,13 @@
 load("@local_config_mlir//:tblgen.bzl", "gentbl")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
