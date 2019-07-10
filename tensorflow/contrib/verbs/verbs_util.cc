@@ -44,7 +44,7 @@ void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id, string& key,
   CHECK(parts.size() == 6) << "Key with step_id must have 6 parts";
   strings::safe_strto64(parts[5], &step_id);
   parts.pop_back();                        // remove step_id
-  key.assign(str_util::Join(parts, ";"));  // stitch them together
+  key.assign(absl::StrJoin(parts, ";"));   // stitch them together
 }
 
 }  // namespace tensorflow

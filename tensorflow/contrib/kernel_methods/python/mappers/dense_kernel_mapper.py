@@ -35,7 +35,6 @@ class DenseKernelMapper(object):
 
   This class is abstract. Users should not create instances of this class.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def map(self, input_tensor):

@@ -19,4 +19,5 @@
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export TF_NEED_CUDA=0
+export TF_NEED_ROCM=0
 "${SCRIPT_DIR}/libtensorflow_docker.sh"

@@ -364,7 +364,7 @@ TEST_F(DebugNumericSummaryOpTest, Float_only_valid_values) {
        7.33333333333,  // variance of non-inf and non-nan elements.
        static_cast<double>(DT_FLOAT),  // dtype
        2.0,                            // Number of dimensions.
-       2.0, 3.0});                     // Dimensoin sizes.
+       2.0, 3.0});                     // Dimension sizes.
 
   test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
 }

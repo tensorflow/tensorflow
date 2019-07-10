@@ -48,7 +48,8 @@ TEST_F(GpuUnrollingTest, DoNotUnroll) {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
-  auto hlo_module = ParseHloString(kAddModule, config).ValueOrDie();
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -67,7 +68,8 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   // the maximum unroll factor.
   debug_options.set_xla_gpu_max_kernel_unroll_factor(8);
   config.set_debug_options(debug_options);
-  auto hlo_module = ParseHloString(kAddModule, config).ValueOrDie();
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -85,8 +87,9 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  auto hlo_module = ParseHloString(kAddModule, config).ValueOrDie();
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -117,7 +120,8 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
       p1 = f32[2,2]{1,0} parameter(1)
       ROOT add = f32[2,2]{1,0} add(p0, p1)
     })";
-  auto hlo_module = ParseHloString(kUnfusedAddModule, config).ValueOrDie();
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -161,7 +165,8 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
                                                    calls=fused_computation
     })";
   auto hlo_module =
-      ParseHloString(kMultiOutputFusionModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config)
+          .ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(

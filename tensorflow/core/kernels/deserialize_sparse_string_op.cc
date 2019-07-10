@@ -204,8 +204,6 @@ class DeserializeSparseOp : public OpKernel {
       target_shape.vec<int64>()(i + ndims - 1) = output.shape().data()[i + 1];
     }
 
-    Tensor output_indices;
-    Tensor output_shape;
     Reshape(context, output.indices(), input_shape, target_shape,
             0 /* output indices index */, 2 /* output shape index */);
     context->set_output(1, output.values());

@@ -17,295 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-import csv
-
-import numpy as np
-
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
-from tensorflow.contrib.data.python.ops import interleave_ops
-from tensorflow.contrib.data.python.ops import optimization
-from tensorflow.contrib.data.python.ops import parsing_ops
-from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import convert
-from tensorflow.python.data.util import nest
-from tensorflow.python.framework import constant_op
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.platform import gfile
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
-_ACCEPTABLE_CSV_TYPES = (dtypes.float32, dtypes.float64, dtypes.int32,
-                         dtypes.int64, dtypes.string)
 
-
-def _is_valid_int32(str_val):
-  try:
-    # Checks equality to prevent int32 overflow
-    return dtypes.int32.as_numpy_dtype(str_val) == dtypes.int64.as_numpy_dtype(
-        str_val)
-  except (ValueError, OverflowError):
-    return False
-
-
-def _is_valid_int64(str_val):
-  try:
-    dtypes.int64.as_numpy_dtype(str_val)
-    return True
-  except (ValueError, OverflowError):
-    return False
-
-
-def _is_valid_float(str_val, float_dtype):
-  try:
-    return float_dtype.as_numpy_dtype(str_val) < np.inf
-  except ValueError:
-    return False
-
-
-def _infer_type(str_val, na_value, prev_type):
-  """Given a string, infers its tensor type.
-
-  Infers the type of a value by picking the least 'permissive' type possible,
-  while still allowing the previous type inference for this column to be valid.
-
-  Args:
-    str_val: String value to infer the type of.
-    na_value: Additional string to recognize as a NA/NaN CSV value.
-    prev_type: Type previously inferred based on values of this column that
-      we've seen up till now.
-  Returns:
-    Inferred dtype.
-  """
-  if str_val in ("", na_value):
-    # If the field is null, it gives no extra information about its type
-    return prev_type
-
-  type_list = [
-      dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64, dtypes.string
-  ]  # list of types to try, ordered from least permissive to most
-
-  type_functions = [
-      _is_valid_int32,
-      _is_valid_int64,
-      lambda str_val: _is_valid_float(str_val, dtypes.float32),
-      lambda str_val: _is_valid_float(str_val, dtypes.float64),
-      lambda str_val: True,
-  ]  # Corresponding list of validation functions
-
-  for i in range(len(type_list)):
-    validation_fn = type_functions[i]
-    if validation_fn(str_val) and (prev_type is None or
-                                   prev_type in type_list[:i + 1]):
-      return type_list[i]
-
-
-def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header):
-  """Generator that yields rows of CSV file(s) in order."""
-  for fn in filenames:
-    with file_io.FileIO(fn, "r") as f:
-      rdr = csv.reader(
-          f,
-          delimiter=field_delim,
-          quoting=csv.QUOTE_MINIMAL if use_quote_delim else csv.QUOTE_NONE)
-      if header:
-        next(rdr)  # Skip header lines
-
-      for csv_row in rdr:
-        if len(csv_row) != num_cols:
-          raise ValueError(
-              "Problem inferring types: CSV row has different number of fields "
-              "than expected.")
-        yield csv_row
-
-
-def _infer_column_defaults(filenames, num_cols, field_delim, use_quote_delim,
-                           na_value, header, num_rows_for_inference,
-                           select_columns):
-  """Infers column types from the first N valid CSV records of files."""
-  if select_columns is None:
-    select_columns = range(num_cols)
-  inferred_types = [None] * len(select_columns)
-
-  for i, csv_row in enumerate(
-      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header)):
-    if num_rows_for_inference is not None and i >= num_rows_for_inference:
-      break
-
-    for j, col_index in enumerate(select_columns):
-      inferred_types[j] = _infer_type(csv_row[col_index], na_value,
-                                      inferred_types[j])
-
-  # Replace None's with a default type
-  inferred_types = [t or dtypes.string for t in inferred_types]
-  # Default to 0 or '' for null values
-  return [
-      constant_op.constant([0 if t is not dtypes.string else ""], dtype=t)
-      for t in inferred_types
-  ]
-
-
-def _infer_column_names(filenames, field_delim, use_quote_delim):
-  """Infers column names from first rows of files."""
-  csv_kwargs = {
-      "delimiter": field_delim,
-      "quoting": csv.QUOTE_MINIMAL if use_quote_delim else csv.QUOTE_NONE
-  }
-  with file_io.FileIO(filenames[0], "r") as f:
-    try:
-      column_names = next(csv.reader(f, **csv_kwargs))
-    except StopIteration:
-      raise ValueError(("Received StopIteration when reading the header line "
-                        "of %s.  Empty file?") % filenames[0])
-
-  for name in filenames[1:]:
-    with file_io.FileIO(name, "r") as f:
-      try:
-        if next(csv.reader(f, **csv_kwargs)) != column_names:
-          raise ValueError(
-              "Files have different column names in the header row.")
-      except StopIteration:
-        raise ValueError(("Received StopIteration when reading the header line "
-                          "of %s.  Empty file?") % filenames[0])
-  return column_names
-
-
-def _get_sorted_col_indices(select_columns, column_names):
-  """Transforms select_columns argument into sorted column indices."""
-  names_to_indices = {n: i for i, n in enumerate(column_names)}
-  num_cols = len(column_names)
-  for i, v in enumerate(select_columns):
-    if isinstance(v, int):
-      if v < 0 or v >= num_cols:
-        raise ValueError(
-            "Column index %d specified in select_columns out of valid range." %
-            v)
-      continue
-    if v not in names_to_indices:
-      raise ValueError(
-          "Value '%s' specified in select_columns not a valid column index or "
-          "name." % v)
-    select_columns[i] = names_to_indices[v]
-
-  # Sort and ensure there are no duplicates
-  result = sorted(set(select_columns))
-  if len(result) != len(select_columns):
-    raise ValueError("select_columns contains duplicate columns")
-  return result
-
-
-def _maybe_shuffle_and_repeat(
-    dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
-  """Optionally shuffle and repeat dataset, as requested."""
-  if num_epochs != 1 and shuffle:
-    # Use shuffle_and_repeat for perf
-    return dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif shuffle:
-    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    return dataset.repeat(num_epochs)
-  return dataset
-
-
-def make_tf_record_dataset(file_pattern,
-                           batch_size,
-                           parser_fn=None,
-                           num_epochs=None,
-                           shuffle=True,
-                           shuffle_buffer_size=None,
-                           shuffle_seed=None,
-                           prefetch_buffer_size=optimization.AUTOTUNE,
-                           num_parallel_reads=None,
-                           num_parallel_parser_calls=None,
-                           drop_final_batch=False):
-  """Reads and optionally parses TFRecord files into a dataset.
-
-  Provides common functionality such as batching, optional parsing, shuffling,
-  and performant defaults.
-
-  Args:
-    file_pattern: List of files or patterns of TFRecord file paths.
-      See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int representing the number of records to combine
-      in a single batch.
-    parser_fn: (Optional.) A function accepting string input to parse
-      and process the record contents. This function must map records
-      to components of a fixed shape, so they may be batched. By
-      default, uses the record contents unmodified.
-    num_epochs: (Optional.) An int specifying the number of times this
-      dataset is repeated.  If None (the default), cycles through the
-      dataset forever.
-    shuffle: (Optional.) A bool that indicates whether the input
-      should be shuffled. Defaults to `True`.
-    shuffle_buffer_size: (Optional.) Buffer size to use for
-      shuffling. A large buffer size ensures better shuffling, but
-      increases memory usage and startup time.
-    shuffle_seed: (Optional.) Randomization seed to use for shuffling.
-    prefetch_buffer_size: (Optional.) An int specifying the number of
-      feature batches to prefetch for performance improvement.
-      Defaults to auto-tune. Set to 0 to disable prefetching.
-    num_parallel_reads: (Optional.) Number of threads used to read
-      records from files. By default or if set to a value >1, the
-      results will be interleaved.
-    num_parallel_parser_calls: (Optional.) Number of parallel
-      records to parse in parallel. Defaults to an automatic selection.
-    drop_final_batch: (Optional.) Whether the last batch should be
-      dropped in case its size is smaller than `batch_size`; the
-      default behavior is not to drop the smaller batch.
-
-  Returns:
-    A dataset, where each element matches the output of `parser_fn`
-    except it will have an additional leading `batch-size` dimension,
-    or a `batch_size`-length 1-D tensor of strings if `parser_fn` is
-    unspecified.
-  """
-  files = dataset_ops.Dataset.list_files(
-      file_pattern, shuffle=shuffle, seed=shuffle_seed)
-
-  if num_parallel_reads is None:
-    # Note: We considered auto-tuning this value, but there is a concern
-    # that this affects the mixing of records from different files, which
-    # could affect training convergence/accuracy, so we are defaulting to
-    # a constant for now.
-    num_parallel_reads = 24
-  dataset = core_readers.TFRecordDataset(
-      files, num_parallel_reads=num_parallel_reads)
-
-  if shuffle_buffer_size is None:
-    # TODO(josh11b): Auto-tune this value when not specified
-    shuffle_buffer_size = 10000
-  dataset = _maybe_shuffle_and_repeat(
-      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
-
-  # NOTE(mrry): We set `drop_final_batch=True` when `num_epochs is None` to
-  # improve the shape inference, because it makes the batch dimension static.
-  # It is safe to do this because in that case we are repeating the input
-  # indefinitely, and all batches will be full-sized.
-  drop_final_batch = drop_final_batch or num_epochs is None
-
-  if parser_fn is None:
-    dataset = dataset.batch(batch_size, drop_remainder=drop_final_batch)
-  else:
-    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
-    # of num cores instead of map_and_batch's default behavior of one batch.
-    dataset = dataset.apply(batching.map_and_batch(
-        parser_fn, batch_size, num_parallel_calls=num_parallel_parser_calls,
-        drop_remainder=drop_final_batch))
-
-  if prefetch_buffer_size == 0:
-    return dataset
-  else:
-    return dataset.prefetch(buffer_size=prefetch_buffer_size)
-
-
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.make_csv_dataset(...)`.")
 def make_csv_dataset(
     file_pattern,
     batch_size,
@@ -321,7 +45,7 @@ def make_csv_dataset(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -336,7 +60,7 @@ def make_csv_dataset(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See `tf.gfile.Glob` for pattern rules.
+      records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
@@ -387,7 +111,6 @@ def make_csv_dataset(
     prefetch_buffer_size: An int specifying the number of feature
       batches to prefetch for performance improvement. Recommended value is the
       number of batches consumed per training step. Defaults to auto-tune.
-
     num_parallel_reads: Number of threads used to read CSV records from files.
       If >1, the results will be interleaved.
     sloppy: If `True`, reading performance will be improved at
@@ -411,106 +134,18 @@ def make_csv_dataset(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
-  # Create dataset of all matching filenames
-  filenames = _get_file_names(file_pattern, False)
-  dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
-  if shuffle:
-    dataset = dataset.shuffle(len(filenames), shuffle_seed)
-
-  # Clean arguments; figure out column names and defaults
-
-  if column_names is None:
-    if not header:
-      raise ValueError("Cannot infer column names without a header line.")
-    # If column names are not provided, infer from the header lines
-    column_names = _infer_column_names(filenames, field_delim, use_quote_delim)
-  if len(column_names) != len(set(column_names)):
-    raise ValueError("Cannot have duplicate column names.")
-
-  if select_columns is not None:
-    select_columns = _get_sorted_col_indices(select_columns, column_names)
-
-  if column_defaults is not None:
-    column_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
-        for x in column_defaults
-    ]
-  else:
-    # If column defaults are not provided, infer from records at graph
-    # construction time
-    column_defaults = _infer_column_defaults(
-        filenames, len(column_names), field_delim, use_quote_delim, na_value,
-        header, num_rows_for_inference, select_columns)
-
-  if select_columns is not None and len(column_defaults) != len(select_columns):
-    raise ValueError(
-        "If specified, column_defaults and select_columns must have same "
-        "length."
-    )
-  if select_columns is not None and len(column_names) > len(select_columns):
-    # Pick the relevant subset of column names
-    column_names = [column_names[i] for i in select_columns]
-
-  if label_name is not None and label_name not in column_names:
-    raise ValueError("`label_name` provided must be one of the columns.")
-
-  def filename_to_dataset(filename):
-    return CsvDataset(
-        filename,
-        record_defaults=column_defaults,
-        field_delim=field_delim,
-        use_quote_delim=use_quote_delim,
-        na_value=na_value,
-        select_cols=select_columns,
-        header=header,
-        compression_type=compression_type,
-    )
-
-  def map_fn(*columns):
-    """Organizes columns into a features dictionary.
-
-    Args:
-      *columns: list of `Tensor`s corresponding to one csv record.
-    Returns:
-      An OrderedDict of feature names to values for that particular record. If
-      label_name is provided, extracts the label feature to be returned as the
-      second element of the tuple.
-    """
-    features = collections.OrderedDict(zip(column_names, columns))
-    if label_name is not None:
-      label = features.pop(label_name)
-      return features, label
-    return features
-
-  # Read files sequentially (if num_parallel_reads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
-
-  dataset = _maybe_shuffle_and_repeat(
-      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
-
-  # Apply batch before map for perf, because map has high overhead relative
-  # to the size of the computation in each map.
-  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
-  # improve the shape inference, because it makes the batch dimension static.
-  # It is safe to do this because in that case we are repeating the input
-  # indefinitely, and all batches will be full-sized.
-  dataset = dataset.batch(batch_size=batch_size,
-                          drop_remainder=num_epochs is None)
-  dataset = dataset_ops.MapDataset(
-      dataset, map_fn, use_inter_op_parallelism=False)
-  dataset = dataset.prefetch(prefetch_buffer_size)
-
-  return dataset
+  return readers.make_csv_dataset(
+      file_pattern, batch_size, column_names, column_defaults, label_name,
+      select_columns, field_delim, use_quote_delim, na_value, header,
+      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
+      prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
+      compression_type)
 
 
-_DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
-
-
-class CsvDataset(dataset_ops.DatasetSource):
+class CsvDataset(readers.CsvDataset):
   """A Dataset comprising lines from one or more CSV files."""
 
+  @deprecation.deprecated(None, "Use `tf.data.experimental.CsvDataset(...)`.")
   def __init__(self,
                filenames,
                record_defaults,
@@ -521,140 +156,13 @@ class CsvDataset(dataset_ops.DatasetSource):
                use_quote_delim=True,
                na_value="",
                select_cols=None):
-    """Creates a `CsvDataset` by reading and decoding CSV files.
-
-    The elements of this dataset correspond to records from the file(s).
-    RFC 4180 format is expected for CSV files
-    (https://tools.ietf.org/html/rfc4180)
-    Note that we allow leading and trailing spaces with int or float field.
+    super(CsvDataset, self).__init__(
+        filenames, record_defaults, compression_type, buffer_size, header,
+        field_delim, use_quote_delim, na_value, select_cols)
 
 
-    For example, suppose we have a file 'my_file0.csv' with four CSV columns of
-    different data types:
-    ```
-    abcdefg,4.28E10,5.55E6,12
-    hijklmn,-5.3E14,,2
-    ```
-
-    We can construct a CsvDataset from it as follows:
-    ```python
-    dataset = tf.contrib.data.CsvDataset(
-      "my_file*.csv",
-      [tf.float32,  # Required field, use dtype or empty tensor
-       tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
-       tf.int32,  # Required field, use dtype or empty tensor
-       ],
-      select_cols=[1,2,3]  # Only parse last three columns
-    )
-    ```
-
-    The expected output of its iterations is:
-    ```python
-    next_element = dataset.make_one_shot_iterator().get_next()
-    with tf.Session() as sess:
-      while True:
-        try:
-          print(sess.run(next_element))
-        except tf.errors.OutOfRangeError:
-          break
-
-    >> (4.28e10, 5.55e6, 12)
-    >> (-5.3e14, 0.0, 2)
-    ```
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      record_defaults: A list of default values for the CSV fields. Each item in
-        the list is either a valid CSV `DType` (float32, float64, int32, int64,
-        string), or a `Tensor` object with one of the above types. One per
-        column of CSV data, with either a scalar `Tensor` default value for the
-        column if it is optional, or `DType` or empty `Tensor` if required. If
-        both this and `select_columns` are specified, these must have the same
-        lengths, and `column_defaults` is assumed to be sorted in order of
-        increasing column index.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
-        compression.
-      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
-        to buffer while reading files. Defaults to 4MB.
-      header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
-        have header line(s) that should be skipped when parsing. Defaults to
-        `False`.
-      field_delim: (Optional.) A `tf.string` scalar containing the delimiter
-        character that separates fields in a record. Defaults to `","`.
-      use_quote_delim: (Optional.) A `tf.bool` scalar. If `False`, treats
-        double quotation marks as regular characters inside of string fields
-        (ignoring RFC 4180, Section 2, Bullet 5). Defaults to `True`.
-      na_value: (Optional.) A `tf.string` scalar indicating a value that will
-        be treated as NA/NaN.
-      select_cols: (Optional.) A sorted list of column indices to select from
-        the input data. If specified, only this subset of columns will be
-        parsed. Defaults to parsing all columns.
-    """
-    super(CsvDataset, self).__init__()
-    self._filenames = ops.convert_to_tensor(
-        filenames, dtype=dtypes.string, name="filenames")
-    self._compression_type = convert.optional_param_to_tensor(
-        "compression_type",
-        compression_type,
-        argument_default="",
-        argument_dtype=dtypes.string)
-    record_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
-        for x in record_defaults
-    ]
-    self._record_defaults = ops.convert_n_to_tensor(
-        record_defaults, name="record_defaults")
-    self._buffer_size = convert.optional_param_to_tensor(
-        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
-    self._header = ops.convert_to_tensor(
-        header, dtype=dtypes.bool, name="header")
-    self._field_delim = ops.convert_to_tensor(
-        field_delim, dtype=dtypes.string, name="field_delim")
-    self._use_quote_delim = ops.convert_to_tensor(
-        use_quote_delim, dtype=dtypes.bool, name="use_quote_delim")
-    self._na_value = ops.convert_to_tensor(
-        na_value, dtype=dtypes.string, name="na_value")
-    self._select_cols = convert.optional_param_to_tensor(
-        "select_cols",
-        select_cols,
-        argument_default=[],
-        argument_dtype=dtypes.int64,
-    )
-    self._output_shapes = tuple(
-        tensor_shape.scalar() for _ in range(len(record_defaults)))
-    self._output_types = tuple(d.dtype for d in self._record_defaults)
-    self._output_classes = tuple(
-        ops.Tensor for _ in range(len(record_defaults)))
-
-  def _as_variant_tensor(self):
-    # Constructs graph node for the dataset op.
-    return contrib_gen_dataset_ops.csv_dataset(
-        filenames=self._filenames,
-        record_defaults=self._record_defaults,
-        buffer_size=self._buffer_size,
-        header=self._header,
-        output_shapes=self._output_shapes,
-        field_delim=self._field_delim,
-        use_quote_delim=self._use_quote_delim,
-        na_value=self._na_value,
-        select_cols=self._select_cols,
-        compression_type=self._compression_type,
-    )
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-
+@deprecation.deprecated(
+    None, "Use `tf.data.experimental.make_batched_features_dataset(...)`.")
 def make_batched_features_dataset(file_pattern,
                                   batch_size,
                                   features,
@@ -665,7 +173,7 @@ def make_batched_features_dataset(file_pattern,
                                   shuffle=True,
                                   shuffle_buffer_size=10000,
                                   shuffle_seed=None,
-                                  prefetch_buffer_size=optimization.AUTOTUNE,
+                                  prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                   reader_num_threads=1,
                                   parser_num_threads=2,
                                   sloppy_ordering=False,
@@ -717,11 +225,11 @@ def make_batched_features_dataset(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -759,57 +267,15 @@ def make_batched_features_dataset(file_pattern,
   Raises:
     ValueError: If `label_key` is not one of the `features` keys.
   """
-  # Create dataset of all matching filenames
-  filenames = _get_file_names(file_pattern, False)
-  dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
-  if shuffle:
-    dataset = dataset.shuffle(len(filenames), shuffle_seed)
-
-  # Read `Example` records from files as tensor objects.
-  if reader_args is None:
-    reader_args = []
-
-  # Read files sequentially (if reader_num_threads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          lambda filename: reader(filename, *reader_args),
-          cycle_length=reader_num_threads,
-          sloppy=sloppy_ordering))
-
-  # Extract values if the `Example` tensors are stored as key-value tuples.
-  if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset_ops.MapDataset(
-        dataset, lambda _, v: v, use_inter_op_parallelism=False)
-
-  # Apply dataset repeat and shuffle transformations.
-  dataset = _maybe_shuffle_and_repeat(
-      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
-
-  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
-  # improve the shape inference, because it makes the batch dimension static.
-  # It is safe to do this because in that case we are repeating the input
-  # indefinitely, and all batches will be full-sized.
-  dataset = dataset.batch(
-      batch_size, drop_remainder=drop_final_batch or num_epochs is None)
-
-  # Parse `Example` tensors to a dictionary of `Feature` tensors.
-  dataset = dataset.apply(
-      parsing_ops.parse_example_dataset(
-          features, num_parallel_calls=parser_num_threads))
-
-  if label_key:
-    if label_key not in features:
-      raise ValueError(
-          "The `label_key` provided (%r) must be one of the `features` keys." %
-          label_key)
-    dataset = dataset.map(lambda x: (x, x.pop(label_key)))
-
-  dataset = dataset.prefetch(prefetch_buffer_size)
-  return dataset
+  return readers.make_batched_features_dataset(
+      file_pattern, batch_size, features, reader, label_key, reader_args,
+      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
+      prefetch_buffer_size, reader_num_threads, parser_num_threads,
+      sloppy_ordering, drop_final_batch)
 
 
-@deprecation.deprecated(None,
-                        "Use `tf.contrib.data.make_batched_features_dataset`")
+@deprecation.deprecated(
+    None, "Use `tf.data.experimental.make_batched_features_dataset(...)`")
 def read_batch_features(file_pattern,
                         batch_size,
                         features,
@@ -862,11 +328,11 @@ def read_batch_features(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -879,7 +345,7 @@ def read_batch_features(file_pattern,
   Returns:
     A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
-  dataset = make_batched_features_dataset(
+  dataset = readers.make_batched_features_dataset(
       file_pattern,
       batch_size,
       features,
@@ -888,101 +354,18 @@ def read_batch_features(file_pattern,
       shuffle=randomize_input,
       num_epochs=num_epochs,
       shuffle_buffer_size=capacity)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   outputs = iterator.get_next()
   return outputs
 
 
-def _get_file_names(file_pattern, shuffle):
-  """Parse list of file names from pattern, optionally shuffled.
-
-  Args:
-    file_pattern: File glob pattern, or list of glob patterns.
-    shuffle: Whether to shuffle the order of file names.
-
-  Returns:
-    List of file names matching `file_pattern`.
-
-  Raises:
-    ValueError: If `file_pattern` is empty, or pattern matches no files.
-  """
-  if isinstance(file_pattern, list):
-    if not file_pattern:
-      raise ValueError("File pattern is empty.")
-    file_names = []
-    for entry in file_pattern:
-      file_names.extend(gfile.Glob(entry))
-  else:
-    file_names = list(gfile.Glob(file_pattern))
-
-  if not file_names:
-    raise ValueError("No files match %s." % file_pattern)
-
-  # Sort files so it will be deterministic for unit tests.
-  if not shuffle:
-    file_names = sorted(file_names)
-  return file_names
-
-
-class SqlDataset(dataset_ops.DatasetSource):
+class SqlDataset(readers.SqlDataset):
   """A `Dataset` consisting of the results from a SQL query."""
 
+  @deprecation.deprecated(None, "Use `tf.data.experimental.SqlDataset(...)`.")
   def __init__(self, driver_name, data_source_name, query, output_types):
-    """Creates a `SqlDataset`.
-
-    `SqlDataset` allows a user to read data from the result set of a SQL query.
-    For example:
-
-    ```python
-    dataset = tf.contrib.data.SqlDataset("sqlite", "/foo/bar.sqlite3",
-                                         "SELECT name, age FROM people",
-                                         (tf.string, tf.int32))
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
-    # Prints the rows of the result set of the above query.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
-    ```
-
-    Args:
-      driver_name: A 0-D `tf.string` tensor containing the database type.
-        Currently, the only supported value is 'sqlite'.
-      data_source_name: A 0-D `tf.string` tensor containing a connection string
-        to connect to the database.
-      query: A 0-D `tf.string` tensor containing the SQL query to execute.
-      output_types: A tuple of `tf.DType` objects representing the types of the
-        columns returned by `query`.
-    """
-    super(SqlDataset, self).__init__()
-    self._driver_name = ops.convert_to_tensor(
-        driver_name, dtype=dtypes.string, name="driver_name")
-    self._data_source_name = ops.convert_to_tensor(
-        data_source_name, dtype=dtypes.string, name="data_source_name")
-    self._query = ops.convert_to_tensor(
-        query, dtype=dtypes.string, name="query")
-    self._output_types = output_types
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.sql_dataset(self._driver_name,
-                                       self._data_source_name, self._query,
-                                       nest.flatten(self.output_types),
-                                       nest.flatten(self.output_shapes))
-
-  @property
-  def output_classes(self):
-    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
-
-  @property
-  def output_shapes(self):
-    return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
-                              self._output_types)
-
-  @property
-  def output_types(self):
-    return self._output_types
+    super(SqlDataset, self).__init__(
+        driver_name, data_source_name, query, output_types)
 
 
 class LMDBDataset(dataset_ops.DatasetSource):
@@ -995,37 +378,28 @@ class LMDBDataset(dataset_ops.DatasetSource):
     (key value) pairs sequentially.
     For example:
     ```python
+    tf.compat.v1.enable_eager_execution()
+
     dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+
     # Prints the (key, value) pairs inside a lmdb file.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for key, value in dataset:
+      print(key, value)
     ```
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
     """
-    super(LMDBDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-
-  def _as_variant_tensor(self):
-    return contrib_gen_dataset_ops.lmdb_dataset(
-        self._filenames,
-        output_types=nest.flatten(self.output_types),
-        output_shapes=nest.flatten(self.output_shapes))
-
-  @property
-  def output_classes(self):
-    return ops.Tensor, ops.Tensor
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = gen_experimental_dataset_ops.lmdb_dataset(
+          self._filenames, **self._flat_structure)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.experimental_lmdb_dataset(
+          self._filenames, **self._flat_structure)
+    super(LMDBDataset, self).__init__(variant_tensor)
 
   @property
-  def output_shapes(self):
-    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
-
-  @property
-  def output_types(self):
-    return dtypes.string, dtypes.string
+  def element_spec(self):
+    return (structure.TensorStructure(dtypes.string, []),
+            structure.TensorStructure(dtypes.string, []))

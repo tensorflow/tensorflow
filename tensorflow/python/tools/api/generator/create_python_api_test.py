@@ -31,6 +31,11 @@ def test_op():
   pass
 
 
+@tf_export('test1.foo', v1=['test.foo'])
+def deprecated_test_op():
+  pass
+
+
 @tf_export('TestClass', 'NewTestClass')
 class TestClass(object):
   pass
@@ -46,6 +51,7 @@ class CreatePythonApiTest(test.TestCase):
     # Add fake op to a module that has 'tensorflow' in the name.
     sys.modules[_MODULE_NAME] = imp.new_module(_MODULE_NAME)
     setattr(sys.modules[_MODULE_NAME], 'test_op', test_op)
+    setattr(sys.modules[_MODULE_NAME], 'deprecated_test_op', deprecated_test_op)
     setattr(sys.modules[_MODULE_NAME], 'TestClass', TestClass)
     test_op.__module__ = _MODULE_NAME
     TestClass.__module__ = _MODULE_NAME
@@ -56,19 +62,21 @@ class CreatePythonApiTest(test.TestCase):
     del sys.modules[_MODULE_NAME]
 
   def testFunctionImportIsAdded(self):
-    imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+    imports, _ = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
-    expected_import = (
-        'from tensorflow.python.test_module '
-        'import test_op as test_op1')
+        api_name='tensorflow',
+        api_version=1)
+    expected_import = ('\'test_op1\': '
+                       '(\'tensorflow.python.test_module\','
+                       ' \'test_op\')')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
 
-    expected_import = ('from tensorflow.python.test_module '
-                       'import test_op')
+    expected_import = ('\'test_op\': '
+                       '(\'tensorflow.python.test_module\','
+                       ' \'test_op\')')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
@@ -77,29 +85,34 @@ class CreatePythonApiTest(test.TestCase):
                      msg='compat.v1 in %s' % str(imports.keys()))
 
   def testClassImportIsAdded(self):
-    imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+    imports, _ = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=2)
-    expected_import = ('from tensorflow.python.test_module '
-                       'import TestClass')
+        api_name='tensorflow',
+        api_version=2)
+    expected_import = (
+        '\'NewTestClass\':'
+        ' (\'tensorflow.python.test_module\','
+        ' \'TestClass\')')
     self.assertTrue(
         'TestClass' in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
 
   def testConstantIsAdded(self):
-    imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+    imports, _ = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
-    expected = ('from tensorflow.python.test_module '
-                'import _TEST_CONSTANT')
+        api_name='tensorflow',
+        api_version=1)
+    expected = ('\'_TEST_CONSTANT\':'
+                ' (\'tensorflow.python.test_module\','
+                ' \'_TEST_CONSTANT\')')
     self.assertTrue(expected in str(imports),
                     msg='%s not in %s' % (expected, str(imports)))
 
   def testCompatModuleIsAdded(self):
-    imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+    imports, _ = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2,

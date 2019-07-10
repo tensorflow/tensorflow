@@ -1,4 +1,5 @@
 tensorflow/core/framework/resource_handle.cc
+tensorflow/core/framework/tensor_shape.cc
 tensorflow/core/lib/core/arena.cc
 tensorflow/core/lib/core/coding.cc
 tensorflow/core/lib/core/status.cc
@@ -40,7 +41,6 @@ tensorflow/core/lib/wav/wav_io.cc
 tensorflow/core/platform/cpu_info.cc
 tensorflow/core/platform/default/logging.cc
 tensorflow/core/platform/default/mutex.cc
-tensorflow/core/platform/default/protobuf.cc
 tensorflow/core/platform/default/tracing.cc
 tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/env.cc
@@ -53,6 +53,7 @@ tensorflow/core/platform/posix/error.cc
 tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/posix/port.cc
 tensorflow/core/platform/posix/posix_file_system.cc
+tensorflow/core/platform/protobuf.cc
 tensorflow/core/platform/protobuf_util.cc
 tensorflow/core/platform/setround.cc
 tensorflow/core/platform/tensor_coding.cc

@@ -275,8 +275,8 @@ class LaplaceTest(test.TestCase):
     self.assertAllClose(
         sample_values.var(axis=0),
         stats.laplace.var(loc_bc, scale=scale_bc),
-        rtol=0.10,
-        atol=0.)
+        rtol=0.105,
+        atol=0.0)
     fails = 0
     trials = 0
     for ai, a in enumerate(np.reshape(loc_v, [-1])):

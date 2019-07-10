@@ -24,13 +24,15 @@ import os
 import numpy as np
 
 from tensorflow.contrib.eager.python import parameter_server
-from tensorflow.contrib.eager.python import remote
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -90,14 +92,25 @@ class RemoteExecutionTest(test.TestCase):
 
   def setUp(self):
     # Start the local server.
+    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=get_server_def(
             JOB_NAME,
-            local_server_port=0,
+            local_server_port=local_port,
             remote_server_addresses=[
                 self._cached_server1_target, self._cached_server2_target
             ],
             task_index=0))
+
+  @test_util.run_gpu_only
+  @run_sync_and_async
+  def testGpuToRemoteCopy(self):
+    with ops.device("gpu:0"):
+      x = array_ops.ones([2, 2])
+    with ops.device("job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME):
+      y = math_ops.matmul(x, x)
+
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
   @run_sync_and_async
   def testDefunMatmul(self):
@@ -199,11 +212,36 @@ class RemoteExecutionTest(test.TestCase):
     """Basic server connection."""
     remote.connect_to_remote_host(self._cached_server1_target)
 
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+    with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
       x1 = array_ops.ones([2, 2])
       x2 = array_ops.ones([2, 2])
       y = math_ops.matmul(x1, x2)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  @run_sync_and_async
+  def testContextDeviceUpdated(self):
+    """Tests that the context device is correctly updated."""
+
+    with ops.device("cpu:0"):
+      x1 = array_ops.ones([2, 2])
+      x2 = array_ops.ones([2, 2])
+      y = math_ops.matmul(x1, x2)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+    # `y` is placed on the local CPU as expected.
+    self.assertEqual(y.device,
+                     "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
+
+  @test_util.run_gpu_only
+  @run_sync_and_async
+  def testGPUToRemoteCopy(self):
+    """Tests that the remote copy happens satisfactorily."""
+    x1 = array_ops.ones([2, 2]).gpu()
+
+    with ops.device("/job:remote_device/replica:0/task:1/device:CPU:0"):
+      x2 = x1._copy()  # pylint: disable=protected-access
+
+    np.testing.assert_array_equal(x1.numpy(), x2.numpy())
 
 
 if __name__ == "__main__":

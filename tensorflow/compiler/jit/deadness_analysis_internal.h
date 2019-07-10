@@ -16,24 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_INTERNAL_H_
 #define TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_INTERNAL_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
 namespace deadness_analysis_internal {
 
 // Returns a map describing the predicate each Tensor was mapped to.  For
 // testing purposes only.
-using PredicateMapTy = gtl::FlatMap<TensorId, string, TensorId::Hasher>;
-Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map);
+using PredicateMapTy = absl::flat_hash_map<TensorId, string, TensorId::Hasher>;
+Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map,
+                         bool enable_optimistic = true);
 
-// Returns a map describing the predicate each Tensor was mapped to.  For
-// testing purposes only.  Makes deadness analysis visit the graph in the order
-// specified in `reverse_post_order` which must be a valid RPO for the graph
-// minus NextIteration->Merge edges.
-Status ComputePredicates(const Graph& graph,
-                         absl::Span<Node* const> reverse_post_order,
-                         PredicateMapTy* out_predicate_map);
 }  // namespace deadness_analysis_internal
 }  // namespace tensorflow
 

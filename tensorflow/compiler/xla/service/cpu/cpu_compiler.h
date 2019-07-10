@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
-#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -81,7 +81,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
-      std::vector<::tensorflow::cpu_function_runtime::BufferInfo> buffer_infos,
+      std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
       int64 result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
@@ -91,8 +91,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>&
-  buffer_infos() const {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
     return buffer_infos_;
   }
   int64 result_buffer_index() const { return result_buffer_index_; }
@@ -103,8 +102,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
 
   // A list of BufferInfo objects describing the buffers used by the XLA
   // computation.
-  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>
-      buffer_infos_;
+  const std::vector<cpu_function_runtime::BufferInfo> buffer_infos_;
 
   // Contains which buffer index into |buffer_sizes| was designated to the
   // result of the computation.  This buffer should be passed into the output
@@ -135,14 +133,14 @@ class CpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) override;
 
   se::Platform::Id PlatformId() const override;

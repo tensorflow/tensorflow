@@ -29,6 +29,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member_method {
+    name: "all_v2_summary_ops"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "audio"
     argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
   }
@@ -43,6 +47,10 @@ tf_module {
   member_method {
     name: "image"
     argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "initialize"
+    argspec: "args=[\'graph\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "merge"

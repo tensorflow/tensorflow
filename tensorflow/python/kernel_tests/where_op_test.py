@@ -27,59 +27,61 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
 class WhereOpTest(test.TestCase):
 
-  def _testWhere(self, x, truth, expected_err_re=None):
-    with self.test_session(use_gpu=True):
-      ans = array_ops.where(x)
-      self.assertEqual([None, x.ndim], ans.get_shape().as_list())
+  def _testWhere(self, x, truth, expected_err_re=None, fn=array_ops.where):
+    with self.cached_session(use_gpu=True):
+      ans = fn(x)
+      self.assertTrue(ans.get_shape().is_compatible_with([None, x.ndim]))
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
-  def testWrongNumbers(self):
-    with self.test_session(use_gpu=True):
+  def _testWrongNumbers(self, fn=array_ops.where):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
-        array_ops.where([False, True], [1, 2], None)
+        fn([False, True], [1, 2], None)
       with self.assertRaises(ValueError):
-        array_ops.where([False, True], None, [1, 2])
+        fn([False, True], None, [1, 2])
 
-  def testBasicVec(self):
+  def _testBasicVec(self, fn=array_ops.where):
     x = np.asarray([True, False])
     truth = np.asarray([[0]], dtype=np.int64)
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
     x = np.asarray([False, True, False])
     truth = np.asarray([[1]], dtype=np.int64)
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
     x = np.asarray([False, False, True, False, True])
     truth = np.asarray([[2], [4]], dtype=np.int64)
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
-  def testRandomVec(self):
+  def _testRandomVec(self, fn=array_ops.where):
     x = np.random.rand(1000000) > 0.5
     truth = np.vstack([np.where(x)[0].astype(np.int64)]).T
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
-  def testBasicMat(self):
+  def _testBasicMat(self, fn=array_ops.where):
     x = np.asarray([[True, False], [True, False]])
 
     # Ensure RowMajor mode
     truth = np.asarray([[0, 0], [1, 0]], dtype=np.int64)
 
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
-  def testBasic3Tensor(self):
+  def _testBasic3Tensor(self, fn=array_ops.where):
     x = np.asarray([[[True, False], [True, False]],
                     [[False, True], [False, True]],
                     [[False, False], [False, True]]])
@@ -88,59 +90,180 @@ class WhereOpTest(test.TestCase):
     truth = np.asarray(
         [[0, 0, 0], [0, 1, 0], [1, 0, 1], [1, 1, 1], [2, 1, 1]], dtype=np.int64)
 
-    self._testWhere(x, truth)
+    self._testWhere(x, truth, None, fn)
 
-  def _testRandom(self, dtype, expected_err_re=None):
+  def _testRandom(self, dtype, expected_err_re=None, fn=array_ops.where):
     shape = [127, 33, 53]
     x = np.random.randn(*shape) + 1j * np.random.randn(*shape)
     x = (np.random.randn(*shape) > 0).astype(dtype)
     truth = np.where(np.abs(x) > 0)  # Tuples of indices by axis.
     truth = np.vstack(truth).T  # Convert to [num_true, indices].
-    self._testWhere(x, truth, expected_err_re)
+    self._testWhere(x, truth, expected_err_re, fn)
 
-  def testRandomBool(self):
-    self._testRandom(np.bool)
-
-  def testRandomInt32(self):
-    self._testRandom(np.int32)
-
-  def testRandomInt64(self):
-    self._testRandom(np.int64)
-
-  def testRandomFloat(self):
-    self._testRandom(np.float32)
-
-  def testRandomDouble(self):
-    self._testRandom(np.float64)
-
-  def testRandomComplex64(self):
-    self._testRandom(np.complex64)
-
-  def testRandomComplex128(self):
-    self._testRandom(np.complex128)
-
-  def testRandomUint8(self):
-    self._testRandom(np.uint8)
-
-  def testRandomInt8(self):
-    self._testRandom(np.int8)
-
-  def testRandomInt16(self):
-    self._testRandom(np.int16)
-
-  def testThreeArgument(self):
+  def _testThreeArgument(self, fn=array_ops.where):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
     np_val = np.where(x > 0, x * x, -x)
     with self.test_session(use_gpu=True):
-      tf_val = array_ops.where(constant_op.constant(x) > 0, x * x, -x).eval()
+      tf_val = self.evaluate(fn(constant_op.constant(x) > 0, x * x, -x))
     self.assertAllEqual(tf_val, np_val)
 
+  def testWrongNumbers(self):
+    self._testWrongNumbers()
+
+  @test_util.run_deprecated_v1
+  def testBasicVec(self):
+    self._testBasicVec()
+
+  @test_util.run_deprecated_v1
+  def testRandomVec(self):
+    self._testRandomVec()
+
+  @test_util.run_deprecated_v1
+  def testBasicMat(self):
+    self._testBasicMat()
+
+  @test_util.run_deprecated_v1
+  def testBasic3Tensor(self):
+    self._testBasic3Tensor()
+
+  @test_util.run_deprecated_v1
+  def testRandomBool(self):
+    self._testRandom(np.bool)
+
+  @test_util.run_deprecated_v1
+  def testRandomInt32(self):
+    self._testRandom(np.int32)
+
+  @test_util.run_deprecated_v1
+  def testRandomInt64(self):
+    self._testRandom(np.int64)
+
+  @test_util.run_deprecated_v1
+  def testRandomFloat(self):
+    self._testRandom(np.float32)
+
+  @test_util.run_deprecated_v1
+  def testRandomDouble(self):
+    self._testRandom(np.float64)
+
+  @test_util.run_deprecated_v1
+  def testRandomComplex64(self):
+    self._testRandom(np.complex64)
+
+  @test_util.run_deprecated_v1
+  def testRandomComplex128(self):
+    self._testRandom(np.complex128)
+
+  @test_util.run_deprecated_v1
+  def testRandomUint8(self):
+    self._testRandom(np.uint8)
+
+  @test_util.run_deprecated_v1
+  def testRandomInt8(self):
+    self._testRandom(np.int8)
+
+  @test_util.run_deprecated_v1
+  def testRandomInt16(self):
+    self._testRandom(np.int16)
+
+  @test_util.run_deprecated_v1
+  def testThreeArgument(self):
+    self._testThreeArgument()
+
+  def testV2WrongNumbers(self):
+    self._testWrongNumbers(array_ops.where_v2)
+
+  def testV2BasicVec(self):
+    self._testBasicVec(array_ops.where_v2)
+
+  def testV2RandomVec(self):
+    self._testRandomVec(array_ops.where_v2)
+
+  def testV2BasicMat(self):
+    self._testBasicMat(array_ops.where_v2)
+
+  def testV2Basic3Tensor(self):
+    self._testBasic3Tensor(array_ops.where_v2)
+
+  def testV2RandomBool(self):
+    self._testRandom(np.bool, None, array_ops.where_v2)
+
+  def testV2RandomInt32(self):
+    self._testRandom(np.int32, None, array_ops.where_v2)
+
+  def testV2RandomInt64(self):
+    self._testRandom(np.int64, None, array_ops.where_v2)
+
+  def testV2RandomFloat(self):
+    self._testRandom(np.float32, None, array_ops.where_v2)
+
+  def testV2RandomDouble(self):
+    self._testRandom(np.float64, None, array_ops.where_v2)
+
+  def testV2RandomComplex64(self):
+    self._testRandom(np.complex64, None, array_ops.where_v2)
+
+  def testV2RandomComplex128(self):
+    self._testRandom(np.complex128, None, array_ops.where_v2)
+
+  def testV2RandomUint8(self):
+    self._testRandom(np.uint8, None, array_ops.where_v2)
+
+  def testV2RandomInt8(self):
+    self._testRandom(np.int8, None, array_ops.where_v2)
+
+  def testV2RandomInt16(self):
+    self._testRandom(np.int16, None, array_ops.where_v2)
+
+  def testV2ThreeArgument(self):
+    self._testThreeArgument(array_ops.where_v2)
+
+  def testV2Broadcasting(self):
+    f = np.random.normal(0, 1, (3, 5, 1, 1))
+    x = np.zeros((7, 11))
+    y = np.ones((7, 11))
+    np_val = np.where(f < 0, x, y)
+    with self.test_session(use_gpu=True):
+      tf_val = self.evaluate(
+          array_ops.where_v2(constant_op.constant(f) < 0, x, y))
+    self.assertAllEqual(tf_val, np_val)
+
+  def testV2ScalarBroadcasting(self):
+    x = np.zeros((7, 11))
+    y = np.ones((7, 11))
+    np_val = np.where(True, x, y)
+    with self.test_session(use_gpu=True):
+      tf_val = self.evaluate(
+          array_ops.where_v2(
+              constant_op.constant(True, dtype=dtypes.bool), x, y))
+    self.assertAllEqual(tf_val, np_val)
+
+  def testV2VectorBroadcasting(self):
+    x = np.zeros(7)
+    y = np.ones(7)
+    np_val = np.where([True], x, y)
+    with self.test_session(use_gpu=True):
+      tf_val = self.evaluate(
+          array_ops.where_v2(
+              constant_op.constant([True], dtype=dtypes.bool), x, y))
+    self.assertAllEqual(tf_val, np_val)
+
+  def testV2PredBroadcasting(self):
+    pred = np.array([1, 0, 0]).reshape((3, 1))
+    x = np.random.randn(3, 4)
+    y = np.random.randn(3, 4)
+    np_val = np.where(pred, x, y)
+    with self.test_session(use_gpu=True):
+      tf_val = self.evaluate(array_ops.where_v2(pred, x, y))
+    self.assertAllClose(tf_val, np_val)
+
+  @test_util.run_deprecated_v1
   def testBatchSelect(self):
     x = np.array([[-2, 3, -1] * 64, [1, -3, -3] * 64] * 8192)  # [16384, 192]
     c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]
     c_vec = np.array([False, True] * 8192)  # [16384]
     np_val = np.where(c_mat, x * x, -x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_val = array_ops.where(c_vec, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
@@ -160,7 +283,7 @@ class WhereBenchmark(test.Benchmark):
           x = random_ops.random_uniform((m, n), dtype=dtypes.float32) <= p
           v = resource_variable_ops.ResourceVariable(x)
           op = array_ops.where(v)
-        with session.Session() as sess:
+        with session.Session(config=benchmark.benchmark_config()) as sess:
           v.initializer.run()
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
@@ -186,7 +309,7 @@ class WhereBenchmark(test.Benchmark):
           y = resource_variable_ops.ResourceVariable(y_gen)
           c = resource_variable_ops.ResourceVariable(c_gen)
           op = array_ops.where(c, x, y)
-        with session.Session() as sess:
+        with session.Session(config=benchmark.benchmark_config()) as sess:
           x.initializer.run()
           y.initializer.run()
           c.initializer.run()

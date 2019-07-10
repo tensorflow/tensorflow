@@ -21,9 +21,13 @@ import json
 import os
 import random
 
+import numpy as np
+
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -64,11 +68,17 @@ class TestReportingBenchmark(test.Benchmark):
                 "other_key": "string"})
 
   def benchmark_times_an_op(self):
-    with session.Session() as sess:
-      a = constant_op.constant(0.0)
+    input_size = 5
+    with session.Session(config=benchmark.benchmark_config()) as sess:
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=(input_size))
       a_plus_a = a + a
       return self.run_op_benchmark(
-          sess, a_plus_a, min_iters=1000, store_trace=True, name="op_benchmark")
+          sess,
+          a_plus_a,
+          feed_dict={a: np.arange(input_size)},
+          min_iters=1000,
+          store_trace=True,
+          name="op_benchmark")
 
 
 class BenchmarkTest(test.TestCase):
@@ -116,6 +126,7 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
+  @test_util.disable_xla("b/123744455")  # GPU memory is incorrect
   def testReportingBenchmark(self):
     tempdir = test.get_temp_dir()
     try:

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TPUReplicatedOutput"
+  visibility: HIDDEN
+  summary: "Connects outputs of an N-way replicated computation to N outputs."
+}

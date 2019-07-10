@@ -18,6 +18,16 @@ END
 Scalar defining the number of characters to include in each substring
 END
   }
+  attr {
+    name: "unit"
+    description: <<END
+The unit that is used to create the substring.  One of: `"BYTE"` (for
+defining position and length by bytes) or `"UTF8_CHAR"` (for the UTF-8
+encoded Unicode code points).  The default is `"BYTE"`. Results are undefined if
+`unit=UTF8_CHAR` and the `input` strings do not contain structurally valid
+UTF-8.
+END
+  }
   out_arg {
     name: "output"
     description: <<END

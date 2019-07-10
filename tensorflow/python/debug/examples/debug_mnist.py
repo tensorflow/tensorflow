@@ -190,4 +190,5 @@ if __name__ == "__main__":
       "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
       "--debug flag.")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

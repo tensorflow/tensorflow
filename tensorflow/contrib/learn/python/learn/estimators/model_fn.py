@@ -131,7 +131,7 @@ class ModelFnOps(
         run on the chief worker during training.
       training_hooks: A list of `SessionRunHook` objects that will be run on
         all workers during training.
-      scaffold: A `tf.train.Scaffold` object that can be used to set
+      scaffold: A `tf.compat.v1.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
 
     Returns:
@@ -219,8 +219,8 @@ class ModelFnOps(
         used if a Servo request does not explicitly mention which head to infer
         on. Pass the key of the output alternative here that you want to
         designate as default. A separate ExportOutpout for this default head
-        wil be added to the export_outputs dict with the special key
-        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
+        will be added to the export_outputs dict with the special key
+        saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
         already an enry in output_alternatives with this special key.
 
     Returns:

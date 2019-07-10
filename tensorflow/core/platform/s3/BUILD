@@ -14,7 +14,7 @@ load(
 )
 
 tf_cc_binary(
-    name = "s3_file_system.so",
+    name = "libs3_file_system_shared.so",
     srcs = [
         "aws_crypto.cc",
         "aws_crypto.h",
@@ -34,8 +34,8 @@ tf_cc_binary(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@aws",
+        "@com_google_protobuf//:protobuf_headers",
         "@curl",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 

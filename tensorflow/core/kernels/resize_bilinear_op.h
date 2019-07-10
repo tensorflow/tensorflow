@@ -27,6 +27,7 @@ template <typename Device, typename T>
 struct ResizeBilinear {
   void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
+                  const bool half_pixel_centers,
                   typename TTypes<float, 4>::Tensor resized_images);
 };
 
@@ -35,6 +36,7 @@ struct ResizeBilinearGrad {
   void operator()(const Device& d,
                   typename TTypes<float, 4>::ConstTensor input_grad,
                   const float height_scale, const float width_scale,
+                  const bool half_pixel_centers,
                   typename TTypes<T, 4>::Tensor output_grad);
 };
 

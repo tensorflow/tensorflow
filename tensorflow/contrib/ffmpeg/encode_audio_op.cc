@@ -95,7 +95,7 @@ class EncodeAudioOpV2 : public OpKernel {
                     bits_per_second_tensor.shape().DebugString()));
 
     const string file_format =
-        str_util::Lowercase(file_format_tensor.scalar<string>()());
+        absl::AsciiStrToLower(file_format_tensor.scalar<string>()());
     const int32 samples_per_second =
         samples_per_second_tensor.scalar<int32>()();
     const int32 bits_per_second = bits_per_second_tensor.scalar<int32>()();
@@ -157,7 +157,7 @@ class EncodeAudioOp : public OpKernel {
  public:
   explicit EncodeAudioOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("file_format", &file_format_));
-    file_format_ = str_util::Lowercase(file_format_);
+    file_format_ = absl::AsciiStrToLower(file_format_);
     OP_REQUIRES(context, file_format_ == "wav",
                 errors::InvalidArgument("file_format arg must be \"wav\"."));
 

@@ -38,11 +38,7 @@ TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 bazel --bazelrc=/dev/null build \
     --compilation_mode=opt --cxxopt=-std=c++11 --fat_apk_cpu=x86_64 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
+    --define=grpc_no_ares=true \
     ${TARGETS}
 
-echo "========== Makefile Build Test =========="
-# Test Makefile build just to make sure it still works.
-if [ -z "$NDK_ROOT" ]; then
-   export NDK_ROOT=${ANDROID_NDK_HOME}
-fi
-tensorflow/contrib/makefile/build_all_android.sh
+# TODO(b/122377443): Restore Makefile builds after resolving r18b build issues.

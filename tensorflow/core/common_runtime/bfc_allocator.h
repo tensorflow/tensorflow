@@ -17,12 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_BFC_ALLOCATOR_H_
 
 #include <array>
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -50,29 +51,61 @@ class BFCAllocator : public Allocator {
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return AllocateRaw(alignment, num_bytes, AllocationAttributes());
+  }
+
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
+
   void DeallocateRaw(void* ptr) override;
 
-  bool TracksAllocationSizes() override;
+  bool TracksAllocationSizes() const override;
 
-  size_t RequestedSize(const void* ptr) override;
+  size_t RequestedSize(const void* ptr) const override;
 
-  size_t AllocatedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) const override;
 
-  int64 AllocationId(const void* ptr) override;
+  int64 AllocationId(const void* ptr) const override;
 
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
 
   void ClearStats() override;
+
+  void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
+
+  void SetSafeFrontier(uint64 count) override;
 
  private:
   struct Bin;
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
-                            bool dump_log_on_failure);
+                            bool dump_log_on_failure,
+                            uint64 freed_before_count);
+
+  void* AllocateRawInternalWithRetry(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr);
+
   void DeallocateRawInternal(void* ptr);
+
+  // Chunks whose freed_at_count is later than the safe frontier value are kept
+  // on a special list and not subject to merging immediately upon being freed.
+  //
+  // This function sweeps that list looking for Chunks whose timestamp is now
+  // safe. When found their freed_at_count is set to 0 and we attempt to merge
+  // them with their neighbors.
+  //
+  // If required_bytes > 0 then this function is being called in the context of
+  // a need for this many bytes that could not be satisfied without merging
+  // unsafe chunks, so we go ahead and merge the unsafe chunks too, just up to
+  // the point that a free chunk of required_bytes is produced.  Note that
+  // unsafe merged chunks adopt the most conservative timestamp from their
+  // constituents so they're only useful for allocations not requiring a
+  // particular timestamp.
+  bool MergeTimestampedChunks(size_t required_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
@@ -81,6 +114,7 @@ class BFCAllocator : public Allocator {
 
   typedef int BinNum;
   static const int kInvalidBinNum = -1;
+  // The following means that the largest bin'd chunk size is 256 << 21 = 512MB.
   static const int kNumBins = 21;
 
   // A Chunk points to a piece of memory that's either entirely free or entirely
@@ -126,6 +160,9 @@ class BFCAllocator : public Allocator {
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
 
+    // Optional count when this chunk was most recently made free.
+    uint64 freed_at_count = 0;
+
     bool in_use() const { return allocation_id != -1; }
 
     string DebugString(BFCAllocator* a,
@@ -134,7 +171,7 @@ class BFCAllocator : public Allocator {
       strings::StrAppend(
           &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
           " | Requested Size: ", strings::HumanReadableNumBytes(requested_size),
-          " | in_use: ", in_use());
+          " | in_use: ", in_use(), " | bin_num: ", bin_num);
       if (recurse && prev != BFCAllocator::kInvalidChunkHandle) {
         Chunk* p = a->ChunkFromHandle(prev);
         strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));
@@ -148,11 +185,13 @@ class BFCAllocator : public Allocator {
   };
 
   // A Bin is a collection of similar-sized free chunks.
+  // Allocated chunks are never in a Bin.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
     size_t bin_size = 0;
 
-    struct ChunkComparator {
+    class ChunkComparator {
+     public:
       explicit ChunkComparator(BFCAllocator* allocator)
           : allocator_(allocator) {}
       // Sort first by size and then use pointer address as a tie breaker.
@@ -183,10 +222,13 @@ class BFCAllocator : public Allocator {
 
   // BFCAllocator allocates memory into a collection of disjoint
   // AllocationRegions.  Each AllocationRegion corresponds to one call to
-  // SubAllocator::Alloc().
+  // SubAllocator::Alloc().  (Actually, if a subsequent call to
+  // SubAllocator::Alloc() returns another region immediately adjacent to the
+  // last, it will be used to extend the first AllocationRegion, not create a
+  // separate one.)
   //
   // An AllocationRegion contains one or more Chunks, covering all of its
-  // memory.  Its primary job is to map a pointers to ChunkHandles.
+  // memory.  Its primary job is to map pointers to ChunkHandles.
   //
   // This class is thread-compatible.
   class AllocationRegion {
@@ -206,9 +248,9 @@ class BFCAllocator : public Allocator {
     }
 
     AllocationRegion() = default;
-    AllocationRegion(AllocationRegion&& other) { Swap(other); }
+    AllocationRegion(AllocationRegion&& other) { Swap(&other); }
     AllocationRegion& operator=(AllocationRegion&& other) {
-      Swap(other);
+      Swap(&other);
       return *this;
     }
 
@@ -222,19 +264,19 @@ class BFCAllocator : public Allocator {
     void erase(const void* p) { set_handle(p, kInvalidChunkHandle); }
 
    private:
-    void Swap(AllocationRegion& other) {
-      std::swap(ptr_, other.ptr_);
-      std::swap(memory_size_, other.memory_size_);
-      std::swap(end_ptr_, other.end_ptr_);
-      std::swap(handles_, other.handles_);
+    void Swap(AllocationRegion* other) {
+      std::swap(ptr_, other->ptr_);
+      std::swap(memory_size_, other->memory_size_);
+      std::swap(end_ptr_, other->end_ptr_);
+      std::swap(handles_, other->handles_);
     }
 
-    int IndexFor(const void* p) const {
+    size_t IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
       std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
       DCHECK_GE(p_int, base_int);
       DCHECK_LT(p_int, base_int + memory_size_);
-      return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
+      return static_cast<size_t>(((p_int - base_int) >> kMinAllocationBits));
     }
 
     // Metadata about the allocation region.
@@ -314,8 +356,8 @@ class BFCAllocator : public Allocator {
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
-  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
+                     uint64 freed_before) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -340,6 +382,8 @@ class BFCAllocator : public Allocator {
 
   // Removes a free chunk from the bin.
   void RemoveFreeChunkFromBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void MaybeRemoveFreeChunkFromBin(ChunkHandle h)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Removes the chunk metadata represented by 'h'.
   void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
@@ -351,6 +395,13 @@ class BFCAllocator : public Allocator {
   void DeallocateChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   Chunk* ChunkFromHandle(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  const Chunk* ChunkFromHandle(ChunkHandle h) const
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  void MarkFree(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  ChunkHandle TryToCoalesce(ChunkHandle h, bool ignore_freed_at)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Information about a Bin that is useful for debugging.
   struct BinDebugInfo {
@@ -420,6 +471,10 @@ class BFCAllocator : public Allocator {
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;
+  SharedCounter* timing_counter_ = nullptr;
+  std::deque<ChunkHandle> timestamped_chunks_;
+
+  std::atomic<uint64> safe_frontier_ = {0};
 
   // Structures mutable after construction
   mutable mutex lock_;

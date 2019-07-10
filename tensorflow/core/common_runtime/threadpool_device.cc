@@ -23,12 +23,14 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #ifdef _OPENMP
@@ -49,6 +51,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
+  // Early return when MKL is disabled
+  if (DisableMKL()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {
@@ -90,13 +94,26 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+    if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
       return Status::OK();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                  ProtoDebugString(tensor_proto));
+}
+
+void ThreadPoolDevice::CopyTensorInSameDevice(
+    const Tensor* input_tensor, Tensor* output_tensor,
+    const DeviceContext* device_context, StatusCallback done) {
+  if (input_tensor->NumElements() != output_tensor->NumElements()) {
+    done(errors::Internal(
+        "CPU->CPU copy shape mismatch: input=", input_tensor->shape(),
+        ", output=", output_tensor->shape()));
+    return;
+  }
+  tensor::DeepCopy(*input_tensor, output_tensor);
+  done(Status::OK());
 }
 
 #ifdef INTEL_MKL
@@ -114,7 +131,8 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
 };
 
 #ifdef ENABLE_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+                       MklCPUAllocatorFactory);
 #endif  // ENABLE_MKL
 
 }  // namespace

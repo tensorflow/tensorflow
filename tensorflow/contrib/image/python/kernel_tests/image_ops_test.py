@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
 import numpy as np
 
 from tensorflow.contrib.image.ops import gen_image_ops
@@ -48,6 +49,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                 image_ops.rotate(image, angle).eval(),
                 np.zeros(shape, dtype.as_numpy_dtype()))
 
+  # TODO(b/133773834) Re-enable these tests.
+  @unittest.skip("Skipping because of b/133773834.")
   def test_rotate_even(self):
     for dtype in _DTYPES:
       with self.cached_session():
@@ -271,6 +274,22 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
         image, transform, interpolation="NEAREST")
     with self.cached_session():
       self.assertAllEqual([[[[1], [0]], [[0], [1]]]], result.eval())
+
+  def test_transform_data_types(self):
+    for dtype in _DTYPES:
+      image = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
+      value = image_ops.transform(image, [1] * 8)
+      with self.test_session(use_gpu=True):
+        self.assertAllEqual(
+            value.eval(),
+            np.array([[4, 4], [4, 4]]).astype(dtype.as_numpy_dtype()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_transform_eager(self):
+    image = constant_op.constant([[1., 2.], [3., 4.]])
+    value = image_ops.transform(image, [1] * 8)
+    with self.test_session(use_gpu=True):
+      self.assertAllEqual(self.evaluate(value), np.array([[4, 4], [4, 4]]))
 
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):

@@ -23,10 +23,11 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.BatchNormalization')
+@tf_export(v1=['layers.BatchNormalization'])
 class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -34,6 +35,18 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
   Internal Covariate Shift"
 
   Sergey Ioffe, Christian Szegedy
+
+  Keras APIs handle BatchNormalization updates to the moving_mean and
+  moving_variance as part of their `fit()` and `evaluate()` loops. However, if a
+  custom training loop is used with an instance of `Model`, these updates need
+  to be explicitly included.  Here's a simple example of how it can be done:
+
+  ```python
+    # model is an instance of Model that contains BatchNormalization layer.
+    update_ops = model.get_updates_for(None) + model.get_updates_for(features)
+    train_op = optimizer.minimize(loss)
+    train_op = tf.group([train_op, update_ops])
+  ```
 
   Arguments:
     axis: An `int` or list of `int`, the axis or axes that should be
@@ -93,8 +106,8 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
@@ -154,7 +167,12 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
-@tf_export('layers.batch_normalization')
+@deprecation.deprecated(
+    date=None, instructions='Use keras.layers.BatchNormalization instead.  In '
+    'particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` should not '
+    'be used (consult the `tf.keras.layers.batch_normalization` '
+    'documentation).')
+@tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,
@@ -190,19 +208,19 @@ def batch_normalization(inputs,
 
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
-  need to be added as a dependency to the `train_op`. Also, be sure to add
-  any batch_normalization ops before getting the update_ops collection.
-  Otherwise, update_ops will be empty, and training/inference will not work
-  properly. For example:
+  need to be executed alongside the `train_op`. Also, be sure to add any
+  batch_normalization ops before getting the update_ops collection. Otherwise,
+  update_ops will be empty, and training/inference will not work properly. For
+  example:
 
   ```python
-    x_norm = tf.layers.batch_normalization(x, training=training)
+    x_norm = tf.compat.v1.layers.batch_normalization(x, training=training)
 
     # ...
 
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies(update_ops):
-      train_op = optimizer.minimize(loss)
+    update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
+    train_op = optimizer.minimize(loss)
+    train_op = tf.group([train_op, update_ops])
   ```
 
   Arguments:
@@ -268,8 +286,8 @@ def batch_normalization(inputs,
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If

@@ -26,19 +26,22 @@ from tensorflow.python.platform import test
 
 MODEL_LIST = [
     (applications.ResNet50, 2048),
+    (applications.ResNet101, 2048),
+    (applications.ResNet152, 2048),
+    (applications.ResNet50V2, 2048),
+    (applications.ResNet101V2, 2048),
+    (applications.ResNet152V2, 2048),
     (applications.VGG16, 512),
     (applications.VGG19, 512),
     (applications.Xception, 2048),
     (applications.InceptionV3, 2048),
     (applications.InceptionResNetV2, 1536),
     (applications.MobileNet, 1024),
-    # TODO(fchollet): enable MobileNetV2 tests when a new TensorFlow test image
-    # is released with keras_applications upgraded to 1.0.5 or above.
+    (applications.MobileNetV2, 1280),
     (applications.DenseNet121, 1024),
     (applications.DenseNet169, 1664),
     (applications.DenseNet201, 1920),
     (applications.NASNetMobile, 1056),
-    (applications.NASNetLarge, 4032),
 ]
 
 
@@ -47,7 +50,8 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(*MODEL_LIST)
   def test_feature_extration_model(self, model_fn, output_dim):
     model = model_fn(include_top=False, weights=None)
-    self.assertEqual(model.output_shape, (None, None, None, output_dim))
+    self.assertLen(model.output_shape, 4)
+    self.assertEqual(model.output_shape[-1], output_dim)
 
 
 if __name__ == '__main__':

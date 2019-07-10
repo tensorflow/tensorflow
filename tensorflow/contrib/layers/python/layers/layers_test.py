@@ -630,7 +630,7 @@ class ConvolutionTest(test.TestCase):
       expected_size = [None, num_filters, None, None]
       expected_size_dynamic = [5, num_filters, 7, 9]
 
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         images = array_ops.placeholder(np.float32,
                                        [None, input_size[1], None, None])
         output = layers_lib.convolution2d(
@@ -721,7 +721,7 @@ class Convolution2dTransposeTests(test.TestCase):
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
     # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
         expected_size = [5, num_filters, 10, 12]
@@ -740,7 +740,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
         expected_size = [5, num_filters, 12, 14]
@@ -759,7 +759,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 9, 11]
         expected_size = [5, num_filters, 19, 23]
@@ -779,7 +779,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
         expected_size = [1, num_filters, 2, 2]
@@ -799,7 +799,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
         expected_size = [1, num_filters, 2, 2]
@@ -817,7 +817,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
         expected_size = [1, num_filters, 4, 4]
@@ -835,7 +835,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
         expected_size = [1, num_filters, 4, 4]
@@ -853,7 +853,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x1NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 5]
@@ -871,7 +871,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x4NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 8]
@@ -889,7 +889,7 @@ class Convolution2dTransposeTests(test.TestCase):
 
   def testOutputSizeWithStride2x5NCHW(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
         expected_size = [1, num_filters, 6, 10]
@@ -1356,7 +1356,7 @@ class DropoutTest(test.TestCase):
     with self.cached_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = _layers.dropout(images)
-      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul')
+      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul_1')
       output.get_shape().assert_is_compatible_with(
           ops.convert_to_tensor(images).get_shape())
 
@@ -1399,9 +1399,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
@@ -1421,9 +1422,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images, is_training=False)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])
@@ -1435,9 +1437,10 @@ class DropoutTest(test.TestCase):
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(images, 50)
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(output > 0, dtypes.float32))
       output = _layers.dropout(output)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
@@ -1450,7 +1453,7 @@ class DropoutTest(test.TestCase):
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(
           images, 50, normalizer_fn=_layers.dropout)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem = sess.run(num_elem)
       self.assertLess(num_elem, 0.5)
@@ -1458,13 +1461,6 @@ class DropoutTest(test.TestCase):
 
 
 class FlattenTest(test.TestCase):
-
-  def testInvalidRank(self):
-    with ops.Graph().as_default() as g, self.session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
-      inputs.set_shape(tensor_shape.TensorShape((5,)))
-      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
-        _layers.flatten(inputs)
 
   def testUnknownLastDim(self):
     with ops.Graph().as_default() as g, self.session(g):
@@ -1501,6 +1497,12 @@ class FlattenTest(test.TestCase):
       self.assertEqual(output.get_shape().num_elements(),
                        images.get_shape().num_elements())
       self.assertEqual(output.get_shape()[0], images.get_shape()[0])
+
+  def testFlatten0D(self):
+    with self.cached_session():
+      scalars = random_ops.random_uniform((5,), seed=1, name='scalars')
+      output = _layers.flatten(scalars)
+      self.assertEqual(output.shape, (5, 1))
 
   def testFlattenBatchSize(self):
     height, width = 3, 3
@@ -2056,7 +2058,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2140,7 +2142,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2344,7 +2346,7 @@ class BatchNormTest(test.TestCase):
     np.random.seed(1)
     use_gpu = fused
     np.random.seed(1)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2360,7 +2362,7 @@ class BatchNormTest(test.TestCase):
             batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
-      is_training = variables_lib.Variable(True)
+      is_training = variables_lib.VariableV1(True)
       output = _layers.batch_norm(
           images,
           decay=0.1,
@@ -2491,7 +2493,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2507,7 +2509,7 @@ class BatchNormTest(test.TestCase):
             batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
-      is_training = variables_lib.Variable(True)
+      is_training = variables_lib.VariableV1(True)
       output = _layers.batch_norm(
           images,
           decay=0.1,
@@ -2576,7 +2578,7 @@ class BatchNormTest(test.TestCase):
     channels = 32
     np.random.seed(1)
     use_gpu = fused
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if data_format == 'NHWC':
         image_shape = (batch_size, height, width, channels)
         axis = (0, 1, 2)
@@ -2674,7 +2676,7 @@ class BatchNormTest(test.TestCase):
 
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(2, channels + 2, dtype=np.float32))
@@ -2776,7 +2778,7 @@ class BatchNormTest(test.TestCase):
             'moving_variance': variance,
         },
         data_format='NCHW')
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(variables_lib.global_variables_initializer())
       return sess.run(output)
 
@@ -2870,10 +2872,19 @@ class LayerNormTest(test.TestCase):
                    tol=1e-5,
                    begin_norm_axis=1,
                    dtype=dtypes.float64):
+    eps = 1e-12 if dtype != dtypes.float16 else 1e-3
     expected_mean = np.zeros(input_shape[:begin_norm_axis])
-    expected_var = np.ones(input_shape[:begin_norm_axis])
-    for mu in [0.0, 1e2]:
-      for sigma in [1.0, 0.1]:
+    expected_var_uncorrected = np.ones(input_shape[:begin_norm_axis])
+    sigma_list = [1.0, 0.1]
+    if dtype == dtypes.float16:
+      # This causes the variance to underflow in float16, and requires that
+      # variance_epsilon be set appropriately to avoid NaNs in the output.
+      sigma_list.append(1e-4)
+    # Note that the mean:variance ratio must be limited to the representable
+    # range for float16.
+    for mu in [0.0, 1e2 if dtype != dtypes.float16 else 1e1]:
+      for sigma in sigma_list:
+        expected_var = expected_var_uncorrected / (1.0 + eps / sigma**2)
         input_values = np.random.randn(*input_shape) * sigma + mu
         with ops.Graph().as_default() as g:
           with self.session(graph=g) as sess:
@@ -2894,10 +2905,13 @@ class LayerNormTest(test.TestCase):
             outputs, beta, gamma = sess.run((output_t, beta_var, gamma_var))
             # Make sure that there are no NaNs
             self.assertFalse(np.isnan(outputs).any())
+            if outputs.dtype != np.float64:
+              # Cast to float64 before computing mean/variance to avoid
+              # overflow and precision issues.
+              outputs = outputs.astype(np.float64)
             mean = np.mean(outputs, axis=moments_axis)
             var = np.var(outputs, axis=moments_axis)
             # Layer-norm implemented in numpy
-            eps = 1e-12
             expected_out = (
                 (gamma * (input_values - np.mean(
                     input_values, axis=moments_axis, keepdims=True)) /
@@ -2933,6 +2947,12 @@ class LayerNormTest(test.TestCase):
 
   def testOutputBigInput(self):
     self.doOutputTest((1, 100, 100, 1))
+
+  def testOutputBigInputFloat32(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=1e-4, dtype=dtypes.float32)
+
+  def testOutputBigInputFloat16(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=5e-2, dtype=dtypes.float16)
 
 
 class GDNTest(test.TestCase):
@@ -3811,7 +3831,7 @@ class UnitNormTests(test.TestCase):
       image = random_ops.random_uniform((height, width, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       shape = [height, width, 3]
       del shape[dim]
@@ -3847,7 +3867,7 @@ class UnitNormTests(test.TestCase):
       image = array_ops.placeholder(dtypes.float32, (None, None, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       with self.cached_session():
         actual = norms.eval({image: placeholder_value})

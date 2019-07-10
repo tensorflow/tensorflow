@@ -1,0 +1,154 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "Placeholder_1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "If"
+  op: "If"
+  input: "Placeholder"
+  input: "Placeholder_1"
+  attr {
+    key: "Tcond"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "else_branch"
+    value {
+      func {
+        name: "get_zeros"
+      }
+    }
+  }
+  attr {
+    key: "then_branch"
+    value {
+      func {
+        name: "identity"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "get_zeros"
+      input_arg {
+        name: "get_zeros"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "get_zeros1"
+        type: DT_INT32
+      }
+    }
+    node_def {
+      name: "const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+              dim {
+                size: 2
+              }
+            }
+            int_val: 1
+            int_val: 2
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "const"
+      }
+    }
+    ret {
+      key: "get_zeros1"
+      value: "const:output:0"
+    }
+  }
+  function {
+    signature {
+      name: "identity"
+      input_arg {
+        name: "identity"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "identity1"
+        type: DT_INT32
+      }
+    }
+    ret {
+      key: "identity1"
+      value: "identity"
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+#CHECK: func @main() {
+#CHECK-NEXT:   %0:2 = "_tf.Placeholder"() {device = "", dtype = "tfdtype$DT_BOOL", name = "Placeholder", shape = "tfshape$unknown_rank: true\0A"} : () -> (tensor<*xi1>, !_tf.control)
+#CHECK-NEXT:   %1:2 = "_tf.Placeholder"() {device = "", dtype = "tfdtype$DT_INT32", name = "Placeholder_1", shape = "tfshape$unknown_rank: true\0A"} : () -> (tensor<*xi32>, !_tf.control)
+#CHECK-NEXT:   %2:2 = "_tf.If"(%0#0, %1#0) {Tcond = "tfdtype$DT_BOOL", Tin = ["tfdtype$DT_INT32"], Tout = ["tfdtype$DT_INT32"], device = "", else_branch = @get_zeros0, name = "If", output_shapes = [], then_branch = @identity0} : (tensor<*xi1>, tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
+#CHECK-NEXT:   return
+#CHECK-NEXT: }
+#CHECK: func @get_zeros0(%arg0: tensor<*xi32>) -> tensor<2xi32> {
+#CHECK-NEXT:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "const", value = dense<[1, 2]> : tensor<2xi32>} : () -> (tensor<2xi32>, !_tf.control)
+#CHECK-NEXT:   return %0#0 : tensor<2xi32>
+#CHECK-NEXT: }
+#CHECK: func @identity0(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+#CHECK-NEXT:   return %arg0 : tensor<*xi32>
+#CHECK-NEXT: }

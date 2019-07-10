@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RandomUniform"
+  endpoint {
+    name: "random.RandomUniform"
+  }
+}

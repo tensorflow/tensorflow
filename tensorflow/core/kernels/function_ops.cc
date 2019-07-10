@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/function_ops.h"
+
 #include <deque>
 #include <vector>
-
-#include "tensorflow/core/kernels/function_ops.h"
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -69,7 +70,9 @@ void RetvalOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kArgOp).Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
@@ -98,11 +101,14 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
   REGISTER_KERNEL_BUILDER( \
       Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_QUANTIZED_TYPES(REGISTER)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceArgOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), ArgOp);
 #undef REGISTER
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
@@ -117,15 +123,23 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .TypeConstraint<string>("T"),
                         ArgOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<Variant>("T"), ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_QUANTIZED_TYPES(REGISTER)
+REGISTER(Variant)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceRetOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), RetvalOp);
+
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")
@@ -236,7 +250,6 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
@@ -249,6 +262,13 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat(
+              "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
+              ",function_step_id=", opts.step_id, "#");
+        },
+        /*level=*/2);
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -316,8 +336,12 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       handle = cached_entry->second;
     } else {
       VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
-      tracing::ScopedActivity activity(strings::StrCat(
-          "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
+      profiler::TraceMe activity(
+          [&] {
+            return strings::StrCat("RemoteCall: Instantiate: ", func_.name(),
+                                   " on ", target_device);
+          },
+          profiler::TraceMeLevel::kInfo);
       OP_REQUIRES_OK_ASYNC(
           ctx,
           lib->Instantiate(func_.name(), AttrSlice(&attr_values),
@@ -334,7 +358,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   FunctionLibraryRuntime::Options opts;
-  opts.step_id = ctx->step_id();
   opts.runner = ctx->runner();
   opts.source_device = source_device;
   if (opts.source_device != target_device) {
@@ -361,10 +384,20 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
   auto* rets = new std::vector<Tensor>;
-  auto* activity = new tracing::ScopedActivity(strings::StrCat(
-      "RemoteCall: Run: ", func_.name(), " on ", target_device));
+  auto* activity = new profiler::TraceMe(
+      [&] {
+        return strings::StrCat("RemoteCall: Run: ", func_.name(), " on ",
+                               target_device);
+      },
+      profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Running " << func_.name() << " on " << target_device
           << " with handle: " << handle;
+  profiler::TraceMe trace_me(
+      [&] {
+        return absl::StrCat("RemoteCallOp #parent_step_id=", ctx->step_id(),
+                            ",function_step_id=", opts.step_id, "#");
+      },
+      /*level=*/2);
   lib->Run(opts, handle, args, rets,
            [rets, activity, done, ctx](const Status& status) {
              if (!status.ok()) {

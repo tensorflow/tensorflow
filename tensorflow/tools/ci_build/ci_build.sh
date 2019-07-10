@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | android | tensorboard)
+#                 e.g., (cpu | gpu | rocm | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -73,14 +73,20 @@ CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-# cmake (CPU) builds do not require configuration.
-if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+# cmake (CPU) and micro builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]] || [[ "${CONTAINER_TYPE}" == "micro" ]]; then
   CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
 if [[ "${CONTAINER_TYPE}" == gpu* ]]; then
   DOCKER_BINARY="nvidia-docker"
+  if [[ -z `which ${DOCKER_BINARY}` ]]; then
+    # No nvidia-docker; fall back on docker to allow build operations that
+    # require CUDA but don't require a GPU to run.
+    echo "Warning: nvidia-docker not found in PATH. Falling back on 'docker'."
+    DOCKER_BINARY="docker"
+  fi
 else
   DOCKER_BINARY="docker"
 fi
@@ -102,6 +108,14 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 if [[ "${CONTAINER_TYPE}" != gpu* ]]; then
   GPU_EXTRA_PARAMS=""
 fi
+
+# Add extra params for rocm devices and libraries for ROCm container.
+if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+else
+  ROCM_EXTRA_PARAMS=""
+fi
+
 
 # Determine the docker image name
 DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
@@ -159,6 +173,7 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \
+    ${ROCM_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${DOCKER_IMG_NAME}" \
     ${CI_COMMAND_PREFIX[@]} \

@@ -83,6 +83,23 @@ class DirichletTest(test.TestCase):
     with self.assertRaisesOpError("sample last-dimension must sum to `1`"):
       self.evaluate(dist.prob([.1, .2, .8]))
 
+  def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):
+    # Test concentration = 1. for each dimension.
+    concentration = 3 * np.ones((10, 10)).astype(np.float32)
+    concentration[range(10), range(10)] = 1.
+    x = 1 / 9. * np.ones((10, 10)).astype(np.float32)
+    x[range(10), range(10)] = 0.
+    dist = dirichlet_lib.Dirichlet(concentration)
+    log_prob = self.evaluate(dist.log_prob(x))
+    self.assertAllEqual(
+        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
+
+    # Test when concentration[k] = 1., and x is zero at various dimensions.
+    dist = dirichlet_lib.Dirichlet(10 * [1.])
+    log_prob = self.evaluate(dist.log_prob(x))
+    self.assertAllEqual(
+        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
+
   def testPdfZeroBatches(self):
     alpha = [1., 2]
     x = [.5, .5]

@@ -24,22 +24,21 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(MKLBFCAllocatorTest, TestMaxLimit) {
-  AllocatorStats stats;
   setenv(MklCPUAllocator::kMaxLimitStr, "1000", 1);
   MklCPUAllocator a;
   TF_EXPECT_OK(a.Initialize());
-  a.GetStats(&stats);
-  EXPECT_EQ(stats.bytes_limit, 1000);
+  auto stats = a.GetStats();
+  EXPECT_EQ(stats->bytes_limit, 1000);
 
   unsetenv(MklCPUAllocator::kMaxLimitStr);
   TF_EXPECT_OK(a.Initialize());
-  a.GetStats(&stats);
+  stats = a.GetStats();
   uint64 max_mem_bytes = MklCPUAllocator::kDefaultMaxLimit;
 #if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
   max_mem_bytes =
       (uint64)sysconf(_SC_PHYS_PAGES) * (uint64)sysconf(_SC_PAGESIZE);
 #endif
-  EXPECT_EQ(stats.bytes_limit, max_mem_bytes);
+  EXPECT_EQ(stats->bytes_limit, max_mem_bytes);
 
   setenv(MklCPUAllocator::kMaxLimitStr, "wrong-input", 1);
   EXPECT_TRUE(errors::IsInvalidArgument(a.Initialize()));

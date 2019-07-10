@@ -58,6 +58,7 @@ from tensorflow.contrib.image.python.ops.distort_image_ops import adjust_hsv_in_
 from tensorflow.contrib.image.python.ops.distort_image_ops import random_hsv_in_yiq
 
 from tensorflow.contrib.image.python.ops.image_ops import angles_to_projective_transforms
+from tensorflow.contrib.image.python.ops.image_ops import bipartite_match
 from tensorflow.contrib.image.python.ops.image_ops import compose_transforms
 from tensorflow.contrib.image.python.ops.image_ops import connected_components
 from tensorflow.contrib.image.python.ops.image_ops import flat_transforms_to_matrices

@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -77,17 +79,16 @@ class HloRematerialization : public HloModulePass {
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                          HloSchedule* schedule,
-                                          int64 memory_limit_bytes);
+  virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
+                                                  HloSchedule* schedule,
+                                                  int64 memory_limit_bytes);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
-  StatusOr<int64> ComputePeakMemory(
-      const HloComputation* computation,
-      const std::vector<const HloInstruction*>& order) const;
+  StatusOr<int64> ComputePeakMemory(const HloComputation* computation,
+                                    const HloInstructionSequence& order) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.
@@ -115,14 +116,13 @@ class HloRematerialization : public HloModulePass {
   // computations called from sequential context
   // (CallContext::kSequential). These values are updated as rematerialization
   // occurs.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64>
-      computation_peak_memory_;
+  absl::flat_hash_map<const HloComputation*, int64> computation_peak_memory_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
   // Set of computations which have had rematerialization
   // applied. Rematerialization is only applied once per computation.
-  tensorflow::gtl::FlatSet<const HloComputation*> rematerialized_computations_;
+  absl::flat_hash_set<const HloComputation*> rematerialized_computations_;
 
   // Count of the total instructions rematerialized.
   int64 instructions_rematerialized_ = 0;

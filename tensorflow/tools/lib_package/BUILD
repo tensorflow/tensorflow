@@ -4,9 +4,11 @@
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -35,11 +37,12 @@ pkg_tar(
 
 pkg_tar(
     name = "libtensorflow_jni",
-    extension = "tar.gz",
-    files = [
+    srcs = [
         "include/tensorflow/jni/LICENSE",
+        "//:LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
+    extension = "tar.gz",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -52,13 +55,23 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = tf_binary_additional_srcs(),
+    srcs = ["//tensorflow:tensorflow_framework"],
+    symlinks = if_macos(
+        {
+            "libtensorflow_framework.dylib": "libtensorflow_framework.%s.dylib" % VERSION_MAJOR,
+            "libtensorflow_framework.%s.dylib" % VERSION_MAJOR: "libtensorflow_framework.%s.dylib" % VERSION,
+        },
+        {
+            "libtensorflow_framework.so": "libtensorflow_framework.so.%s" % VERSION_MAJOR,
+            "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow_framework.so.%s" % VERSION,
+        },
+    ),
     tags = ["manual"],
 )
 
 pkg_tar(
     name = "cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c:headers",
     ],
     package_dir = "include/tensorflow/c",
@@ -72,7 +85,7 @@ pkg_tar(
 
 pkg_tar(
     name = "eager_cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c/eager:headers",
     ],
     package_dir = "include/tensorflow/c/eager",
@@ -86,8 +99,18 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    files = ["//tensorflow:libtensorflow.so"],
+    srcs = ["//tensorflow"],
     package_dir = "lib",
+    symlinks = if_macos(
+        {
+            "lib/libtensorflow.dylib": "libtensorflow.%s.dylib" % VERSION_MAJOR,
+            "lib/libtensorflow.%s.dylib" % VERSION_MAJOR: "libtensorflow.%s.dylib" % VERSION,
+        },
+        {
+            "lib/libtensorflow.so": "libtensorflow.so.%s" % VERSION_MAJOR,
+            "lib/libtensorflow.so.%s" % VERSION_MAJOR: "libtensorflow.so.%s" % VERSION,
+        },
+    ),
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -99,7 +122,10 @@ pkg_tar(
 
 pkg_tar(
     name = "clicenses",
-    files = [":include/tensorflow/c/LICENSE"],
+    srcs = [
+        ":include/tensorflow/c/LICENSE",
+        "//:LICENSE",
+    ],
     package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -112,6 +138,7 @@ pkg_tar(
 genrule(
     name = "clicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -121,38 +148,40 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
+        "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + select({
-        "//tensorflow:with_aws_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -160,6 +189,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
@@ -167,10 +197,11 @@ genrule(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ),
+    ) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -179,6 +210,7 @@ genrule(
 genrule(
     name = "jnilicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -188,38 +220,42 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
+        "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
+        "@grpc//:LICENSE",
+        "@grpc//third_party/address_sorting:LICENSE",
     ] + select({
-        "//tensorflow:with_aws_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -227,10 +263,13 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]),
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

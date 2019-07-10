@@ -211,7 +211,7 @@ REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                         ParallelConcatUpdate<CPUDevice>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -416,6 +416,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
 
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_bool(CASE);
+    TF_CALL_string(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ",
@@ -482,7 +483,7 @@ REGISTER_EMPTY(int64, CPU)
 REGISTER_EMPTY(bool, CPU)
 REGISTER_EMPTY(uint8, CPU)
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -500,6 +501,9 @@ typedef Eigen::GpuDevice GPUDevice;
       Name("DeepCopy").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),      \
       CopyOp<GPUDevice>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
+    InplaceOp<GPUDevice, functor::I_UPDATE>);
 REGISTER(float);
 REGISTER(double);
 REGISTER(Eigen::half);
@@ -540,8 +544,9 @@ REGISTER_EMPTY(float, GPU);
 REGISTER_EMPTY(double, GPU);
 REGISTER_EMPTY(Eigen::half, GPU);
 REGISTER_EMPTY(int64, GPU);
+REGISTER_EMPTY(int32, GPU);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace
 }  // end namespace tensorflow

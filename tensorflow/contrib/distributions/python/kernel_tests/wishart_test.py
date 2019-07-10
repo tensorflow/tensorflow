@@ -147,14 +147,13 @@ class WishartCholeskyTest(test.TestCase):
       x = chol_w.sample(10000, seed=42)
       self.assertAllEqual((10000, 3, 3), x.get_shape())
 
-      moment1_estimate = math_ops.reduce_mean(x, reduction_indices=[0]).eval()
+      moment1_estimate = math_ops.reduce_mean(x, axis=[0]).eval()
       self.assertAllClose(chol_w.mean().eval(), moment1_estimate, rtol=0.05)
 
       # The Variance estimate uses the squares rather than outer-products
       # because Wishart.Variance is the diagonal of the Wishart covariance
       # matrix.
-      variance_estimate = (math_ops.reduce_mean(
-          math_ops.square(x), reduction_indices=[0]) -
+      variance_estimate = (math_ops.reduce_mean(math_ops.square(x), axis=[0]) -
                            math_ops.square(moment1_estimate)).eval()
       self.assertAllClose(
           chol_w.variance().eval(), variance_estimate, rtol=0.05)

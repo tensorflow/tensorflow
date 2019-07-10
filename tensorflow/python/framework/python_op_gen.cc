@@ -15,8 +15,11 @@ limitations under the License.
 #include "tensorflow/python/framework/python_op_gen.h"
 
 #include <stdio.h>
+
 #include <sstream>
 #include <unordered_map>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -108,7 +111,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
                    const string& function_name)
       : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
     op_name_ = function_name_;
-    str_util::ConsumePrefix(&op_name_, "_");
+    absl::ConsumePrefix(&op_name_, "_");
   }
   ~GenEagerPythonOp() override {}
 
@@ -142,6 +145,9 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   void AddEagerAttrs(const string& indentation);
   void AddEagerExecute(const string& indentation,
                        const string& num_outputs_expr);
+  void AddDispatch(const string& prefix);
+
+  void AddRawOpExport(const string& parameters);
 
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
@@ -297,6 +303,7 @@ string GenEagerPythonOp::Code() {
     attrs_.push_back(p.first.GetName());
   }
 
+  // TODO(slebedev): call AvoidPythonReserved on each param?
   param_names_.reserve(params_no_default_.size() + params_with_default_.size());
   param_names_.insert(param_names_.begin(), params_no_default_.begin(),
                       params_no_default_.end());
@@ -314,8 +321,7 @@ string GenEagerPythonOp::Code() {
     strings::StrAppend(&parameters, param_and_default.first.GetRenameTo(), "=",
                        param_and_default.second);
   }
-  if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-  strings::StrAppend(&parameters, "name=None");
+  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name=None");
 
   // Add attr_expressions_ for attrs that are params.
   for (int i = 0; i < attrs_.size(); ++i) {
@@ -355,15 +361,17 @@ string GenEagerPythonOp::Code() {
 }
 
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
-  // Handle graph-mode case
-  strings::StrAppend(&result_,
-                     "  _ctx = _context._context\n"
-                     "  if _ctx is None or not _ctx._eager_context.is_eager:\n",
-                     function_setup,
-                     "    _, _, _op = _op_def_lib._apply_op_helper(\n");
-  AddBodyNoReturn("        ");
+  strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
+  strings::StrAppend(&result_, function_setup);
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "  try:\n  ");
+  }
+  strings::StrAppend(&result_, "  _, _, _op = _op_def_lib._apply_op_helper(\n");
+  AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
+  AddDispatch("  ");
+
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "    _result = _op.outputs[:]\n");
+    strings::StrAppend(&result_, "  _result = _op.outputs[:]\n");
     // Special case handling for stateful op with single list output
     // that might be empty.
     if (num_outs_ == 1 && op_def_.is_stateful() &&
@@ -372,10 +380,10 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
       // TODO(josh11b): Can skip this if the number_attr/type_list_attr has
       // a constraint indicating that this can never be empty.
       strings::StrAppend(&result_,
-                         "    if not _result:\n"
-                         "      return _op\n");
+                         "  if not _result:\n"
+                         "    return _op\n");
     }
-    strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
+    strings::StrAppend(&result_, "  _inputs_flat = _op.inputs\n");
 
     // Compute graph-mode attrs.
     if (op_def_.attr_size() > 0) {
@@ -387,14 +395,13 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
                            attr_name, "\")");
       }
       strings::StrAppend(&attr_values, ")");
-      strings::StrAppend(&result_,
-                         WordWrap("    _attrs = (", attr_values, kRightMargin),
-                         "\n");
+      strings::StrAppend(
+          &result_, WordWrap("  _attrs = (", attr_values, kRightMargin), "\n");
     } else {
-      strings::StrAppend(&result_, "    _attrs = None\n");
+      strings::StrAppend(&result_, "  _attrs = None\n");
     }
   } else {
-    strings::StrAppend(&result_, "    return _op\n");
+    strings::StrAppend(&result_, "  return _op\n");
   }
 }
 
@@ -483,7 +490,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, "  ", attr_api_name,
                          " = ", default_value, "\n");
     }
-    if (str_util::StartsWith(attr_type, "list(")) {
+    if (absl::StartsWith(attr_type, "list(")) {
       ExpectListArg(indentation, attr_api_name, function_setup);
     }
 
@@ -543,7 +550,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, attr_api_name,
                          " = [_execute.make_tensor(_t, \"", attr_api_name,
                          "\") for _t in ", attr_api_name, "]\n");
-    } else if (attr_type != "func") {
+    } else if (attr_type != "func" && attr_type != "list(func)") {
       *function_setup =
           strings::StrCat("# No definition for ", function_name_,
                           " since we don't support attrs with type\n"
@@ -632,6 +639,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  }
+
   AddExport();
   AddDefLine(function_name_, parameters);
   AddDocStringDescription();
@@ -643,25 +654,28 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  // Handle graph-mode case
-  string function_setup;
-  if (!GetEagerFunctionSetup("    ", &function_setup)) {
-    result_ = function_setup;
-    return false;
-  }
-  HandleGraphMode(function_setup);
-  AddEagerFunctionTeardown("    ", output_sizes,
-                           true /* execute_record_gradient */);
-
-  // Handle eager-mode case
-  strings::StrAppend(&result_, "  else:\n");
-
+  strings::StrAppend(
+      &result_,
+      "  _ctx = _context._context or _context.context()\n"
+      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
+      "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
     strings::StrAppend(&result_, "    ", eager_not_allowed_error);
   }
 
+  // Handle graph-mode case
+  string function_setup;
+  if (!GetEagerFunctionSetup("  ", &function_setup)) {
+    result_ = function_setup;
+    return false;
+  }
+  HandleGraphMode(function_setup);
+  AddEagerFunctionTeardown("  ", output_sizes,
+                           true /* execute_record_gradient */);
+
+  AddRawOpExport(parameters);
   strings::StrAppend(&result_, "\n\n");
   return true;
 }
@@ -669,13 +683,15 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
 bool GenEagerPythonOp::AddEagerFallbackCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& num_outputs_expr, const string& eager_not_allowed_error) {
+  AddDefLine(
+      strings::StrCat(function_name_, kEagerFallbackSuffix),
+      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx=None"));
+
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
   }
 
-  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
-             strings::StrCat(parameters, ", ctx=None"));
   strings::StrAppend(
       &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
   strings::StrAppend(&result_, "  This is for function ", function_name_,
@@ -705,7 +721,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
-      "_ctx._context_handle, _ctx._eager_context.device_name, \"",
+      "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
       op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 
@@ -750,12 +766,17 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
   strings::StrAppend(&fallback_params, "ctx=_ctx");
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
+  strings::StrAppend(&result_, "      try:\n");
   strings::StrAppend(
-      &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
+      &result_, "        ", "return ", function_name_, kEagerFallbackSuffix,
       "(\n",
-      WordWrap(strings::StrCat("          "),
+      WordWrap(strings::StrCat("            "),
                strings::StrCat(fallback_params, ")"), kRightMargin),
       "\n");
+  strings::StrAppend(&result_, "      except _core._SymbolicException:\n");
+  strings::StrAppend(&result_,
+                     "        pass  # Add nodes to the TensorFlow graph.\n");
+  AddDispatch("      ");
 
   // Any errors thrown from execute need to be unwrapped from
   // _NotOkStatusException.
@@ -896,6 +917,48 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
 }
 
+void GenEagerPythonOp::AddDispatch(const string& prefix) {
+  if (api_def_.visibility() != ApiDef::VISIBLE) return;
+
+  strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
+  strings::StrAppend(&result_, prefix, "  result = _dispatch.dispatch(\n");
+  AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_, ", "));
+  strings::StrAppend(&result_, prefix,
+                     "  if result is not "
+                     "_dispatch.OpDispatcher.NOT_SUPPORTED:\n");
+  strings::StrAppend(&result_, prefix, "    return result\n");
+  strings::StrAppend(&result_, prefix, "  raise\n");
+}
+
+void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
+  string arguments;
+  for (const auto& param_names : param_names_) {
+    const string renamed = param_names.GetRenameTo();
+    strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", renamed, "=",
+                       renamed);
+  }
+  strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", "name=name");
+
+  const string raw_function_name =
+      python_op_gen_internal::AvoidPythonReserved(op_def_.name());
+
+  strings::StrAppend(&result_, "def ", raw_function_name, "(", parameters,
+                     "):\n");
+  strings::StrAppend(&result_, "  return ", function_name_, "(", arguments,
+                     ")\n");
+
+  // Copy the __doc__ from the original op and apply the decorators.
+  strings::StrAppend(&result_, raw_function_name, ".__doc__", " = ",
+                     function_name_, ".__doc__\n");
+  strings::StrAppend(&result_, raw_function_name, " = ",
+                     "_doc_controls.do_not_generate_docs(_kwarg_only(",
+                     raw_function_name, "))\n");
+
+  // Export.
+  strings::StrAppend(&result_, "tf_export(\"raw_ops.", raw_function_name,
+                     "\")(", raw_function_name, ")\n");
+}
+
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops, bool require_shapes,
                     const string& source_file_name = "") {
@@ -935,7 +998,10 @@ from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
+from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import kwarg_only as _kwarg_only
+from tensorflow.tools.docs import doc_controls as _doc_controls
 
 )");
 
@@ -1008,11 +1074,11 @@ from tensorflow.python.util.tf_export import tf_export
 
   result.append("# ");
   auto ops_text = ProtoDebugString(cleaned_ops);
-  str_util::StripTrailingWhitespace(&ops_text);
+  absl::StripTrailingAsciiWhitespace(&ops_text);
   result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
   result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
-                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
+                   absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

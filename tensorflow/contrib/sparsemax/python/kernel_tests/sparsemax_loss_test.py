@@ -109,6 +109,42 @@ class SparsemaxLossTest(test.TestCase):
         np_loss, tf_loss_out, half_atol=1e-2, half_rtol=5e-3)
     self.assertShapeEqual(np_loss, tf_loss_op)
 
+  def _test_sparsemax_loss_of_nan(self, dtype, random, use_gpu):
+    """check sparsemax-loss transfers nan"""
+    q = np.asarray([[0, 0, 1], [0, 0, 1], [0, 0, 1]])
+    z_nan = np.asarray([[0, np.nan, 0], [0, np.nan, np.nan],
+                        [np.nan, np.nan, np.nan]]).astype(dtype)
+
+    _, tf_loss_nan = self._tf_sparsemax_loss(z_nan, q, dtype, use_gpu)
+    self.assertAllCloseAccordingToType([np.nan, np.nan, np.nan], tf_loss_nan)
+
+  def _test_sparsemax_loss_of_inf(self, dtype, random, use_gpu):
+    """check sparsemax-loss is infinity safe"""
+    q = np.asarray([[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]])
+    z_neg = np.asarray([
+        [0, -np.inf, 0],
+        [0, -np.inf, -np.inf],
+        [-np.inf, -np.inf, 0],
+        [-np.inf, -np.inf, -np.inf],
+    ]).astype(dtype)
+    z_pos = np.asarray([[0, np.inf, 0], [0, np.inf,
+                                         np.inf], [np.inf, np.inf, 0],
+                        [np.inf, np.inf, np.inf]]).astype(dtype)
+    z_mix = np.asarray([[0, np.inf, 0], [0, np.inf, -np.inf],
+                        [-np.inf, np.inf, 0], [-np.inf, np.inf,
+                                               -np.inf]]).astype(dtype)
+
+    _, tf_loss_neg = self._tf_sparsemax_loss(z_neg, q, dtype, use_gpu)
+    self.assertAllCloseAccordingToType([0.25, np.inf, 0, np.nan], tf_loss_neg)
+
+    _, tf_loss_pos = self._tf_sparsemax_loss(z_pos, q, dtype, use_gpu)
+    self.assertAllCloseAccordingToType([np.nan, np.nan, np.nan, np.nan],
+                                       tf_loss_pos)
+
+    _, tf_loss_mix = self._tf_sparsemax_loss(z_mix, q, dtype, use_gpu)
+    self.assertAllCloseAccordingToType([np.nan, np.nan, np.nan, np.nan],
+                                       tf_loss_mix)
+
   def _test_constant_add(self, dtype, random, use_gpu):
     """check sparsemax-loss proposition 3"""
     z = random.uniform(low=-3, high=3, size=(test_obs, 10))
@@ -197,6 +233,10 @@ class SparsemaxLossTest(test.TestCase):
     random = np.random.RandomState(1)
 
     self._test_sparsemax_loss_against_numpy(dtype, random, use_gpu=False)
+
+    self._test_sparsemax_loss_of_nan(dtype, random, use_gpu=False)
+
+    self._test_sparsemax_loss_of_inf(dtype, random, use_gpu=False)
 
     self._test_constant_add(dtype, random, use_gpu=False)
 

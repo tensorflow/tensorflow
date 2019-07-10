@@ -25,18 +25,18 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace cpu {
@@ -49,7 +49,7 @@ class CpuExecutable : public Executable {
  public:
   CpuExecutable(std::unique_ptr<SimpleOrcJIT> jit,
                 std::unique_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<const HloModule> hlo_module,
+                std::unique_ptr<HloModule> hlo_module,
                 const string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
@@ -111,8 +111,9 @@ class CpuExecutable : public Executable {
   //    storage and the live-out buffer into which the computation writes it
   //    result.
   StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
-                     std::vector<OwningDeviceMemory>>>
-  CreateBufferTable(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+                     std::vector<se::OwningDeviceMemory>>>
+  CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+                    int device_ordinal,
                     absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
@@ -126,11 +127,11 @@ class CpuExecutable : public Executable {
   // The addresses are set according to buffer assignment.
   StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<OwningDeviceMemory> buffers);
+      absl::Span<se::OwningDeviceMemory> buffers);
 
-  // Returns the points-to set of the root instruction of the entry
-  // computation. Uses points-to analysis from buffer assignment.
-  const PointsToSet& GetRootPointsToSet() const;
+  // Returns the instruction value set of the root instruction of the entry
+  // computation. Uses dataflow analysis from buffer assignment.
+  const InstructionValueSet& GetRootValueSet() const;
 
   // The JIT containing compiled modules.
   const std::unique_ptr<SimpleOrcJIT> jit_;

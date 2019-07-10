@@ -28,10 +28,12 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -73,20 +75,34 @@ class AotCompilationOptions {
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
-  DeviceMemoryAllocator* device_allocator() const { return device_allocator_; }
-  void set_device_allocator(DeviceMemoryAllocator* device_allocator) {
+  se::DeviceMemoryAllocator* device_allocator() const {
+    return device_allocator_;
+  }
+  void set_device_allocator(se::DeviceMemoryAllocator* device_allocator) {
     device_allocator_ = device_allocator;
   }
 
   const DebugOptions& debug_options() const { return debug_options_; }
   DebugOptions* mutable_debug_options() { return &debug_options_; }
 
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
  protected:
   AotCompilationOptions();
 
  private:
-  DeviceMemoryAllocator* device_allocator_ = nullptr;
+  se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
+  absl::optional<DeviceAssignment> static_device_assignment_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -133,23 +149,36 @@ class Compiler {
   // allocated should be deallocated before this function returns.
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  // Optimizes a HLO module group, a set of module which runs concurrently on
+  // multiple devices potentially communicating data between the modules.
+  virtual Status RunHloPassesOnModuleGroup(
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
   // prior to calling this method because some HLO passes are required for
-  // correctness. Takes ownership of the HLO module and is free to transform it.
+  // correctness. Takes ownership of the HLO module.
   //
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
   // device_allocator is optional; see RunHloPasses.
-  //
-  // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  // Compiles a set of HLO modules that can run in parallel, potentially
+  // communicating data between the modules.
+  virtual StatusOr<std::vector<std::unique_ptr<Executable>>>
+  RunBackendOnModuleGroup(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
@@ -160,9 +189,9 @@ class Compiler {
   // TODO(b/68666782): Remove this method after adding support for multiple
   // modules to RunHloPasses and RunBackends.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
+      std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Returns the backend configurations that the backend will consider for the
   // given HLO. Returns no configurations if the backend does not support
@@ -184,16 +213,16 @@ class Compiler {
   ComputeDefaultBackendConfig(const HloInstruction& hlo,
                               se::StreamExecutor* executor) const;
 
-  // Compiles the HLO module for ahead-of-time execution.  This is intended for
-  // use in static compilation.
+  // Compiles the HLO module group for ahead-of-time execution.  This is
+  // intended for use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
 

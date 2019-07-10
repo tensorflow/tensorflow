@@ -34,6 +34,8 @@ set -e
 #
 # Make sure you have an up to date version of the Bazel build tool installed too.
 
+export TF_ENABLE_XLA=0
+
 yes '' | ./configure
 
 # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
@@ -87,7 +89,7 @@ if [[ $1 == "PI_ONE" ]]; then
 else
   PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
-  --copt=-O3
+  --copt=-O3 --copt=-fno-tree-pre
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
@@ -105,6 +107,7 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
+  --define tensorflow_mkldnn_contraction_kernel=0 \
   --verbose_failures \
   //tensorflow:libtensorflow.so \
   //tensorflow:libtensorflow_framework.so \

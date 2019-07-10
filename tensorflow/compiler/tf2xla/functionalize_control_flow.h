@@ -33,6 +33,12 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
                                 Graph* graph,
                                 FunctionLibraryDefinition* library);
 
+Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
+                                           FunctionLibraryDefinition* library);
+Status FunctionalizeControlFlowForGraphDef(
+    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
+    FunctionLibraryDefinition* library);
+
 // This pass looks at the graph and all associated FunctionDefs, and turns
 // traditional control flow structure (Switch/Merge/etc.) into functional
 // control flow structure (If/While).

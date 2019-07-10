@@ -47,6 +47,13 @@ class LocalDevice : public Device {
   struct EigenThreadPoolInfo;
   std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
 
+  // All ThreadPoolDevices in the process associated with the same
+  // NUMA node will share a single fixed sized threadpool for numerical
+  // computations.
+  static mutex global_tp_mu_;
+  static gtl::InlinedVector<EigenThreadPoolInfo*, 4> global_tp_info_
+      GUARDED_BY(global_tp_mu_);
+
   friend class test::Benchmark;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalDevice);

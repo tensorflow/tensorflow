@@ -67,8 +67,8 @@ class ClipGradientNormsTest(test.TestCase):
     gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     variable = variables_lib.Variable(self._zero_vec, dtype=dtypes.float32)
     gradients_to_variables = (gradient, variable)
-    [gradients_to_variables] = learning.clip_gradient_norms(
-        [gradients_to_variables], self._max_norm)
+    [gradients_to_variables
+    ] = learning.clip_gradient_norms([gradients_to_variables], self._max_norm)
 
     # Ensure the variable passed through.
     self.assertEqual(gradients_to_variables[1], variable)
@@ -82,8 +82,8 @@ class ClipGradientNormsTest(test.TestCase):
     variable = variables_lib.Variable(self._zero_vec, dtype=dtypes.float32)
 
     gradients_to_variables = (gradient, variable)
-    [gradients_to_variables] = learning.clip_gradient_norms(
-        [gradients_to_variables], self._max_norm)
+    [gradients_to_variables
+    ] = learning.clip_gradient_norms([gradients_to_variables], self._max_norm)
 
     self.assertEqual(gradients_to_variables[0], None)
     self.assertEqual(gradients_to_variables[1], variable)
@@ -172,8 +172,8 @@ class MultiplyGradientsTest(test.TestCase):
   def testIndexedSlicesGradIsMultiplied(self):
     values = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     indices = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
-    dense_shape = constant_op.constant(
-        [self._grad_vec.size], dtype=dtypes.int32)
+    dense_shape = constant_op.constant([self._grad_vec.size],
+                                       dtype=dtypes.int32)
 
     gradient = ops.IndexedSlices(values, indices, dense_shape)
     variable = variables_lib.Variable(array_ops.zeros((1, 3)))
@@ -289,8 +289,8 @@ class CreateTrainOpTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer)
 
       moving_mean = variables_lib2.get_variables_by_name('moving_mean')[0]
-      moving_variance = variables_lib2.get_variables_by_name('moving_variance')[
-          0]
+      moving_variance = variables_lib2.get_variables_by_name(
+          'moving_variance')[0]
 
       with session.Session() as sess:
         # Initialize all variables
@@ -323,8 +323,8 @@ class CreateTrainOpTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer, update_ops=[])
 
       moving_mean = variables_lib2.get_variables_by_name('moving_mean')[0]
-      moving_variance = variables_lib2.get_variables_by_name('moving_variance')[
-          0]
+      moving_variance = variables_lib2.get_variables_by_name(
+          'moving_variance')[0]
 
       with session.Session() as sess:
         # Initialize all variables
@@ -492,7 +492,8 @@ class TrainTest(test.TestCase):
     """Test that slim.learning.train can take `session_wrapper` args.
 
     One of the applications of `session_wrapper` is the wrappers of TensorFlow
-    Debugger (tfdbg), which intercept methods calls to `tf.Session` (e.g., run)
+    Debugger (tfdbg), which intercept methods calls to `tf.compat.v1.Session`
+    (e.g., run)
     to achieve debugging. `DumpingDebugWrapperSession` is used here for testing
     purpose.
     """

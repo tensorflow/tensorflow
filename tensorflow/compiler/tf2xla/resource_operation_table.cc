@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 /*static*/ absl::string_view XlaResourceOpInfo::XlaResourceOpKindToString(
@@ -30,9 +30,9 @@ namespace tensorflow {
   }
 }
 
-static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>*
+static absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>*
 CreateResourceOpInfoMap() {
-  auto* result = new gtl::FlatMap<absl::string_view, XlaResourceOpInfo>;
+  auto* result = new absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>;
 
   auto add = [&](absl::string_view op, XlaResourceOpKind op_kind,
                  XlaResourceKind resource_kind) {
@@ -65,6 +65,7 @@ CreateResourceOpInfoMap() {
   add("ResourceApplyFtrlV2"                  , kReadWrite, kVariable);
   add("ResourceApplyGradientDescent"         , kReadWrite, kVariable);
   add("ResourceApplyMomentum"                , kReadWrite, kVariable);
+  add("ResourceApplyKerasMomentum"           , kReadWrite, kVariable);
   add("ResourceApplyPowerSign"               , kReadWrite, kVariable);
   add("ResourceApplyProximalAdagrad"         , kReadWrite, kVariable);
   add("ResourceApplyProximalGradientDescent" , kReadWrite, kVariable);
@@ -76,10 +77,16 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterMin"                   , kReadWrite, kVariable);
   add("ResourceScatterMul"                   , kReadWrite, kVariable);
   add("ResourceScatterNdAdd"                 , kReadWrite, kVariable);
+  add("ResourceScatterNdSub"                 , kReadWrite, kVariable);
   add("ResourceScatterNdUpdate"              , kReadWrite, kVariable);
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);
   add("ResourceStridedSliceAssign"           , kReadWrite, kVariable);
+  add("StatefulStandardNormalV2"             , kReadWrite, kVariable);
+  add("StatefulTruncatedNormal"              , kReadWrite, kVariable);
+  add("StatefulUniform"                      , kReadWrite, kVariable);
+  add("StatefulUniformFullInt"               , kReadWrite, kVariable);
+  add("StatefulUniformInt"                   , kReadWrite, kVariable);
   add("VarIsInitializedOp"                   , kRead,      kVariable);
   add("VariableShape"                        , kRead,      kVariable);
 
@@ -103,15 +110,15 @@ CreateResourceOpInfoMap() {
   return result;
 }
 
-static const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>&
+static const absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>&
 GetStaticResourceOpInfoMap() {
-  static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>* op_info_map =
-      CreateResourceOpInfoMap();
+  static absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>*
+      op_info_map = CreateResourceOpInfoMap();
   return *op_info_map;
 }
 
 const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op) {
-  const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>& op_infos =
+  const absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>& op_infos =
       GetStaticResourceOpInfoMap();
   auto it = op_infos.find(op);
   return it == op_infos.end() ? nullptr : &it->second;

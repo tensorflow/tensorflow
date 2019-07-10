@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/executor.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -53,25 +54,31 @@ class ExecutorTest : public ::testing::Test {
     // when the test completes.
     CHECK(rendez_->Unref());
     delete exec_;
-    delete device_;
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
   void Create(std::unique_ptr<const Graph> graph) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
-    params.device = device_;
+    params.device = device_.get();
     params.create_kernel = [this, version](const NodeDef& ndef,
                                            OpKernel** kernel) {
-      return CreateNonCachedKernel(device_, nullptr, ndef, version, kernel);
+      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
+                                   kernel);
     };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
+    rendez_ = NewLocalRendezvous();
+    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
+                                       Rendezvous** r) {
+      *r = rendez_;
+      rendez_->Ref();
+      return Status::OK();
+    };
     delete exec_;
     TF_CHECK_OK(NewLocalExecutor(params, std::move(graph), &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
-    rendez_ = NewLocalRendezvous();
   }
 
   Status Run(Rendezvous* rendez) {
@@ -83,7 +90,7 @@ class ExecutorTest : public ::testing::Test {
   }
 
   thread::ThreadPool* thread_pool_ = nullptr;
-  Device* device_ = nullptr;
+  std::unique_ptr<Device> device_;
   Executor* exec_ = nullptr;
   StepStatsCollector step_stats_collector_;
   StepStats step_stats_;

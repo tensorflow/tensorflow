@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_H_
 
 #include <stddef.h>
+
 #include <string>
 #include <vector>
 
@@ -166,9 +167,6 @@ class HloValue : public BufferValue {
 
   // Whether this value is live out of the HLO module.
   bool live_out_of_module_ = false;
-
-  // Whether this value is live out of its computation.
-  bool live_out_of_computation_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValue& hlo_value);
@@ -247,6 +245,10 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
   bool AssignUnionOf(absl::Span<const InstructionValueSet* const> inputs);
+
+  // Returns true if any value sets for any subshape element is not a
+  // singleton.
+  bool IsAmbiguous() const;
 
   string ToString() const;
 };

@@ -24,22 +24,22 @@ limitations under the License.
 namespace tensorflow {
 
 class Summary;
-
+class SummaryWriterInterface;
 namespace data {
 
 // A `StatsAggregator` accumulates statistics incrementally. A
 // `StatsAggregator` can accumulate multiple different statistics, distinguished
 // by a string name.
 //
-// The class currently supports accumulating `Histogram` objects, and we expect
-// to add other methods in future.
+// The class currently supports accumulating `Histogram`, `scalar` objects and
+// tfstreamz metrics, and we expect to add other methods in future.
 //
 // NOTE(mrry): `StatsAggregator` is a virtual interface because we anticipate
-// that many different implementations will the same interface. For example, the
-// current implementation in "stats_aggregator_ops.cc" is a simple in-memory
-// implementation that integrates with the pull-based summary API, and we may
-// add implementations that work with the push-based `SummaryWriterInterface`,
-// as well as custom monitoring services.
+// that many different implementations will have the same interface. For
+// example, we have diffferent implementations in "stats_aggregator_ops.cc" for
+// simple in-memory implementation that integrates with the pull-based summary
+// API, and for the push-based `SummaryWriterInterface`, and we may add
+// implementations that work well with other custom monitoring services.
 class StatsAggregator {
  public:
   virtual ~StatsAggregator() {}
@@ -47,18 +47,20 @@ class StatsAggregator {
   // Add the given `values` to the histogram with the given `name`. Each
   // element of `values` will be treated as a separate sample in the histogram.
   virtual void AddToHistogram(const string& name,
-                              gtl::ArraySlice<double> values) = 0;
+                              gtl::ArraySlice<double> values,
+                              int64 global_step) = 0;
 
   // TODO(shivaniagarawal): consistency in double and float usage.
   // Add the given `value` as Scalar with the given `name`.
-  virtual void AddScalar(const string& name, float value) = 0;
+  virtual void AddScalar(const string& name, float value,
+                         int64 global_step) = 0;
 
   // Stores a protocol buffer representation of the aggregator state in the
   // given `out_summary`.
-  // TODO(mrry): Consider separating this method from the `StatsAggregator`
-  // interface. It is possible that not all implementations will support
-  // encoding their state as a protocol buffer.
   virtual void EncodeToProto(Summary* out_summary) = 0;
+
+  // Sets a `summary_writer` with this stats_aggregator.
+  virtual Status SetSummaryWriter(SummaryWriterInterface* summary_writer) = 0;
 
   // Increment the `label` cell of metrics mapped with `name` by given `value`.
   virtual void IncrementCounter(const string& name, const string& label,
@@ -83,7 +85,7 @@ class StatsAggregatorResource : public ResourceBase {
     return stats_aggregator_;
   }
 
-  string DebugString() { return "StatsAggregatorResource"; }
+  string DebugString() const override { return "StatsAggregatorResource"; }
 
  private:
   const std::shared_ptr<StatsAggregator> stats_aggregator_;

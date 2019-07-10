@@ -23,7 +23,12 @@ namespace tensorflow {
 REGISTER_OP("XRTCompile")
     .Input("computation: string")
     .Output("handle: int64")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Output("program_shape: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->UnknownShapeOfRank(1));
+      return Status::OK();
+    })
     .Doc(
         R"(
 Reads a computation proto, compiles it, and places it in the global compilation
@@ -39,10 +44,10 @@ REGISTER_OP("XRTReleaseCompilationHandle")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .Doc(
         R"(
-Discards a computation from the compilation cache. The handle cannot be
-subsequently used.
+Discards one or more computation handles from the compilation cache.
+The handle(s) cannot be subsequently used.
 
-'handle' is an id returned from a XRTCompile Op.
+'handle' is an ID (or vector of IDs) returned from a XRTCompile Op.
 )");
 
 }  // namespace tensorflow

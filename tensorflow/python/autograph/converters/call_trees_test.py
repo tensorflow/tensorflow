@@ -18,120 +18,148 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import imp
 
 from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class CallTreesTest(converter_testing.TestCase):
 
-  def test_basic(self):
+  def test_normal_function(self):
 
-    def test_fn_1(_):
-      raise ValueError('This should not be called in the compiled version.')
-
-    def other_test_fn_1(a):
-      return a + 1
-
-    def test_fn_2(a):
-      return test_fn_1(a) + 1
-
-    ns = {'test_fn_1': test_fn_1}
-    node, ctx = self.prepare(test_fn_2, ns)
-    node = call_trees.transform(node, ctx)
-
-    with self.compiled(node, ns) as result:
-      new_name, _ = ctx.namer.compiled_function_name(('test_fn_1',))
-      setattr(result, new_name, other_test_fn_1)
-      self.assertEquals(result.test_fn_2(1), 3)
-
-  def test_dynamic_function(self):
-
-    def test_fn_1():
-      raise ValueError('This should be masked by the mock in self.compiled.')
-
-    def test_fn_2(f):
+    def test_fn(f):
       return f() + 3
 
-    with self.converted(test_fn_2, call_trees, {}) as result:
-      # 10 = 7 (from the mock) + 3 (from test_fn_2)
-      self.assertEquals(10, result.test_fn_2(test_fn_1))
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [((), None)])
 
-  def test_basic_method(self):
+  def test_function_with_expression_in_argument(self):
+
+    def test_fn(f, g):
+      return f(g() + 7) + 3
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, None),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [
+          ((), None),
+          ((converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 7,), None),
+      ])
+
+  def test_function_with_call_in_argument(self):
+
+    def test_fn(f, g):
+      return f(g()) + 3
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, None),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [
+          ((), None),
+          ((converter_testing.RESULT_OF_MOCK_CONVERTED_CALL,), None),
+      ])
+
+  def test_function_with_kwarg(self):
+
+    def test_fn(f, a, b):
+      return f(a, c=b) + 3
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, 1, 2),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [((1,), {'c': 2})])
+
+  def test_function_with_kwargs_starargs(self):
+
+    def test_fn(f, a, *args, **kwargs):
+      return f(a, *args, **kwargs) + 5
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, 1, *[2, 3], **{
+              'b': 4,
+              'c': 5
+          }), converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 5)
+      self.assertListEqual(self.dynamic_calls, [((1, 2, 3), {'b': 4, 'c': 5})])
+
+  def test_function_with_kwargs_starargs_only(self):
+
+    def f(*unused_args):  # Will not be called.
+      pass
+
+    def test_fn():
+      args = [1, 2, 3]
+      return f(*args) + 11
+
+    with self.converted(test_fn, call_trees, {'f': f}) as result:
+      self.assertEqual(result.test_fn(),
+                       converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 11)
+      self.assertListEqual(self.dynamic_calls, [((1, 2, 3), None)])
+
+  def test_function_with_kwargs_keywords(self):
+
+    def test_fn(f, a, b, **kwargs):
+      return f(a, b=b, **kwargs) + 5
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, 1, 2, **{'c': 3}),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 5)
+      self.assertListEqual(self.dynamic_calls, [((1,), {'b': 2, 'c': 3})])
+
+  def test_debugger_set_trace(self):
+
+    tracking_list = []
+
+    pdb = imp.new_module('fake_pdb')
+    pdb.set_trace = lambda: tracking_list.append(1)
+
+    def test_fn():
+      return pdb.set_trace()
+
+    with self.converted(test_fn, call_trees, {'pdb': pdb}) as result:
+      result.test_fn()
+      self.assertListEqual(tracking_list, [1])
+
+  def test_class_method(self):
 
     class TestClass(object):
 
-      def test_fn_1(self, a):
-        return a + 1
+      def other_method(self, _):
+        raise ValueError('this should not be called')
 
-      def test_fn_2(self, a):
-        return self.test_fn_1(a) + 1
+      def test_method(self, a):
+        return self.other_method(a) + 1
 
-    ns = {'TestClass': TestClass}
-    node, ctx = self.prepare(
-        TestClass.test_fn_2,
-        ns,
-        namer=converter_testing.FakeNoRenameNamer(),
-        arg_types={'self': (TestClass.__name__, TestClass)})
-    node = call_trees.transform(node, ctx)
+    tc = TestClass()
+    with self.converted(TestClass.test_method, call_trees, {}) as result:
+      self.assertEqual(converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 1,
+                       result.test_method(tc, 1))
+      self.assertListEqual(self.dynamic_calls, [((1,), None)])
 
-    with self.compiled(node, ns) as result:
-      tc = TestClass()
-      self.assertEquals(3, result.test_fn_2(tc, 1))
+  def test_object_method(self):
 
-  def test_py_func_no_retval(self):
+    class TestClass(object):
 
-    def test_fn(a):
-      setattr(a, 'foo', 'bar')
+      def other_method(self, _):
+        raise ValueError('this should not be called')
 
-    with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.cached_session() as sess:
+      def test_method(self, a):
+        return self.other_method(a) + 1
 
-        class Dummy(object):
-          pass
-
-        a = Dummy()
-        result.test_fn(a)
-        py_func_op, = sess.graph.get_operations()
-        self.assertFalse(hasattr(a, 'foo'))
-        sess.run(py_func_op)
-        self.assertEquals('bar', a.foo)
-
-  def test_py_func_known_function(self):
-
-    def test_fn():
-      return np.random.binomial(2, 0.5)
-
-    with self.converted(test_fn, call_trees, {'np': np},
-                        dtypes.int64) as result:
-      with self.cached_session() as sess:
-        self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
-        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
-
-  def test_uncompiled_modules(self):
-
-    def test_fn(a):
-      a = math_ops.multiply(a, constant_op.constant(2))
-      a = math_ops.add(a, constant_op.constant(1))
-      return a
-
-    ns = {'math_ops': math_ops, 'constant_op': constant_op}
-    node, ctx = self.prepare(
-        test_fn,
-        ns,
-        arg_types=set(((math_ops.__name__,), (constant_op.__name__,))))
-    node = call_trees.transform(node, ctx)
-
-    with self.compiled(node, ns) as result:
-      with self.cached_session() as sess:
-        result_tensor = result.test_fn(constant_op.constant(1))
-        self.assertEquals(sess.run(result_tensor), 3)
+    tc = TestClass()
+    with self.converted(tc.test_method, call_trees, {}) as result:
+      self.assertEqual(converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 1,
+                       result.test_method(tc, 1))
+      self.assertListEqual(self.dynamic_calls, [((1,), None)])
 
 
 if __name__ == '__main__':

@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -36,20 +36,22 @@ struct LaunchConv2DOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct LaunchConv2DOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Used to keep track of persistent memory buffers used within the op.
 // It uses malloc and free to avoid the time cost of initializing the memory.
@@ -63,8 +65,55 @@ struct Im2ColBufferResource : public ResourceBase {
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  string DebugString() { return "Im2ColBufferResource"; }
+  string DebugString() const { return "Im2ColBufferResource"; }
 };
+
+// Convolution parameters specified by Op attributes.
+struct Conv2DParameters {
+  std::vector<int32> dilations;
+  std::vector<int32> strides;
+  Padding padding;
+  TensorFormat data_format;
+  std::vector<int64> explicit_paddings;
+};
+
+// Convolution dimensions inferred from parameters, input and filter tensors.
+struct Conv2DDimensions {
+  int batch;
+  int input_rows;
+  int input_cols;
+  int in_depth;
+
+  int filter_rows;
+  int filter_cols;
+  int patch_depth;
+  int out_depth;
+
+  int stride_rows;
+  int stride_cols;
+
+  int dilation_rows;
+  int dilation_cols;
+
+  int64 out_rows;
+  int64 out_cols;
+  int64 pad_rows_before;
+  int64 pad_rows_after;
+  int64 pad_cols_before;
+  int64 pad_cols_after;
+};
+
+// Initializes and validates Conv2D parameters configured by OpKernel
+// attributes.
+Status InitConv2DParameters(const OpKernelConstruction* context,
+                            Conv2DParameters* params);
+
+// Computes and validates convolutions dimensions from Conv2D parameters. If
+// parameters are valid, dimensions will be updated with derived convolution
+// dimensions, otherwise an error will be returned.
+Status ComputeConv2DDimension(const Conv2DParameters& params,
+                              const Tensor& input, const Tensor& filter,
+                              Conv2DDimensions* dimensions);
 
 }  // namespace tensorflow
 

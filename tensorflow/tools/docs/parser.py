@@ -502,7 +502,10 @@ def _gen_pairs(items):
   assert len(items) % 2 == 0
   items = iter(items)
   while True:
-    yield next(items), next(items)
+    try:
+      yield next(items), next(items)
+    except StopIteration:
+      return
 
 
 class _FunctionDetail(
@@ -1681,7 +1684,7 @@ def _get_defined_in(py_object, parser_config):
     path = path[:-1]
 
   # Never include links outside this code base.
-  if path.startswith('..'):
+  if path.startswith('..') or re.search(r'\b_api\b', path):
     return None
 
   if re.match(r'.*/gen_[^/]*\.py$', path):

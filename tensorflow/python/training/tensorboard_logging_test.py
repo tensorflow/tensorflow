@@ -25,6 +25,7 @@ import tempfile
 import time
 
 from tensorflow.core.util import event_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
@@ -32,6 +33,7 @@ from tensorflow.python.summary.writer import writer
 from tensorflow.python.training import tensorboard_logging
 
 
+@test_util.run_deprecated_v1
 class EventLoggingTest(test.TestCase):
 
   def setUp(self):

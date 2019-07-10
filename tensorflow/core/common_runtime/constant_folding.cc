@@ -245,17 +245,17 @@ bool IsConstantFoldable(
   if (n->IsSink()) {
     return false;
   }
+  if (n->IsFakeParam()) {
+    return false;
+  }
   // Since constant-folding runs on the CPU, do not attempt to constant-fold
   // operators that have no CPU kernel. Also implies that we will not
   // constant-fold functions.
   // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
-                     /*kernel_class_name=*/nullptr)
-           .ok()) {
+  if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
     return false;
   }
-
   return true;
 }
 
@@ -327,14 +327,15 @@ void FindConstantFoldableNodes(
         shape_replacement_map) {
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order.
-  ReverseDFS(*graph, nullptr,
-             [nodes, constant_control_deps, shape_replacement_map,
-              &internal_node_inserted, &opts](Node* n) {
-               ConsiderConstantFoldableNode(
-                   n, opts, nodes, constant_control_deps, shape_replacement_map,
-                   &internal_node_inserted);
-             },
-             NodeComparatorName());
+  ReverseDFS(
+      *graph, nullptr,
+      [nodes, constant_control_deps, shape_replacement_map,
+       &internal_node_inserted, &opts](Node* n) {
+        ConsiderConstantFoldableNode(n, opts, nodes, constant_control_deps,
+                                     shape_replacement_map,
+                                     &internal_node_inserted);
+      },
+      NodeComparatorName());
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes->clear();
@@ -464,25 +465,25 @@ Graph* GetConstantGraph(
 // 'control_deps' is the set of nodes that should be control predecessors of the
 // new constant node.
 bool ReplaceTensorWithConstant(
-    Graph* graph, Device* partition_device, NodeAndOutput tensor,
+    Graph* graph, const Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
     int64 max_constant_size_in_bytes,
     const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
-  // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
-  // constraint, do not replace it.
-  // 2) If the destination tensor is an int32 tensor, but has DEVICE_MEMORY
-  // constraint, do not replace it.
-  // 3) If the constant op created does not have a kernel implementation
-  // for the device, do not use it.
+  // 1) Do not replace another constant.
+  // 2) If the destination tensor or any other tensor from the same node is not
+  // an int32 tensor, and has HOST_MEMORY constraint, do not replace it.
+  // 3) If the destination tensor or any other tensor from the same node is an
+  // int32 tensor, and has DEVICE_MEMORY constraint, do not replace it.
   // 4) If the size of the constant in bytes is too large (>
   // max_constant_in_bytes), do not replace it. This prevents the size of the
   // Graph from growing too large.
+  // 5) If the constant op created does not have a kernel implementation
+  // for the device, do not use it.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
-  // 5) Do not replace another constant.
   if (tensor.first->IsConstant()) {
     return false;
   }
@@ -490,16 +491,20 @@ bool ReplaceTensorWithConstant(
                                ? DeviceType{partition_device->device_type()}
                                : DEVICE_CPU;
   if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &memory_type)
+    MemoryTypeVector input_mvec;
+    MemoryTypeVector output_mvec;
+    if (!MemoryTypesForNode(graph->op_registry(), device_type,
+                            tensor.first->def(), &input_mvec, &output_mvec)
              .ok()) {
       return false;
     }
-    bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
-    if ((memory_type == HOST_MEMORY && !is_int32) ||
-        (memory_type == DEVICE_MEMORY && is_int32)) {
-      return false;
+    for (int i = 0; i < output_mvec.size(); i++) {
+      MemoryType memory_type = output_mvec[i];
+      bool is_int32 = tensor.first->output_type(i) == DT_INT32;
+      if ((memory_type == HOST_MEMORY && !is_int32) ||
+          (memory_type == DEVICE_MEMORY && is_int32)) {
+        return false;
+      }
     }
   }
   if (constant.TotalBytes() > max_constant_size_in_bytes) {
@@ -557,7 +562,8 @@ bool ReplaceTensorWithConstant(
 
 Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
-                    Device* partition_device, Graph* graph, bool* was_mutated) {
+                    const Device* partition_device, Graph* graph,
+                    bool* was_mutated) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {
@@ -176,6 +175,22 @@ void TestDeprecatedAttributesSetCorrectly(
     }
   }
 }
+
+void TestDeprecationVersionSetCorrectly(
+    const std::unordered_map<string, ApiDef>& api_defs_map) {
+  for (const auto& name_and_api_def : api_defs_map) {
+    const auto& name = name_and_api_def.first;
+    const auto& api_def = name_and_api_def.second;
+    if (api_def.deprecation_version() != 0) {
+      ASSERT_TRUE(api_def.deprecation_version() > 0)
+          << "Found ApiDef with negative deprecation_version";
+      ASSERT_FALSE(api_def.deprecation_message().empty())
+          << "ApiDef that includes deprecation_version > 0 must also specify "
+          << "a deprecation_message. Op " << name
+          << " has deprecation_version > 0 but deprecation_message is not set.";
+    }
+  }
+}
 }  // namespace
 
 class BaseApiTest : public ::testing::Test {
@@ -268,6 +283,12 @@ TEST_F(BaseApiTest, DeprecationSetCorrectly) {
   TestDeprecatedAttributesSetCorrectly(api_defs_map_);
 }
 
+// Checks that deprecation_version is set for entire op only if
+// deprecation_message is set.
+TEST_F(BaseApiTest, DeprecationVersionSetCorrectly) {
+  TestDeprecationVersionSetCorrectly(api_defs_map_);
+}
+
 class PythonApiTest : public ::testing::Test {
  protected:
   PythonApiTest() {
@@ -307,6 +328,12 @@ TEST_F(PythonApiTest, AllApiDefAttributeNamesAreValid) {
 // Checks that deprecation is set correctly.
 TEST_F(PythonApiTest, DeprecationSetCorrectly) {
   TestDeprecatedAttributesSetCorrectly(api_defs_map_);
+}
+
+// Checks that deprecation_version is set for entire op only if
+// deprecation_message is set.
+TEST_F(PythonApiTest, DeprecationVersionSetCorrectly) {
+  TestDeprecationVersionSetCorrectly(api_defs_map_);
 }
 
 }  // namespace tensorflow

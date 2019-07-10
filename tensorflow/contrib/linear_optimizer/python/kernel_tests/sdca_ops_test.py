@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for SdcaModel."""
+"""Tests for SdcaModel (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -125,7 +130,7 @@ def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
       ],
       example_ids=[str(i) for i in range(num_examples)])
 
-  weights = variables_lib.Variable(
+  weights = variables_lib.VariableV1(
       array_ops.zeros([dim], dtype=dtypes.float32))
   variables_dict = dict(
       sparse_features_weights=[weights],
@@ -184,7 +189,7 @@ def make_dense_examples_and_variables_dicts(dense_features_values, weights,
     dense_tensors.append(dense_tensor)
     # Add variables of shape [feature_column_dimension].
     dense_weights.append(
-        variables_lib.Variable(
+        variables_lib.VariableV1(
             array_ops.zeros(
                 [dense_tensor.get_shape().as_list()[1]], dtype=dtypes.float32)))
 
@@ -341,7 +346,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         examples = make_example_dict(example_protos, example_weights)
         # Explicitly make age a [1]-shaped Variable (which cannot be
         # partitioned), while making gender a PartitionedVariable.
-        age_weights = variables_lib.Variable(
+        age_weights = variables_lib.VariableV1(
             array_ops.zeros([1], dtype=dtypes.float32))
         with variable_scope.variable_scope(
             name_or_scope=('variables/shard_{}'.format(num_shards)
@@ -460,6 +465,9 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         dtypes.string, shape=(len(example_weights),))
     examples['example_ids'] = example_ids
     variables = make_variable_dict(1, 1)
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     for num_shards in _SHARD_NUMBERS:
       for num_loss_partitions in _NUM_LOSS_PARTITIONS:
         with self._single_threaded_test_session():
@@ -801,7 +809,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           labels=[1.0, 0.0])
       # Replace with a variable of size 1 instead of 2.
       variables['dense_features_weights'] = [
-          variables_lib.Variable(array_ops.zeros(
+          variables_lib.VariableV1(array_ops.zeros(
               [1], dtype=dtypes.float32))
       ]
       options = dict(

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -42,6 +44,32 @@ TEST_F(GrapplerItemTest, Basic) {
   std::sort(graph_nodes.begin(), graph_nodes.end());
   std::sort(main_ops.begin(), main_ops.end());
   EXPECT_EQ(main_ops, graph_nodes);
+}
+
+TEST_F(GrapplerItemTest, InferDevices) {
+  using test::function::NDef;
+
+  const string cpu0 = "/job:work/replica:1/task:1/device:CPU:0";
+  const string cpu1 = "/job:work/replica:1/task:1/device:CPU:1";
+  const string cpu2 = "/device:CPU:2";
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {
+          NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu0),
+          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu1),
+          NDef("c", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu2),
+      },
+      {} /* Empty function library */);
+
+  ASSERT_FALSE(item.InferDevicesFromGraph().ok());
+
+  EXPECT_EQ(item.devices().size(), 2);
+  EXPECT_NE(item.devices().find(cpu0), item.devices().end());
+  EXPECT_NE(item.devices().find(cpu1), item.devices().end());
+
+  item.ClearDevices();
+  EXPECT_EQ(item.devices().size(), 0);
 }
 
 }  // namespace

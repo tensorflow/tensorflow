@@ -118,7 +118,7 @@ class XRTCompilationCache : public ResourceBase {
   // EntryRef holding the program is returned in entry.
   Status Lookup(int64 uid, std::unique_ptr<XRTCompilationCacheEntryRef>* entry);
 
-  string DebugString() override;
+  string DebugString() const override;
 
  private:
   // An entry in the compilation cache. The entry is deleted once it has been
@@ -211,8 +211,6 @@ class XRTCompilationCache : public ResourceBase {
   const int max_cache_entries_;
 
   mutable absl::Mutex mu_;
-  // The uid to assign to the next new entry created.
-  int64 next_uid_ GUARDED_BY(mu_) = 0;
   // The total number of entries that are stored and not marked for eviction.
   int cache_entries_ GUARDED_BY(mu_) = 0;
   // The total number of entries that are marked for eviction.

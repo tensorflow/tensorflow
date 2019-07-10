@@ -1,9 +1,0 @@
-path: "tensorflow.distributions.RegisterKL"
-tf_class {
-  is_instance: "<class \'tensorflow.python.ops.distributions.kullback_leibler.RegisterKL\'>"
-  is_instance: "<type \'object\'>"
-  member_method {
-    name: "__init__"
-    argspec: "args=[\'self\', \'dist_cls_a\', \'dist_cls_b\'], varargs=None, keywords=None, defaults=None"
-  }
-}

@@ -21,6 +21,9 @@ limitations under the License.
 
 #include <limits>
 #include <sstream>
+
+#include "absl/base/log_severity.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -46,6 +49,17 @@ class LogMessage : public std::basic_ostringstream<char> {
   // but VLOG(3) will not. Defaults to 0.
   static int64 MinVLogLevel();
 
+  // Returns whether VLOG level lvl is activated for the file fname.
+  //
+  // E.g. if the environment variable TF_CPP_VMODULE contains foo=3 and fname is
+  // foo.cc and lvl is <= 3, this will return true. It will also return true if
+  // the level is lower or equal to TF_CPP_MIN_VLOG_LEVEL (default zero).
+  //
+  // It is expected that the result of this query will be cached in the VLOG-ing
+  // call site to avoid repeated lookups. This routine performs a hash-map
+  // access against the VLOG-ing specification provided by the env var.
+  static bool VmoduleActivated(const char* fname, int level);
+
  protected:
   void GenerateLogMessage();
 
@@ -53,6 +67,13 @@ class LogMessage : public std::basic_ostringstream<char> {
   const char* fname_;
   int line_;
   int severity_;
+};
+
+// Uses the lower operator & precedence to voidify a LogMessage reference, so
+// that the ternary VLOG() implementation is balanced, type wise.
+struct Voidifier {
+  template <typename T>
+  void operator&(const T&)const {}
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -77,18 +98,30 @@ class LogMessageFatal : public LogMessage {
 #define LOG(severity) _TF_LOG_##severity
 
 #ifdef IS_MOBILE_PLATFORM
+
 // Turn VLOG off when under mobile devices for considerations of binary size.
 #define VLOG_IS_ON(lvl) ((lvl) <= 0)
+
 #else
-// Otherwise, Set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
-// of VLOG
-#define VLOG_IS_ON(lvl) \
-  ((lvl) <= ::tensorflow::internal::LogMessage::MinVLogLevel())
+
+// Otherwise, set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
+// translation units.
+#define VLOG_IS_ON(lvl)                                                     \
+  (([](int level, const char* fname) {                                      \
+    static const bool vmodule_activated =                                   \
+        ::tensorflow::internal::LogMessage::VmoduleActivated(fname, level); \
+    return vmodule_activated;                                               \
+  })(lvl, __FILE__))
+
 #endif
 
-#define VLOG(lvl)                        \
-  if (TF_PREDICT_FALSE(VLOG_IS_ON(lvl))) \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+#define VLOG(level)                                              \
+  TF_PREDICT_TRUE(!VLOG_IS_ON(level))                            \
+  ? (void)0                                                      \
+  : ::tensorflow::internal::Voidifier() &                        \
+          ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
+                                             tensorflow::INFO)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
@@ -210,8 +243,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
     if (TF_PREDICT_FALSE(v2 < 0)) {                                       \
       return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
     }                                                                     \
-    const size_t uval = (size_t)((unsigned)v1);                           \
-    return name##Impl<size_t, size_t>(uval, v2, exprtext);                \
+    return name##Impl<size_t, size_t>(v1, v2, exprtext);                  \
   }                                                                       \
   inline string* name##Impl(const int v1, const size_t v2,                \
                             const char* exprtext) {                       \
@@ -312,6 +344,59 @@ int64 MinLogLevelFromEnv();
 int64 MinVLogLevelFromEnv();
 
 }  // namespace internal
+
+// LogSink support adapted from //base/logging.h
+//
+// `LogSink` is an interface which can be extended to intercept and process
+// all log messages. LogSink implementations must be thread-safe. A single
+// instance will be called from whichever thread is performing a logging
+// operation.
+class TFLogEntry {
+  static absl::LogSeverity AsAbslLogSecurity(int severity) {
+    return static_cast<absl::LogSeverity>(severity);
+  }
+
+ public:
+  explicit TFLogEntry(int severity, absl::string_view log_line)
+      : severity_(AsAbslLogSecurity(severity)), log_line_(log_line) {}
+
+  absl::LogSeverity log_severity() const { return severity_; }
+  std::string ToString() const { return std::string(log_line_); }
+
+ private:
+  const absl::LogSeverity severity_;
+  const absl::string_view log_line_;
+};
+
+class TFLogSink {
+ public:
+  virtual ~TFLogSink() = default;
+
+  // `Send` is called synchronously during the log statement.  The logging
+  // module guarantees not to call `Send` concurrently on the same log sink.
+  // Implementations should be careful not to call`LOG` or `CHECK` or take
+  // any locks that might be held by the `LOG` caller, to avoid deadlock.
+  //
+  // `e` is guaranteed to remain valid until the subsequent call to
+  // `WaitTillSent` completes, so implementations may store a pointer to or
+  // copy of `e` (e.g. in a thread local variable) for use in `WaitTillSent`.
+  virtual void Send(const TFLogEntry& entry) = 0;
+
+  // `WaitTillSent` blocks the calling thread (the thread that generated a log
+  // message) until the sink has finished processing the log message.
+  // `WaitTillSent` is called once per log message, following the call to
+  // `Send`.  This may be useful when log messages are buffered or processed
+  // asynchronously by an expensive log sink.
+  // The default implementation returns immediately.  Like `Send`,
+  // implementations should be careful not to call `LOG` or `CHECK or take any
+  // locks that might be held by the `LOG` caller, to avoid deadlock.
+  virtual void WaitTillSent() {}
+};
+
+// Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.
+void TFAddLogSink(TFLogSink* sink);
+void TFRemoveLogSink(TFLogSink* sink);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_

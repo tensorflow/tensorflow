@@ -21,8 +21,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cusolverDn.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -643,6 +643,50 @@ static inline Status GesvdImpl(
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
 
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GesvdjBatchedImpl(BufSizeFnT bufsize, SolverFnT solver,
+                                       CudaSolver* cuda_solver,
+                                       OpKernelContext* context,
+                                       cusolverDnHandle_t cusolver_dn_handle,
+                                       cusolverEigMode_t jobz, int m, int n,
+                                       Scalar* A, int lda, Scalar* S, Scalar* U,
+                                       int ldu, Scalar* V, int ldv,
+                                       int* dev_lapack_info, int batch_size) {
+  mutex_lock lock(handle_map_mutex);
+  /* Get amount of workspace memory required. */
+  int lwork;
+  /* Default parameters for gesvdj and gesvdjBatched. */
+  gesvdjInfo_t svdj_info;
+  TF_RETURN_IF_CUSOLVER_ERROR(cusolverDnCreateGesvdjInfo(&svdj_info));
+  TF_RETURN_IF_CUSOLVER_ERROR(bufsize(
+      cusolver_dn_handle, jobz, m, n, CUDAComplex(A), lda, S, CUDAComplex(U),
+      ldu, CUDAComplex(V), ldv, &lwork, svdj_info, batch_size));
+  /* Allocate device memory for workspace. */
+  auto dev_workspace =
+      cuda_solver->GetScratchSpace<Scalar>(lwork, "", /* on_host */ false);
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, jobz, m, n, CUDAComplex(A), lda, S, CUDAComplex(U),
+      ldu, CUDAComplex(V), ldv, CUDAComplex(dev_workspace.mutable_data()),
+      lwork, dev_lapack_info, svdj_info, batch_size));
+  TF_RETURN_IF_CUSOLVER_ERROR(cusolverDnDestroyGesvdjInfo(svdj_info));
+  return Status::OK();
+}
+
+#define GESVDJBATCHED_INSTANCE(Scalar, type_prefix)                            \
+  template <>                                                                  \
+  Status CudaSolver::GesvdjBatched<Scalar>(                                    \
+      cusolverEigMode_t jobz, int m, int n, Scalar* dev_A, int lda,            \
+      Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_V, int ldv,           \
+      int* dev_lapack_info, int batch_size) {                                  \
+    return GesvdjBatchedImpl(DN_BUFSIZE_FN(gesvdjBatched, type_prefix),        \
+                             DN_SOLVER_FN(gesvdjBatched, type_prefix), this,   \
+                             context_, cusolver_dn_handle_, jobz, m, n, dev_A, \
+                             lda, dev_S, dev_U, ldu, dev_V, ldv,               \
+                             dev_lapack_info, batch_size);                     \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GESVDJBATCHED_INSTANCE);
+
 //=============================================================================
 // Wrappers of cuBlas computational methods begin here.
 //
@@ -692,8 +736,8 @@ static inline Status GetrsBatchedImpl(
     SolverFnT solver, CudaSolver* cuda_solver, OpKernelContext* context,
     cublasHandle_t cublas_handle, cublasOperation_t trans, int n, int nrhs,
     const Scalar* const host_a_dev_ptrs[], int lda, const int* dev_pivots,
-    const Scalar* const host_b_dev_ptrs[], int ldb,
-    DeviceLapackInfo* dev_lapack_info, int batch_size) {
+    const Scalar* const host_b_dev_ptrs[], int ldb, int* host_lapack_info,
+    int batch_size) {
   mutex_lock lock(handle_map_mutex);
   using CudaScalar = typename CUDAComplexT<Scalar>::type;
   ScratchSpace<uint8> dev_a_dev_ptrs =
@@ -714,7 +758,7 @@ static inline Status GetrsBatchedImpl(
       cublas_handle, trans, n, nrhs,
       reinterpret_cast<const CudaScalar* const*>(dev_a_dev_ptrs.data()), lda,
       dev_pivots, reinterpret_cast<CudaScalar**>(dev_b_dev_ptrs.mutable_data()),
-      ldb, dev_lapack_info->mutable_data(), batch_size));
+      ldb, host_lapack_info, batch_size));
   return Status::OK();
 }
 
@@ -723,13 +767,13 @@ static inline Status GetrsBatchedImpl(
   Status CudaSolver::GetrsBatched(                                             \
       cublasOperation_t trans, int n, int nrhs,                                \
       const Scalar* const host_a_dev_ptrs[], int lda, const int* dev_pivots,   \
-      const Scalar* const host_b_dev_ptrs[], int ldb,                          \
-      DeviceLapackInfo* dev_lapack_info, int batch_size) {                     \
+      const Scalar* const host_b_dev_ptrs[], int ldb, int* host_lapack_info,   \
+      int batch_size) {                                                        \
     return GetrsBatchedImpl(reinterpret_cast<getrs_##type_prefix*>(            \
                                 BLAS_SOLVER_FN(getrsBatched, type_prefix)),    \
                             this, context_, cublas_handle_, trans, n, nrhs,    \
                             host_a_dev_ptrs, lda, dev_pivots, host_b_dev_ptrs, \
-                            ldb, dev_lapack_info, batch_size);                 \
+                            ldb, host_lapack_info, batch_size);                \
   }
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);

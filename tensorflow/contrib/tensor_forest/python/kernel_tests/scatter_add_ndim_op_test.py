@@ -27,7 +27,7 @@ from tensorflow.python.platform import googletest
 class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
   def test1dim(self):
-    input_data = variables.Variable(
+    input_data = variables.VariableV1(
         [1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.])
     indices = [[1], [10]]
     updates = [100., 200.]
@@ -40,8 +40,8 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
           input_data.eval())
 
   def test3dim(self):
-    input_data = variables.Variable([[[1., 2., 3.], [4., 5., 6.]],
-                                     [[7., 8., 9.], [10., 11., 12.]]])
+    input_data = variables.VariableV1([[[1., 2., 3.], [4., 5., 6.]],
+                                       [[7., 8., 9.], [10., 11., 12.]]])
     indices = [[0, 0, 1], [1, 1, 2]]
     updates = [100., 200.]
 
@@ -53,7 +53,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
   def testNoUpdates(self):
     init_val = [[[1., 2., 3.], [4., 5., 6.]], [[7., 8., 9.], [10., 11., 12.]]]
-    input_data = variables.Variable(init_val)
+    input_data = variables.VariableV1(init_val)
     indices = []
     updates = []
 
@@ -64,7 +64,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
   def testBadInput(self):
     init_val = [[[1., 2., 3.], [4., 5., 6.]], [[7., 8., 9.], [10., 11., 12.]]]
-    input_data = variables.Variable(init_val)
+    input_data = variables.VariableV1(init_val)
     indices = [[0, 0, 1], [1, 1, 2]]
     updates = [100.]
     with self.cached_session():
@@ -75,8 +75,8 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(init_val, input_data.eval())
 
   def testIncompleteIndices(self):
-    input_data = variables.Variable([[[1., 2., 3.], [4., 5., 6.]],
-                                     [[7., 8., 9.], [10., 11., 12.]]])
+    input_data = variables.VariableV1([[[1., 2., 3.], [4., 5., 6.]],
+                                       [[7., 8., 9.], [10., 11., 12.]]])
     indices = [[0, 0], [1, 1]]
     updates = [[100., 200., 300.], [400., 500., 600.]]
 

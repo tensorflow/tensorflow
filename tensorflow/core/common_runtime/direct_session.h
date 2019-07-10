@@ -68,7 +68,9 @@ class DirectSession : public Session {
   typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
+  ::tensorflow::Status Create(GraphDef&& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
+  ::tensorflow::Status Extend(GraphDef&& graph) override;
   ::tensorflow::Status Run(const NamedTensorList& inputs,
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
@@ -110,11 +112,20 @@ class DirectSession : public Session {
 
   ::tensorflow::Status MakeCallable(const CallableOptions& callable_options,
                                     CallableHandle* out_handle) override;
+
   ::tensorflow::Status RunCallable(CallableHandle handle,
                                    const std::vector<Tensor>& feed_tensors,
                                    std::vector<Tensor>* fetch_tensors,
                                    RunMetadata* run_metadata) override;
+
+  ::tensorflow::Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override;
+
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
+
+  const SessionOptions& options() const { return options_; }
 
  private:
   // For access to collective_graph_key_.
@@ -211,12 +222,6 @@ class DirectSession : public Session {
     int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
-  // Initializes the base execution state given the 'graph',
-  // if not already initialized.
-  Status MaybeInitializeExecutionState(const GraphDef& graph,
-                                       bool* out_already_initialized)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
-
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
@@ -242,13 +247,19 @@ class DirectSession : public Session {
       RunStateArgs* run_state_args, DataTypeVector* input_types,
       DataTypeVector* output_types, int64* collective_graph_key);
 
-  ::tensorflow::Status RunInternal(int64 step_id, const RunOptions& run_options,
-                                   CallFrameInterface* call_frame,
-                                   ExecutorsAndKeys* executors_and_keys,
-                                   RunMetadata* run_metadata);
+  ::tensorflow::Status RunInternal(
+      int64 step_id, const RunOptions& run_options,
+      CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
+      RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options);
 
-  ::tensorflow::Status ExtendLocked(const GraphDef& graph)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+  // Returns whether inter-op execution uses a global pool or the input
+  // `run_options` requests being run on inter_op_thread_pool = 0 in case
+  // multiple pools are configured.
+  bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
+
+  ::tensorflow::Status ExtendLocked(GraphDef graph)
+      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
@@ -289,7 +300,7 @@ class DirectSession : public Session {
   }
 
   ::tensorflow::Status CheckGraphCreated(const char* method) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (!graph_created_) {
       return errors::InvalidArgument(
           "Session was not created with a graph before ", method, "!");
@@ -312,11 +323,10 @@ class DirectSession : public Session {
   std::vector<Device*> devices_;  // not owned
   DeviceSet device_set_;
 
+  // Unique session identifier.
   string session_handle_;
-  bool graph_created_ GUARDED_BY(graph_def_lock_) = false;
-
-  mutex graph_def_lock_;
-  GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
+  mutex graph_state_lock_;
+  bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -326,8 +336,6 @@ class DirectSession : public Session {
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;
-  // Schedules 'c' for execution on pool.
-  void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 
   std::vector<std::unique_ptr<FunctionInfo>> functions_
       GUARDED_BY(executor_lock_);
@@ -367,11 +375,11 @@ class DirectSession : public Session {
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<GraphExecutionState> execution_state_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // The function library, before any rewrites or optimizations have been
   // performed. In particular, CreateGraphs() may need to modify the function
@@ -386,7 +394,7 @@ class DirectSession : public Session {
   std::atomic<int64> edge_name_counter_ = {0};
   std::atomic<int64> handle_name_counter_ = {0};
 
-  // For generating step ids that are unique across all sessions.
+  // For generating step ids that are unique among all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.
@@ -395,11 +403,21 @@ class DirectSession : public Session {
   // Manages all the cost models for the graphs executed in this session.
   CostModelManager cost_model_manager_;
 
-  Executor::Args::NodeOutputsCallback node_outputs_callback_ = nullptr;
-
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;
   int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
+
+  // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
+  // all of following conditions are met:
+  // 1. This session doesn't own any thread pool.
+  // 2. RunOptions.inter_op_thread_pool is unspecified or 0.
+  // 3. This session has a single executor.
+  // 4. config.inter_op_parallelism_threads is specified to negative explicitly
+  //    or through environment variable TF_NUM_INTEROP_THREADS.
+  // 5. RunOptions.experimental.use_run_handler_pool is unspecified or false.
+  // Otherwise run in global thread pool, session owned thread pool or handler
+  // pool according to other specifications of RunOptions and ConfigProto.
+  bool run_in_caller_thread_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 

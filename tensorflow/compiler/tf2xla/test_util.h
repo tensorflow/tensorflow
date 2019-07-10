@@ -44,9 +44,6 @@ Status InstantiateFunctionForTest(const string& name,
                                   const FunctionLibraryDefinition& library,
                                   InstantiationResultForTest* result);
 
-// Builds a map from node name to Node* for `graph`.
-std::unordered_map<string, Node*> BuildNodeIndex(const Graph& graph);
-
 }  // namespace tensorflow
 
 // Variant of TF_EXPECT_GRAPH_EQ that also compares internal attributes for

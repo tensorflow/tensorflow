@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
@@ -40,7 +41,7 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():
-      v = variables.Variable([1.0, 2.0, 3.0], name="v")
+      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
@@ -50,7 +51,7 @@ class SessionManagerTest(test.TestCase):
   def testPrepareSessionSucceedsWithInitFeedDict(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.Variable(p, name="v")
+      v = variables.VariableV1(p, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
@@ -61,13 +62,14 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceedsWithInitFn(self):
     with ops.Graph().as_default():
-      v = variables.Variable([125], name="v")
+      v = variables.VariableV1([125], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
           "", init_fn=lambda sess: sess.run(v.initializer))
       self.assertAllClose([125], sess.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionFails(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "prepare_session")
     checkpoint_dir2 = os.path.join(self.get_temp_dir(), "prepare_session2")
@@ -79,7 +81,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable([1.0, 2.0, 3.0], name="v")
+      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -97,7 +99,7 @@ class SessionManagerTest(test.TestCase):
       # Renames the checkpoint directory.
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
-      v = variables.Variable([6.0, 7.0, 8.0], name="v")
+      v = variables.VariableV1([6.0, 7.0, 8.0], name="v")
       with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       session_manager.SessionManager(
@@ -134,7 +136,7 @@ class SessionManagerTest(test.TestCase):
                                checkpoint_filename_with_path=None):
     # Create a new Graph and SessionManager and recover from a checkpoint.
     with ops.Graph().as_default():
-      v = variables.Variable(2, name="v")
+      v = variables.VariableV1(2, name="v")
       with session_lib.Session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       sm2 = session_manager.SessionManager(
@@ -152,6 +154,7 @@ class SessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEquals(1, sess.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSession(self):
     # Create a checkpoint.
     checkpoint_dir = os.path.join(self.get_temp_dir(), "recover_session")
@@ -162,7 +165,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
+      v = variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -171,8 +174,8 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       sess.run(v.initializer)
       self.assertEquals(1, sess.run(v))
-      saver.save(sess,
-                 os.path.join(checkpoint_dir, "recover_session_checkpoint"))
+      saver.save(sess, os.path.join(checkpoint_dir,
+                                    "recover_session_checkpoint"))
     self._test_recovered_variable(checkpoint_dir=checkpoint_dir)
     self._test_recovered_variable(
         checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
@@ -184,9 +187,10 @@ class SessionManagerTest(test.TestCase):
           checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
               checkpoint_dir))
 
+  @test_util.run_v1_only("b/120545219")
   def testWaitForSessionReturnsNoneAfterTimeout(self):
     with ops.Graph().as_default():
-      variables.Variable(1, name="v")
+      variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           recovery_wait_secs=1)
@@ -198,14 +202,15 @@ class SessionManagerTest(test.TestCase):
   def testInitWithNoneLocalInitOpError(self):
     # Creating a SessionManager with a None local_init_op but
     # non-None ready_for_local_init_op raises ValueError
-    with self.assertRaisesRegexp(ValueError,
-                                 "If you pass a ready_for_local_init_op "
-                                 "you must also pass a local_init_op "):
+    with self.assertRaisesRegexp(
+        ValueError, "If you pass a ready_for_local_init_op "
+        "you must also pass a local_init_op "):
       session_manager.SessionManager(
           ready_for_local_init_op=variables.report_uninitialized_variables(
               variables.global_variables()),
           local_init_op=None)
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSessionWithReadyForLocalInitOp(self):
     # Create a checkpoint.
     checkpoint_dir = os.path.join(self.get_temp_dir(),
@@ -217,7 +222,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
+      v = variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -226,12 +231,12 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       sess.run(v.initializer)
       self.assertEquals(1, sess.run(v))
-      saver.save(sess,
-                 os.path.join(checkpoint_dir, "recover_session_checkpoint"))
+      saver.save(sess, os.path.join(checkpoint_dir,
+                                    "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.Variable(2, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(2, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -259,8 +264,9 @@ class SessionManagerTest(test.TestCase):
       self.assertEquals(1, sess.run(v))
       self.assertEquals(1, sess.run(w))
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSessionWithReadyForLocalInitOpFailsToReadyLocal(self):
-    # We use ready_for_local_init_op=tf.report_uninitialized_variables(),
+    # We use ready_for_local_init_op=report_uninitialized_variables(),
     # which causes recover_session to not run local_init_op, and to return
     # initialized=False
 
@@ -275,7 +281,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
+      v = variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -284,12 +290,12 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       sess.run(v.initializer)
       self.assertEquals(1, sess.run(v))
-      saver.save(sess,
-                 os.path.join(checkpoint_dir, "recover_session_checkpoint"))
+      saver.save(sess, os.path.join(checkpoint_dir,
+                                    "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.Variable(2, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(2, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -315,13 +321,14 @@ class SessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEquals(1, sess.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSessionNoChkptStillRunsLocalInitOp(self):
     # This test checks for backwards compatibility.
     # In particular, we continue to ensure that recover_session will execute
     # local_init_op exactly once, regardless of whether the session was
     # successfully recovered.
     with ops.Graph().as_default():
-      w = variables.Variable(
+      w = variables.VariableV1(
           1,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -343,6 +350,7 @@ class SessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEquals(1, sess.run(w))
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSessionFailsStillRunsLocalInitOp(self):
     # Create a checkpoint.
     checkpoint_dir = os.path.join(
@@ -356,8 +364,8 @@ class SessionManagerTest(test.TestCase):
 
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.Variable(2, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(2, name="v")
+      w = variables.VariableV1(
           1,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -386,11 +394,12 @@ class SessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEquals(1, sess.run(w))
 
+  @test_util.run_v1_only("b/120545219")
   def testWaitForSessionLocalInit(self):
     server = server_lib.Server.create_local_server()
     with ops.Graph().as_default() as graph:
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -420,8 +429,8 @@ class SessionManagerTest(test.TestCase):
 
   def testWaitForSessionWithReadyForLocalInitOpFailsToReadyLocal(self):
     with ops.Graph().as_default() as graph:
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -437,10 +446,11 @@ class SessionManagerTest(test.TestCase):
         # because of overly restrictive ready_for_local_init_op
         sm.wait_for_session("", max_wait_secs=3)
 
+  @test_util.run_v1_only("b/120545219")
   def testWaitForSessionInsufficientReadyForLocalInitCheck(self):
     with ops.Graph().as_default() as graph:
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -454,15 +464,16 @@ class SessionManagerTest(test.TestCase):
                                  "Session was not ready after waiting.*"):
       sm.wait_for_session("", max_wait_secs=3)
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionWithReadyForLocalInitOp(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      x = variables.Variable(
+      x = variables.VariableV1(
           3 * v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -493,27 +504,28 @@ class SessionManagerTest(test.TestCase):
       self.assertEquals(1, sess.run(w))
       self.assertEquals(3, sess.run(x))
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionWithPartialInitOp(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      x = variables.Variable(
+      x = variables.VariableV1(
           3 * v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x")
       # TODO(b/70206927): Use ResourceVariables once they are handled properly.
-      v_res = variables.Variable(1, name="v_res")
-      w_res = variables.Variable(
+      v_res = variables.VariableV1(1, name="v_res")
+      w_res = variables.VariableV1(
           v_res,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w_res")
-      x_res = variables.Variable(
+      x_res = variables.VariableV1(
           3 * v_res,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -559,13 +571,14 @@ class SessionManagerTest(test.TestCase):
       self.assertEquals(1, sess.run(w_res))
       self.assertEquals(3, sess.run(x_res))
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionWithCyclicInitializer(self):
     # Regression test. Previously Variable._build_initializer_expr would enter
     # into an infinite recursion when the variable's initial_value involved
     # cyclic dependencies.
     with ops.Graph().as_default():
       i = control_flow_ops.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
-      v = variables.Variable(array_ops.identity(i), name="v")
+      v = variables.VariableV1(array_ops.identity(i), name="v")
       with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       sm = session_manager.SessionManager(
@@ -579,8 +592,8 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionDidNotInitLocalVariable(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -596,8 +609,8 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionDidNotInitLocalVariableList(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -613,8 +626,8 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionWithReadyNotReadyForLocal(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -632,10 +645,11 @@ class SessionManagerTest(test.TestCase):
           "Init operations did not make model ready for local_init"):
         sm2.prepare_session("", init_op=None)
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionWithInsufficientReadyForLocalInitCheck(self):
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
-      w = variables.Variable(
+      v = variables.VariableV1(1, name="v")
+      w = variables.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -656,7 +670,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():
-      v = variables.Variable([1.0, 2.0, 3.0], name="v")
+      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
@@ -666,7 +680,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
   def testPrepareSessionSucceedsWithInitFeedDict(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.Variable(p, name="v")
+      v = variables.VariableV1(p, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
@@ -677,13 +691,14 @@ class ObsoleteSessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceedsWithInitFn(self):
     with ops.Graph().as_default():
-      v = variables.Variable([125], name="v")
+      v = variables.VariableV1([125], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
           "", init_fn=lambda sess: sess.run(v.initializer))
       self.assertAllClose([125], sess.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testPrepareSessionFails(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "prepare_session")
     checkpoint_dir2 = os.path.join(self.get_temp_dir(), "prepare_session2")
@@ -695,7 +710,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable([1.0, 2.0, 3.0], name="v")
+      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -713,7 +728,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
       # Renames the checkpoint directory.
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
-      v = variables.Variable([6.0, 7.0, 8.0], name="v")
+      v = variables.VariableV1([6.0, 7.0, 8.0], name="v")
       with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       session_manager.SessionManager(
@@ -745,6 +760,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
           variables.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
+  @test_util.run_v1_only("b/120545219")
   def testRecoverSession(self):
     # Create a checkpoint.
     checkpoint_dir = os.path.join(self.get_temp_dir(), "recover_session")
@@ -755,7 +771,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.Variable(1, name="v")
+      v = variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -764,11 +780,11 @@ class ObsoleteSessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       sess.run(v.initializer)
       self.assertEquals(1, sess.run(v))
-      saver.save(sess,
-                 os.path.join(checkpoint_dir, "recover_session_checkpoint"))
+      saver.save(sess, os.path.join(checkpoint_dir,
+                                    "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.Variable(2, name="v")
+      v = variables.VariableV1(2, name="v")
       with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       sm2 = session_manager.SessionManager(
@@ -783,9 +799,10 @@ class ObsoleteSessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEquals(1, sess.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testWaitForSessionReturnsNoneAfterTimeout(self):
     with ops.Graph().as_default():
-      variables.Variable(1, name="v")
+      variables.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized(),
           recovery_wait_secs=1)

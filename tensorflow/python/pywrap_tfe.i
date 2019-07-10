@@ -14,24 +14,47 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
 
 %ignore "";
 
+%rename("%s") TF_SetXlaEnableLazyCompilation;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
+%rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextRemoveFunction;
+%rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextEnableGraphCollection;
+%rename("%s") TFE_ContextDisableGraphCollection;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextGetMirroringPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetAsyncForThread;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
+%rename("%s") TFE_NewProfiler;
+%rename("%s") TFE_ProfilerIsOk;
+%rename("%s") TFE_DeleteProfiler;
+%rename("%s") TFE_ProfilerSerializeToString;
+%rename("%s") TFE_NewProfilerContext;
+%rename("%s") TFE_ProfilerContextSetEagerContext;
+%rename("%s") TFE_DeleteProfilerContext;
+%rename("%s") TFE_StartProfilerServer;
+%rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -48,8 +71,10 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
@@ -57,20 +82,113 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
+%rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
+%rename("%s") TFE_Py_ForwardAccumulatorWatch;
+%rename("%s") TFE_Py_ForwardAccumulatorJVP;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetMirroringPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_Py_EnableInteractivePythonLogging;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
+%rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_ListPhysicalDevices;
+%rename("%s") TF_PickUnusedPortOrDie;
+%rename("%s") TFE_MonitoringCounterCellIncrementBy;
+%rename("%s") TFE_MonitoringCounterCellValue;
+%rename("%s") TFE_MonitoringNewCounter0;
+%rename("%s") TFE_MonitoringDeleteCounter0;
+%rename("%s") TFE_MonitoringGetCellCounter0;
+%rename("%s") TFE_MonitoringNewCounter1;
+%rename("%s") TFE_MonitoringDeleteCounter1;
+%rename("%s") TFE_MonitoringGetCellCounter1;
+%rename("%s") TFE_MonitoringNewCounter2;
+%rename("%s") TFE_MonitoringDeleteCounter2;
+%rename("%s") TFE_MonitoringGetCellCounter2;
+%rename("%s") TFE_MonitoringIntGaugeCellSet;
+%rename("%s") TFE_MonitoringIntGaugeCellValue;
+%rename("%s") TFE_MonitoringNewIntGauge0;
+%rename("%s") TFE_MonitoringDeleteIntGauge0;
+%rename("%s") TFE_MonitoringGetCellIntGauge0;
+%rename("%s") TFE_MonitoringNewIntGauge1;
+%rename("%s") TFE_MonitoringDeleteIntGauge1;
+%rename("%s") TFE_MonitoringGetCellIntGauge1;
+%rename("%s") TFE_MonitoringNewIntGauge2;
+%rename("%s") TFE_MonitoringDeleteIntGauge2;
+%rename("%s") TFE_MonitoringGetCellIntGauge2;
+%rename("%s") TFE_MonitoringStringGaugeCellSet;
+%rename("%s") TFE_MonitoringStringGaugeCellValue;
+%rename("%s") TFE_MonitoringNewStringGauge0;
+%rename("%s") TFE_MonitoringDeleteStringGauge0;
+%rename("%s") TFE_MonitoringGetCellStringGauge0;
+%rename("%s") TFE_MonitoringNewStringGauge1;
+%rename("%s") TFE_MonitoringDeleteStringGauge1;
+%rename("%s") TFE_MonitoringGetCellStringGauge1;
+%rename("%s") TFE_MonitoringNewStringGauge2;
+%rename("%s") TFE_MonitoringDeleteStringGauge2;
+%rename("%s") TFE_MonitoringGetCellStringGauge2;
+%rename("%s") TFE_MonitoringBoolGaugeCellSet;
+%rename("%s") TFE_MonitoringBoolGaugeCellValue;
+%rename("%s") TFE_MonitoringNewBoolGauge0;
+%rename("%s") TFE_MonitoringDeleteBoolGauge0;
+%rename("%s") TFE_MonitoringGetCellBoolGauge0;
+%rename("%s") TFE_MonitoringNewBoolGauge1;
+%rename("%s") TFE_MonitoringDeleteBoolGauge1;
+%rename("%s") TFE_MonitoringGetCellBoolGauge1;
+%rename("%s") TFE_MonitoringNewBoolGauge2;
+%rename("%s") TFE_MonitoringDeleteBoolGauge2;
+%rename("%s") TFE_MonitoringGetCellBoolGauge2;
+%rename("%s") TFE_MonitoringSamplerCellAdd;
+%rename("%s") TFE_MonitoringSamplerCellValue;
+%rename("%s") TFE_MonitoringNewExponentialBuckets;
+%rename("%s") TFE_MonitoringDeleteBuckets;
+%rename("%s") TFE_MonitoringNewSampler0;
+%rename("%s") TFE_MonitoringDeleteSampler0;
+%rename("%s") TFE_MonitoringGetCellSampler0;
+%rename("%s") TFE_MonitoringNewSampler1;
+%rename("%s") TFE_MonitoringDeleteSampler1;
+%rename("%s") TFE_MonitoringGetCellSampler1;
+%rename("%s") TFE_MonitoringNewSampler2;
+%rename("%s") TFE_MonitoringDeleteSampler2;
+%rename("%s") TFE_MonitoringGetCellSampler2;
+%rename("%s") TFE_NewCancellationManager;
+%rename("%s") TFE_CancellationManagerIsCancelled;
+%rename("%s") TFE_CancellationManagerStartCancel;
+%rename("%s") TFE_DeleteCancellationManager;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+
+static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
+  std::vector<string> devices;
+  tensorflow::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  tensorflow::Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
+    Py_RETURN_NONE;
+  };
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
+}
 %}
+static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -81,6 +199,10 @@ limitations under the License.
     SWIG_fail;
   }
   $1 = static_cast<void*>(c_string);
+}
+
+%typemap(in) int64_t {
+  $1 = PyLong_AsLongLong($input);
 }
 
 %typemap(out) TF_DataType {
@@ -132,6 +254,63 @@ limitations under the License.
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* description {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label1 {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label2 {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* service_addr {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* logdir {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* worker_list {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 %typemap(in) (TFE_Context*) {
   $1 = (TFE_Context*)PyCapsule_GetPointer($input, nullptr);
 
@@ -149,6 +328,10 @@ limitations under the License.
 %rename("%s") TFE_DEVICE_PLACEMENT_WARN;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
+
+%rename("%s") TFE_ContextMirroringPolicy;
+%rename("%s") TFE_MIRRORING_NONE;
+%rename("%s") TFE_MIRRORING_ALL;
 
 %include "tensorflow/c/eager/c_api.h"
 
@@ -168,6 +351,27 @@ limitations under the License.
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsTensor(elem)) {
+        // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
+        // tensor.
+        tensorflow::Safe_PyObjectPtr name_attr(
+            PyObject_GetAttrString(elem, "name"));
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "An op outside of the function building code is being passed\n"
+                "a \"Graph\" tensor. It is possible to have Graph tensors\n"
+                "leak out of the function building context by including a\n"
+                "tf.init_scope in your function building code.\n"
+                "For example, the following function will fail:\n",
+                "  @tf.function\n",
+                "  def has_init_scope():\n",
+                "    my_constant = tf.constant(1.)\n",
+                "    with tf.init_scope():\n",
+                "      added = my_constant * 2\n",
+                "The graph tensor has name: ",
+                TFE_GetPythonString(name_attr.get())
+            ).c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,
@@ -208,6 +412,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;
@@ -224,13 +429,19 @@ limitations under the License.
 %native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
+%include "tensorflow/c/c_api_experimental.h"
+%include "tensorflow/c/eager/c_api_experimental.h"
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;
+%typemap(in) int64_t;
 %typemap(out) int64_t;
 %typemap(out) TF_AttrType;
 %typemap(in, numinputs=0) TF_Status *out_status;
 %typemap(argout) unsigned char* is_list;
+%typemap(in) const char* description;
+%typemap(in) const char* label1;
+%typemap(in) const char* label2;
 %typemap(in) (TFE_Context*);
 %typemap(out) (TFE_Context*);
 %typemap(in) TFE_OutputTensorHandles* outputs (TFE_OutputTensorHandles temp);

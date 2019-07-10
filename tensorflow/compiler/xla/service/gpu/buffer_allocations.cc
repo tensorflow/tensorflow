@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,7 +39,7 @@ void BufferAllocations::Builder::RegisterBuffer(BufferAllocation::Index index,
 
 StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
     const BufferAssignment* buffer_assignment, int device_ordinal,
-    DeviceMemoryAllocator* memory_allocator) {
+    se::DeviceMemoryAllocator* memory_allocator) {
   const int64 num_buffers = buffer_assignment->Allocations().size();
   auto buffer_allocations = absl::WrapUnique(new BufferAllocations(
       num_buffers, device_ordinal, memory_allocator, buffer_assignment));
@@ -57,16 +58,16 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
 
     // If buffer #i's address is already registered (e.g. external arguments or
     // result buffers), use that registered buffer.
-    if (registered_buffers_.count(i)) {
-      se::DeviceMemoryBase address = FindOrDie(registered_buffers_, i);
-      if (reinterpret_cast<uintptr_t>(address.opaque()) % expected_alignment !=
+    if (se::DeviceMemoryBase* address =
+            tensorflow::gtl::FindOrNull(registered_buffers_, i)) {
+      if (reinterpret_cast<uintptr_t>(address->opaque()) % expected_alignment !=
           0) {
         return InternalError(
             "Address of registered buffer %d must be a multiple of %x, but "
             "was %p",
-            i, kEntryParameterAlignBytes, address.opaque());
+            i, kEntryParameterAlignBytes, address->opaque());
       }
-      buffer_allocations->SetBuffer(i, FindOrDie(registered_buffers_, i));
+      buffer_allocations->SetBuffer(i, *address);
       continue;
     }
 
@@ -76,20 +77,21 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
       const int64 buffer_size = allocation.size();
       se::DeviceMemoryBase buffer_address;
       if (buffer_size > 0) {
-        OwningDeviceMemory buffer;
+        se::OwningDeviceMemory buffer;
         TF_ASSIGN_OR_RETURN(
             buffer, memory_allocator->Allocate(device_ordinal, buffer_size));
-        if (reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment !=
+        if (reinterpret_cast<uintptr_t>(buffer->opaque()) %
+                expected_alignment !=
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
               "multiple of 0x%x, but was %p",
-              kXlaAllocatedBufferAlignBytes, buffer.opaque());
+              kXlaAllocatedBufferAlignBytes, buffer->opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not
         // to do a TF_RETURN_IF_ERROR between this line and the
         // buffer_allocations->SetBuffer(buffer_address) call below!
-        buffer_address = buffer.Forget();
+        buffer_address = buffer.Release();
       }
 
       buffer_allocations->SetBuffer(i, buffer_address);
@@ -163,7 +165,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
   return se::DeviceMemoryBase(
       static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size(), /*is_sub_buffer=*/true);
+      buffer_slice.size());
 }
 
 void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,

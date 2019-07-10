@@ -25,14 +25,12 @@ import copy
 import weakref
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
-
-# TODO(mdan): Add support for PY3 (e.g. Param vs arg).
-# TODO(alexbw): Ignore named literals (e.g. None)
 
 
 class Scope(object):
@@ -42,10 +40,20 @@ class Scope(object):
   Note that scopes do not necessarily align with Python's scopes. For example,
   the body of an if statement may be considered a separate scope.
 
+  Caution - the AST references held by this object are weak.
+
   Attributes:
-    modified: identifiers modified in this scope
-    created: identifiers created in this scope
-    used: identifiers referenced in this scope
+    modified: Set[qual_names.QN], identifiers modified in this scope
+    read: Set[qual_names.QN], identifiers read in this scope
+    deleted: Set[qual_names.QN], identifiers deleted in this scope
+    params: WeakValueDictionary[qual_names.QN, ast.Node], function arguments
+      visible in this scope, mapped to the function node that defines them
+
+  Note - simple statements may never delete and modify a symbol at the same
+  time. However, compound ones like if statements can. In that latter case, it's
+  undefined whether the symbol is actually modified or deleted upon statement
+  exit. Certain analyses like reaching definitions need to be careful about
+  this.
   """
 
   def __init__(self, parent, isolated=True, add_unknown_symbols=False):
@@ -54,7 +62,8 @@ class Scope(object):
     Args:
       parent: A Scope or None.
       isolated: Whether the scope is isolated, that is, whether variables
-          created in this scope should be visible to the parent scope.
+          modified in this scope should be considered modified in the parent
+          scope.
       add_unknown_symbols: Whether to handle attributed and subscripts
           without having first seen the base name.
           E.g., analyzing the statement 'x.y = z' without first having seen 'x'.
@@ -63,22 +72,22 @@ class Scope(object):
     self.parent = parent
     self.add_unknown_symbols = add_unknown_symbols
     self.modified = set()
-    # TODO(mdan): Completely remove this.
-    self.created = set()
-    self.used = set()
-    self.params = {}
-    self.returned = set()
+    self.read = set()
+    self.deleted = set()
+    self.params = weakref.WeakValueDictionary()
 
-  # TODO(mdan): Rename to `locals`
+  @property
+  def affects_parent(self):
+    return not self.isolated and self.parent is not None
+
   @property
   def referenced(self):
-    if not self.isolated and self.parent is not None:
-      return self.used | self.parent.referenced
-    return self.used
+    if self.affects_parent:
+      return self.read | self.parent.referenced
+    return self.read
 
   def __repr__(self):
-    return 'Scope{r=%s, c=%s, w=%s}' % (tuple(self.used), tuple(self.created),
-                                        tuple(self.modified))
+    return 'Scope{r=%s, w=%s}' % (tuple(self.read), tuple(self.modified))
 
   def copy_from(self, other):
     """Recursively copies the contents of this scope from another scope."""
@@ -88,10 +97,8 @@ class Scope(object):
       self.parent.copy_from(other.parent)
     self.isolated = other.isolated
     self.modified = copy.copy(other.modified)
-    self.created = copy.copy(other.created)
-    self.used = copy.copy(other.used)
+    self.read = copy.copy(other.read)
     self.params = copy.copy(other.params)
-    self.returned = copy.copy(other.returned)
 
   @classmethod
   def copy_of(cls, other):
@@ -109,60 +116,43 @@ class Scope(object):
     if other.parent is not None:
       self.parent.merge_from(other.parent)
     self.modified |= other.modified
-    self.created |= other.created
-    self.used |= other.used
+    self.read |= other.read
     self.params.update(other.params)
-    self.returned |= other.returned
-
-  def has(self, name):
-    if name in self.modified:
-      return True
-    elif self.parent is not None:
-      return self.parent.has(name)
-    return False
 
   def mark_read(self, name):
-    self.used.add(name)
-    if self.parent is not None and name not in self.created:
+    self.read.add(name)
+    if self.parent is not None and name not in self.params:
       self.parent.mark_read(name)
+
+  def mark_modified(self, name):
+    self.modified.add(name)
+    if self.affects_parent:
+      self.parent.mark_modified(name)
+
+  def mark_deleted(self, name):
+    self.deleted.add(name)
 
   def mark_param(self, name, owner):
     # Assumption: all AST nodes have the same life span. This lets us use
     # a weak reference to mark the connection between a symbol node and the
     # function node whose argument that symbol is.
-    self.params[name] = weakref.ref(owner)
+    self.params[name] = owner
 
-  def mark_creation(self, name, writes_create_symbol=False):
-    """Mark a qualified name as created."""
-    if name.is_composite():
-      parent = name.parent
-      if not writes_create_symbol:
-        return
-      else:
-        if not self.has(parent):
-          if self.add_unknown_symbols:
-            self.mark_read(parent)
-          else:
-            raise ValueError('Unknown symbol "%s".' % parent)
-    self.created.add(name)
 
-  def mark_write(self, name):
-    """Marks the given symbol as modified in the current scope."""
-    self.modified.add(name)
-    if self.isolated:
-      self.mark_creation(name)
-    else:
-      if self.parent is None:
-        self.mark_creation(name)
-      else:
-        if not self.parent.has(name):
-          self.mark_creation(name)
-        self.parent.mark_write(name)
+class _Lambda(object):
 
-  def mark_returned(self, name):
-    self.returned.add(name)
-    if not self.isolated and self.parent is not None:
-      self.parent.mark_returned(name)
+  no_root = True
+
+  def __init__(self):
+    self.args = set()
+
+
+class _Comprehension(object):
+
+  no_root = True
+
+  def __init__(self):
+    self.targets = set()
 
 
 class ActivityAnalyzer(transformer.Base):
@@ -178,8 +168,11 @@ class ActivityAnalyzer(transformer.Base):
   def __init__(self, context, parent_scope=None, add_unknown_symbols=False):
     super(ActivityAnalyzer, self).__init__(context)
     self.scope = Scope(parent_scope, None, add_unknown_symbols)
-    self._in_return_statement = False
+
+    # Note: all these flags crucially rely on the respective nodes are
+    # leaves in the AST, that is, they cannot contain other statements.
     self._in_aug_assign = False
+    self._in_function_def_args = False
 
   @property
   def _in_constructor(self):
@@ -197,38 +190,64 @@ class ActivityAnalyzer(transformer.Base):
         return True
     return False
 
-  def _track_symbol(self,
-                    node,
-                    composite_writes_alter_parent=False,
-                    writes_create_symbol=False):
+  def _track_symbol(self, node, composite_writes_alter_parent=False):
     # A QN may be missing when we have an attribute (or subscript) on a function
     # call. Example: a().b
     if not anno.hasanno(node, anno.Basic.QN):
       return
     qn = anno.getanno(node, anno.Basic.QN)
 
+    # When inside a lambda, ignore any of the lambda's arguments.
+    # This includes attributes or slices of those arguments.
+    for l in self.state[_Lambda]:
+      if qn in l.args:
+        return
+      if qn.owner_set & set(l.args):
+        return
+
+    # When inside a comprehension, ignore reads to any of the comprehensions's
+    # targets. This includes attributes or slices of those arguments.
+    for l in self.state[_Comprehension]:
+      if qn in l.targets:
+        return
+      if qn.owner_set & set(l.targets):
+        return
+
     if isinstance(node.ctx, gast.Store):
-      self.scope.mark_write(qn)
-      if qn.is_composite and composite_writes_alter_parent:
-        self.scope.mark_write(qn.parent)
-      if writes_create_symbol:
-        self.scope.mark_creation(qn, writes_create_symbol=True)
-      if self._in_aug_assign:
-        self.scope.mark_read(qn)
+      # In comprehensions, modified symbols are the comprehension targets.
+      if self.state[_Comprehension].level > 0:
+        self.state[_Comprehension].targets.add(qn)
+
+      # Comprehension targets are completely isolated in Python 3.
+      if six.PY2 or self.state[_Comprehension].level == 0:
+        self.scope.mark_modified(qn)
+        if qn.is_composite and composite_writes_alter_parent:
+          self.scope.mark_modified(qn.parent)
+        if self._in_aug_assign:
+          self.scope.mark_read(qn)
+
     elif isinstance(node.ctx, gast.Load):
       self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Param):
-      # Param contexts appear in function defs, so they have the meaning of
-      # defining a variable.
-      self.scope.mark_write(qn)
-      self.scope.mark_param(qn, self.enclosing_entities[-1])
+      if self._in_function_def_args:
+        # In function defs have the meaning of defining a variable.
+        self.scope.mark_modified(qn)
+        self.scope.mark_param(qn, self.enclosing_entities[-1])
+      elif self.state[_Lambda].level:
+        # In lambdas, they are tracked separately.
+        self.state[_Lambda].args.add(qn)
+      else:
+        # TODO(mdan): Is this case possible at all?
+        raise NotImplementedError(
+            'Param "{}" outside a function arguments or lambda.'.format(qn))
+    elif isinstance(node.ctx, gast.Del):
+      # The read matches the Python semantics - attempting to delete an
+      # undefined symbol is illegal.
+      self.scope.mark_read(qn)
+      self.scope.mark_deleted(qn)
     else:
-      raise ValueError('Unknown context %s for node %s.' % (type(node.ctx), qn))
-
-    anno.setanno(node, NodeAnno.IS_LOCAL, self.scope.has(qn))
-
-    if self._in_return_statement:
-      self.scope.mark_returned(qn)
+      raise ValueError('Unknown context {} for node "{}".'.format(
+          type(node.ctx), qn))
 
   def _enter_scope(self, isolated):
     self.scope = Scope(self.scope, isolated=isolated)
@@ -247,21 +266,28 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_Return(self, node):
-    self._in_return_statement = True
-    node = self._process_statement(node)
-    self._in_return_statement = False
-    return node
+    return self._process_statement(node)
 
   def visit_Assign(self, node):
     return self._process_statement(node)
 
   def visit_AugAssign(self, node):
-    # Special rules for AugAssign. In Assign, the target is only written,
-    # but in AugAssig (e.g. a += b), the target is both read and written.
+    # Special rules for AugAssign. Here, the AST only shows the target as
+    # written, when it is in fact also read.
+    self._enter_scope(False)
+
     self._in_aug_assign = True
-    node = self._process_statement(node)
+    node.target = self.visit(node.target)
     self._in_aug_assign = False
+
+    node.op = self.visit(node.op)
+    node.value = self.visit(node.value)
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
     return node
+
+  def visit_Delete(self, node):
+    return self._process_statement(node)
 
   def visit_Name(self, node):
     node = self.generic_visit(node)
@@ -271,8 +297,7 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Attribute(self, node):
     node = self.generic_visit(node)
     if self._in_constructor and self._node_sets_self_attribute(node):
-      self._track_symbol(
-          node, composite_writes_alter_parent=True, writes_create_symbol=True)
+      self._track_symbol(node, composite_writes_alter_parent=True)
     else:
       self._track_symbol(node)
     return node
@@ -328,21 +353,84 @@ class ActivityAnalyzer(transformer.Base):
       self.scope.merge_from(after_child)
     return parent
 
+  def visit_Lambda(self, node):
+    assert not self._in_function_def_args
+    self.state[_Lambda].enter()
+    node = self.generic_visit(node)
+    self.state[_Lambda].exit()
+    return node
+
+  def _process_iterable_comprehension(self, node):
+    # This handles ListComp, SetComp, GeneratorExp.
+    self.state[_Comprehension].enter()
+    # Note: it's important to visit the generators first to properly account
+    # for the variables local to these generators. Example: `x` is local to the
+    # expression `x for x in y`.
+    # It is important to visit the generators in reverse order when targets of
+    # outer comprehensions are accessed by inner generators.
+    node.generators = self.visit_block(reversed(node.generators))
+    node.elt = self.visit(node.elt)
+    self.state[_Comprehension].exit()
+    return node
+
+  def visit_comprehension(self, node):
+    # It is important to visit the target first so that it's properly tracked as
+    # comprehension target.
+    node.target = self.visit(node.target)
+    return self.generic_visit(node)
+
+  def visit_DictComp(self, node):
+    # Identical to _process_iterable_comprehension, different node names.
+    self.state[_Comprehension].enter()
+    node.generators = self.visit_block(node.generators)
+    node.key = self.visit(node.key)
+    node.value = self.visit(node.value)
+    self.state[_Comprehension].exit()
+    return node
+
+  def visit_ListComp(self, node):
+    return self._process_iterable_comprehension(node)
+
+  def visit_SetComp(self, node):
+    return self._process_iterable_comprehension(node)
+
+  def visit_GeneratorExp(self, node):
+    return self._process_iterable_comprehension(node)
+
   def visit_arguments(self, node):
     return self._process_statement(node)
 
-  def visit_FunctionDef(self, node):
-    # The FunctionDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompany it.
+  def visit_ClassDef(self, node):
+    # The ClassDef node itself has a Scope object that tracks the creation
+    # of its name, along with the usage of any decorator accompanying it.
     self._enter_scope(False)
     node.decorator_list = self.visit_block(node.decorator_list)
-    self.scope.mark_write(qual_names.QN(node.name))
+    self.scope.mark_modified(qual_names.QN(node.name))
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
+
+    # A separate Scope tracks the actual class definition.
+    self._enter_scope(True)
+    assert not (self._in_function_def_args or self.state[_Lambda].level)
+    node = self.generic_visit(node)
+    self._exit_scope()
+    return node
+
+  def visit_FunctionDef(self, node):
+    # The FunctionDef node itself has a Scope object that tracks the creation
+    # of its name, along with the usage of any decorator accompanying it.
+    self._enter_scope(False)
+    node.decorator_list = self.visit_block(node.decorator_list)
+    self.scope.mark_modified(qual_names.QN(node.name))
     anno.setanno(node, anno.Static.SCOPE, self.scope)
     self._exit_scope()
 
     # A separate Scope tracks the actual function definition.
     self._enter_scope(True)
+    assert not (self._in_function_def_args or self.state[_Lambda].level)
+    self._in_function_def_args = True
     node.args = self.visit(node.args)
+    self._in_function_def_args = False
 
     # Track the body separately. This is for compatibility reasons, it may not
     # be strictly needed.
@@ -380,6 +468,10 @@ class ActivityAnalyzer(transformer.Base):
     node.target = self.visit(node.target)
     node.iter = self.visit(node.iter)
     anno.setanno(node.iter, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
+    self._enter_scope(False)
+    self.visit(node.target)
+    anno.setanno(node, NodeAnno.ITERATE_SCOPE, self.scope)
     self._exit_scope()
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),

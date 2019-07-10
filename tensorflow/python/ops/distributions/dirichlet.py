@@ -30,6 +30,7 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -44,7 +45,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
-@tf_export("distributions.Dirichlet")
+@tf_export(v1=["distributions.Dirichlet"])
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -156,6 +157,14 @@ class Dirichlet(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                validate_args=False,
@@ -236,7 +245,7 @@ class Dirichlet(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return math_ops.reduce_sum((self.concentration - 1.) * math_ops.log(x), -1)
+    return math_ops.reduce_sum(math_ops.xlogy(self.concentration - 1., x), -1)
 
   def _log_normalization(self):
     return special_math_ops.lbeta(self.concentration)
@@ -284,9 +293,8 @@ class Dirichlet(distribution.Distribution):
           array_ops.shape(mode),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(
-          math_ops.reduce_all(self.concentration > 1., axis=-1),
-          mode, nan)
+      return array_ops.where_v2(
+          math_ops.reduce_all(self.concentration > 1., axis=-1), mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], self.dtype),

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
+#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -39,6 +40,33 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
   }
+  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
+                                     &propagate_compile_time_consts_));
+  }
+}
+
+Status ConvertCompileTimeConstArgumentsToConst(
+    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
+  for (int i = 0; i < args->size(); i++) {
+    XlaCompiler::Argument& arg = (*args)[i];
+    const XlaExpression& expression = ctx->InputExpression(i + 1);
+    // If the input tensor is a compile time constant build a kConstant type
+    // argument.
+    if (arg.kind == XlaCompiler::Argument::kParameter) {
+      // NOTE: We can not simply check that this is Kind::kConstant because
+      // this could be the output of a MetadataOnly op e.g. Size.
+      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
+          expression.ResolveConstant(ctx->compiler()->client());
+      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.type = expression.dtype();
+        arg.constant_value = std::move(maybe_constant.ValueOrDie().value());
+        arg.shape = expression.GetShape().ValueOrDie();
+      }
+    }
+  }
+  return Status::OK();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
@@ -56,6 +84,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
 
   std::vector<XlaCompiler::Argument> arguments(input_types_.size());
+  int num_resource_args = 0;
   for (int i = 0; i < input_types_.size(); ++i) {
     XlaCompiler::Argument& arg = arguments[i];
     DataType type = ctx->input_type(i + 1);
@@ -72,22 +101,42 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.shape = resource->shape();
       OP_REQUIRES(ctx, arg.initialized,
                   errors::Unimplemented("Uninitialized arguments: ", arg.name));
-      arg.tensor_array_size = resource->tensor_array_size();
+      arg.max_array_size = resource->max_array_size();
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
       arg.name = resource->name();
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString()
+              << " shape: " << arg.HumanString()
               << " initialized: " << arg.initialized;
+
+      num_resource_args++;
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
-      arg.shape = ctx->InputShape(i + 1);
+      // Use the xla::Shape for the input instead of ctx->InputShape. This is
+      // necessary for forwarding shapes of DT_VARIANTs, e.g. TensorLists.
+      auto shape_or = ctx->builder()->GetShape(ctx->Input(i + 1));
+      OP_REQUIRES_OK(ctx, shape_or.status());
+      arg.shape = shape_or.ValueOrDie();
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString();
+              << " shape: " << arg.HumanString();
     }
+  }
+
+  if (propagate_compile_time_consts_) {
+    // Replaces `kParameter` type args in `arguments` with `kConstant` if
+    // the op input corresponding to that arg is a compile-time const. This
+    // is necessary to propagate compile time consts to ops in the branch
+    // functions.
+    // Note: Propagating "all" compile-time constants may not be necessary. We
+    // should ideally only propagate consts which are required to be compile
+    // time constants in the branch functions. But that would require calling
+    // BackwardsConstAnalysis here which would be expensive. However, if we
+    // start hitting memory issues we should revisit this.
+    OP_REQUIRES_OK(ctx,
+                   ConvertCompileTimeConstArgumentsToConst(ctx, &arguments));
   }
 
   // Compile both branches of the conditional.
@@ -147,12 +196,12 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES(ctx, then_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape then_input_shape = then_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(then_input_shape),
+  OP_REQUIRES(ctx, then_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx, else_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape else_input_shape = else_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(else_input_shape),
+  OP_REQUIRES(ctx, else_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx,
               xla::ShapeUtil::Compatible(then_input_shape, else_input_shape),
@@ -212,7 +261,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
       OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
     } else {
-      inputs[i] = ctx->Input(i + 1);
+      inputs[i] = ctx->Input(input_num);
     }
   }
 
@@ -236,12 +285,16 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, output_handle);
   }
   if (has_token_input_output_) {
-    // Set token output for this "if" op.
+    // Set token output for this "If" op. Token output is the last output of
+    // XLA computation, which comes after all "normal" TF outputs and resource
+    // updates. For "If" node, num of resource updates equals to number of
+    // resource args because we set `return_updated_values_for_all_resources`
+    // to true in XlaCompiler option.
     xla::XlaOp token_output =
-        xla::GetTupleElement(outputs, output_types_.size());
+        xla::GetTupleElement(outputs, output_types_.size() + num_resource_args);
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, xla::ShapeUtil::IsToken(shape_or.ValueOrDie()),
+    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
@@ -273,8 +326,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building If";
 }
 
-REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
-REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes(), XlaIfOp);
-REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("If").AllowResourceTypes().AllowVariantTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes().AllowVariantTypes(),
+                XlaIfOp);
+REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes().AllowVariantTypes(),
+                XlaIfOp);
 
 }  // namespace tensorflow

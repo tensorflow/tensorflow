@@ -22,6 +22,7 @@ import time
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -40,11 +41,12 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
     is_chief = (worker_id == 0)
     with graph.as_default():
       with ops.device("/job:ps/task:0"):
-        global_step = variables.Variable(0, name="global_step", trainable=False)
-        var_0 = variables.Variable(0.0, name="v0")
+        global_step = variables.VariableV1(
+            0, name="global_step", trainable=False)
+        var_0 = variables.VariableV1(0.0, name="v0")
       with ops.device("/job:ps/task:1"):
-        var_1 = variables.Variable(1.0, name="v1")
-        var_sparse = variables.Variable([[3.0], [4.0]], name="v_sparse")
+        var_1 = variables.VariableV1(1.0, name="v1")
+        var_sparse = variables.VariableV1([[3.0], [4.0]], name="v_sparse")
 
       with ops.device("/job:worker/task:" + str(worker_id)):
         grads_0 = constant_op.constant(0.1 + worker_id * 0.2)
@@ -87,6 +89,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
   def _run(self, train_op, sess):
     sess.run(train_op)
 
+  @test_util.run_v1_only("b/120545219")
   def test2Workers(self):
     num_workers = 2
     replicas_to_aggregate = 2
@@ -177,6 +180,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
                         sessions[1].run(var_1_g_1))
 
   # 3 workers and one of them is backup.
+  @test_util.run_v1_only("b/120545219")
   def test3Workers1Backup(self):
     num_workers = 3
     replicas_to_aggregate = 2
@@ -265,6 +269,7 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
                                  "apply_gradient should be called"):
       hook.begin()
 
+  @test_util.run_v1_only("b/120545219")
   def testCanCreatedBeforeMinimizeCalled(self):
     """This behavior is required to be integrated with Estimators."""
     opt = training.SyncReplicasOptimizer(
@@ -272,18 +277,19 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
         replicas_to_aggregate=1,
         total_num_replicas=1)
     hook = opt.make_session_run_hook(True)
-    v = variables.Variable([0.])
-    global_step = variables.Variable(0, name="global_step", trainable=False)
+    v = variables.VariableV1([0.])
+    global_step = variables.VariableV1(0, name="global_step", trainable=False)
     opt.minimize(v, global_step=global_step)
     hook.begin()
 
+  @test_util.run_v1_only("b/120545219")
   def testFetchVariableList(self):
     opt = training.SyncReplicasOptimizer(
         opt=adam.AdamOptimizer(0.01),
         replicas_to_aggregate=1,
         total_num_replicas=1)
-    v = variables.Variable([0.], name="fetch_variable_test")
-    global_step = variables.Variable(0, name="global_step", trainable=False)
+    v = variables.VariableV1([0.], name="fetch_variable_test")
+    global_step = variables.VariableV1(0, name="global_step", trainable=False)
     opt.minimize(v, global_step=global_step)
     opt_variables = opt.variables()
     beta1_power, beta2_power = opt._opt._get_beta_accumulators()

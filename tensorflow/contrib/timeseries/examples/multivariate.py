@@ -66,8 +66,8 @@ def multivariate_train_and_sample(
   if export_directory is None:
     export_directory = tempfile.mkdtemp()
   input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-  export_location = estimator.export_savedmodel(
-      export_directory, input_receiver_fn)
+  export_location = estimator.export_saved_model(export_directory,
+                                                 input_receiver_fn)
   with tf.Graph().as_default():
     numpy.random.seed(1)  # Make the example a bit more deterministic
     with tf.Session() as session:

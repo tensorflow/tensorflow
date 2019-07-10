@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -89,7 +90,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testDense(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, use_resource) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -157,8 +158,11 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
         self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
         self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-        self.assertAllCloseAccordingToType(var0_np, var0.eval())
-        self.assertAllCloseAccordingToType(var1_np, var1.eval())
+        # TODO(b/117393988): Reduce tolerances for float16.
+        self.assertAllCloseAccordingToType(
+            var0_np, var0.eval(), half_rtol=3e-3, half_atol=3e-3)
+        self.assertAllCloseAccordingToType(
+            var1_np, var1.eval(), half_rtol=3e-3, half_atol=3e-3)
 
   @parameterized.parameters([dtypes.float32, dtypes.float64])
   def testMinimizeSparseResourceVariable(self, dtype):
@@ -210,7 +214,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSparse(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, _) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -284,7 +288,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithoutMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -350,7 +354,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -443,6 +447,55 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
               (0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
                (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5)))
           ]), var1.eval())
+
+
+class SlotColocationTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([True, False])
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
+    with ops.device("/device:CPU:0"):
+      if use_resource:
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                      dtype=dtypes.float32)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
+                                                      dtype=dtypes.float32)
+        global_step = resource_variable_ops.ResourceVariable(
+            array_ops.zeros([], dtypes.int64), name="global_step")
+      else:
+        var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
+        global_step = variables.Variable(
+            array_ops.zeros([], dtypes.int64), name="global_step")
+
+    def loss():
+      return 5 * var0 + 3 * var1
+
+    opt = rmsprop.RMSPropOptimizer(
+        learning_rate=1.0, decay=0.9, momentum=0.5, epsilon=1.0)
+
+    # Fetch params to validate initial values
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+    # Run 1 step through optimizer on GPU.
+    # Slot variables are created the first time optimizer is used on some
+    # variable. This tests that slot variables will be colocated with the base
+    # variable.
+    with ops.device("/device:GPU:0"):
+      # Note that for eager execution, minimize expects a function instead of a
+      # Tensor.
+      opt_op = opt.minimize(loss, global_step, [var0, var1])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+
+    # Validate updated params, All variables should have decreased.
+    self.assertTrue(all(v < 0.0 for v in self.evaluate(var0)),
+                    msg="updated variables: %s" % self.evaluate(var0))
+    self.assertTrue(all(v < 2.0 for v in self.evaluate(var1)),
+                    msg="updated variables: %s" % self.evaluate(var1))
 
 
 if __name__ == "__main__":

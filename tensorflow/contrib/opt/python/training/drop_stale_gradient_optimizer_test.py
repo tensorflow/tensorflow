@@ -61,8 +61,8 @@ def _get_workers(num_workers, staleness):
     graph = ops.Graph()
     with graph.as_default():
       global_step = training_util.create_global_step()
-      var_0 = variables.Variable(0.0, name='v0')
-      var_1 = variables.Variable(1.0, name='v1')
+      var_0 = variables.VariableV1(0.0, name='v0')
+      var_1 = variables.VariableV1(1.0, name='v1')
       compute_gradients_queue = data_flow_ops.FIFOQueue(
           -1, global_step.dtype.base_dtype, shapes=(),
           name='compute_gradients_queue', shared_name='compute_gradients_queue')

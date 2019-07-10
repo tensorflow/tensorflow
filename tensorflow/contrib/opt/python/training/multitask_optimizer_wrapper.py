@@ -78,7 +78,7 @@ class MultitaskOptimizerWrapper(object):
 
   Example:
   ```python
-  momentum_optimizer = tf.train.MomentumOptimizer(
+  momentum_optimizer = tf.compat.v1.train.MomentumOptimizer(
     learning_rate, momentum=0.9)
   multitask_momentum_optimizer = tf.contrib.opt.MultitaskOptimizerWrapper(
     momentum_optimizer)

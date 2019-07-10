@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -29,10 +29,15 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
+
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
-      Cuda3DLaunchConfig config, Index indices_width, Index bound,             \
+      Gpu3DLaunchConfig config, Index indices_width, Index bound,              \
       const T begin, const Index *indices, const T *input, T *out) {           \
     CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
       CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
@@ -68,14 +73,14 @@ namespace functor {
       if (sizex * sizey * sizez == 0) {                                        \
         return;                                                                \
       }                                                                        \
-      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(                       \
+      Gpu3DLaunchConfig config = GetGpu3DLaunchConfig(                         \
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \
-      ReduceSliceDeviceKernel##reduceop<T, Index>                              \
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(    \
-              config, indices_width, bound, beginning<T>(), indices.data(),    \
-              data.data(), output.data());                                     \
+      TF_CHECK_OK(GpuLaunchKernel(                                             \
+          ReduceSliceDeviceKernel##reduceop<T, Index>, config.block_count,     \
+          config.thread_per_block, 0, d.stream(), config, indices_width,       \
+          bound, beginning<T>(), indices.data(), data.data(), output.data())); \
     }                                                                          \
   };
 
@@ -93,6 +98,11 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
 
 #undef DEFINE_GPU_REDUCEOP_SPECS_INDEX
 #undef DEFINE_GPU_SPECS
+
+#undef Sum
+#undef Prod
+#undef Min
+#undef Max
 
 }  // namespace functor
 }  // namespace tensorflow

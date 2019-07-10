@@ -26,7 +26,7 @@ class PosixEnvTime : public EnvTime {
  public:
   PosixEnvTime() {}
 
-  uint64 NowNanos() override {
+  uint64 NowNanos() const override {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (static_cast<uint64>(ts.tv_sec) * kSecondsToNanos +

@@ -30,7 +30,7 @@ from tensorflow.python.platform import googletest
 class DynamicStitchTest(xla_test.XLATestCase):
 
   def _AssertDynamicStitchResultIs(self, indices, data, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       index_placeholders = [
           array_ops.placeholder(dtypes.as_dtype(arg.dtype)) for arg in indices
       ]
@@ -57,6 +57,15 @@ class DynamicStitchTest(xla_test.XLATestCase):
     self._AssertDynamicStitchResultIs(
         [idx1, idx2], [val1, val2],
         expected=np.array([[], [], [], []], np.int32))
+
+  def testEmptyIndex(self):
+    idx1 = np.array([], dtype=np.int32)
+    idx2 = np.array([[], []], dtype=np.int32)
+    val1 = np.ndarray(shape=(0, 9), dtype=np.int32)
+    val2 = np.ndarray(shape=(2, 0, 9), dtype=np.int32)
+    self._AssertDynamicStitchResultIs([idx1, idx2], [val1, val2],
+                                      expected=np.ndarray(
+                                          shape=(0, 9), dtype=np.int32))
 
   def testSimple1D(self):
     val1 = np.array([0, 4, 7], dtype=np.int32)

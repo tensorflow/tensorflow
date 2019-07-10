@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RandomShuffleQueueV2"
+  endpoint {
+    name: "io.RandomShuffleQueue"
+  }
+}

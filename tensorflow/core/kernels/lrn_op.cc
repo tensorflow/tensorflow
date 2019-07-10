@@ -19,19 +19,23 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA
@@ -308,7 +312,11 @@ struct LaunchLRNGrad;
 template <typename T>
 struct LaunchLRNGrad<CPUDevice, T> {
   LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
-      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+      : depth_radius_(depth_radius),
+        bias_(bias),
+        alpha_(alpha),
+        beta_(beta),
+        alpha_beta_2_(T(-2) * alpha * beta) {}
 
   void launch(OpKernelContext* context, OpKernel* kernel,
               const Tensor& in_grads, const Tensor& in_image,
@@ -345,6 +353,9 @@ struct LaunchLRNGrad<CPUDevice, T> {
           // However, this is numerically unstable for small values of xi. We
           // compute N explicitly here to avoid that.
 
+          T gs = grads_shaped(i, j);
+          if (gs == T(0)) continue;
+
           int64 depth_begin = std::max<int64>(0, j - depth_radius_);
           int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
 
@@ -354,13 +365,14 @@ struct LaunchLRNGrad<CPUDevice, T> {
           }
           norm = alpha_ * norm + bias_;
           DCHECK_GT(norm, T(1e-6));
+          T pre_computed_pow = Eigen::numext::pow(norm, -beta_);
+          T activations_ab2 = alpha_beta_2_ * activations(i, j);
           for (int64 k = depth_begin; k < depth_end; ++k) {
-            T dyi = T(-2) * alpha_ * beta_ * in_shaped(i, k) *
-                    activations(i, j) / norm;
+            T dyi = in_shaped(i, k) * activations_ab2 / norm;
             if (k == j) {
-              dyi += Eigen::numext::pow(norm, -beta_);
+              dyi += pre_computed_pow;
             }
-            dyi *= grads_shaped(i, j);
+            dyi *= gs;
             const_cast<typename TTypes<T, 2>::Tensor&>(out_shaped)(i, k) += dyi;
           }
         }
@@ -375,6 +387,7 @@ struct LaunchLRNGrad<CPUDevice, T> {
   T bias_;
   T alpha_;
   T beta_;
+  T alpha_beta_2_;
 };
 
 #if GOOGLE_CUDA

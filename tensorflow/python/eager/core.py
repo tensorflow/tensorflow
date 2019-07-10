@@ -60,4 +60,15 @@ class _FallbackException(Exception):
   pass
 
 
+class _SymbolicException(Exception):
+  """Exception class to handle use of symbolic tensors when executing eagerly.
+
+  `keras.Input()` creates symbolic tensors (in a FuncGraph managed by the
+  Keras backend) while in eager execution. This exception is used to
+  identify this case (raised in `convert_to_tensor` cause generated functions
+  for ops to construct graphs instead of executing the kernel).
+  """
+  pass
+
+
 pywrap_tensorflow.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)

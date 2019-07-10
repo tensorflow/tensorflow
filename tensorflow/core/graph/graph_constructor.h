@@ -45,6 +45,8 @@ struct GraphConstructorOptions {
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
+extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                     GraphDef&& gdef, Graph* g);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
@@ -138,6 +140,9 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
+
+  // Try to set default execution device for this grapth.
+  string default_device;
 };
 
 // Optional results that may be returned by ImportGraphDef.

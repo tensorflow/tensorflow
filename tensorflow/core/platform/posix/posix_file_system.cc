@@ -16,9 +16,10 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
-#if !defined(__APPLE__)
+#if defined(__linux__)
 #include <sys/sendfile.h>
 #endif
 #include <sys/stat.h>
@@ -52,12 +53,26 @@ class PosixRandomAccessFile : public RandomAccessFile {
       : filename_(fname), fd_(fd) {}
   ~PosixRandomAccessFile() override { close(fd_); }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
-      ssize_t r = pread(fd_, dst, n, static_cast<off_t>(offset));
+      // Some platforms, notably macs, throw EINVAL if pread is asked to read
+      // more than fits in a 32-bit integer.
+      size_t requested_read_length;
+      if (n > INT32_MAX) {
+        requested_read_length = INT32_MAX;
+      } else {
+        requested_read_length = n;
+      }
+      ssize_t r =
+          pread(fd_, dst, requested_read_length, static_cast<off_t>(offset));
       if (r > 0) {
         dst += r;
         n -= r;
@@ -100,6 +115,9 @@ class PosixWritableFile : public WritableFile {
   }
 
   Status Close() override {
+    if (file_ == nullptr) {
+      return IOError(filename_, EBADF);
+    }
     Status result;
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
@@ -115,11 +133,27 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     Status s;
     if (fflush(file_) != 0) {
       s = IOError(filename_, errno);
     }
+    return s;
+  }
+
+  Status Tell(int64* position) override {
+    Status s;
+    *position = ftell(file_);
+
+    if (*position == -1) {
+      s = IOError(filename_, errno);
+    }
+
     return s;
   }
 };
@@ -240,11 +274,14 @@ Status PosixFileSystem::DeleteFile(const string& fname) {
 }
 
 Status PosixFileSystem::CreateDir(const string& name) {
-  Status result;
-  if (mkdir(TranslateName(name).c_str(), 0755) != 0) {
-    result = IOError(name, errno);
+  string translated = TranslateName(name);
+  if (translated.empty()) {
+    return errors::AlreadyExists(name);
   }
-  return result;
+  if (mkdir(translated.c_str(), 0755) != 0) {
+    return IOError(name, errno);
+  }
+  return Status::OK();
 }
 
 Status PosixFileSystem::DeleteDir(const string& name) {
@@ -299,12 +336,13 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
     return IOError(src, errno);
   }
   string translated_target = TranslateName(target);
-  // O_WRONLY | O_CREAT:
+  // O_WRONLY | O_CREAT | O_TRUNC:
   //   Open file for write and if file does not exist, create the file.
-  // S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH:
-  //   Create the file with permission of 0644
-  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT,
-                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  //   If file exists, truncate its size to 0.
+  // When creating file, use the same permissions as original
+  mode_t mode = sbuf.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
+  int target_fd =
+      open(translated_target.c_str(), O_WRONLY | O_CREAT | O_TRUNC, mode);
   if (target_fd < 0) {
     close(src_fd);
     return IOError(target, errno);

@@ -44,7 +44,7 @@ from tensorflow.python.util.deprecation import deprecated
 @deprecated("2017-06-30",
             "No longer supported. Switch to SavedModel immediately.")
 def gfile_copy_callback(files_to_copy, export_dir_path):
-  """Callback to copy files using `gfile.Copy` to an export directory.
+  """Callback to copy files using `gfile.copy` to an export directory.
 
   This method is used as the default `assets_callback` in `Exporter.init` to
   copy assets from the `assets_collection`. It can also be invoked directly to
@@ -304,10 +304,10 @@ class Exporter(object):
       def parser(path):
         if os.name == "nt":
           match = re.match(
-              "^" + export_dir_base.replace("\\", "/") + "/(\\d{8})$",
+              r"^" + export_dir_base.replace("\\", "/") + r"/(\d{8})$",
               path.path.replace("\\", "/"))
         else:
-          match = re.match("^" + export_dir_base + "/(\\d{8})$", path.path)
+          match = re.match(r"^" + export_dir_base + r"/(\d{8})$", path.path)
         if not match:
           return None
         return path._replace(export_version=int(match.group(1)))

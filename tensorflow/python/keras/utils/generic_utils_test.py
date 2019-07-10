@@ -71,5 +71,30 @@ class TestCustomObjectScope(test.TestCase):
       self.assertEqual(cl.__class__, CustomClass)
 
 
+class SerializeKerasObjectTest(test.TestCase):
+
+  def test_serialize_none(self):
+    serialized = keras.utils.generic_utils.serialize_keras_object(None)
+    self.assertEqual(serialized, None)
+    deserialized = keras.utils.generic_utils.deserialize_keras_object(
+        serialized)
+    self.assertEqual(deserialized, None)
+
+
+class SliceArraysTest(test.TestCase):
+
+  def test_slice_arrays(self):
+    input_a = list([1, 2, 3])
+    self.assertEqual(
+        keras.utils.generic_utils.slice_arrays(input_a, start=0),
+        [None, None, None])
+    self.assertEqual(
+        keras.utils.generic_utils.slice_arrays(input_a, stop=3),
+        [None, None, None])
+    self.assertEqual(
+        keras.utils.generic_utils.slice_arrays(input_a, start=0, stop=1),
+        [None, None, None])
+
+
 if __name__ == '__main__':
   test.main()

@@ -17,7 +17,7 @@ END
   summary: "Computes the product along segments of a tensor."
   description: <<END
 Read
-[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
 This operator is similar to the unsorted segment sum operator found
@@ -27,6 +27,15 @@ entries belonging to a segment such that:
 
 \\(output_i = \prod_{j...} data[j...]\\) where the product is over tuples
 `j...` such that `segment_ids[j...] == i`.
+
+For example:
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 4,  6, 6, 4],
+#       [5,  6, 7, 8]]
+```
 
 If there is no entry for a given segment ID `i`, it outputs 1.
 

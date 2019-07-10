@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "initializers"
     mtype: "<type \'module\'>"
   }
@@ -50,6 +54,10 @@ tf_module {
   }
   member {
     name: "metrics"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mixed_precision"
     mtype: "<type \'module\'>"
   }
   member {
@@ -78,6 +86,6 @@ tf_module {
   }
   member_method {
     name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
 }

@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.contrib.opt.python.training import matrix_functions
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -108,7 +109,8 @@ class ShampooOptimizer(optimizer.Optimizer):
       precond_update_interval: We should update the preconditioners after
                                this many steps. Default = 1. Usually less than
                                svd_interval.
-      epsilon:  epsilon * I_n is added to each mat_gbar_j for stability
+      epsilon:  epsilon * I_n is added to each mat_gbar_j for stability for
+                non-diagonal version of shampoo.
       alpha:  total power of the preconditioners.
       use_iterative_root: should the optimizer use SVD (faster) or the
                           iterative root method (for TPU) for finding the
@@ -119,7 +121,7 @@ class ShampooOptimizer(optimizer.Optimizer):
 
     super(ShampooOptimizer, self).__init__(use_locking, name)
 
-    self._global_step = math_ops.to_float(global_step)
+    self._global_step = math_ops.cast(global_step, dtypes.float32)
     self._max_matrix_size = max_matrix_size
     self._gbar_decay = gbar_decay
     self._gbar_weight = gbar_weight
@@ -245,7 +247,8 @@ class ShampooOptimizer(optimizer.Optimizer):
     if mat_g_size == 1:
       mat_h = math_ops.pow(mat_g + self._epsilon, alpha)
     else:
-      damping = self._epsilon * linalg_ops.eye(math_ops.to_int32(mat_g_size))
+      damping = self._epsilon * linalg_ops.eye(
+          math_ops.cast(mat_g_size, dtypes.int32))
       diag_d, mat_u, mat_v = linalg_ops.svd(mat_g + damping, full_matrices=True)
       mat_h = math_ops.matmul(
           mat_v * math_ops.pow(math_ops.maximum(diag_d, self._epsilon), alpha),
@@ -394,15 +397,20 @@ class ShampooOptimizer(optimizer.Optimizer):
           assert self._mat_gbar_decay == 1.0
           mat_g_updated = state_ops.scatter_add(mat_g, indices,
                                                 mat_gbar_weight_t * grad_outer)
-          mat_h = math_ops.pow(
-              array_ops.gather(mat_g_updated, indices) + self._epsilon,
-              neg_alpha)
+          mat_g_updated_slice = array_ops.gather(mat_g_updated, indices)
+          mat_h = array_ops.where(
+              math_ops.greater(mat_g_updated_slice, 0),
+              math_ops.pow(mat_g_updated_slice, neg_alpha),
+              array_ops.zeros_like(mat_g_updated_slice))
         else:
           mat_g_updated = self._weighted_average(mat_g,
                                                  self._mat_gbar_decay,
                                                  mat_gbar_decay_t,
                                                  mat_gbar_weight_t * grad_outer)
-          mat_h = math_ops.pow(mat_g_updated + self._epsilon, neg_alpha)
+          mat_h = array_ops.where(
+              math_ops.greater(mat_g_updated, 0),
+              math_ops.pow(mat_g_updated, neg_alpha),
+              array_ops.zeros_like(mat_g_updated))
 
         # Need to do the transpose to ensure that the tensor becomes
         # a d_{i+1} x ... x d_n x d_0 x ... d_i tensor as described above.

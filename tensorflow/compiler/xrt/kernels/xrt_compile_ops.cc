@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -67,9 +68,11 @@ class XRTCompileOp : public OpKernel {
 
 Status CompilationCacheKey(const xrt::XLAComputation& computation,
                            string* key) {
-  string serialized;
-  TF_RET_CHECK(SerializeToStringDeterministic(computation, &serialized));
-  uint64 fingerprint = Fingerprint64(serialized);
+  const size_t size = computation.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  TF_RET_CHECK(
+      SerializeToBufferDeterministic(computation, serialized.get(), size));
+  uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
   *key = absl::StrCat(fingerprint);
   return Status::OK();
 }
@@ -108,19 +111,26 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                       client->LoadSnapshot(computation_proto.hlo_snapshot()));
 
-  std::vector<const xla::Shape*> argument_layouts(
+  std::vector<xla::Shape> argument_layouts(
+      config.program_shape().parameters_size());
+  std::vector<const xla::Shape*> argument_layout_ptrs(
       config.program_shape().parameters_size());
   for (int i = 0; i < config.program_shape().parameters_size(); ++i) {
-    argument_layouts[i] = &config.program_shape().parameters(i);
+    argument_layouts[i] = xla::Shape(config.program_shape().parameters(i));
+    argument_layout_ptrs[i] = &argument_layouts[i];
   }
   xla::ExecutableBuildOptions build_options;
   build_options.set_device_ordinal(client->default_device_ordinal());
-  build_options.set_result_layout(config.program_shape().result());
+  build_options.set_result_layout(xla::Shape(config.program_shape().result()));
   build_options.set_device_allocator(device_ref.backend()->memory_allocator());
+  if (config.has_debug_options()) {
+    *build_options.mutable_debug_options() =
+        BuildXlaDebugOptions(config.debug_options());
+  }
 
   VLOG(1) << "Building executable";
   auto compile_result =
-      client->Compile(computation, argument_layouts, build_options);
+      client->Compile(computation, argument_layout_ptrs, build_options);
   if (!compile_result.ok()) {
     return compile_result.status();
   }
@@ -166,10 +176,23 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
                  VLOG(1) << "Compiling XLA executable";
                  return Compile(ctx, computation_proto, program);
                }));
+  std::unique_ptr<XRTCompilationCacheEntryRef> entry;
+  OP_REQUIRES_OK(ctx, cache->Lookup(uid, &entry));
 
-  Tensor output(DT_INT64, TensorShape({}));
-  output.scalar<int64>()() = uid;
-  ctx->set_output(0, output);
+  Tensor handle_output(DT_INT64, TensorShape({}));
+  handle_output.scalar<int64>()() = uid;
+  ctx->set_output(0, handle_output);
+
+  xla::LocalExecutable* executable = entry->get().get_executable();
+  xla::ProgramShapeProto program_shape = executable->executable()
+                                             ->module()
+                                             .config()
+                                             .entry_computation_layout()
+                                             .ComputeProgramShape()
+                                             .ToProto();
+  Tensor program_shape_output(DT_STRING, TensorShape({1}));
+  program_shape_output.vec<string>()(0) = program_shape.SerializeAsString();
+  ctx->set_output(1, program_shape_output);
 }
 
 XRTCompileOp::~XRTCompileOp() = default;
@@ -194,11 +217,6 @@ XRTReleaseCompilationRefOp::~XRTReleaseCompilationRefOp() = default;
 void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
 
-  const Tensor& key_tensor = ctx->input(0);
-  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor.shape()),
-              errors::Internal("computation key should be a string scalar"));
-  int64 uid = key_tensor.scalar<int64>()();
-
   ResourceMgr* rm;
   OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
 
@@ -209,9 +227,13 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
                           kXRTCompilationCacheResourceName, &cache));
   core::ScopedUnref cache_unref(cache);
 
-  OP_REQUIRES_OK(ctx, cache->Release(uid));
-
-  VLOG(2) << "Released computation handle " << uid;
+  const Tensor& keys_tensor = ctx->input(0);
+  auto flat_keys = keys_tensor.flat<int64>();
+  for (int64 i = 0; i < flat_keys.size(); ++i) {
+    int64 key = flat_keys(i);
+    OP_REQUIRES_OK(ctx, cache->Release(key));
+    VLOG(2) << "Released computation handle " << key;
+  }
 }
 
 }  // namespace

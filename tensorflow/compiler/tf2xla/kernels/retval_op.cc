@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -36,71 +37,23 @@ class RetvalOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const Tensor& input = ctx->op_kernel_context()->input(0);
 
-    OP_REQUIRES(ctx, input.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(input.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
+    // Types that cannot be copied using memcpy (like DT_VARIANT types that
+    // represent Tensor Lists) are wrapped in a DT_UINT8 and hence the type
+    // mismatches. Skip the test in such cases. See
+    // XlaOpKernelContext::SetOutputExpression for details.
+    if (DataTypeCanUseMemcpy(dtype_)) {
+      OP_REQUIRES(ctx, input.dtype() == dtype_,
+                  errors::InvalidArgument(
+                      "Type mismatch: actual ", DataTypeString(input.dtype()),
+                      " vs. expect ", DataTypeString(dtype_)));
+    }
     auto frame = ctx->call_frame();
     if (frame) {
       // If 'frame' is non-null, this is an inner function call inside a JIT
       // compilation.
       OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
-      xla::XlaOp input = ctx->Input(0);
-      const TensorShape input_shape = ctx->InputShape(0);
-      DataType input_type = ctx->input_type(0);
-      XlaContext& tc = XlaContext::Get(ctx);
-
-      if (input_type == DT_RESOURCE) {
-        XlaResource* resource;
-        OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
-        ctx->SetStatus(tc.AddResourceRetval(index_, resource));
-        return;
-      }
-
-      auto is_constant = ctx->builder()->IsConstant(input);
-      if (!is_constant.ok()) {
-        ctx->SetStatus(is_constant.status());
-        return;
-      }
-
-      if (tc.resolve_compile_time_constants() &&
-          (input_shape.num_elements() == 0 || is_constant.ValueOrDie())) {
-        xla::Literal literal;
-        OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
-        OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
-      } else {
-        TensorShape shape = ctx->InputShape(0);
-        ctx->SetStatus(is_constant.status());
-        TensorShape representation_shape;
-        if (tc.is_entry_computation()) {
-          xla::StatusOr<TensorShape> shape_or_status =
-              tc.RepresentationShape(shape, ctx->input_type(0));
-          if (!shape_or_status.ok()) {
-            ctx->SetStatus(shape_or_status.status());
-            return;
-          } else {
-            representation_shape = shape_or_status.ValueOrDie();
-          }
-        } else {
-          representation_shape = shape;
-        }
-
-        xla::XlaOp output = input;
-        if (tc.is_entry_computation()) {
-          output = xla::Reshape(input, representation_shape.dim_sizes());
-        } else {
-          // The core from which a return value is returned depends on the
-          // device assignment of the input to the retval. Since we can't change
-          // the device assignment of "input" at this point, we must always
-          // introduce an operator here, even if the shape does not change.
-          // TODO(b/76097077): propagate device assignments onto arguments and
-          // return values of functions, and then reshape unconditionally.
-          output =
-              xla::GetTupleElement(xla::Tuple(ctx->builder(), {output}), 0);
-        }
-        tc.AddRetval(index_, dtype_, shape, output);
-      }
+      ctx->xla_context()->SetRetval(index_, ctx->InputExpression(0));
     }
   }
 
@@ -112,8 +65,9 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP(Name("_Retval").AllowResourceTypes().CompilationOnly(),
-                RetvalOp);
+REGISTER_XLA_OP(
+    Name("_Retval").AllowResourceTypes().AllowVariantTypes().CompilationOnly(),
+    RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

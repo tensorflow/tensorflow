@@ -22,7 +22,7 @@ set -e
 prog=compile_nsync.sh
 android_api_version=21
 default_android_arch=armeabi-v7a
-default_ios_arch="i386 x86_64 armv7 armv7s arm64"
+default_ios_arch="x86_64 armv7 armv7s arm64"
 
 usage="usage: $prog [-t linux|ios|android|macos|native]
         [-a architecture] [-v android_api_version]
@@ -130,7 +130,7 @@ for arch in $archs; do
 
         ios)    arch_flags=
                 case "$arch" in
-                i386|x86_64)
+                x86_64)
                         arch_flags="$arch_flags -mios-simulator-version-min=8.0"
                         arch_flags="$arch_flags -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)"
                         ;;

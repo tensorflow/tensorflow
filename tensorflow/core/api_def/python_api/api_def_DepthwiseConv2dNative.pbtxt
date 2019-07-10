@@ -1,6 +1,8 @@
 op {
   graph_op_name: "DepthwiseConv2dNative"
+  deprecation_message: "Use nn.depthwise_conv2d instead"
   endpoint {
     name: "nn.depthwise_conv2d_native"
+    deprecation_version: 2
   }
 }

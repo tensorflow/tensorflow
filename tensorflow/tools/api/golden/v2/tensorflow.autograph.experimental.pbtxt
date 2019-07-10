@@ -1,0 +1,15 @@
+path: "tensorflow.autograph.experimental"
+tf_module {
+  member {
+    name: "Feature"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member_method {
+    name: "do_not_convert"
+    argspec: "args=[\'func\', \'run_as\', \'return_dtypes\'], varargs=None, keywords=None, defaults=[\'None\', \'RunMode.GRAPH\', \'None\'], "
+  }
+  member_method {
+    name: "set_loop_options"
+    argspec: "args=[\'parallel_iterations\', \'back_prop\', \'swap_memory\', \'maximum_iterations\'], varargs=None, keywords=None, defaults=[\'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\'], "
+  }
+}

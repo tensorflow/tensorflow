@@ -55,7 +55,9 @@
 
 @@TPUDistributionStrategy
 @@keras_to_tpu_model
+
 @@AsyncCheckpointSaverHook
+@@TPUInMemoryEvalHook
 """
 
 from __future__ import absolute_import
@@ -65,6 +67,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.contrib.tpu.python import profiler
 from tensorflow.contrib.tpu.python.ops.tpu_ops import *
+from tensorflow.contrib.tpu.python.tpu.async_checkpoint import *
 from tensorflow.contrib.tpu.python.tpu.bfloat16 import *
 from tensorflow.contrib.tpu.python.tpu.device_assignment import *
 from tensorflow.contrib.tpu.python.tpu.keras_support import tpu_model as keras_to_tpu_model

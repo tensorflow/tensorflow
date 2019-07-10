@@ -54,6 +54,7 @@ REGISTER_OP("XlaClusterOutput")
 REGISTER_OP("_XlaCompile")
     .Input("constants: Tconstants")
     .Attr("Tconstants: list(type) >= 0")
+    .Attr("must_compile: bool")
     .Input("args: Targs")
     .Attr("Targs: list(type) >= 0")
     .Input("resources: Nresources * resource")
@@ -71,8 +72,12 @@ that _XlaRun can use to look up the LocalExecutable and execute it.
 key: A key that can be used to look up the local executable compiled by the
    node and associated metadata.
 
-compilation_successful: True iff the compilation was successful.  Always true
-for now.
+compilation_successful: If the `must_compile` attr is false the _XlaCompile op
+   can decide not to compile the clusters based on some profitability
+   heuristics.  In that case `compilation_successful` is false if _XlaCompile
+   chose not to compile the cluster.  If the `must_compile` attr is true then
+   _XlaCompile always attempts to compile the cluster and
+   `compilation_successful` is always true.
 )");
 
 REGISTER_OP("_XlaRun")

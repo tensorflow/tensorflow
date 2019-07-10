@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -57,8 +59,9 @@ class BufferValueMap {
   // construction process.
   using BufferNumber = int64;
 
-  explicit BufferValueMap(const HloDataflowAnalysis& dataflow)
-      : dataflow_(dataflow) {
+  explicit BufferValueMap(const HloModule* module,
+                          const HloDataflowAnalysis& dataflow)
+      : module_(module), dataflow_(dataflow) {
     buffers_.reserve(dataflow_.values().size());
     value_to_buffer_number_.reserve(dataflow_.values().size());
     for (const HloValue* value : dataflow_.values()) {
@@ -114,12 +117,12 @@ class BufferValueMap {
     for (const auto& pair : buffers_) {
       buffer_numbers.push_back(pair.first);
     }
-    std::sort(buffer_numbers.begin(), buffer_numbers.end());
+    absl::c_sort(buffer_numbers);
     return buffer_numbers;
   }
 
   // Return a set of all the values in the given buffer.
-  const tensorflow::gtl::FlatSet<const HloValue*>& GetValuesInBuffer(
+  const absl::flat_hash_set<const HloValue*>& GetValuesInBuffer(
       BufferNumber buffer_number) const {
     return buffers_.at(buffer_number);
   }
@@ -142,7 +145,7 @@ class BufferValueMap {
   // Move the given value into the given buffer.
   void MoveValueToBuffer(const HloValue& value, BufferNumber buffer_number) {
     BufferNumber old_buffer_number = value_to_buffer_number_.at(&value);
-    tensorflow::gtl::FlatSet<const HloValue*>& old_value_set =
+    absl::flat_hash_set<const HloValue*>& old_value_set =
         buffers_.at(old_buffer_number);
     old_value_set.erase(&value);
     if (old_value_set.empty()) {
@@ -167,6 +170,41 @@ class BufferValueMap {
 
   BufferNumber GetBufferForValue(const HloValue& value) {
     return value_to_buffer_number_.at(&value);
+  }
+
+  void ComputeInputOutputAliasedBuffers(
+      const HloValue& value, std::vector<BufferNumber>* aliased_buffers) {
+    // Get parameter value from an aliased_input object.
+    const auto get_parameter_value =
+        [this](const HloInputOutputAliasConfig::Alias& aliased_input)
+        -> const HloValue& {
+      return dataflow_.GetUniqueValueAt(
+          module_->entry_computation()->parameter_instruction(
+              aliased_input.parameter_number),
+          aliased_input.parameter_index);
+    };
+
+    // If the value shows up in a root instruction, alias it with parameter
+    // intruction.
+    for (const HloPosition& pos : value.positions()) {
+      if (pos.instruction == module_->entry_computation()->root_instruction()) {
+        ShapeIndex output_index = pos.index;
+
+        auto aliased_input =
+            module_->input_output_alias_config().GetAliasedParameter(
+                output_index);
+        if (aliased_input) {
+          aliased_buffers->push_back(
+              GetBufferForValue(get_parameter_value(*aliased_input)));
+        }
+      }
+    }
+
+    // If the value is parameter instruction itself, alias it with itself.
+    if (value.instruction()->opcode() == HloOpcode::kParameter &&
+        value.instruction()->parent() == module_->entry_computation()) {
+      aliased_buffers->push_back(GetBufferForValue(value));
+    }
   }
 
   void ComputeWhileAliasedBuffers(const HloValue& value,
@@ -214,7 +252,8 @@ class BufferValueMap {
           if (callsite.instruction()->opcode() == HloOpcode::kWhile &&
               callsite.instruction()->while_body() == computation) {
             // Call graph must have been flattened.
-            CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+            CHECK_EQ(call_graph_node.caller_callsites().size(), 1)
+                << "Call graph must have been flattened.";
 
             const HloValue& while_value = dataflow_.GetUniqueValueAt(
                 callsite.instruction(), position.index);
@@ -255,7 +294,7 @@ class BufferValueMap {
             VLOG(3)
                 << "  value @ " << position << " is root of "
                 << callsite.instruction()->name()
-                << "; true/false branch roots must share buffer among them : "
+                << "; branch computation roots must share buffer among them : "
                 << cond_value.ToShortString();
             aliased_buffers->push_back(GetBufferForValue(cond_value));
           }
@@ -276,33 +315,34 @@ class BufferValueMap {
       VLOG(2) << "Use of value " << value.ToShortString() << ": " << use;
     }
     std::vector<BufferNumber> aliased_buffers;
+    ComputeInputOutputAliasedBuffers(value, &aliased_buffers);
     ComputeWhileAliasedBuffers(value, &aliased_buffers);
     ComputeConditionalAliasedBuffers(value, &aliased_buffers);
     // Uniquify aliased buffers.
-    std::sort(aliased_buffers.begin(), aliased_buffers.end());
+    absl::c_sort(aliased_buffers);
     aliased_buffers.erase(
         std::unique(aliased_buffers.begin(), aliased_buffers.end()),
         aliased_buffers.end());
     return aliased_buffers;
   }
 
+  const HloModule* module_ = nullptr;
+
   // Dataflow analysis used to construct the buffer map.
   const HloDataflowAnalysis& dataflow_;
 
   // A map containing the set of values contained in each buffer.
-  tensorflow::gtl::FlatMap<BufferNumber,
-                           tensorflow::gtl::FlatSet<const HloValue*>>
+  absl::flat_hash_map<BufferNumber, absl::flat_hash_set<const HloValue*>>
       buffers_;
 
   // A map indicating which buffer each value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, BufferNumber>
-      value_to_buffer_number_;
+  absl::flat_hash_map<const HloValue*, BufferNumber> value_to_buffer_number_;
 
   // The buffer number of the next buffer to be created.
   BufferNumber next_buffer_number_ = 0;
 };
 
-HloAliasAnalysis::HloAliasAnalysis(HloModule* module) : module_(module) {}
+HloAliasAnalysis::HloAliasAnalysis(const HloModule* module) : module_(module) {}
 
 const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
@@ -327,7 +367,7 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   }
 
   // Sort and uniquify vector before returning.
-  std::sort(buffers.begin(), buffers.end(), HloBuffer::IdLessThan);
+  absl::c_sort(buffers, HloBuffer::IdLessThan);
   buffers.erase(std::unique(buffers.begin(), buffers.end()), buffers.end());
 
   return buffers;
@@ -352,7 +392,7 @@ bool HloAliasAnalysis::InstructionBuffersAreAmbiguous(
 
 bool HloAliasAnalysis::InstructionBuffersAreDistinct(
     const HloInstruction* instruction) const {
-  tensorflow::gtl::FlatSet<const HloBuffer*> buffers_seen;
+  absl::flat_hash_set<const HloBuffer*> buffers_seen;
   for (const auto& pair :
        dataflow_analysis_->GetInstructionValueSet(instruction)) {
     const HloValueSet& value_set = pair.second;
@@ -390,8 +430,7 @@ Status HloAliasAnalysis::Verify() const {
   for (const auto& pair : value_to_buffer_) {
     const HloValue* value = pair.first;
     const HloBuffer& buffer = *pair.second;
-    TF_RET_CHECK(std::find(buffer.values().begin(), buffer.values().end(),
-                           value) != buffer.values().end());
+    TF_RET_CHECK(absl::c_linear_search(buffer.values(), value));
   }
 
   for (HloBuffer::Id id = 0; id < buffers_.size(); ++id) {
@@ -417,7 +456,7 @@ string HloAliasAnalysis::ToString() const {
   for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
@@ -450,8 +489,8 @@ string HloAliasAnalysis::ToString() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
-    HloModule* module, const HloDataflowAnalysis::FusionCanShareBufferFunction&
-                           fusion_can_share_buffer) {
+    const HloModule* module,
+    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -459,9 +498,9 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                                /*bitcast_defines_value=*/false,
-                                               fusion_can_share_buffer));
+                                               can_share_buffer));
 
-  BufferValueMap buffer_map(alias_analysis->dataflow_analysis());
+  BufferValueMap buffer_map(module, alias_analysis->dataflow_analysis());
   buffer_map.MergeAliasedBuffers();
 
   // Create a vector of HloBuffers, one for each set of values in the
@@ -475,7 +514,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     auto& value_set = buffer_map.GetValuesInBuffer(buffer_number);
     std::vector<const HloValue*> sorted_values(value_set.begin(),
                                                value_set.end());
-    std::sort(sorted_values.begin(), sorted_values.end(), HloValue::IdLessThan);
+    absl::c_sort(sorted_values, HloValue::IdLessThan);
     alias_analysis->buffers_.emplace_back(next_id++, sorted_values);
     for (const HloValue* value : sorted_values) {
       alias_analysis->value_to_buffer_[value] =
@@ -485,19 +524,84 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 
   TF_DCHECK_OK(alias_analysis->Verify());
 
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        for (const HloBuffer* buffer :
+             alias_analysis->ComputeBuffersAt(root, index)) {
+          alias_analysis->live_out_buffers_.insert(buffer);
+        }
+      });
+
   XLA_VLOG_LINES(2, alias_analysis->ToString());
   return std::move(alias_analysis);
+}
+
+void HloAliasAnalysis::MergeBuffers(const HloBuffer& to,
+                                    const HloBuffer& from) {
+  CHECK(to.id() != from.id());
+  VLOG(2) << "Merge buffer: " << from.ToString() << " into :" << to.ToString();
+
+  CHECK(from.id() < buffers_.size());
+  CHECK(to.id() < buffers_.size());
+
+  // Merge the values of `to` and `from`, creates a new buffer with the
+  // merged values.
+  std::vector<const HloValue*> merged_values(to.values().begin(),
+                                             to.values().end());
+
+  merged_values.insert(merged_values.end(), from.values().begin(),
+                       from.values().end());
+  absl::c_sort(merged_values, [](const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  });
+
+  buffers_[to.id()] = HloBuffer(to.id(), merged_values);
+  for (const HloValue* value : merged_values) {
+    // Update references of values.
+    value_to_buffer_[value] = &buffers_[to.id()];
+  }
+
+  if (live_out_buffers_.count(&from) > 0) {
+    // Update live out set to erase `from` and add `to`.
+    live_out_buffers_.erase(&from);
+    live_out_buffers_.insert(&buffers_[to.id()]);
+  }
+
+  int64 from_id = from.id();
+  if (from_id != buffers_.size() - 1) {
+    // Now `from` is invalid, move the last element of buffers to replace `from`
+    // and update references to the last element.
+    const HloBuffer& last_elem = buffers_.back();
+    buffers_[from.id()] = HloBuffer(from_id, last_elem.values());
+
+    if (live_out_buffers_.count(&last_elem) > 0) {
+      // Update live out set to redirect the last element to its new position.
+      live_out_buffers_.erase(&last_elem);
+      live_out_buffers_.insert(&buffers_[from_id]);
+    }
+
+    // Update references of values.
+    for (const HloValue* value : buffers_[from_id].values()) {
+      value_to_buffer_[value] = &buffers_[from_id];
+    }
+  }
+
+  // Remove the last element.
+  buffers_.pop_back();
+
+  CHECK(Verify().ok());
 }
 
 bool HloAliasAnalysis::HasLiveRangeInterference(
     const HloOrdering& ordering) const {
   for (const HloBuffer& buffer : buffers()) {
     CHECK(!buffer.values().empty());
-    if (ShapeUtil::IsToken(buffer.values().front()->shape())) {
+    if (buffer.values().front()->shape().IsToken()) {
       // Tokens have no on-device representation and cannot interfere.
       for (const HloValue* value : buffer.values()) {
         // If one of the values is a token, all values must be a token.
-        DCHECK(ShapeUtil::IsToken(value->shape()));
+        DCHECK(value->shape().IsToken());
       }
       continue;
     }
@@ -507,16 +611,15 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // tie-break using value ID. The tie-break is necessary because we need a
     // strict weak order for std::sort.
     std::vector<const HloValue*> values = buffer.values();
-    std::sort(values.begin(), values.end(),
-              [&ordering](const HloValue* a, const HloValue* b) {
-                if (ordering.IsDefinedBefore(*a, *b)) {
-                  return true;
-                } else if (ordering.IsDefinedBefore(*b, *a)) {
-                  return false;
-                } else {
-                  return a->id() < b->id();
-                }
-              });
+    absl::c_sort(values, [&ordering](const HloValue* a, const HloValue* b) {
+      if (ordering.IsDefinedBefore(*a, *b)) {
+        return true;
+      } else if (ordering.IsDefinedBefore(*b, *a)) {
+        return false;
+      } else {
+        return a->id() < b->id();
+      }
+    });
 
     // Walk through the ordered vector of values. First verify that the values
     // are totally ordered with respect to 'ordering', then check that no

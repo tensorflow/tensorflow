@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace tensorflow {
 
@@ -69,15 +69,21 @@ class MatrixSetDiagOp : public XlaOpKernel {
                              /*broadcast_dimensions=*/{0});
     indicator = xla::Broadcast(indicator, batch_shape.dim_sizes());
 
-    // Broadcast diag up to the input shape. Use an implicit broadcast (Add)
+    // Broadcast diag up to the input shape. Use an implicit broadcast (Add/Or)
     // because we need to broadcast on the right.
     std::vector<int64> diag_broadcast_dims(rank - 1);
     std::iota(diag_broadcast_dims.begin(), diag_broadcast_dims.end(), 0);
     if (min_dim != m) {
       diag_broadcast_dims.back() = rank - 1;
     }
-    diag = xla::Add(diag, xla::Broadcast(zero, input_shape.dim_sizes()),
-                    /*broadcast_dimensions=*/diag_broadcast_dims);
+    if (context->input_xla_type(0) == xla::PRED) {
+      diag = xla::Or(diag, xla::Broadcast(zero, input_shape.dim_sizes()),
+                     /*broadcast_dimensions=*/diag_broadcast_dims);
+
+    } else {
+      diag = xla::Add(diag, xla::Broadcast(zero, input_shape.dim_sizes()),
+                      /*broadcast_dimensions=*/diag_broadcast_dims);
+    }
 
     auto output = xla::Select(indicator, diag, input);
     context->SetOutput(0, output);

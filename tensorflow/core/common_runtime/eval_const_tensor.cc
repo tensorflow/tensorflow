@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -42,7 +42,10 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   const Node* node = edge.src();
   InferenceContext* c = refiner.GetContext(node);
   if (c == nullptr) {
-    return errors::FailedPrecondition("Node does not have context.");
+    // An input without context is a soft failure; we sometimes need to break
+    // control flow loops by running shape inference on a node without first
+    // adding its input.
+    return Status::OK();
   }
 
   if (node->type_string() == "Shape") {
@@ -113,6 +116,13 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   return Status::OK();
 }
 
+// Returns true if 'node' has a registered CPU kernel.
+bool HasCpuKernel(const Node& node) {
+  return FindKernelDef(DeviceType(DEVICE_CPU), node.def(), /*def=*/nullptr,
+                       /*kernel_class_name=*/nullptr)
+      .ok();
+}
+
 // Extracts the subgraph ending at 'target_node' that is statically computable
 // and inserts into 'out_graph'. If statically computable, 'is_constant_graph'
 // will be set to true.
@@ -133,6 +143,12 @@ Status ExtractConstantSubgraph(
   }
 
   if (target_node.type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // Since constant-folding runs on the CPU, do not attempt to constant-fold
+  // operators that have no CPU kernel.
+  if (!HasCpuKernel(target_node)) {
     return Status::OK();
   }
 
@@ -197,6 +213,11 @@ Status ExtractConstantSubgraph(
     // fed by the user. Note that "Placeholder" nodes have no inputs so are
     // handled below.
     if (current_node->type_string() == "PlaceholderWithDefault") {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    if (!HasCpuKernel(*current_node)) {
       *is_constant_graph = false;
       return Status::OK();
     }

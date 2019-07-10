@@ -13,21 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/python/eager/pywrap_tensor.h"
+
 #include <stdlib.h>
 
+#include "structmember.h"  // NOLINT // For PyMemberDef
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
-
-#include "tensorflow/python/eager/pywrap_tensor.h"
-#include "tensorflow/python/eager/pywrap_tfe.h"
-
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/python/lib/core/ndarray_tensor.h"
-
-#include "structmember.h"  // NOLINT // For PyMemberDef
 
 // forward declare
 struct EagerTensor;
@@ -54,19 +56,49 @@ TFE_Context* GetContext(PyObject* ctx) {
 // Convert a Python numpy.ndarray object to a TFE_TensorHandle.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
-TFE_TensorHandle* NumpyToTensorHandle(PyObject* obj) {
+TFE_TensorHandle* NumpyToTFE_TensorHandle(PyObject* obj) {
+  tensorflow::TensorHandle* handle;
   tensorflow::Tensor t;
   auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
-    return TFE_NewTensorHandle(t);
-  } else {
+    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
+  }
+  if (!cppstatus.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
-                        "Failed to convert numpy ndarray to a Tensor (",
+                        "Failed to convert a NumPy array to a Tensor (",
                         cppstatus.error_message(), ").")
                         .c_str());
     return nullptr;
   }
+  return new TFE_TensorHandle(handle);
+}
+
+// Convert a TFE_TensorHandle to a Python numpy.ndarray object.
+// The two may share underlying storage so changes to one may reflect in the
+// other.
+PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
+  if (TFE_TensorHandleDataType(handle) == TF_RESOURCE) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Cannot convert a Tensor of dtype resource to a NumPy array.");
+    return nullptr;
+  }
+
+  auto tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+
+  PyObject* ret = nullptr;
+  auto cppstatus =
+      tensorflow::TF_TensorToMaybeAliasedPyArray(std::move(tensor), &ret);
+  tensorflow::Set_TF_Status_from_Status(status, cppstatus);
+  if (TF_GetCode(status) != TF_OK) {
+    Py_XDECREF(ret);
+    return nullptr;
+  }
+  CHECK_NE(ret, nullptr);
+  return ret;
 }
 
 TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
@@ -104,19 +136,19 @@ TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
   return new_handle;
 }
 
-// Helper function to convert `v` to an int and store it in `*out`. Returns true
-// on success, false otherwise.
+// Helper function to convert `v` to a tensorflow::DataType and store it in
+// `*out`. Returns true on success, false otherwise.
 // Note that we assume that v is a python int (not long) representing a
-// TF_DataType value.
-bool PyIntToDataType(PyObject* v, int* out) {
+// TF_DataType/tensorflow::DataType value.
+bool PyIntToDataType(PyObject* v, tensorflow::DataType* out) {
 #if PY_MAJOR_VERSION < 3
   if (PyInt_Check(v)) {
-    *out = PyInt_AS_LONG(v);
+    *out = static_cast<tensorflow::DataType>(PyInt_AS_LONG(v));
     return true;
   }
 #else
   if (PyLong_Check(v)) {
-    *out = PyLong_AsLong(v);
+    *out = static_cast<tensorflow::DataType>(PyLong_AsLong(v));
     return true;
   }
 #endif
@@ -135,6 +167,40 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 }  // namespace
 
 namespace tensorflow {
+// This function checks whether the desired type is "compatible" with the
+// inferred type. At a high level, compatibility means that all integral types
+// are compatible with each other, and all floating types are compatible with
+// each other.
+//
+// Type compatibility doesn't consider overflows (i.e. int64 is *always*
+// compatible with int32). This is intended to match graph behavior.
+bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
+  tensorflow::DataType desired =
+      static_cast<tensorflow::DataType>(desired_dtype);
+  tensorflow::DataType returned =
+      static_cast<tensorflow::DataType>(returned_dtype);
+
+  if (desired == returned) return true;
+
+  if (tensorflow::DataTypeIsInteger(desired) &&
+      tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  } else if (tensorflow::DataTypeIsFloating(desired) &&
+             (tensorflow::DataTypeIsFloating(returned) ||
+              tensorflow::DataTypeIsInteger(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsComplex(desired) &&
+             (tensorflow::DataTypeIsComplex(returned) ||
+              tensorflow::DataTypeIsInteger(returned) ||
+              tensorflow::DataTypeIsFloating(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsQuantized(desired) &&
+             tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  }
+  return false;
+}
+
 // Casts data referred to by `handle` from type `src_type_enum` to type
 // `dst_type_enum`.
 TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
@@ -172,28 +238,26 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
-  int desired_dtype = -1;
-  if (dtype != Py_None) {
-    if (!PyIntToDataType(dtype, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype)->tp_name)
-                          .c_str());
-      return nullptr;
-    }
+TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
+                                       tensorflow::DataType dtype) {
+  tensorflow::Safe_PyObjectPtr value_decrefer;
+  if (PyArray_IsScalar(value, Generic)) {
+    // Convert numpy scalars to numpy arrays.
+    value = PyArray_FromScalar(value, nullptr);
+    // The returned value needs to be DECREF'd, but the original value was
+    // created in python code, and doesn't need to be DECREF'd.
+    value_decrefer.reset(value);
   }
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
-    if (desired_dtype >= 0) {
+    if (dtype != tensorflow::DT_INVALID) {
       if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(desired_dtype), &desired_np_dtype)
+               static_cast<TF_DataType>(dtype), &desired_np_dtype)
                .ok()) {
-        PyErr_SetString(PyExc_TypeError,
-                        tensorflow::strings::StrCat(
-                            "Invalid dtype argument value ", desired_dtype)
-                            .c_str());
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
+                .c_str());
         return nullptr;
       }
     }
@@ -206,7 +270,7 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
           desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
       safe_value = tensorflow::make_safe(
           PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY | NPY_ARRAY_FORCECAST, nullptr));
+                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
       if (PyErr_Occurred()) return nullptr;
       if (safe_value == nullptr) {
         PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
@@ -214,17 +278,21 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
       }
       value = safe_value.get();
     }
-    return NumpyToTensorHandle(value);
+    return NumpyToTFE_TensorHandle(value);
   } else {
+    tensorflow::TensorHandle* handle;
     tensorflow::Tensor t;
     // TODO(josh11b): Have PySeqToTensor set python errors instead of
     // returning Status.
     auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
+    if (cppstatus.ok()) {
+      cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
+    }
     if (!cppstatus.ok()) {
       PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
       return nullptr;
     }
-    return TFE_NewTensorHandle(t);
+    return new TFE_TensorHandle(handle);
   }
 }
 }  // namespace tensorflow
@@ -250,9 +318,6 @@ typedef struct EagerTensor {
   // Note that we assume that handle_data cannot participate in reference
   // cycles, and hence don't provide GC support for it.
   PyObject* handle_data;
-
-  // This stores `_keras_mask` object and is set by Tensorflow layers.
-  PyObject* keras_mask;
 
   // This stores `_tensor_shape`, a cached `TensorShape` object, and is set the
   // first time that `_EagerTensorBase`'s `shape` property is called.
@@ -317,8 +382,6 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   Py_INCREF(Py_None);
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
-  self->keras_mask = Py_None;
-  Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
   self->dict = nullptr;
@@ -358,7 +421,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   }
 
   // Extract dtype
-  int desired_dtype = -1;
+  tensorflow::DataType desired_dtype = tensorflow::DT_INVALID;
   if (dtype != Py_None) {
     if (!PyIntToDataType(dtype, &desired_dtype)) {
       PyErr_SetString(PyExc_TypeError,
@@ -372,24 +435,45 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(value, dtype)));
+          tensorflow::ConvertToEagerTensor(value, desired_dtype)));
   if (handle == nullptr) return -1;
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
-  if (desired_dtype >= 0 && desired_dtype != handle_dtype) {
-    handle = tensorflow::make_safe(tensorflow::EagerCast(
-        GetContext(context), handle.get(), handle_dtype,
-        static_cast<TF_DataType>(desired_dtype), self->status));
-    if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Error while casting from DataType ", handle_dtype,
-                          " to ", desired_dtype, ". ", TF_Message(self->status))
-                          .c_str());
-      // Cleanup self->status before returning.
-      TF_SetStatus(self->status, TF_OK, "");
+  if (desired_dtype != tensorflow::DT_INVALID &&
+      static_cast<TF_DataType>(desired_dtype) != handle_dtype) {
+    // Check type compatibility.
+    if (tensorflow::IsCompatible(desired_dtype, handle_dtype)) {
+      handle = tensorflow::make_safe(tensorflow::EagerCast(
+          GetContext(context), handle.get(), handle_dtype,
+          static_cast<TF_DataType>(desired_dtype), self->status));
+      if (TF_GetCode(self->status) != TF_OK) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat(
+                "Error while casting from DataType ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(handle_dtype)),
+                " to ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(desired_dtype)),
+                ". ", TF_Message(self->status))
+                .c_str());
+        // Cleanup self->status before returning.
+        TF_SetStatus(self->status, TF_OK, "");
+        return -1;
+      }
+      handle_dtype = TFE_TensorHandleDataType(handle.get());
+    } else {
+      tensorflow::Safe_PyObjectPtr value_str(PyObject_Str(value));
+      PyErr_SetString(
+          PyExc_TypeError,
+          tensorflow::strings::StrCat(
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(value_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
+              .c_str());
       return -1;
     }
-    handle_dtype = TFE_TensorHandleDataType(handle.get());
   }
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -435,15 +519,16 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 
 // tp_dealloc for EagerTensor.
 void EagerTensor_dealloc(EagerTensor* self) {
+  // Unhook the object from python's GC so that the weakref deleter doesn't
+  // try to re-delete this.
+  PyObject_GC_UnTrack((PyObject*)self);
+
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
-  Py_DECREF(self->keras_mask);
   Py_DECREF(self->tensor_shape);
   // If an attribute dictionary has been created, release it. Note that this
   // is only ever created by CPython's attribute setting methods; we don't
@@ -538,19 +623,6 @@ static int EagerTensor_settensor_handle(EagerTensor* self, PyObject* value,
   return 0;
 }
 
-static PyObject* EagerTensor_keras_mask(EagerTensor* self, void* unused) {
-  Py_INCREF(self->keras_mask);
-  return self->keras_mask;
-}
-
-static int EagerTensor_setkeras_mask(EagerTensor* self, PyObject* value,
-                                     void* unused) {
-  Py_DECREF(self->keras_mask);
-  Py_INCREF(value);
-  self->keras_mask = value;
-  return 0;
-}
-
 static PyObject* EagerTensor_tensor_shape(EagerTensor* self, void* unused) {
   Py_INCREF(self->tensor_shape);
   return self->tensor_shape;
@@ -563,6 +635,7 @@ static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
   self->tensor_shape = value;
   return 0;
 }
+
 // Function `_copy_to_device`.
 static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
@@ -585,19 +658,12 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 // Note that if `self` is not on CPU, we raise an Exception.
 static PyObject* EagerTensor_numpy(EagerTensor* self) {
   auto status = tensorflow::make_safe(TF_NewStatus());
-  const tensorflow::Tensor* t =
-      TFE_TensorHandleUnderlyingTensorInHostMemory(self->handle, status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
-    PyErr_SetString(PyExc_RuntimeError, TF_Message(status.get()));
-    return nullptr;
-  }
-  PyObject* ret = nullptr;
-  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
-  if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
-    Py_XDECREF(ret);
+  auto* py_array = TFE_TensorHandleToNumpy(self->handle, status.get());
+  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_ValueError)) {
+    Py_XDECREF(py_array);
     return nullptr;
   } else {
-    return ret;
+    return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
   }
 }
 
@@ -616,16 +682,31 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `backing_device`.
+static PyObject* EagerTensor_backing_device(EagerTensor* self) {
+  const char* device =
+      TFE_TensorHandleBackingDeviceName(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+#if PY_MAJOR_VERSION >= 3
+  return PyUnicode_FromString(device);
+#else
+  return PyBytes_FromString(device);
+#endif
+}
+
 static PyGetSetDef EagerTensor_getseters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("_id"), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
      const_cast<char*>("device"), nullptr},
+    {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
+     nullptr, const_cast<char*>("backing_device"), nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
      (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
-     nullptr},
-    {const_cast<char*>("_keras_mask"), (getter)EagerTensor_keras_mask,
-     (setter)EagerTensor_setkeras_mask, const_cast<char*>("_keras_mask"),
      nullptr},
     {const_cast<char*>("_tensor_shape"), (getter)EagerTensor_tensor_shape,
      (setter)EagerTensor_settensor_shape, const_cast<char*>("_tensor_shape"),
@@ -657,6 +738,37 @@ static PyMethodDef EagerTensor_methods[] = {
     {nullptr, nullptr},
 };
 
+static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
+                                 int flags) {
+  if ((flags & PyBUF_WRITABLE) == PyBUF_WRITABLE) {
+    PyErr_SetString(PyExc_BufferError, "EagerTensor is not writable.");
+    return -1;
+  }
+
+  auto status = tensorflow::make_safe(TF_NewStatus());
+  // TensorHandleToNumpy is zero-copy for everything but DT_RESOURCE and
+  // DT_STRING so the following is only slightly slower than a NumPy-free
+  // implementation.
+  auto py_array = tensorflow::make_safe(
+      TFE_TensorHandleToNumpy(self->handle, status.get()));
+  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_BufferError)) {
+    return -1;
+  }
+  if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
+    return -1;
+  }
+  view->readonly = 1;
+  return 0;
+}
+
+static PyBufferProcs EagerTensor_as_buffer = {
+#if PY_MAJOR_VERSION < 3
+    nullptr, nullptr, nullptr, nullptr,
+#endif
+    (getbufferproc)EagerTensor_getbuffer,
+    // Never called because getbufferproc delegates to NumPy.
+    (releasebufferproc) nullptr};
+
 // Note that here we are trying to dynamically create a new class as a subclass
 // of a "HEAPTYPE" class that is itself created in python code and passed in at
 // runtime. This is fairly atypical and undocumented.
@@ -684,6 +796,9 @@ static PyType_Slot EagerTensor_Type_slots[] = {
     {0, nullptr},
 };
 #else
+
+#define EAGER_TENSOR_TPFLAGS (Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_NEWBUFFER)
+
 // TODO(agarwal): support active_trace.
 static PyTypeObject _EagerTensorType = {
     // clang-format off
@@ -706,8 +821,8 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_str */
     nullptr,                            /* tp_getattro */
     nullptr,                            /* tp_setattro */
-    nullptr,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    &EagerTensor_as_buffer,             /* tp_as_buffer */
+    EAGER_TENSOR_TPFLAGS,               /* tp_flags */
     nullptr,                            /* tp_doc */
     nullptr,                            /* tp_traverse */
     nullptr,                            /* tp_clear */
@@ -750,8 +865,6 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->id = get_uid();
     Py_INCREF(Py_None);
     t->handle_data = Py_None;
-    Py_INCREF(Py_None);
-    t->keras_mask = Py_None;
     Py_INCREF(Py_None);
     t->tensor_shape = Py_None;
     t->handle = handle;
@@ -868,6 +981,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     return nullptr;
   }
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
+  EagerTensorType->tp_as_buffer = &EagerTensor_as_buffer;
 #else
   _EagerTensorType.tp_base = base_class_type;
 

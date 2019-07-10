@@ -42,7 +42,7 @@ namespace interpreter {
 // buffer allocation. Refer to interpreter/README.md for more.
 class InterpreterExecutable : public Executable {
  public:
-  InterpreterExecutable(std::unique_ptr<const HloModule> hlo_module,
+  InterpreterExecutable(std::unique_ptr<HloModule> hlo_module,
                         std::unique_ptr<HloEvaluator> evaluator);
   ~InterpreterExecutable() override;
 

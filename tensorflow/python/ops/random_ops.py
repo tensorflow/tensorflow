@@ -19,31 +19,27 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_random_ops import *
-from tensorflow.python.util.tf_export import tf_export
-
 # pylint: enable=wildcard-import
 
-
-def _ShapeTensor(shape):
-  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
-  if isinstance(shape, (tuple, list)) and not shape:
-    dtype = dtypes.int32
-  else:
-    dtype = None
-  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("random_normal")
+@tf_export("random.normal", v1=["random.normal", "random_normal"])
+@deprecation.deprecated_endpoints("random_normal")
 def random_normal(shape,
                   mean=0.0,
                   stddev=1.0,
@@ -61,7 +57,7 @@ def random_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -69,7 +65,7 @@ def random_normal(shape,
     A tensor of the specified shape filled with random normal values.
   """
   with ops.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -110,7 +106,7 @@ def parameterized_truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -119,7 +115,7 @@ def parameterized_truncated_normal(shape,
   """
   with ops.name_scope(name, "parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, dtype=dtype, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, dtype=dtype, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
@@ -136,7 +132,9 @@ def parameterized_truncated_normal(shape,
     return rnd
 
 
-@tf_export("truncated_normal")
+@tf_export("random.truncated_normal",
+           v1=["random.truncated_normal", "truncated_normal"])
+@deprecation.deprecated_endpoints("truncated_normal")
 def truncated_normal(shape,
                      mean=0.0,
                      stddev=1.0,
@@ -158,7 +156,7 @@ def truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -166,7 +164,7 @@ def truncated_normal(shape,
     A tensor of the specified shape filled with random truncated normal values.
   """
   with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
-    shape_tensor = _ShapeTensor(shape)
+    shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -181,7 +179,8 @@ ops.NotDifferentiable("ParameterizedTruncatedNormal")
 ops.NotDifferentiable("TruncatedNormal")
 
 
-@tf_export("random_uniform")
+@tf_export("random.uniform", v1=["random.uniform", "random_uniform"])
+@deprecation.deprecated_endpoints("random_uniform")
 def random_uniform(shape,
                    minval=0,
                    maxval=None,
@@ -212,7 +211,7 @@ def random_uniform(shape,
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See `tf.set_random_seed`
+      See `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -231,7 +230,7 @@ def random_uniform(shape,
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
-    shape = _ShapeTensor(shape)
+    shape = tensor_util.shape_tensor(shape)
     minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
@@ -246,7 +245,8 @@ def random_uniform(shape,
 ops.NotDifferentiable("RandomUniform")
 
 
-@tf_export("random_shuffle")
+@tf_export("random.shuffle", v1=["random.shuffle", "random_shuffle"])
+@deprecation.deprecated_endpoints("random_shuffle")
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
 
@@ -264,7 +264,7 @@ def random_shuffle(value, seed=None, name=None):
     value: A Tensor to be shuffled.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -277,7 +277,8 @@ def random_shuffle(value, seed=None, name=None):
       value, seed=seed1, seed2=seed2, name=name)
 
 
-@tf_export("random_crop")
+@tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
+@deprecation.deprecated_endpoints("random_crop")
 def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
 
@@ -292,7 +293,7 @@ def random_crop(value, size, seed=None, name=None):
     value: Input tensor to crop.
     size: 1-D tensor with size the rank of `value`.
     seed: Python integer. Used to create a random seed. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: A name for this operation (optional).
 
@@ -320,7 +321,9 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
-@tf_export("multinomial")
+@tf_export(v1=["random.multinomial", "multinomial"])
+@deprecation.deprecated(
+    date=None, instructions="Use `tf.random.categorical` instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 
@@ -329,7 +332,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.multinomial(tf.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
   ```
 
   Args:
@@ -337,9 +340,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
       `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See
-      `tf.set_random_seed`
-      for behavior.
+      See `tf.compat.v1.set_random_seed` for behavior.
     name: Optional name for the operation.
     output_dtype: integer type to use for the output. Defaults to int64.
 
@@ -347,16 +348,50 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "multinomial", [logits]):
-    logits = ops.convert_to_tensor(logits, name="logits")
-    seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(
-        logits, num_samples, seed=seed1, seed2=seed2, output_dtype=output_dtype)
+    return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
+
+
+@tf_export("random.categorical")
+def categorical(logits, num_samples, dtype=None, seed=None, name=None):
+  """Draws samples from a categorical distribution.
+
+  Example:
+
+  ```python
+  # samples has shape [1, 5], where each value is either 0 or 1 with equal
+  # probability.
+  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  ```
+
+  Args:
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    num_samples: 0-D.  Number of independent samples to draw for each row slice.
+    dtype: integer type to use for the output. Defaults to int64.
+    seed: A Python integer. Used to create a random seed for the distribution.
+      See `tf.compat.v1.set_random_seed` for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    The drawn samples of shape `[batch_size, num_samples]`.
+  """
+  with ops.name_scope(name, "categorical", [logits]):
+    return multinomial_categorical_impl(logits, num_samples, dtype, seed)
+
+
+def multinomial_categorical_impl(logits, num_samples, dtype, seed):
+  """Implementation for random.categorical (v1) and random.categorical (v2)."""
+  logits = ops.convert_to_tensor(logits, name="logits")
+  seed1, seed2 = random_seed.get_seed(seed)
+  return gen_random_ops.multinomial(
+      logits, num_samples, seed=seed1, seed2=seed2, output_dtype=dtype)
 
 
 ops.NotDifferentiable("Multinomial")
 
 
-@tf_export("random_gamma")
+@tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
+@deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
                  alpha,
                  beta=None,
@@ -384,17 +419,17 @@ def random_gamma(shape,
   Example:
 
   ```python
-  samples = tf.random_gamma([10], [0.5, 1.5])
+  samples = tf.random.gamma([10], [0.5, 1.5])
   # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
   # the samples drawn from each distribution
 
-  samples = tf.random_gamma([7, 5], [0.5, 1.5])
+  samples = tf.random.gamma([7, 5], [0.5, 1.5])
   # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
   # represents the 7x5 samples drawn from each of the two distributions
 
   alpha = tf.constant([[1.],[3.],[5.]])
   beta = tf.constant([[3., 4.]])
-  samples = tf.random_gamma([30], alpha=alpha, beta=beta)
+  samples = tf.random.gamma([30], alpha=alpha, beta=beta)
   # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
   loss = tf.reduce_mean(tf.square(samples))
@@ -417,7 +452,7 @@ def random_gamma(shape,
       `float64`.
     seed: A Python integer. Used to create a random seed for the distributions.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: Optional name for the operation.
 
@@ -439,7 +474,8 @@ def random_gamma(shape,
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 
-@tf_export("random_poisson")
+@tf_export(v1=["random.poisson", "random_poisson"])
+@deprecation.deprecated_endpoints("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
 
@@ -448,11 +484,11 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   Example:
 
   ```python
-  samples = tf.random_poisson([0.5, 1.5], [10])
+  samples = tf.random.poisson([0.5, 1.5], [10])
   # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
   # the samples drawn from each distribution
 
-  samples = tf.random_poisson([12.2, 3.3], [7, 5])
+  samples = tf.random.poisson([12.2, 3.3], [7, 5])
   # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
   # represents the 7x5 samples drawn from each of the two distributions
   ```
@@ -467,7 +503,46 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
       `int64`.
     seed: A Python integer. Used to create a random seed for the distributions.
       See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
+      for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    samples: a `Tensor` of shape `tf.concat([shape, tf.shape(lam)], axis=0)`
+      with values of type `dtype`.
+  """
+  return random_poisson_v2(shape, lam, dtype, seed, name)
+
+
+@tf_export("random.poisson", v1=[])
+def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
+  """Draws `shape` samples from each of the given Poisson distribution(s).
+
+  `lam` is the rate parameter describing the distribution(s).
+
+  Example:
+
+  ```python
+  samples = tf.random.poisson([10], [0.5, 1.5])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
+
+  samples = tf.random.poisson([7, 5], [12.2, 3.3])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+  ```
+
+  Args:
+    shape: A 1-D integer Tensor or Python array. The shape of the output samples
+      to be drawn per "rate"-parameterized distribution.
+    lam: A Tensor or Python value or N-D array of type `dtype`.
+      `lam` provides the rate parameter(s) describing the poisson
+      distribution(s) to sample.
+    dtype: The type of the output: `float16`, `float32`, `float64`, `int32` or
+      `int64`.
+    seed: A Python integer. Used to create a random seed for the distributions.
+      See
+      `tf.compat.v1.set_random_seed`
       for behavior.
     name: Optional name for the operation.
 

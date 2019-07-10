@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -46,7 +47,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
-@tf_export("distributions.Beta")
+@tf_export(v1=["distributions.Beta"])
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -150,6 +151,14 @@ class Beta(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration1=None,
                concentration0=None,
@@ -267,8 +276,8 @@ class Beta(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return ((self.concentration1 - 1.) * math_ops.log(x)
-            + (self.concentration0 - 1.) * math_ops.log1p(-x))
+    return (math_ops.xlogy(self.concentration1 - 1., x) +
+            (self.concentration0 - 1.) * math_ops.log1p(-x))
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration1)
@@ -303,7 +312,7 @@ class Beta(distribution.Distribution):
           name="nan")
       is_defined = math_ops.logical_and(self.concentration1 > 1.,
                                         self.concentration0 > 1.)
-      return array_ops.where(is_defined, mode, nan)
+      return array_ops.where_v2(is_defined, mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], dtype=self.dtype),
@@ -341,6 +350,11 @@ class Beta(distribution.Distribution):
 class BetaWithSoftplusConcentration(Beta):
   """Beta with softplus transform of `concentration1` and `concentration0`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Beta(tf.nn.softplus(concentration1), "
+      "tf.nn.softplus(concentration2))` instead.",
+      warn_once=True)
   def __init__(self,
                concentration1,
                concentration0,

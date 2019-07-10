@@ -82,8 +82,8 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
     graph: tf.Graph.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
-    add_trainable_var: Whether to assign tf.trainable_variables() op type
-      '_trainable_variables'.
+    add_trainable_var: Whether to assign tf.compat.v1.trainable_variables() op
+      type '_trainable_variables'.
   Returns:
     logged_ops: dict mapping from op_name to OpLogEntry.
     string_to_id: dict mapping from string to id.
@@ -93,7 +93,7 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
 
   op_missing_shape = 0
   logged_ops = {}
-  string_to_id = dict()
+  string_to_id = {}
   string_to_id['none'] = len(string_to_id)
   # TODO(xpan): Work with Profiler more efficiently.
   for op in graph.get_operations():
@@ -151,8 +151,8 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
     op_log: OpLogProto proto.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
-    add_trainable_var: Whether to assign tf.trainable_variables() op type
-      '_trainable_variables'.
+    add_trainable_var: Whether to assign tf.compat.v1.trainable_variables() op
+      type '_trainable_variables'.
   Returns:
     tmp_op_log: Merged OpLogProto proto.
   """
@@ -169,7 +169,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   if not op_log:
     tmp_op_log.log_entries.extend(logged_ops.values())
   else:
-    all_ops = dict()
+    all_ops = {}
     for entry in op_log.log_entries:
       all_ops[entry.name] = entry
     for op_name, entry in six.iteritems(logged_ops):
@@ -188,12 +188,12 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   return tmp_op_log
 
 
-@tf_export('profiler.write_op_log')
+@tf_export(v1=['profiler.write_op_log'])
 def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
   """Log provided 'op_log', and add additional model information below.
 
-    The API also assigns ops in tf.trainable_variables() an op type called
-    '_trainable_variables'.
+    The API also assigns ops in tf.compat.v1.trainable_variables() an op type
+    called '_trainable_variables'.
     The API also logs 'flops' statistics for ops with op.RegisterStatistics()
     defined. flops calculation depends on Tensor shapes defined in 'graph',
     which might not be complete. 'run_meta', if provided, completes the shape

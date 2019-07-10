@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -57,19 +57,21 @@ class LookupTableOp : public OpKernel {
                                       use_node_name_sharing_));
     }
 
-    auto creator = [ctx, this](lookup::LookupInterface** ret) {
-      lookup::LookupInterface* container = new Container(ctx, this);
-      if (!ctx->status().ok()) {
-        container->Unref();
-        return ctx->status();
-      }
-      if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(
-            container->MemoryUsed() + table_handle_.AllocatedBytes());
-      }
-      *ret = container;
-      return Status::OK();
-    };
+    auto creator =
+        [ctx, this](lookup::LookupInterface** ret)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              lookup::LookupInterface* container = new Container(ctx, this);
+              if (!ctx->status().ok()) {
+                container->Unref();
+                return ctx->status();
+              }
+              if (ctx->track_allocations()) {
+                ctx->record_persistent_memory_allocation(
+                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+              }
+              *ret = container;
+              return Status::OK();
+            };
 
     lookup::LookupInterface* table = nullptr;
     OP_REQUIRES_OK(ctx,

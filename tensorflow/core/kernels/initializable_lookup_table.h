@@ -51,6 +51,12 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
+  // Returns errors::Unimplemented.
+  Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
+    return errors::Unimplemented(
+        "Remove not supported by InitializableLookupTable implementations");
+  }
+
   Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "
@@ -146,6 +152,8 @@ class InitializableLookupTable : public LookupInterface {
   // Performs the batch find operation on the underlying data structure.
   virtual Status DoFind(const Tensor& keys, Tensor* values,
                         const Tensor& default_value) = 0;
+
+  virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
 
   mutex mu_;
   bool is_initialized_ = false;

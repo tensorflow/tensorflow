@@ -16,17 +16,21 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
@@ -155,25 +159,58 @@ class Feature {
         return false;
       }
 
+      constexpr int32 kNumFloatBytes = 4;
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32 packed_length;
         if (!stream.ReadVarint32(&packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
-        while (!stream.ExpectAtEnd()) {
-          uint32 buffer32;
-          if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+        // Store the initial size to know the offset we have to start writing
+        // data from before resizing the output "vector".
+        const size_t initial_size = float_list->size();
+        float_list->resize(initial_size + packed_length / kNumFloatBytes);
+
+        // If the result data type is float and we are on a little endian
+        // machine then we can simply memcpy the data from the proto into the
+        // result vector.
+        if (port::kLittleEndian &&
+            sizeof(typename Result::value_type) == kNumFloatBytes) {
+          // Calculate the length of the buffer available what can be less than
+          // what we requested in resize in case of a LimitedArraySlice.
+          const uint32 bytes_to_copy =
+              std::min(static_cast<uint32>((float_list->size() - initial_size) *
+                                           kNumFloatBytes),
+                       packed_length);
+          if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
+            return false;
+        } else {
+          int64 index = initial_size;
+          while (!stream.ExpectAtEnd()) {
+            uint32 buffer32;
+            if (!stream.ReadLittleEndian32(&buffer32)) return false;
+            if (index < float_list->size()) {
+              float_list->data()[index] = absl::bit_cast<float>(buffer32);
+              ++index;
+            }
+          }
         }
 
         stream.PopLimit(packed_limit);
       } else {  // non-packed
+        const size_t initial_size = float_list->size();
+        // 1 byte for the tag (`1` encoded as Variant32) and kNumFloatBytes for
+        // the value.
+        const int64 num_elements =
+            stream.BytesUntilLimit() / (1 + kNumFloatBytes);
+        float_list->resize(initial_size + num_elements);
+        int64 index = initial_size;
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+          float_list->data()[index] = absl::bit_cast<float>(buffer32);
+          ++index;
         }
       }
     }
@@ -448,8 +485,10 @@ struct SeededHasher {
 template <typename T>
 class LimitedArraySlice {
  public:
+  using value_type = T;
+
   LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), end_(begin + num_elements) {}
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
 
   // May return negative if there were push_back calls after slice was filled.
   int64 EndDistance() const { return end_ - current_; }
@@ -462,8 +501,21 @@ class LimitedArraySlice {
     ++current_;
   }
 
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
  private:
   T* current_;
+  T* begin_;
   T* end_;
 };
 
@@ -912,6 +964,41 @@ void FillAndCopyVarLen(
   }
 }
 
+// Thin vector like interface wrapper around a Tensor. This enable us to
+// directly populate a tensor during parsing instead of having to first create a
+// vactor and then copy the data over.
+template <typename T>
+class TensorVector {
+ public:
+  using value_type = T;
+
+  const Tensor& tensor() {
+    if (!tensor_.has_value()) {
+      resize(0);
+    }
+    return *tensor_;
+  }
+
+  int64 size() const {
+    return tensor_.has_value() ? tensor_->NumElements() : 0;
+  }
+  void resize(int64 new_size) {
+    DCHECK(!tensor_.has_value());
+    tensor_ = Tensor(DataTypeToEnum<T>::v(), TensorShape({new_size}));
+    data_ = tensor_->flat<T>().data();
+  }
+  T* data() { return data_; }
+  const T* data() const { return data_; }
+
+ private:
+  // Use absl::optional to avoid calling the default constructor of Tensor
+  // unnecessarily.
+  absl::optional<Tensor> tensor_;
+
+  // Cached pointer to the raw data inside the tensor.
+  T* data_ = nullptr;
+};
+
 }  // namespace
 
 Status FastParseExample(const Config& config,
@@ -950,6 +1037,7 @@ Status FastParseExample(const Config& config,
                     "around 2^32 entries in your config.";
     hasher.seed++;
     config_index.Clear(config_size);
+    ok = true;
   }
   if (!ok) {
     return errors::Internal(
@@ -1222,6 +1310,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
                     "around 2^32 entries in your config.";
     hasher.seed++;
     config_index.Clear(config_size);
+    ok = true;
   }
   if (!ok) {
     return errors::Internal(
@@ -1364,7 +1453,10 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       }
 
     } else {  // if variable length
-      SparseBuffer out_temp;
+      SmallVector<string> bytes_list;
+      TensorVector<float> float_list;
+      SmallVector<int64> int64_list;
+
       const size_t num_elements_divisor =
           is_dense ? config.dense[d].elements_per_stride : 1;
       size_t num_elements;
@@ -1406,17 +1498,13 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         case DT_INT64: {
           // TODO(mrry): Use the fact that the `int64_list` is packed to read
           // out the length and pre-allocate the output tensor.
-          if (!feature.ParseInt64List(&out_temp.int64_list))
-            return parse_error();
-          num_elements = out_temp.int64_list.size();
+          if (!feature.ParseInt64List(&int64_list)) return parse_error();
+          num_elements = int64_list.size();
           break;
         }
         case DT_FLOAT: {
-          // TODO(mrry): Use the fact that the `float_list` is packed to read
-          // out the length and pre-allocate the output tensor.
-          if (!feature.ParseFloatList(&out_temp.float_list))
-            return parse_error();
-          num_elements = out_temp.float_list.size();
+          if (!feature.ParseFloatList(&float_list)) return parse_error();
+          num_elements = float_list.size();
           break;
         }
         case DT_STRING: {
@@ -1424,10 +1512,9 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           if (!feature.GetNumElementsInBytesList(&actual_num_elements)) {
             return parse_error();
           }
-          out_temp.bytes_list.reserve(actual_num_elements);
-          if (!feature.ParseBytesList(&out_temp.bytes_list))
-            return parse_error();
-          num_elements = out_temp.bytes_list.size();
+          bytes_list.reserve(actual_num_elements);
+          if (!feature.ParseBytesList(&bytes_list)) return parse_error();
+          num_elements = bytes_list.size();
           break;
         }
         default:
@@ -1443,20 +1530,19 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       }
 
       Tensor* out;
+      DataType out_dtype;
+      TensorShape out_shape;
       if (is_dense) {
-        TensorShape values_shape;
-        values_shape.AddDim(num_elements / num_elements_divisor);
+        out_shape.AddDim(num_elements / num_elements_divisor);
         for (int i = 1; i < config.dense[d].shape.dims(); ++i) {
-          values_shape.AddDim(config.dense[d].shape.dim_size(i));
+          out_shape.AddDim(config.dense[d].shape.dim_size(i));
         }
 
         out = &result->dense_values[d];
-        *out = Tensor(config.dense[d].dtype, values_shape);
-
+        out_dtype = config.dense[d].dtype;
       } else {
         Tensor* out_indices = &result->sparse_indices[d];
         Tensor* out_dense_shape = &result->sparse_shapes[d];
-        out = &result->sparse_values[d];
 
         // TODO(mrry): Investigate the possibility of not materializing
         // the indices (and perhaps dense_shape) until they are needed.
@@ -1471,24 +1557,27 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         auto shapes_shape_t = out_dense_shape->vec<int64>();
         shapes_shape_t(0) = num_elements;
 
-        *out = Tensor(config.sparse[d].dtype,
-                      TensorShape({static_cast<int64>(num_elements)}));
+        out = &result->sparse_values[d];
+        out_dtype = config.sparse[d].dtype;
+        out_shape.AddDim(num_elements);
       }
 
       switch (example_dtype) {
         case DT_INT64: {
-          CopyOrMoveBlock(out_temp.int64_list.begin(),
-                          out_temp.int64_list.end(), out->flat<int64>().data());
+          *out = Tensor(out_dtype, out_shape);
+          CopyOrMoveBlock(int64_list.begin(), int64_list.end(),
+                          out->flat<int64>().data());
           break;
         }
         case DT_FLOAT: {
-          CopyOrMoveBlock(out_temp.float_list.begin(),
-                          out_temp.float_list.end(), out->flat<float>().data());
+          if (!out->CopyFrom(float_list.tensor(), out_shape)) {
+            return parse_error();
+          }
           break;
         }
         case DT_STRING: {
-          CopyOrMoveBlock(out_temp.bytes_list.begin(),
-                          out_temp.bytes_list.end(),
+          *out = Tensor(out_dtype, out_shape);
+          CopyOrMoveBlock(bytes_list.begin(), bytes_list.end(),
                           out->flat<string>().data());
           break;
         }
@@ -1600,7 +1689,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }
@@ -1613,7 +1702,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }
@@ -1727,9 +1816,13 @@ Status FastParseSequenceExample(
   DCHECK(context_result != nullptr);
   DCHECK(feature_list_result != nullptr);
   DCHECK(dense_feature_lengths != nullptr);
-  std::map<StringPiece, bool> context_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_context_features =
+      context_config.sparse.size() + context_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> context_is_sparse;
+  context_is_sparse.reserve(num_context_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       context_feature_type_and_lengths;
+  context_feature_type_and_lengths.reserve(num_context_features);
   if (!example_names.empty() && example_names.size() != num_examples) {
     return errors::InvalidArgument(
         "example_names must be empty or have the correct number of elements");
@@ -1757,11 +1850,14 @@ Status FastParseSequenceExample(
                                        " but expected ", c.shape.DebugString());
       }
     }
-    context_is_sparse[c.feature_name] = false;
   }
-  std::map<StringPiece, bool> sequence_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_sequence_features =
+      feature_list_config.sparse.size() + feature_list_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> sequence_is_sparse;
+  sequence_is_sparse.reserve(num_sequence_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       sequence_feature_type_and_lengths;
+  sequence_feature_type_and_lengths.reserve(num_sequence_features);
   for (auto& c : feature_list_config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
@@ -1776,13 +1872,12 @@ Status FastParseSequenceExample(
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
         std::make_pair(c.dtype, 0);
-    sequence_is_sparse[c.feature_name] = false;
   }
 
-  std::vector<std::map<StringPiece, StringPiece>> all_context_features(
-      num_examples);
-  std::vector<std::map<StringPiece, StringPiece>> all_sequence_features(
-      num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_context_features(num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_sequence_features(num_examples);
   const string kUnknown = "<unknown>";
   for (int d = 0; d < num_examples; d++) {
     const string& example = serialized[d];
@@ -1798,9 +1893,9 @@ Status FastParseSequenceExample(
 
     // Extract pointers to all features within this serialized example.
     while (!stream.ExpectAtEnd()) {
-      std::map<StringPiece, StringPiece>* features = nullptr;
-      const std::map<StringPiece, std::pair<DataType, size_t>>* config =
-          nullptr;
+      absl::flat_hash_map<StringPiece, StringPiece>* features = nullptr;
+      const absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>*
+          config = nullptr;
       if (stream.ExpectTag(kDelimitedTag(1))) {
         // Context
         features = context_features;
@@ -1955,6 +2050,10 @@ Status FastParseSequenceExample(
   feature_list_result->dense_values.resize(feature_list_config.dense.size());
   dense_feature_lengths->resize(feature_list_config.dense.size());
 
+  // NOTE(mrry): Cache the CPU allocator here and use it in Tensor construction,
+  // to avoid lock contention in `tensorflow::cpu_allocator()`.
+  Allocator* allocator = tensorflow::cpu_allocator();
+
   int t = 0;
   for (const auto& c : context_config.dense) {
     TensorShape dense_shape, example_shape;
@@ -1971,7 +2070,7 @@ Status FastParseSequenceExample(
     for (const int dim : c.shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
-    context_result->dense_values[t] = Tensor(dtype, dense_shape);
+    context_result->dense_values[t] = Tensor(allocator, dtype, dense_shape);
 
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
@@ -2079,9 +2178,11 @@ Status FastParseSequenceExample(
     indices_shape.AddDim(expected_num_elements);
     indices_shape.AddDim(2);
     values_shape.AddDim(expected_num_elements);
-    context_result->sparse_indices[t] = Tensor(DT_INT64, indices_shape);
-    context_result->sparse_values[t] = Tensor(dtype, values_shape);
-    context_result->sparse_shapes[t] = Tensor(DT_INT64, TensorShape({2}));
+    context_result->sparse_indices[t] =
+        Tensor(allocator, DT_INT64, indices_shape);
+    context_result->sparse_values[t] = Tensor(allocator, dtype, values_shape);
+    context_result->sparse_shapes[t] =
+        Tensor(allocator, DT_INT64, TensorShape({2}));
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
     string* out_bytes = nullptr;
@@ -2169,8 +2270,10 @@ Status FastParseSequenceExample(
     for (const int dim : feature_list_config.dense[t].shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
-    feature_list_result->dense_values[t] = Tensor(dtype, dense_shape);
-    (*dense_feature_lengths)[t] = Tensor(DT_INT64, dense_length_shape);
+    feature_list_result->dense_values[t] =
+        Tensor(allocator, dtype, dense_shape);
+    (*dense_feature_lengths)[t] =
+        Tensor(allocator, DT_INT64, dense_length_shape);
     int64* out_lengths = (*dense_feature_lengths)[t].flat<int64>().data();
 
     string* out_bytes = nullptr;
@@ -2277,9 +2380,12 @@ Status FastParseSequenceExample(
     indices_shape.AddDim(expected_num_elements);
     indices_shape.AddDim(3);
     values_shape.AddDim(expected_num_elements);
-    feature_list_result->sparse_indices[t] = Tensor(DT_INT64, indices_shape);
-    feature_list_result->sparse_values[t] = Tensor(dtype, values_shape);
-    feature_list_result->sparse_shapes[t] = Tensor(DT_INT64, TensorShape({3}));
+    feature_list_result->sparse_indices[t] =
+        Tensor(allocator, DT_INT64, indices_shape);
+    feature_list_result->sparse_values[t] =
+        Tensor(allocator, dtype, values_shape);
+    feature_list_result->sparse_shapes[t] =
+        Tensor(allocator, DT_INT64, TensorShape({3}));
 
     string* out_bytes = nullptr;
     float* out_float = nullptr;

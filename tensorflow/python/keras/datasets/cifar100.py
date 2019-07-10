@@ -25,10 +25,10 @@ import numpy as np
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.datasets.cifar import load_batch
 from tensorflow.python.keras.utils.data_utils import get_file
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.datasets.cifar100.load_data')
+@keras_export('keras.datasets.cifar100.load_data')
 def load_data(label_mode='fine'):
   """Loads CIFAR100 dataset.
 

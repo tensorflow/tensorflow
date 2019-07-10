@@ -29,7 +29,7 @@ namespace {
 
 // TODO(cais): Switch to safe_strtob when available.
 Status ParseBoolString(const string& bool_str, bool* bool_val) {
-  const string lower_bool_str = str_util::Lowercase(bool_str);
+  const string lower_bool_str = absl::AsciiStrToLower(bool_str);
   if (lower_bool_str == "false" || lower_bool_str == "f" ||
       lower_bool_str == "0") {
     *bool_val = false;
@@ -299,7 +299,7 @@ Status DebugNodeInserter::CreateCopyNode(
 
   auto builder = NodeDefBuilder(copy_node_name, copy_op_name)
                      .Input(src_node_name, src_output, src_dt)
-                     .Attr("debug_ops_spec", std::move(debug_ops_spec));
+                     .Attr("debug_ops_spec", debug_ops_spec);
 
   if (!builder.Finalize(&node_def).ok()) {
     return Status(
@@ -430,7 +430,7 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
     return errors::InvalidArgument(
         unfulfilled_keys.size(),
         " attribute key(s) were not valid for debug node ", debug_node->name(),
-        ": ", str_util::Join(unfulfilled_keys, ", "));
+        ": ", absl::StrJoin(unfulfilled_keys, ", "));
   }
 }
 

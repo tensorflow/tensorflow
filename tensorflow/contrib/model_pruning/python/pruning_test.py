@@ -45,7 +45,7 @@ class PruningHParamsTest(test.TestCase):
     # Add global step variable to the graph
     self.global_step = training_util.get_or_create_global_step()
     # Add sparsity
-    self.sparsity = variables.Variable(0.5, name="sparsity")
+    self.sparsity = variables.VariableV1(0.5, name="sparsity")
     # Parse hparams
     self.pruning_hparams = pruning.get_pruning_hparams().parse(
         self.TEST_HPARAMS)
@@ -88,7 +88,7 @@ class PruningTest(test.TestCase):
     width = 10
     height = 20
     with self.cached_session():
-      weights = variables.Variable(
+      weights = variables.VariableV1(
           random_ops.random_normal([width, height], stddev=1), name="weights")
       masked_weights = pruning.apply_mask(weights,
                                           variable_scope.get_variable_scope())
@@ -99,10 +99,10 @@ class PruningTest(test.TestCase):
 
   def testUpdateSingleMask(self):
     with self.cached_session() as session:
-      weights = variables.Variable(
+      weights = variables.VariableV1(
           math_ops.linspace(1.0, 100.0, 100), name="weights")
       masked_weights = pruning.apply_mask(weights)
-      sparsity = variables.Variable(0.5, name="sparsity")
+      sparsity = variables.VariableV1(0.95, name="sparsity")
       p = pruning.Pruning(sparsity=sparsity)
       p._spec.threshold_decay = 0.0
       mask_update_op = p.mask_update_op()
@@ -111,12 +111,12 @@ class PruningTest(test.TestCase):
       self.assertAllEqual(np.count_nonzero(masked_weights_val), 100)
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 5)
 
   def _blockMasking(self, hparams, weights, expected_mask):
 
-    threshold = variables.Variable(0.0, name="threshold")
-    sparsity = variables.Variable(0.5, name="sparsity")
+    threshold = variables.VariableV1(0.0, name="threshold")
+    sparsity = variables.VariableV1(0.5, name="sparsity")
     test_spec = ",".join(hparams)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
 
@@ -169,7 +169,7 @@ class PruningTest(test.TestCase):
     partitioner = partitioned_variables.variable_axis_size_partitioner(40)
     with self.cached_session() as session:
       with variable_scope.variable_scope("", partitioner=partitioner):
-        sparsity = variables.Variable(0.5, name="Sparsity")
+        sparsity = variables.VariableV1(0.5, name="Sparsity")
         weights = variable_scope.get_variable(
             "weights", initializer=math_ops.linspace(1.0, 100.0, 100))
         masked_weights = pruning.apply_mask(
@@ -190,10 +190,10 @@ class PruningTest(test.TestCase):
     ]
     test_spec = ",".join(param_list)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
-    weights = variables.Variable(
+    weights = variables.VariableV1(
         math_ops.linspace(1.0, 100.0, 100), name="weights")
     masked_weights = pruning.apply_mask(weights)
-    sparsity = variables.Variable(0.00, name="sparsity")
+    sparsity = variables.VariableV1(0.00, name="sparsity")
     # Set up pruning
     p = pruning.Pruning(pruning_hparams, sparsity=sparsity)
     p._spec.threshold_decay = 0.0
@@ -215,20 +215,25 @@ class PruningTest(test.TestCase):
   def testWeightSpecificSparsity(self):
     param_list = [
         "begin_pruning_step=1", "pruning_frequency=1", "end_pruning_step=100",
-        "target_sparsity=0.5", "weight_sparsity_map=[layer2/weights:0.75]",
+        "target_sparsity=0.5",
+        "weight_sparsity_map=[layer1:0.6,layer2/weights:0.75,.*kernel:0.6]",
         "threshold_decay=0.0"
     ]
     test_spec = ",".join(param_list)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
 
     with variable_scope.variable_scope("layer1"):
-      w1 = variables.Variable(
+      w1 = variables.VariableV1(
           math_ops.linspace(1.0, 100.0, 100), name="weights")
       _ = pruning.apply_mask(w1)
     with variable_scope.variable_scope("layer2"):
-      w2 = variables.Variable(
+      w2 = variables.VariableV1(
           math_ops.linspace(1.0, 100.0, 100), name="weights")
       _ = pruning.apply_mask(w2)
+    with variable_scope.variable_scope("layer3"):
+      w3 = variables.VariableV1(
+          math_ops.linspace(1.0, 100.0, 100), name="kernel")
+      _ = pruning.apply_mask(w3)
 
     p = pruning.Pruning(pruning_hparams)
     mask_update_op = p.conditional_mask_update_op()
@@ -240,8 +245,8 @@ class PruningTest(test.TestCase):
         session.run(mask_update_op)
         session.run(increment_global_step)
 
-      self.assertAllEqual(
-          session.run(pruning.get_weight_sparsity()), [0.5, 0.75])
+      self.assertAllClose(
+          session.run(pruning.get_weight_sparsity()), [0.6, 0.75, 0.6])
 
 
 if __name__ == "__main__":

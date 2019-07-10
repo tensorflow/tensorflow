@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.StudentT")
+@tf_export(v1=["distributions.StudentT"])
 class StudentT(distribution.Distribution):
   """Student's t-distribution.
 
@@ -140,6 +141,14 @@ class StudentT(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                loc,
@@ -272,7 +281,7 @@ class StudentT(distribution.Distribution):
     y = (x - self.loc) / math_ops.abs(self.scale)
     x_t = self.df / (y**2. + self.df)
     neg_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
-    return array_ops.where(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
+    return array_ops.where_v2(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
 
   def _entropy(self):
     v = array_ops.ones(self.batch_shape_tensor(),
@@ -295,12 +304,11 @@ class StudentT(distribution.Distribution):
                                      dtype=self.dtype)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return array_ops.where(
+      return array_ops.where_v2(
           math_ops.greater(
               self.df,
               array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
-          mean,
-          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
+          mean, array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies(
           [
@@ -323,22 +331,21 @@ class StudentT(distribution.Distribution):
   def _variance(self):
     # We need to put the tf.where inside the outer tf.where to ensure we never
     # hit a NaN in the gradient.
-    denom = array_ops.where(math_ops.greater(self.df, 2.),
-                            self.df - 2.,
-                            array_ops.ones_like(self.df))
+    denom = array_ops.where_v2(
+        math_ops.greater(self.df, 2.), self.df - 2.,
+        array_ops.ones_like(self.df))
     # Abs(scale) superfluous.
     var = (array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype) *
            math_ops.square(self.scale) * self.df / denom)
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
-    result_where_defined = array_ops.where(
-        self.df > array_ops.fill(self.batch_shape_tensor(), 2.),
-        var,
+    result_where_defined = array_ops.where_v2(
+        self.df > array_ops.fill(self.batch_shape_tensor(), 2.), var,
         array_ops.fill(self.batch_shape_tensor(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return array_ops.where(
+      return array_ops.where_v2(
           math_ops.greater(
               self.df,
               array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
@@ -361,6 +368,11 @@ class StudentT(distribution.Distribution):
 class StudentTWithAbsDfSoftplusScale(StudentT):
   """StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.StudentT(tf.floor(tf.abs(df)), loc, "
+      "tf.nn.softplus(scale)) instead.",
+      warn_once=True)
   def __init__(self,
                df,
                loc,

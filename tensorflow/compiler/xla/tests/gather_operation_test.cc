@@ -38,7 +38,7 @@ class GatherOperationTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseHloString(hlo_text, config));
+                            ParseAndReturnUnverifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
@@ -598,9 +598,31 @@ ENTRY main {
   RunTest(hlo_text, &operand, &start_indices);
 }
 
+XLA_TEST_F(GatherOperationTest, GatherFromScalar) {
+  const string hlo_text = R"(
+HloModule GatherFromScalar
+
+ENTRY main {
+  operand = f32[] parameter(0)
+  indices = s32[0]{0} parameter(1)
+  ROOT gather = f32[] gather(operand, indices),
+      offset_dims={},
+      collapsed_slice_dims={},
+      start_index_map={},
+      index_vector_dim=0,
+      slice_sizes={}
+}
+)";
+  Literal operand = LiteralUtil::CreateR0<float>(1);
+  Literal start_indices = LiteralUtil::CreateR1<int32>({});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
+// Disabled on interpreter since ExectuteAsyncOnStream is not supported.
+XLA_TEST_F(GatherClientLibraryTest,
+           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(Basic))) {
   // We create this HLO, but using the XlaBuilder API.
   //
   // ENTRY main {

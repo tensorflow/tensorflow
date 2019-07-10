@@ -53,7 +53,7 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
          << " ==============================" << std::endl;
 
   InitField(stream, 24) << "[node type]";
-  InitField(stream, 9) << "[start]";
+  InitField(stream, 17) << "[start]";
   InitField(stream, 9) << "[first]";
   InitField(stream, 9) << "[avg ms]";
   InitField(stream, 8) << "[%]";
@@ -77,7 +77,7 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 
   std::stringstream stream;
   InitField(stream, 24) << detail.type;
-  InitField(stream, 9) << start_ms;
+  InitField(stream, 17) << start_ms;
   InitField(stream, 9) << first_time_ms;
   InitField(stream, 9) << avg_time_ms;
   InitField(stream, 7) << percentage << "%";

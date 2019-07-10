@@ -19,37 +19,75 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.feature_column.feature_column import _LazyBuilder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
 
 
-class SequenceInputLayerTest(test.TestCase):
+class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
 
-  def test_embedding_column(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args_a': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2, 0, 1),
+           'dense_shape': (2, 2)},
+       'sparse_input_args_b': {
+           # example 0, ids [1]
+           # example 1, ids [2, 0]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (1, 2, 0),
+           'dense_shape': (2, 2)},
+       'expected_input_layer': [
+           # example 0, ids_a [2], ids_b [1]
+           [[5., 6., 14., 15., 16.], [0., 0., 0., 0., 0.]],
+           # example 1, ids_a [0, 1], ids_b [2, 0]
+           [[1., 2., 17., 18., 19.], [3., 4., 11., 12., 13.]],],
+       'expected_sequence_length': [1, 2]},
+      {'testcase_name': '3D',
+       'sparse_input_args_a': {
+           # feature 0, ids [[2], [0, 1]]
+           # feature 1, ids [[0, 0], [1]]
+           'indices': (
+               (0, 0, 0), (0, 1, 0), (0, 1, 1),
+               (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2, 0, 1, 0, 0, 1),
+           'dense_shape': (2, 2, 2)},
+       'sparse_input_args_b': {
+           # feature 0, ids [[1, 1], [1]]
+           # feature 1, ids [[2], [0]]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
+           'values': (1, 1, 1, 2, 0),
+           'dense_shape': (2, 2, 2)},
+       'expected_input_layer': [
+           # feature 0, [a: 2, -, b: 1, 1], [a: 0, 1, b: 1, -]
+           [[5., 6., 14., 15., 16.], [2., 3., 14., 15., 16.]],
+           # feature 1, [a: 0, 0, b: 2, -], [a: 1, -, b: 0, -]
+           [[1., 2., 17., 18., 19.], [3., 4., 11., 12., 13.]]],
+       'expected_sequence_length': [2, 2]},
+      )
+  def test_embedding_column(
+      self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
+      expected_sequence_length):
+
+    sparse_input_a = sparse_tensor.SparseTensorValue(**sparse_input_args_a)
+    sparse_input_b = sparse_tensor.SparseTensorValue(**sparse_input_args_b)
     vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [1]
-        # example 1, ids [2, 0]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, 2, 0),
-        dense_shape=(2, 2))
-
     embedding_dimension_a = 2
     embedding_values_a = (
         (1., 2.),  # id 0
@@ -70,23 +108,17 @@ class SequenceInputLayerTest(test.TestCase):
         return embedding_values
       return _initializer
 
-    expected_input_layer = [
-        # example 0, ids_a [2], ids_b [1]
-        [[5., 6., 14., 15., 16.], [0., 0., 0., 0., 0.]],
-        # example 1, ids_a [0, 1], ids_b [2, 0]
-        [[1., 2., 17., 18., 19.], [3., 4., 11., 12., 13.]],
-    ]
-    expected_sequence_length = [1, 2]
-
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=embedding_dimension_a,
+    embedding_column_a = fc._embedding_column(
+        categorical_column_a,
+        dimension=embedding_dimension_a,
         initializer=_get_initializer(embedding_dimension_a, embedding_values_a))
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_b = fc.embedding_column(
-        categorical_column_b, dimension=embedding_dimension_b,
+    embedding_column_b = fc._embedding_column(
+        categorical_column_b,
+        dimension=embedding_dimension_b,
         initializer=_get_initializer(embedding_dimension_b, embedding_values_b))
 
     input_layer, sequence_length = sfc.sequence_input_layer(
@@ -119,10 +151,9 @@ class SequenceInputLayerTest(test.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=2)
+    embedding_column_a = fc._embedding_column(categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -177,7 +208,7 @@ class SequenceInputLayerTest(test.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
     # Test that columns are reordered alphabetically.
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_b, categorical_column_a],
         dimension=embedding_dimension,
         initializer=_get_initializer(embedding_dimension, embedding_values))
@@ -215,11 +246,11 @@ class SequenceInputLayerTest(test.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc.categorical_column_with_identity(
+    categorical_column_b = fc._categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     with self.assertRaisesRegexp(
@@ -233,36 +264,63 @@ class SequenceInputLayerTest(test.TestCase):
           },
           feature_columns=shared_embedding_columns)
 
-  def test_indicator_column(self):
-    vocabulary_size_a = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    vocabulary_size_b = 2
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [1]
-        # example 1, ids [1, 0]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, 1, 0),
-        dense_shape=(2, 2))
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args_a': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2, 0, 1),
+           'dense_shape': (2, 2)},
+       'sparse_input_args_b': {
+           # example 0, ids [1]
+           # example 1, ids [1, 0]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (1, 1, 0),
+           'dense_shape': (2, 2)},
+       'expected_input_layer': [
+           # example 0, ids_a [2], ids_b [1]
+           [[0., 0., 1., 0., 1.], [0., 0., 0., 0., 0.]],
+           # example 1, ids_a [0, 1], ids_b [1, 0]
+           [[1., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]]],
+       'expected_sequence_length': [1, 2]},
+      {'testcase_name': '3D',
+       'sparse_input_args_a': {
+           # feature 0, ids [[2], [0, 1]]
+           # feature 1, ids [[0, 0], [1]]
+           'indices': (
+               (0, 0, 0), (0, 1, 0), (0, 1, 1),
+               (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2, 0, 1, 0, 0, 1),
+           'dense_shape': (2, 2, 2)},
+       'sparse_input_args_b': {
+           # feature 0, ids [[1, 1], [1]]
+           # feature 1, ids [[1], [0]]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
+           'values': (1, 1, 1, 1, 0),
+           'dense_shape': (2, 2, 2)},
+       'expected_input_layer': [
+           # feature 0, [a: 2, -, b: 1, 1], [a: 0, 1, b: 1, -]
+           [[0., 0., 1., 0., 2.], [1., 1., 0., 0., 1.]],
+           # feature 1, [a: 0, 0, b: 1, -], [a: 1, -, b: 0, -]
+           [[2., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]]],
+       'expected_sequence_length': [2, 2]},
+      )
+  def test_indicator_column(
+      self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
+      expected_sequence_length):
+    sparse_input_a = sparse_tensor.SparseTensorValue(**sparse_input_args_a)
+    sparse_input_b = sparse_tensor.SparseTensorValue(**sparse_input_args_b)
 
-    expected_input_layer = [
-        # example 0, ids_a [2], ids_b [1]
-        [[0., 0., 1., 0., 1.], [0., 0., 0., 0., 0.]],
-        # example 1, ids_a [0, 1], ids_b [1, 0]
-        [[1., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]],
-    ]
-    expected_sequence_length = [1, 2]
+    vocabulary_size_a = 3
+    vocabulary_size_b = 2
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size_a)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size_b)
-    indicator_column_b = fc.indicator_column(categorical_column_b)
+    indicator_column_b = fc._indicator_column(categorical_column_b)
     input_layer, sequence_length = sfc.sequence_input_layer(
         features={
             'aaa': sparse_input_a,
@@ -286,9 +344,9 @@ class SequenceInputLayerTest(test.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -298,18 +356,34 @@ class SequenceInputLayerTest(test.TestCase):
           features={'aaa': sparse_input},
           feature_columns=[indicator_column_a])
 
-  def test_numeric_column(self):
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[0.], [1]]
-        # example 1, [[10.]]
-        indices=((0, 0), (0, 1), (1, 0)),
-        values=(0., 1., 10.),
-        dense_shape=(2, 2))
-    expected_input_layer = [
-        [[0.], [1.]],
-        [[10.], [0.]],
-    ]
-    expected_sequence_length = [2, 1]
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args': {
+           # example 0, values [0., 1]
+           # example 1, [10.]
+           'indices': ((0, 0), (0, 1), (1, 0)),
+           'values': (0., 1., 10.),
+           'dense_shape': (2, 2)},
+       'expected_input_layer': [
+           [[0.], [1.]],
+           [[10.], [0.]]],
+       'expected_sequence_length': [2, 1]},
+      {'testcase_name': '3D',
+       'sparse_input_args': {
+           # feature 0, ids [[20, 3], [5]]
+           # feature 1, ids [[3], [8]]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
+           'values': (20, 3, 5., 3., 8.),
+           'dense_shape': (2, 2, 2)},
+       'expected_input_layer': [
+           [[20.], [3.], [5.], [0.]],
+           [[3.], [0.], [8.], [0.]]],
+       'expected_sequence_length': [2, 2]},
+      )
+  def test_numeric_column(
+      self, sparse_input_args, expected_input_layer, expected_sequence_length):
+    sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
+
     numeric_column = sfc.sequence_numeric_column('aaa')
 
     input_layer, sequence_length = sfc.sequence_input_layer(
@@ -321,21 +395,40 @@ class SequenceInputLayerTest(test.TestCase):
       self.assertAllEqual(
           expected_sequence_length, sequence_length.eval(session=sess))
 
-  def test_numeric_column_multi_dim(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args': {
+           # example 0, values [0., 1.,  2., 3., 4., 5., 6., 7.]
+           # example 1, [10., 11., 12., 13.]
+           'indices': ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
+                       (0, 7), (1, 0), (1, 1), (1, 2), (1, 3)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 8)},
+       'expected_input_layer': [
+           # The output of numeric_column._get_dense_tensor should be flattened.
+           [[0., 1., 2., 3.], [4., 5., 6., 7.]],
+           [[10., 11., 12., 13.], [0., 0., 0., 0.]]],
+       'expected_sequence_length': [2, 1]},
+      {'testcase_name': '3D',
+       'sparse_input_args': {
+           # example 0, values [[0., 1., 2., 3.]], [[4., 5., 6., 7.]]
+           # example 1, [[10., 11., 12., 13.], []]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3),
+                       (0, 1, 0), (0, 1, 1), (0, 1, 2), (0, 1, 3),
+                       (1, 0, 0), (1, 0, 1), (1, 0, 2), (1, 0, 3)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 2, 4)},
+       'expected_input_layer': [
+           # The output of numeric_column._get_dense_tensor should be flattened.
+           [[0., 1., 2., 3.], [4., 5., 6., 7.]],
+           [[10., 11., 12., 13.], [0., 0., 0., 0.]]],
+       'expected_sequence_length': [2, 1]},
+      )
+  def test_numeric_column_multi_dim(
+      self, sparse_input_args, expected_input_layer, expected_sequence_length):
     """Tests sequence_input_layer for multi-dimensional numeric_column."""
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[[0., 1.],  [2., 3.]], [[4., 5.],  [6., 7.]]]
-        # example 1, [[[10., 11.],  [12., 13.]]]
-        indices=((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7),
-                 (1, 0), (1, 1), (1, 2), (1, 3)),
-        values=(0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
-        dense_shape=(2, 8))
-    # The output of numeric_column._get_dense_tensor should be flattened.
-    expected_input_layer = [
-        [[0., 1., 2., 3.], [4., 5., 6., 7.]],
-        [[10., 11., 12., 13.], [0., 0., 0., 0.]],
-    ]
-    expected_sequence_length = [2, 1]
+    sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
+
     numeric_column = sfc.sequence_numeric_column('aaa', shape=(2, 2))
 
     input_layer, sequence_length = sfc.sequence_input_layer(
@@ -377,6 +470,138 @@ class SequenceInputLayerTest(test.TestCase):
           r'\[y \(sequence_input_layer/bbb/sequence_length:0\) = \] \[1 1\]'):
         sess.run(sequence_length)
 
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args': {
+           # example 0, values [[[0., 1.],  [2., 3.]], [[4., 5.],  [6., 7.]]]
+           # example 1, [[[10., 11.],  [12., 13.]]]
+           'indices': ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
+                       (0, 7), (1, 0), (1, 1), (1, 2), (1, 3)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 8)},
+       'expected_shape': [2, 2, 4]},
+      {'testcase_name': '3D',
+       'sparse_input_args': {
+           # example 0, values [[0., 1., 2., 3.]], [[4., 5., 6., 7.]]
+           # example 1, [[10., 11., 12., 13.], []]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3),
+                       (0, 1, 0), (0, 1, 1), (0, 1, 2), (0, 1, 2),
+                       (1, 0, 0), (1, 0, 1), (1, 0, 2), (1, 0, 3)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 2, 4)},
+       'expected_shape': [2, 2, 4]},
+      )
+  def test_static_shape_from_tensors_numeric(
+      self, sparse_input_args, expected_shape):
+    """Tests that we return a known static shape when we have one."""
+    sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
+    numeric_column = sfc.sequence_numeric_column('aaa', shape=(2, 2))
+
+    input_layer, _ = sfc.sequence_input_layer(
+        features={'aaa': sparse_input},
+        feature_columns=[numeric_column])
+    shape = input_layer.get_shape()
+    self.assertEqual(shape, expected_shape)
+
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           # example 2, ids []
+           # example 3, ids [1]
+           'indices': ((0, 0), (1, 0), (1, 1), (3, 0)),
+           'values': (2, 0, 1, 1),
+           'dense_shape': (4, 2)},
+       'expected_shape': [4, 2, 3]},
+      {'testcase_name': '3D',
+       'sparse_input_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           # example 2, ids []
+           # example 3, ids [[1], [0, 2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0),
+                       (3, 0, 0), (3, 1, 0), (3, 1, 1)),
+           'values': (2, 0, 1, 2, 1, 0, 2),
+           'dense_shape': (4, 2, 2)},
+       'expected_shape': [4, 2, 3]}
+      )
+  def test_static_shape_from_tensors_indicator(
+      self, sparse_input_args, expected_shape):
+    """Tests that we return a known static shape when we have one."""
+    sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
+    categorical_column = sfc.sequence_categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    indicator_column = fc._indicator_column(categorical_column)
+
+    input_layer, _ = sfc.sequence_input_layer(
+        features={'aaa': sparse_input}, feature_columns=[indicator_column])
+    shape = input_layer.get_shape()
+    self.assertEqual(shape, expected_shape)
+
+
+class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
+  """Tests the utility fn concatenate_context_input."""
+
+  def test_concatenate_context_input(self):
+    seq_input = ops.convert_to_tensor(np.arange(12).reshape(2, 3, 2))
+    context_input = ops.convert_to_tensor(np.arange(10).reshape(2, 5))
+    seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
+    context_input = math_ops.cast(context_input, dtype=dtypes.float32)
+    input_layer = sfc.concatenate_context_input(context_input, seq_input)
+
+    expected = np.array([
+        [[0, 1, 0, 1, 2, 3, 4], [2, 3, 0, 1, 2, 3, 4], [4, 5, 0, 1, 2, 3, 4]],
+        [[6, 7, 5, 6, 7, 8, 9], [8, 9, 5, 6, 7, 8, 9], [10, 11, 5, 6, 7, 8, 9]]
+    ], dtype=np.float32)
+    with monitored_session.MonitoredSession() as sess:
+      output = sess.run(input_layer)
+      self.assertAllEqual(expected, output)
+
+  @parameterized.named_parameters(
+      {'testcase_name': 'rank_lt_3',
+       'seq_input_arg': np.arange(100).reshape(10, 10)},
+      {'testcase_name': 'rank_gt_3',
+       'seq_input_arg': np.arange(100).reshape(5, 5, 2, 2)}
+      )
+  def test_sequence_input_throws_error(self, seq_input_arg):
+    seq_input = ops.convert_to_tensor(seq_input_arg)
+    context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
+    seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
+    context_input = math_ops.cast(context_input, dtype=dtypes.float32)
+    with self.assertRaisesRegexp(ValueError, 'sequence_input must have rank 3'):
+      sfc.concatenate_context_input(context_input, seq_input)
+
+  @parameterized.named_parameters(
+      {'testcase_name': 'rank_lt_2',
+       'context_input_arg': np.arange(100)},
+      {'testcase_name': 'rank_gt_2',
+       'context_input_arg': np.arange(100).reshape(5, 5, 4)}
+      )
+  def test_context_input_throws_error(self, context_input_arg):
+    context_input = ops.convert_to_tensor(context_input_arg)
+    seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
+    seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
+    context_input = math_ops.cast(context_input, dtype=dtypes.float32)
+    with self.assertRaisesRegexp(ValueError, 'context_input must have rank 2'):
+      sfc.concatenate_context_input(context_input, seq_input)
+
+  def test_integer_seq_input_throws_error(self):
+    seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
+    context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
+    context_input = math_ops.cast(context_input, dtype=dtypes.float32)
+    with self.assertRaisesRegexp(
+        TypeError, 'sequence_input must have dtype float32'):
+      sfc.concatenate_context_input(context_input, seq_input)
+
+  def test_integer_context_input_throws_error(self):
+    seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
+    context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
+    seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
+    with self.assertRaisesRegexp(
+        TypeError, 'context_input must have dtype float32'):
+      sfc.concatenate_context_input(context_input, seq_input)
+
 
 class InputLayerTest(test.TestCase):
   """Tests input_layer with sequence feature columns."""
@@ -393,8 +618,7 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=2)
+    embedding_column_a = fc._embedding_column(categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -416,7 +640,7 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -443,75 +667,83 @@ def _assert_sparse_tensor_indices_shape(test_case, expected, actual):
   test_case.assertAllEqual(expected.dense_shape, actual.dense_shape)
 
 
-class SequenceCategoricalColumnWithIdentityTest(test.TestCase):
+class SequenceCategoricalColumnWithIdentityTest(
+    test.TestCase, parameterized.TestCase):
 
-  def test_get_sparse_tensors(self):
-    column = sfc.sequence_categorical_column_with_identity(
-        'aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, 2, 0),
-        dense_shape=(2, 2))
-    expected_sparse_ids = sparse_tensor.SparseTensorValue(
-        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
-        values=np.array((1, 2, 0), dtype=np.int64),
-        dense_shape=(2, 2, 1))
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (1, 2, 0),
+           'dense_shape': (2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+           'values': np.array((1, 2, 0), dtype=np.int64),
+           'dense_shape': (2, 2, 1)}},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': (6, 7, 8),
+           'dense_shape': (2, 2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': (6, 7, 8),
+           'dense_shape': (2, 2, 2)}}
+      )
+  def test_get_sparse_tensors(self, inputs_args, expected_args):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
+    expected = sparse_tensor.SparseTensorValue(**expected_args)
+    column = sfc.sequence_categorical_column_with_identity('aaa', num_buckets=9)
 
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
       _assert_sparse_tensor_value(
-          self,
-          expected_sparse_ids,
-          id_weight_pair.id_tensor.eval(session=sess))
-
-  def test_get_sparse_tensors_inputs3d(self):
-    """Tests _get_sparse_tensors when the input is already 3D Tensor."""
-    column = sfc.sequence_categorical_column_with_identity(
-        'aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
-        values=(1, 2, 0),
-        dense_shape=(2, 2, 1))
-
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        r'Column aaa expected ID tensor of rank 2\.\s*'
-        r'id_tensor shape:\s*\[2 2 1\]'):
-      id_weight_pair = column._get_sparse_tensors(
-          _LazyBuilder({'aaa': inputs}))
-      with monitored_session.MonitoredSession() as sess:
-        id_weight_pair.id_tensor.eval(session=sess)
+          self, expected, id_weight_pair.id_tensor.eval(session=sess))
 
 
-class SequenceCategoricalColumnWithHashBucketTest(test.TestCase):
+class SequenceCategoricalColumnWithHashBucketTest(
+    test.TestCase, parameterized.TestCase):
 
-  def test_get_sparse_tensors(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': ('omar', 'stringer', 'marlo'),
+           'dense_shape': (2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+           # Ignored to avoid hash dependence in test.
+           'values': np.array((0, 0, 0), dtype=np.int64),
+           'dense_shape': (2, 2, 1)}},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': ('omar', 'stringer', 'marlo'),
+           'dense_shape': (2, 2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           # Ignored to avoid hash dependence in test.
+           'values': np.array((0, 0, 0), dtype=np.int64),
+           'dense_shape': (2, 2, 2)}}
+      )
+  def test_get_sparse_tensors(self, inputs_args, expected_args):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
+    expected = sparse_tensor.SparseTensorValue(**expected_args)
     column = sfc.sequence_categorical_column_with_hash_bucket(
         'aaa', hash_bucket_size=10)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('omar', 'stringer', 'marlo'),
-        dense_shape=(2, 2))
-
-    expected_sparse_ids = sparse_tensor.SparseTensorValue(
-        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
-        # Ignored to avoid hash dependence in test.
-        values=np.array((0, 0, 0), dtype=np.int64),
-        dense_shape=(2, 2, 1))
 
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
       _assert_sparse_tensor_indices_shape(
-          self,
-          expected_sparse_ids,
-          id_weight_pair.id_tensor.eval(session=sess))
+          self, expected, id_weight_pair.id_tensor.eval(session=sess))
 
 
-class SequenceCategoricalColumnWithVocabularyFileTest(test.TestCase):
+class SequenceCategoricalColumnWithVocabularyFileTest(
+    test.TestCase, parameterized.TestCase):
 
   def _write_vocab(self, vocab_strings, file_name):
     vocab_file = os.path.join(self.get_temp_dir(), file_name)
@@ -527,68 +759,152 @@ class SequenceCategoricalColumnWithVocabularyFileTest(test.TestCase):
                                                         'wire_vocabulary.txt')
     self._wire_vocabulary_size = 3
 
-  def test_get_sparse_tensors(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': ('marlo', 'skywalker', 'omar'),
+           'dense_shape': (2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+           'values': np.array((2, -1, 0), dtype=np.int64),
+           'dense_shape': (2, 2, 1)}},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': ('omar', 'skywalker', 'marlo'),
+           'dense_shape': (2, 2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': np.array((0, -1, 2), dtype=np.int64),
+           'dense_shape': (2, 2, 2)}}
+      )
+  def test_get_sparse_tensors(self, inputs_args, expected_args):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
+    expected = sparse_tensor.SparseTensorValue(**expected_args)
     column = sfc.sequence_categorical_column_with_vocabulary_file(
         key='aaa',
         vocabulary_file=self._wire_vocabulary_file_name,
         vocabulary_size=self._wire_vocabulary_size)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    expected_sparse_ids = sparse_tensor.SparseTensorValue(
-        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
-        values=np.array((2, -1, 0), dtype=np.int64),
-        dense_shape=(2, 2, 1))
 
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
       _assert_sparse_tensor_value(
-          self,
-          expected_sparse_ids,
-          id_weight_pair.id_tensor.eval(session=sess))
+          self, expected, id_weight_pair.id_tensor.eval(session=sess))
+
+  def test_get_sparse_tensors_dynamic_zero_length(self):
+    """Tests _get_sparse_tensors with a dynamic sequence length."""
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=np.zeros((0, 2)), values=[], dense_shape=(2, 0))
+    expected = sparse_tensor.SparseTensorValue(
+        indices=np.zeros((0, 3)),
+        values=np.array((), dtype=np.int64),
+        dense_shape=(2, 0, 1))
+    column = sfc.sequence_categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size)
+    input_placeholder_shape = list(inputs.dense_shape)
+    # Make second dimension (sequence length) dynamic.
+    input_placeholder_shape[1] = None
+    input_placeholder = array_ops.sparse_placeholder(
+        dtypes.string, shape=input_placeholder_shape)
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({'aaa': input_placeholder}))
+
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with monitored_session.MonitoredSession() as sess:
+      result = id_weight_pair.id_tensor.eval(
+          session=sess, feed_dict={input_placeholder: inputs})
+      _assert_sparse_tensor_value(
+          self, expected, result)
 
 
-class SequenceCategoricalColumnWithVocabularyListTest(test.TestCase):
+class SequenceCategoricalColumnWithVocabularyListTest(
+    test.TestCase, parameterized.TestCase):
 
-  def test_get_sparse_tensors(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': ('marlo', 'skywalker', 'omar'),
+           'dense_shape': (2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+           'values': np.array((2, -1, 0), dtype=np.int64),
+           'dense_shape': (2, 2, 1)}},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': ('omar', 'skywalker', 'marlo'),
+           'dense_shape': (2, 2, 2)},
+       'expected_args': {
+           'indices': ((0, 0, 2), (1, 0, 0), (1, 2, 0)),
+           'values': np.array((0, -1, 2), dtype=np.int64),
+           'dense_shape': (2, 2, 2)}}
+      )
+  def test_get_sparse_tensors(self, inputs_args, expected_args):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
+    expected = sparse_tensor.SparseTensorValue(**expected_args)
     column = sfc.sequence_categorical_column_with_vocabulary_list(
         key='aaa',
         vocabulary_list=('omar', 'stringer', 'marlo'))
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=('marlo', 'skywalker', 'omar'),
-        dense_shape=(2, 2))
-    expected_sparse_ids = sparse_tensor.SparseTensorValue(
-        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
-        values=np.array((2, -1, 0), dtype=np.int64),
-        dense_shape=(2, 2, 1))
 
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
       _assert_sparse_tensor_value(
-          self,
-          expected_sparse_ids,
-          id_weight_pair.id_tensor.eval(session=sess))
+          self, expected, id_weight_pair.id_tensor.eval(session=sess))
 
 
-class SequenceEmbeddingColumnTest(test.TestCase):
+class SequenceEmbeddingColumnTest(
+    test.TestCase, parameterized.TestCase):
 
-  def test_get_sequence_dense_tensor(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           # example 2, ids []
+           # example 3, ids [1]
+           'indices': ((0, 0), (1, 0), (1, 1), (3, 0)),
+           'values': (2, 0, 1, 1),
+           'dense_shape': (4, 2)},
+       'expected': [
+           # example 0, ids [2]
+           [[7., 11.], [0., 0.]],
+           # example 1, ids [0, 1]
+           [[1., 2.], [3., 5.]],
+           # example 2, ids []
+           [[0., 0.], [0., 0.]],
+           # example 3, ids [1]
+           [[3., 5.], [0., 0.]]]},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           # example 2, ids []
+           # example 3, ids [[1], [0, 2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0),
+                       (3, 0, 0), (3, 1, 0), (3, 1, 1)),
+           'values': (2, 0, 1, 2, 1, 0, 2),
+           'dense_shape': (4, 2, 2)},
+       'expected': [
+           # example 0, ids [[2]]
+           [[7., 11.], [0., 0.]],
+           # example 1, ids [[0, 1], [2]]
+           [[2, 3.5], [7., 11.]],
+           # example 2, ids []
+           [[0., 0.], [0., 0.]],
+           # example 3, ids [[1], [0, 2]]
+           [[3., 5.], [4., 6.5]]]}
+      )
+  def test_get_sequence_dense_tensor(self, inputs_args, expected):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
     vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 1), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 2))
-
     embedding_dimension = 2
     embedding_values = (
         (1., 2.),  # id 0
@@ -601,50 +917,51 @@ class SequenceEmbeddingColumnTest(test.TestCase):
       self.assertIsNone(partition_info)
       return embedding_values
 
-    expected_lookups = [
-        # example 0, ids [2]
-        [[7., 11.], [0., 0.]],
-        # example 1, ids [0, 1]
-        [[1., 2.], [3., 5.]],
-        # example 2, ids []
-        [[0., 0.], [0., 0.]],
-        # example 3, ids [1]
-        [[3., 5.], [0., 0.]],
-    ]
-
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=embedding_dimension,
+    embedding_column = fc._embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
         initializer=_initializer)
 
     embedding_lookup, _ = embedding_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(
         ('embedding_weights:0',), tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval(session=sess))
+      self.assertAllEqual(expected, embedding_lookup.eval(session=sess))
 
-  def test_sequence_length(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2, 0, 1),
+           'dense_shape': (2, 2)},
+       'expected_sequence_length': [1, 2]},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2, 0, 1, 2),
+           'dense_shape': (2, 2, 2)},
+       'expected_sequence_length': [1, 2]}
+      )
+  def test_sequence_length(self, inputs_args, expected_sequence_length):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
     vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    expected_sequence_length = [1, 2]
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
+    embedding_column = fc._embedding_column(categorical_column, dimension=2)
 
     _, sequence_length = embedding_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length = sess.run(sequence_length)
@@ -668,8 +985,7 @@ class SequenceEmbeddingColumnTest(test.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
+    embedding_column = fc._embedding_column(categorical_column, dimension=2)
 
     _, sequence_length = embedding_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))
@@ -739,7 +1055,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer)
@@ -785,7 +1101,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     expected_sequence_length_b = [2, 1]
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
@@ -836,7 +1152,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
 
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
@@ -855,56 +1171,89 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
           expected_sequence_length_b, sequence_length_b.eval(session=sess))
 
 
-class SequenceIndicatorColumnTest(test.TestCase):
+class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
-  def test_get_sequence_dense_tensor(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           # example 2, ids []
+           # example 3, ids [1]
+           'indices': ((0, 0), (1, 0), (1, 1), (3, 0)),
+           'values': (2, 0, 1, 1),
+           'dense_shape': (4, 2)},
+       'expected': [
+           # example 0, ids [2]
+           [[0., 0., 1.], [0., 0., 0.]],
+           # example 1, ids [0, 1]
+           [[1., 0., 0.], [0., 1., 0.]],
+           # example 2, ids []
+           [[0., 0., 0.], [0., 0., 0.]],
+           # example 3, ids [1]
+           [[0., 1., 0.], [0., 0., 0.]]]},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           # example 2, ids []
+           # example 3, ids [[1], [2, 2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0),
+                       (3, 0, 0), (3, 1, 0), (3, 1, 1)),
+           'values': (2, 0, 1, 2, 1, 2, 2),
+           'dense_shape': (4, 2, 2)},
+       'expected': [
+           # example 0, ids [[2]]
+           [[0., 0., 1.], [0., 0., 0.]],
+           # example 1, ids [[0, 1], [2]]
+           [[1., 1., 0.], [0., 0., 1.]],
+           # example 2, ids []
+           [[0., 0., 0.], [0., 0., 0.]],
+           # example 3, ids [[1], [2, 2]]
+           [[0., 1., 0.], [0., 0., 2.]]]}
+      )
+  def test_get_sequence_dense_tensor(self, inputs_args, expected):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
     vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 1), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 2))
-
-    expected_lookups = [
-        # example 0, ids [2]
-        [[0., 0., 1.], [0., 0., 0.]],
-        # example 1, ids [0, 1]
-        [[1., 0., 0.], [0., 1., 0.]],
-        # example 2, ids []
-        [[0., 0., 0.], [0., 0., 0.]],
-        # example 3, ids [1]
-        [[0., 1., 0.], [0., 0., 0.]],
-    ]
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     indicator_tensor, _ = indicator_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected_lookups, indicator_tensor.eval(session=sess))
+      self.assertAllEqual(expected, indicator_tensor.eval(session=sess))
 
-  def test_sequence_length(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2, 0, 1),
+           'dense_shape': (2, 2)},
+       'expected_sequence_length': [1, 2]},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2, 0, 1, 2),
+           'dense_shape': (2, 2, 2)},
+       'expected_sequence_length': [1, 2]}
+      )
+  def test_sequence_length(self, inputs_args, expected_sequence_length):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
     vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    expected_sequence_length = [1, 2]
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     _, sequence_length = indicator_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length = sess.run(sequence_length)
@@ -928,7 +1277,7 @@ class SequenceIndicatorColumnTest(test.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     _, sequence_length = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))
@@ -938,7 +1287,7 @@ class SequenceIndicatorColumnTest(test.TestCase):
           expected_sequence_length, sequence_length.eval(session=sess))
 
 
-class SequenceNumericColumnTest(test.TestCase):
+class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
 
   def test_defaults(self):
     a = sfc.sequence_numeric_column('aaa')
@@ -971,25 +1320,37 @@ class SequenceNumericColumnTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, 'must be a callable'):
       sfc.sequence_numeric_column('aaa', normalizer_fn='NotACallable')
 
-  def test_get_sequence_dense_tensor(self):
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[0.], [1]]
-        # example 1, [[10.]]
-        indices=((0, 0), (0, 1), (1, 0)),
-        values=(0., 1., 10.),
-        dense_shape=(2, 2))
-    expected_dense_tensor = [
-        [[0.], [1.]],
-        [[10.], [0.]],
-    ]
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, values [0., 1]
+           # example 1, [10.]
+           'indices': ((0, 0), (0, 1), (1, 0)),
+           'values': (0., 1., 10.),
+           'dense_shape': (2, 2)},
+       'expected': [
+           [[0.], [1.]],
+           [[10.], [0.]]]},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # feature 0, ids [[20, 3], [5]]
+           # feature 1, ids [[3], [8]]
+           'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
+           'values': (20, 3, 5., 3., 8.),
+           'dense_shape': (2, 2, 2)},
+       'expected': [
+           [[20.], [3.], [5.], [0.]],
+           [[3.], [0.], [8.], [0.]]]},
+      )
+  def test_get_sequence_dense_tensor(self, inputs_args, expected):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
     numeric_column = sfc.sequence_numeric_column('aaa')
 
     dense_tensor, _ = numeric_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_dense_tensor, dense_tensor.eval(session=sess))
+      self.assertAllEqual(expected, dense_tensor.eval(session=sess))
 
   def test_get_sequence_dense_tensor_with_normalizer_fn(self):
 
@@ -1026,41 +1387,35 @@ class SequenceNumericColumnTest(test.TestCase):
       self.assertAllEqual(
           expected_dense_tensor, dense_tensor.eval(session=sess))
 
-  def test_get_sequence_dense_tensor_with_shape(self):
-    """Tests get_sequence_dense_tensor with shape !=(1,)."""
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[0., 1., 2.], [3., 4., 5.]]
-        # example 1, [[10., 11., 12.]]
-        indices=((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5),
-                 (1, 0), (1, 1), (1, 2)),
-        values=(0., 1., 2., 3., 4., 5., 10., 11., 12.),
-        dense_shape=(2, 6))
-    expected_dense_tensor = [
-        [[0., 1., 2.], [3., 4., 5.]],
-        [[10., 11., 12.], [0., 0., 0.]],
-    ]
-    numeric_column = sfc.sequence_numeric_column('aaa', shape=(3,))
-
-    dense_tensor, _ = numeric_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
-
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_dense_tensor, dense_tensor.eval(session=sess))
-
-  def test_get_dense_tensor_multi_dim(self):
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'sparse_input_args': {
+           # example 0, values [[[0., 1.],  [2., 3.]], [[4., 5.],  [6., 7.]]]
+           # example 1, [[[10., 11.],  [12., 13.]]]
+           'indices': ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
+                       (0, 7), (1, 0), (1, 1), (1, 2), (1, 3)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 8)},
+       'expected_dense_tensor': [
+           [[[0., 1.], [2., 3.]], [[4., 5.], [6., 7.]]],
+           [[[10., 11.], [12., 13.]], [[0., 0.], [0., 0.]]]]},
+      {'testcase_name': '3D',
+       'sparse_input_args': {
+           'indices': ((0, 0, 0), (0, 0, 2), (0, 0, 4), (0, 0, 6),
+                       (0, 1, 0), (0, 1, 2), (0, 1, 4), (0, 1, 6),
+                       (1, 0, 0), (1, 0, 2), (1, 0, 4), (1, 0, 6)),
+           'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
+           'dense_shape': (2, 2, 8)},
+       'expected_dense_tensor': [
+           [[[0., 0.], [1., 0.]], [[2., 0.], [3., 0.]],
+            [[4., 0.], [5., 0.]], [[6., 0.], [7., 0.]]],
+           [[[10., 0.], [11., 0.]], [[12., 0.], [13., 0.]],
+            [[0., 0.], [0., 0.]], [[0., 0.], [0., 0.]]]]},
+      )
+  def test_get_dense_tensor_multi_dim(
+      self, sparse_input_args, expected_dense_tensor):
     """Tests get_sequence_dense_tensor for multi-dim numeric_column."""
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[[0., 1.],  [2., 3.]], [[4., 5.],  [6., 7.]]]
-        # example 1, [[[10., 11.],  [12., 13.]]]
-        indices=((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7),
-                 (1, 0), (1, 1), (1, 2), (1, 3)),
-        values=(0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
-        dense_shape=(2, 8))
-    expected_dense_tensor = [
-        [[[0., 1.], [2., 3.]], [[4., 5.], [6., 7.]]],
-        [[[10., 11.], [12., 13.]], [[0., 0.], [0., 0.]]],
-    ]
+    sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
     numeric_column = sfc.sequence_numeric_column('aaa', shape=(2, 2))
 
     dense_tensor, _ = numeric_column._get_sequence_dense_tensor(
@@ -1070,42 +1425,55 @@ class SequenceNumericColumnTest(test.TestCase):
       self.assertAllEqual(
           expected_dense_tensor, dense_tensor.eval(session=sess))
 
-  def test_sequence_length(self):
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[0., 1., 2.], [3., 4., 5.]]
-        # example 1, [[10., 11., 12.]]
-        indices=((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5),
-                 (1, 0), (1, 1), (1, 2)),
-        values=(0., 1., 2., 3., 4., 5., 10., 11., 12.),
-        dense_shape=(2, 6))
-    expected_sequence_length = [2, 1]
-    numeric_column = sfc.sequence_numeric_column('aaa', shape=(3,))
+  @parameterized.named_parameters(
+      {'testcase_name': '2D',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2., 0., 1.),
+           'dense_shape': (2, 2)},
+       'expected_sequence_length': [1, 2],
+       'shape': (1,)},
+      {'testcase_name': '3D',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2., 0., 1., 2.),
+           'dense_shape': (2, 2, 2)},
+       'expected_sequence_length': [1, 2],
+       'shape': (1,)},
+      {'testcase_name': '2D_with_shape',
+       'inputs_args': {
+           # example 0, ids [2]
+           # example 1, ids [0, 1]
+           'indices': ((0, 0), (1, 0), (1, 1)),
+           'values': (2., 0., 1.),
+           'dense_shape': (2, 2)},
+       'expected_sequence_length': [1, 1],
+       'shape': (2,)},
+      {'testcase_name': '3D_with_shape',
+       'inputs_args': {
+           # example 0, ids [[2]]
+           # example 1, ids [[0, 1], [2]]
+           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+           'values': (2., 0., 1., 2.),
+           'dense_shape': (2, 2, 2)},
+       'expected_sequence_length': [1, 2],
+       'shape': (2,)},
+      )
+  def test_sequence_length(self, inputs_args, expected_sequence_length, shape):
+    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
+    numeric_column = sfc.sequence_numeric_column('aaa', shape=shape)
 
     _, sequence_length = numeric_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+        _LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length = sess.run(sequence_length)
       self.assertAllEqual(expected_sequence_length, sequence_length)
       self.assertEqual(np.int64, sequence_length.dtype)
-
-  def test_sequence_length_with_shape(self):
-    """Tests _sequence_length with shape !=(1,)."""
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, values [[0.], [1]]
-        # example 1, [[10.]]
-        indices=((0, 0), (0, 1), (1, 0)),
-        values=(0., 1., 10.),
-        dense_shape=(2, 2))
-    expected_sequence_length = [2, 1]
-    numeric_column = sfc.sequence_numeric_column('aaa')
-
-    _, sequence_length = numeric_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
-
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""

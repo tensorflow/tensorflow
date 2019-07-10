@@ -59,7 +59,7 @@ def _format_origin_stack(origin_stack, call_traceback_proto):
     call_traceback_proto: A `CallTraceback` proto whose fields are to be
       populated.
   """
-  string_to_id = dict()
+  string_to_id = {}
   string_to_id[None] = 0
   for frame in origin_stack:
     file_path, lineno, func_name, line_text = frame
@@ -128,8 +128,8 @@ def _send_call_tracebacks(destinations,
     call_key: The key of the execution call, as a string. For graph execution,
       this is a string describing the feeds, fetches (and targets) names of the
       `tf.Session.run` call. For eager execution, this is ignored.
-    graph: A Python `tf.Graph` object (i.e., *not* a `tf.GraphDef`), which
-      contains op tracebacks, if applicable.
+    graph: A Python `tf.Graph` object (i.e., *not* a `tf.compat.v1.GraphDef`),
+      which contains op tracebacks, if applicable.
     send_source: Whether the source files involved in the op tracebacks but
       outside the TensorFlow library are to be sent.
   """
@@ -199,8 +199,8 @@ def send_graph_tracebacks(destinations,
     run_key: A string describing the feeds, fetches (and targets) names of the
       `tf.Session.run` call.
     origin_stack: The traceback of the `tf.Session.run()` invocation.
-    graph: A Python `tf.Graph` object (i.e., *not* a `tf.GraphDef`), which
-      contains op tracebacks.
+    graph: A Python `tf.Graph` object (i.e., *not* a `tf.compat.v1.GraphDef`),
+      which contains op tracebacks.
     send_source: Whether the source files involved in the op tracebacks but
       outside the TensorFlow library are to be sent.
   """

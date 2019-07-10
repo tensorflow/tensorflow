@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Gamma")
+@tf_export(v1=["distributions.Gamma"])
 class Gamma(distribution.Distribution):
   """Gamma distribution.
 
@@ -89,7 +90,7 @@ class Gamma(distribution.Distribution):
   the samples that are smaller than `np.finfo(dtype).tiny` are rounded
   to this value, so it appears more often than it should.
   This should only be noticeable when the `concentration` is very small, or the
-  `rate` is very large. See note in `tf.random_gamma` docstring.
+  `rate` is very large. See note in `tf.random.gamma` docstring.
 
   Samples of this distribution are reparameterized (pathwise differentiable).
   The derivatives are computed using the approach described in the paper
@@ -121,6 +122,14 @@ class Gamma(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
@@ -204,7 +213,7 @@ class Gamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return random_ops.random_gamma(
@@ -225,7 +234,7 @@ class Gamma(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return (self.concentration - 1.) * math_ops.log(x) - self.rate * x
+    return math_ops.xlogy(self.concentration - 1., x) - self.rate * x
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration)
@@ -258,7 +267,7 @@ class Gamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 1., mode, nan)
+      return array_ops.where_v2(self.concentration > 1., mode, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(
@@ -279,6 +288,11 @@ class Gamma(distribution.Distribution):
 class GammaWithSoftplusConcentrationRate(Gamma):
   """`Gamma` with softplus of `concentration` and `rate`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Gamma(tf.nn.softplus(concentration), "
+      "tf.nn.softplus(rate))` instead.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,

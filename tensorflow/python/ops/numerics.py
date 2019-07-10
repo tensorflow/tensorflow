@@ -24,35 +24,57 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("verify_tensor_all_finite")
-def verify_tensor_all_finite(t, msg, name=None):
+@tf_export(v1=["debugging.assert_all_finite", "verify_tensor_all_finite"])
+@deprecation.deprecated_endpoints("verify_tensor_all_finite")
+def verify_tensor_all_finite(t=None, msg=None, name=None, x=None, message=None):
   """Assert that the tensor does not contain any NaN's or Inf's.
 
   Args:
     t: Tensor to check.
     msg: Message to log on failure.
     name: A name for this operation (optional).
+    x: Alias for t.
+    message: Alias for msg.
 
   Returns:
     Same tensor as `t`.
   """
-  with ops.name_scope(name, "VerifyFinite", [t]) as name:
-    t = ops.convert_to_tensor(t, name="t")
-    with ops.colocate_with(t):
-      verify_input = array_ops.check_numerics(t, message=msg)
-      out = control_flow_ops.with_dependencies([verify_input], t)
+  x = deprecation.deprecated_argument_lookup("x", x, "t", t)
+  message = deprecation.deprecated_argument_lookup(
+      "message", message, "msg", msg)
+  return verify_tensor_all_finite_v2(x, message, name)
+
+
+@tf_export("debugging.assert_all_finite", v1=[])
+def verify_tensor_all_finite_v2(x, message, name=None):
+  """Assert that the tensor does not contain any NaN's or Inf's.
+
+  Args:
+    x: Tensor to check.
+    message: Message to log on failure.
+    name: A name for this operation (optional).
+
+  Returns:
+    Same tensor as `x`.
+  """
+  with ops.name_scope(name, "VerifyFinite", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    with ops.colocate_with(x):
+      verify_input = array_ops.check_numerics(x, message=message)
+      out = control_flow_ops.with_dependencies([verify_input], x)
   return out
 
 
-@tf_export("add_check_numerics_ops")
+@tf_export(v1=["add_check_numerics_ops"])
 def add_check_numerics_ops():
-  """Connect a `check_numerics` to every floating point tensor.
+  """Connect a `tf.debugging.check_numerics` to every floating point tensor.
 
   `check_numerics` operations themselves are added for each `half`, `float`,
-  or `double` tensor in the graph. For all ops in the graph, the
+  or `double` tensor in the current default graph. For all ops in the graph, the
   `check_numerics` op for all of its (`half`, `float`, or `double`) inputs
   is guaranteed to run before the `check_numerics` op on any of its outputs.
 
@@ -70,9 +92,9 @@ def add_check_numerics_ops():
 
   @compatibility(eager)
   Not compatible with eager execution. To check for `Inf`s and `NaN`s under
-  eager execution, call tfe.seterr(inf_or_nan='raise') once before executing
+  eager execution, call `tfe.seterr(inf_or_nan='raise')` once before executing
   the checked operations.
-  @enc_compatibility
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError(

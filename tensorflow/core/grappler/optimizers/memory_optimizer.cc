@@ -29,19 +29,24 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
-#include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
+
+namespace {
 
 // Prefix added to nodes which are recomputed.
 const char* kRecomputedNodePrefix = "Recomputed";
@@ -53,12 +58,30 @@ const char* kRecomputeHint = "_recompute_hint";
 // Ops which we wouldn't mind recomputing to save memory.
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
-  std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",       "BiasAdd",        "Cast",   "Fill",
-      "FloorDiv", "FloorMod",   "FusedBatchNorm", "Mul",    "Neg",
-      "RealDiv",  "Reciprocal", "Relu",           "Relu6",  "Reshape",
-      "Rsqrt",    "Sigmoid",    "Sqrt",           "Square", "SquaredDifference",
-      "Sub",      "Tile",       "Transpose"};
+  std::unordered_set<string> cheap_ops = {"Add",
+                                          "AddN",
+                                          "BiasAdd",
+                                          "Cast",
+                                          "Fill",
+                                          "FloorDiv",
+                                          "FloorMod",
+                                          "FusedBatchNorm",
+                                          "LeakyRelu",
+                                          "Mul",
+                                          "Neg",
+                                          "RealDiv",
+                                          "Reciprocal",
+                                          "Relu",
+                                          "Relu6",
+                                          "Reshape",
+                                          "Rsqrt",
+                                          "Sigmoid",
+                                          "Sqrt",
+                                          "Square",
+                                          "SquaredDifference",
+                                          "Sub",
+                                          "Tile",
+                                          "Transpose"};
   return cheap_ops;
 }
 
@@ -184,13 +207,14 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
       }
     }
     // Recompute only nodes which eventually feed into a target node.
-    connected_subgraph(node_map,
-                       true,   // Collect inputs
-                       false,  // Collect outputs
-                       [&unpruned_recompute_nodes](const NodeDef& node) {
-                         return unpruned_recompute_nodes.count(&node) != 0;
-                       },
-                       &current_recomputation.recomputed_source_nodes);
+    connected_subgraph(
+        node_map,
+        true,   // Collect inputs
+        false,  // Collect outputs
+        [&unpruned_recompute_nodes](const NodeDef& node) {
+          return unpruned_recompute_nodes.count(&node) != 0;
+        },
+        &current_recomputation.recomputed_source_nodes);
     if (current_recomputation.target_nodes.empty()) {
       continue;
     }
@@ -492,7 +516,7 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 
 bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   // Look for AddN nodes (and equivalent) and record input names.
-  GraphView view(&item->graph);
+  MutableGraphView view(&item->graph);
 
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
@@ -552,9 +576,21 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     return false;
   }
   GraphProperties properties(*item);
-  s = properties.InferStatically(false);
+  s = properties.InferStatically(/*assume_valid_feeds=*/false,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    return false;
+  }
+
+  // It's ok to use immutable GraphTopologyView here, because we do not destroy
+  // any of the nodes in the underlying graph, we only add new nodes.
+  GraphTopologyView graph_topology;
+  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
+  if (!initialized_topology.ok()) {
+    VLOG(1) << "Failed to initialize graph topology view: "
+            << initialized_topology.error_message();
     return false;
   }
 
@@ -574,20 +610,19 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     }
 
     // Compute a topological ordering for the node fanin.
-    std::unordered_map<NodeDef*, int> topo_order;
-    ReverseDfs(view, {node}, nullptr,
-               [&topo_order](NodeDef* n) {
-                 int topo_index = topo_order.size();
-                 topo_order[n] = topo_index;
-               },
-               nullptr);
+    std::unordered_map<const NodeDef*, int> topo_order;
+    DfsTraversal(graph_topology, {node}, TraversalDirection::kFollowInputs,
+                 DfsCallbacks::PostOrder([&topo_order](const NodeDef* n) {
+                   int topo_index = static_cast<int>(topo_order.size());
+                   topo_order[n] = topo_index;
+                 }));
 
     std::vector<int> input_topo_index;
 
     for (int i = 0; i < node->input_size(); ++i) {
       const string& input = node->input(i);
       const string node_name = NodeName(input);
-      NodeDef* node = view.GetNode(node_name);
+      const NodeDef* node = view.GetNode(node_name);
       input_topo_index.push_back(topo_order.at(node));
     }
     int min_input_topo_index = INT_MAX;
@@ -622,10 +657,15 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
 
     DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
+    const string tmp_var_name = strings::StrCat(node->name(), "/tmp_var");
+    if (view.GetNode(tmp_var_name) != nullptr) {
+      VLOG(1) << "Temporary variable already exists " << tmp_var_name;
+      return false;
+    }
 
     // Create the temporary variable that will hold intermediate results
     NodeDef* tmp_var = item->graph.add_node();
-    tmp_var->set_name(strings::StrCat(node->name(), "/tmp_var"));
+    tmp_var->set_name(tmp_var_name);
     tmp_var->set_op("TemporaryVariable");
     tmp_var->set_device(device);
     (*tmp_var->mutable_attr())["dtype"].set_type(dtype);
@@ -698,6 +738,13 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
                      const std::unordered_map<string, const NodeDef*>& name_map,
                      GraphDef* graph,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
+  string task, device;
+  if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
+      !absl::StrContains(device, DEVICE_GPU)) {
+    return errors::InvalidArgument("Can't swap input ", input_to_swap,
+                                   " of node ", node->name(),
+                                   " since it is not on GPU");
+  }
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
   DataType input_type;
@@ -742,25 +789,6 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   *swap_pair = std::make_pair(swap_out_node, swap_in_node);
 
   return Status::OK();
-}
-
-static int64 EstimateSize(const OpInfo::TensorProperties& t) {
-  DataType dtype = t.dtype();
-  int64 size = DataTypeSize(dtype);
-  TensorShapeProto shape = t.shape();
-  if (shape.unknown_rank()) {
-    // Can't infer the size if the rank is unknown. It has to be at least a
-    // scalar though.
-    return size;
-  }
-  // If one of the dimensions is unknown statically, assume it's at least one.
-  for (int i = 0; i < shape.dim_size(); ++i) {
-    if (shape.dim(i).size() < 0) {
-      shape.mutable_dim(i)->set_size(1);
-    }
-  }
-  int64 num_elems = TensorShape(shape).num_elements();
-  return num_elems * size;
 }
 
 struct SwapInfo {
@@ -848,7 +876,8 @@ static const NodeDef* FindSwapInTrigger(
   return nullptr;
 }
 
-static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
+static bool IsSwappable(const MutableGraphView& graph,
+                        MutableGraphView::OutputPort output) {
   const NodeDef& node = *output.node;
   // There is no point in swapping out persistent tensors, since the tensor will
   // continue to use memory.
@@ -874,10 +903,10 @@ static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
     // If placed on the same device, these nodes are just forwarding references
     // to their input. Therefore they are swappable iff their fanin is swappable
     // or it resides on a different device.
-    GraphView::InputPort input;
+    MutableGraphView::InputPort input;
     input.node = output.node;
     input.port_id = 0;
-    GraphView::OutputPort fanin = graph.GetRegularFanin(input);
+    MutableGraphView::OutputPort fanin = graph.GetRegularFanin(input);
     if (fanin.node->device() == node.device()) {
       return IsSwappable(graph, fanin);
     }
@@ -886,19 +915,19 @@ static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
 }
 
 static NodeDef* FindSwapOutTrigger(
-    const NodeDef* node, int input_id, const GraphView& view,
+    const NodeDef* node, int input_id, const MutableGraphView& view,
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
         execution_times) {
   // Find the output port that generated the tensor to swap.
-  GraphView::InputPort swap;
+  MutableGraphView::InputPort swap;
   swap.node = const_cast<NodeDef*>(node);
   swap.port_id = input_id;
-  GraphView::OutputPort generator = view.GetRegularFanin(swap);
+  MutableGraphView::OutputPort generator = view.GetRegularFanin(swap);
   if (!generator.node) {
     return nullptr;
   }
 
-  const std::unordered_set<GraphView::InputPort, GraphView::HashPort>& fanout =
+  const absl::flat_hash_set<MutableGraphView::InputPort>& fanout =
       view.GetFanout(generator);
   NodeDef* trigger = nullptr;
   Costs::NanoSeconds earliest_fanout(Costs::NanoSeconds::infinity());
@@ -917,7 +946,7 @@ static NodeDef* FindSwapOutTrigger(
   return trigger;
 }
 
-static bool IsSwappable(GraphView::InputPort input) {
+static bool IsSwappable(MutableGraphView::InputPort input) {
   const NodeDef& node = *input.node;
 
   const OpDef* op_def;
@@ -934,9 +963,9 @@ static bool IsSwappable(GraphView::InputPort input) {
 }
 
 struct MemInfo {
-  GraphView::OutputPort port;
+  MutableGraphView::OutputPort port;
   int64 memory_used;
-  std::vector<GraphView::InputPort> uses_left;
+  std::vector<MutableGraphView::InputPort> uses_left;
   double fitness;
 
   bool operator<(const MemInfo& other) const { return fitness < other.fitness; }
@@ -1007,7 +1036,7 @@ static bool IdentifySwappingCandidates(
 
     std::vector<MemInfo> mem_state;
 
-    GraphView graph(&item->graph);
+    MutableGraphView graph(&item->graph);
     for (const auto& live_tensor : mem_usage.live_tensors) {
       if (live_tensor.memory_used <= 1024) {
         // Don't bother with small tensors.
@@ -1023,7 +1052,7 @@ static bool IdentifySwappingCandidates(
       if (skip_list->find(live_tensor.node) != skip_list->end()) {
         continue;
       }
-      GraphView::OutputPort port =
+      MutableGraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
       if (!IsSwappable(graph, port)) {
         continue;
@@ -1034,7 +1063,7 @@ static bool IdentifySwappingCandidates(
       Costs::Duration allocation_time = live_tensor.allocation_time;
       Costs::Duration earliest_use(Costs::Duration::infinity());
       bool valid = true;
-      for (GraphView::InputPort input : graph.GetFanout(port)) {
+      for (MutableGraphView::InputPort input : graph.GetFanout(port)) {
         // Get execution time.
         auto it = op_completion_times.find(input.node->name());
         if (it == op_completion_times.end()) {
@@ -1076,7 +1105,7 @@ static bool IdentifySwappingCandidates(
         // the values do not fit into any integral type.
         mem_info.fitness =
             MathUtil::IPow<double>((earliest_use - peak_time).count(), 2) /
-            MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
+                MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
             MathUtil::IPow<double>((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
@@ -1087,7 +1116,8 @@ static bool IdentifySwappingCandidates(
     std::sort(mem_state.begin(), mem_state.end());
 
     for (const MemInfo& mem_info : mem_state) {
-      for (const GraphView::InputPort fanout_to_swap : mem_info.uses_left) {
+      for (const MutableGraphView::InputPort fanout_to_swap :
+           mem_info.uses_left) {
         VLOG(1) << "Will swap fanout " << fanout_to_swap.node->name() << ":"
                 << fanout_to_swap.port_id << " of tensor "
                 << mem_info.port.node->name() << ":" << mem_info.port.port_id
@@ -1138,7 +1168,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
 
   // Estimate the size of the data to swap for each node.
   GraphProperties properties(*item);
-  if (!properties.InferStatically(true).ok()) {
+  if (!properties
+           .InferStatically(/*assume_valid_feeds=*/true,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_tensor_values=*/false)
+           .ok()) {
     return false;
   }
   for (auto& swap : nodes_to_swap) {
@@ -1149,7 +1183,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     int64 bytes_to_swap = 0;
     for (int64 input_id : swap_info.inputs_to_swap) {
       const OpInfo::TensorProperties& t = props[input_id];
-      bytes_to_swap += EstimateSize(t);
+      bytes_to_swap += CalculateTensorSize(t);
     }
     // Let's assume we're going to swap over PCIe running at 16 GBps.
     swap_info.time_to_swap = bytes_to_swap / 16;
@@ -1164,7 +1198,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   for (const auto& node : item->graph.node()) {
     name_map[node.name()] = &node;
   }
-  GraphView view(&item->graph);
+  MutableGraphView view(&item->graph);
 
   bool updated_graph = false;
 
@@ -1225,6 +1259,20 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   return updated_graph;
 }
 
+bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
+  string task1;
+  string device1;
+  DeviceNameUtils::SplitDeviceName(node1.device(), &task1, &device1);
+  string task2;
+  string device2;
+  DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
+  return task1 != task2 ||
+         (absl::StrContains(device1, DEVICE_CPU) &&
+          absl::StrContains(device2, DEVICE_GPU)) ||
+         (absl::StrContains(device1, DEVICE_GPU) &&
+          absl::StrContains(device2, DEVICE_CPU));
+}
+
 // TODO(rmlarsen): Add distributed TF test.
 Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   std::unordered_set<string> devices;
@@ -1251,45 +1299,61 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
     return Status::OK();
   }
 
-  std::unordered_set<int> optimized_nodes;
-  SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
+  GraphTopologyView graph_view;
+  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(
+      *optimized_graph, /*ignore_control_edges=*/true));
+  std::unordered_set<const NodeDef*> optimized_nodes;
+
   for (int i : assign_nodes) {
-    if (optimized_nodes.find(i) == optimized_nodes.end()) {
-      const NodeDef& node = optimized_graph->node(i);
-      optimized_nodes.insert(i);
-      std::vector<int> assign_nodes_in_fanout;
-      assign_nodes_in_fanout.push_back(i);
-      std::set<int> transitive_fanout;
-      graph_view.DepthFirstSearch(std::unordered_set<string>{}, i,
-                                  &transitive_fanout);
-      const string& assign_device = node.device();
+    const NodeDef& assign_node = optimized_graph->node(i);
+
+    if (optimized_nodes.find(&assign_node) == optimized_nodes.end()) {
+      std::vector<const NodeDef*> assign_nodes_in_fanout;
+      optimized_nodes.insert(&assign_node);
+      assign_nodes_in_fanout.push_back(&assign_node);
+
+      std::vector<const NodeDef*> transitive_fanout;
+      // Find the nodes in transitive fanout. If a node is known to never
+      // forward its inputs, we can skip its fanout.
+      DfsTraversal(graph_view, {graph_view.GetNode(i)},
+                   TraversalDirection::kFollowOutputs,
+                   DfsPredicates::Advance([&](const NodeDef* node) {
+                     return !NeverForwardsInputs(*node);
+                   }),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     transitive_fanout.push_back(node);
+                   }));
+
       bool relax_constraint = true;
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
-      for (int fanout : transitive_fanout) {
-        const NodeDef& fanout_node = optimized_graph->node(fanout);
+      for (const NodeDef* fanout_node : transitive_fanout) {
         if (relax_constraint &&
-            (fanout_node.device() != assign_device || IsSend(fanout_node))) {
+            (IsSend(*fanout_node) ||
+             CrossesTaskOrCpuGpuBoundary(*fanout_node, assign_node))) {
           relax_constraint = false;
+          break;
         }
-        if (optimized_nodes.find(fanout) == optimized_nodes.end() &&
-            IsAssign(fanout_node)) {
-          assign_nodes_in_fanout.push_back(fanout);
+        if (optimized_nodes.find(fanout_node) == optimized_nodes.end() &&
+            IsAssign(*fanout_node)) {
+          assign_nodes_in_fanout.push_back(fanout_node);
         }
       }
 
-      for (int assign_idx : assign_nodes_in_fanout) {
-        if (relax_constraint) {
+      if (relax_constraint) {
+        for (const NodeDef* assign_node_in_fanout : assign_nodes_in_fanout) {
           // If all devices match in fanout of node(i) then, by transitivity,
           // they must also match in the fanout of other assign nodes
-          // node(assign_idx) in the fanout, so we can process them here,
+          // in the fanout of node(i), so we can process them here,
           // and save computing their transitive fanout later.
-          optimized_nodes.insert(assign_idx);
+          optimized_nodes.insert(assign_node_in_fanout);
 
           // Set an attribute telling AssignOp to ignore allocator constraints.
-          NodeDef* assign_node = optimized_graph->mutable_node(assign_idx);
-          (*assign_node
+          const absl::optional<int> assign_node_idx =
+              graph_view.GetNodeIndex(*assign_node_in_fanout);
+          NodeDef* assign_node_to_relax =
+              optimized_graph->mutable_node(assign_node_idx.value());
+          (*assign_node_to_relax
                 ->mutable_attr())["_grappler_relax_allocator_constraints"]
               .set_b(true);
         }
@@ -1299,20 +1363,22 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   return Status::OK();
 }
 
+}  // namespace
+
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
+  GrapplerItem optimized_item(item);
 
   RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_scope_, optimized_graph,
-                             item);
+                             recomputation_targets_name_scope_,
+                             &optimized_item.graph, item);
 
-  GrapplerItem optimized_item(item, optimized_graph);
   std::unordered_set<string> skip_list;
   // Bound the number of rewrite passes to avoid long processing times on graphs
   // that simply won't fit in memory.
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
@@ -1321,6 +1387,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||

@@ -1,16 +1,17 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//tensorflow:internal",
-])
-
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "training_py",
@@ -26,7 +27,6 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
-        "python/training/tensor_queue_dataset.py",
         "python/training/training.py",
         "python/training/tuner.py",
     ],
@@ -71,6 +71,7 @@ py_test(
     name = "device_setter_test",
     size = "small",
     srcs = ["python/training/device_setter_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -86,6 +87,7 @@ py_test(
     name = "sequence_queueing_state_saver_test",
     size = "medium",
     srcs = ["python/training/sequence_queueing_state_saver_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -104,6 +106,7 @@ py_test(
     name = "batch_sequences_with_states_test",
     size = "medium",
     srcs = ["python/training/batch_sequences_with_states_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -127,6 +130,7 @@ py_test(
     name = "feeding_queue_runner_test",
     size = "medium",
     srcs = ["python/training/feeding_queue_runner_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -142,6 +146,7 @@ py_test(
     name = "hparam_test",
     size = "small",
     srcs = ["python/training/hparam_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -153,6 +158,7 @@ py_test(
     name = "resample_test",
     size = "small",
     srcs = ["python/training/resample_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -170,6 +176,7 @@ py_test(
     name = "sampling_ops_test",
     size = "small",
     srcs = ["python/training/sampling_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -193,6 +200,7 @@ py_test(
     name = "sampling_ops_threading_test",
     size = "small",
     srcs = ["python/training/sampling_ops_threading_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -215,6 +223,7 @@ py_test(
     name = "bucket_ops_test",
     size = "medium",
     srcs = ["python/training/bucket_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -235,6 +244,7 @@ py_test(
     name = "evaluation_test",
     size = "small",
     srcs = ["python/training/evaluation_test.py"],
+    python_version = "PY2",
     shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
@@ -265,9 +275,10 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/training_test.py"],
-    shard_count = 3,
+    python_version = "PY2",
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -287,32 +298,9 @@ py_test(
     ],
 )
 
-py_test(
-    name = "tensor_queue_dataset_test",
-    size = "large",
-    srcs = ["python/training/tensor_queue_dataset_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
-        ":training_py",
-        "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data",
-        "//third_party/py/numpy",
-    ],
-)
-
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
-    java_api_version = 2,
     visibility = ["//visibility:public"],
 )

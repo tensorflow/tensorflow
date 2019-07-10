@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/shuffle_and_repeat_fusion.h"
 
-#include "tensorflow/core/framework/attr_value.pb.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
@@ -34,12 +35,12 @@ constexpr char kFusedOpName[] = "ShuffleAndRepeatDataset";
 
 }  // namespace
 
-Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
-                                        const GrapplerItem& item,
-                                        GraphDef* output) {
+Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
 
   auto make_shuffle_and_repeat_node = [&output](const NodeDef& shuffle_node,
                                                 const NodeDef& repeat_node) {
@@ -81,19 +82,29 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
     if (node2->op() != "ShuffleDataset") {
       continue;
     }
+
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& shuffle_node = *node2;
 
+    // TODO(b/129712758): Remove when the fused kernel supports disabling
+    // reshuffling for each iteration.
+    if (HasNodeAttr(shuffle_node, "reshuffle_each_iteration") &&
+        !shuffle_node.attr().at("reshuffle_each_iteration").b()) {
+      continue;
+    }
+
     NodeDef* shuffle_and_repeat_node =
         graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));
-    graph.ReplaceInput(repeat_node, *shuffle_and_repeat_node);
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(repeat_node.name(),
+                                           shuffle_and_repeat_node->name()));
 
     // Mark the `Shuffle` and `Repeat` nodes for removal.
     nodes_to_delete.insert(shuffle_node.name());
     nodes_to_delete.insert(repeat_node.name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -107,5 +118,5 @@ void ShuffleAndRepeatFusion::Feedback(Cluster* cluster,
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,
                             "shuffle_and_repeat_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

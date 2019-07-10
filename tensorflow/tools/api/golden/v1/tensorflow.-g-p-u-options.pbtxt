@@ -78,6 +78,36 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "collective_ring_order"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "timestamped_allocator"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "kernel_tracker_max_interval"
+        number: 7
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "kernel_tracker_max_bytes"
+        number: 8
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "kernel_tracker_max_pending"
+        number: 9
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       nested_type {
         name: "VirtualDevices"
         field {

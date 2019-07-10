@@ -95,6 +95,15 @@ class ThreadsafeIter(object):
     self.it = it
     self.lock = threading.Lock()
 
+    # After a generator throws an exception all subsequent next() calls raise a
+    # StopIteration Exception. This, however, presents an issue when mixing
+    # generators and threading because it means the order of retrieval need not
+    # match the order in which the generator was called. This can make it appear
+    # that a generator exited normally when in fact the terminating exception is
+    # just in a different thread. In order to provide thread safety, once
+    # self.it has thrown an exception we continue to throw the same exception.
+    self._exception = None
+
   def __iter__(self):
     return self
 
@@ -103,7 +112,14 @@ class ThreadsafeIter(object):
 
   def next(self):
     with self.lock:
-      return next(self.it)
+      if self._exception:
+        raise self._exception  # pylint: disable=raising-bad-type
+
+      try:
+        return next(self.it)
+      except Exception as e:
+        self._exception = e
+        raise
 
 
 def threadsafe_generator(f):
@@ -228,7 +244,7 @@ class TestEnqueuers(test.TestCase):
         FaultSequence(), use_multiprocessing=False)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   def test_ordered_enqueuer_fail_processes(self):
@@ -236,7 +252,7 @@ class TestEnqueuers(test.TestCase):
         FaultSequence(), use_multiprocessing=True)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   def test_on_epoch_end_processes(self):

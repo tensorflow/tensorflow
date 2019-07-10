@@ -25,12 +25,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class _CuDNNRNN(RNN):
@@ -47,6 +48,9 @@ class _CuDNNRNN(RNN):
     stateful: Boolean (default False). If True, the last state
         for each sample at index i in a batch will be used as initial
         state for the sample of index i in the following batch.
+    time_major: Boolean (default False). If true, the inputs and outputs will be
+        in shape `(timesteps, batch, ...)`, whereas in the False case, it will
+        be `(batch, timesteps, ...)`.
   """
 
   def __init__(self,
@@ -54,6 +58,7 @@ class _CuDNNRNN(RNN):
                return_state=False,
                go_backwards=False,
                stateful=False,
+               time_major=False,
                **kwargs):
     # We invoke the base layer's initializer directly here because we do not
     # want to create RNN cell instance.
@@ -62,6 +67,7 @@ class _CuDNNRNN(RNN):
     self.return_state = return_state
     self.go_backwards = go_backwards
     self.stateful = stateful
+    self.time_major = time_major
     self.supports_masking = False
     self.input_spec = [InputSpec(ndim=3)]
     if hasattr(self.cell.state_size, '__len__'):
@@ -71,13 +77,8 @@ class _CuDNNRNN(RNN):
     self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
     self.constants_spec = None
     self._states = None
-    self._num_constants = None
+    self._num_constants = 0
     self._vector_shape = constant_op.constant([-1])
-
-  def _canonical_to_params(self, weights, biases):
-    weights = [array_ops.reshape(x, self._vector_shape) for x in weights]
-    biases = [array_ops.reshape(x, self._vector_shape) for x in biases]
-    return array_ops.concat(weights + biases, axis=0)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     if isinstance(mask, list):
@@ -112,7 +113,7 @@ class _CuDNNRNN(RNN):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_state:
       return [output] + states
@@ -124,7 +125,8 @@ class _CuDNNRNN(RNN):
         'return_sequences': self.return_sequences,
         'return_state': self.return_state,
         'go_backwards': self.go_backwards,
-        'stateful': self.stateful
+        'stateful': self.stateful,
+        'time_major': self.time_major,
     }
     base_config = super(  # pylint: disable=bad-super-call
         RNN, self).get_config()
@@ -155,7 +157,7 @@ class _CuDNNRNN(RNN):
         RNN, self).get_losses_for(inputs=inputs)
 
 
-@tf_export('keras.layers.CuDNNGRU')
+@keras_export(v1=['keras.layers.CuDNNGRU'])
 class CuDNNGRU(_CuDNNRNN):
   """Fast GRU implementation backed by cuDNN.
 
@@ -267,11 +269,12 @@ class CuDNNGRU(_CuDNNRNN):
     self.built = True
 
   def _process_batch(self, inputs, initial_state):
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
+    if not self.time_major:
+      inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = self._canonical_to_params(
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, self.units:self.units * 2],
             self.kernel[:, :self.units],
@@ -288,7 +291,7 @@ class CuDNNGRU(_CuDNNRNN):
             self.bias[self.units * 3:self.units * 4],
             self.bias[self.units * 5:],
         ],
-    )
+        shape=self._vector_shape)
 
     outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
         inputs,
@@ -301,7 +304,10 @@ class CuDNNGRU(_CuDNNRNN):
     if self.stateful or self.return_state:
       h = h[0]
     if self.return_sequences:
-      output = array_ops.transpose(outputs, perm=(1, 0, 2))
+      if self.time_major:
+        output = outputs
+      else:
+        output = array_ops.transpose(outputs, perm=(1, 0, 2))
     else:
       output = outputs[-1]
     return output, [h]
@@ -328,7 +334,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.CuDNNLSTM')
+@keras_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 
@@ -456,13 +462,14 @@ class CuDNNLSTM(_CuDNNRNN):
     self.built = True
 
   def _process_batch(self, inputs, initial_state):
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
+    if not self.time_major:
+      inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
     input_h = initial_state[0]
     input_c = initial_state[1]
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = self._canonical_to_params(
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, :self.units],
             self.kernel[:, self.units:self.units * 2],
@@ -483,7 +490,7 @@ class CuDNNLSTM(_CuDNNRNN):
             self.bias[self.units * 6:self.units * 7],
             self.bias[self.units * 7:],
         ],
-    )
+        shape=self._vector_shape)
 
     outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
         inputs,
@@ -496,7 +503,10 @@ class CuDNNLSTM(_CuDNNRNN):
       h = h[0]
       c = c[0]
     if self.return_sequences:
-      output = array_ops.transpose(outputs, perm=(1, 0, 2))
+      if self.time_major:
+        output = outputs
+      else:
+        output = array_ops.transpose(outputs, perm=(1, 0, 2))
     else:
       output = outputs[-1]
     return output, [h, c]

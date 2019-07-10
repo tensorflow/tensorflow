@@ -16,19 +16,20 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace {
-inline bool IsTrailByte(char x) { return static_cast<signed char>(x) < -0x40; }
-}  // namespace
-
 namespace tensorflow {
 
 // Sets unit value based on str.
 Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding) {
-  if (str == "UTF8") {
+  if (str == "UTF-8") {
     *encoding = UnicodeEncoding::UTF8;
+  } else if (str == "UTF-16-BE") {
+    *encoding = UnicodeEncoding::UTF16BE;
+  } else if (str == "UTF-32-BE") {
+    *encoding = UnicodeEncoding::UTF32BE;
   } else {
-    return errors::InvalidArgument(strings::StrCat(
-        "Invalid encoding \"", str, "\": Should be one of: BYTE"));
+    return errors::InvalidArgument(
+        strings::StrCat("Invalid encoding \"", str,
+                        "\": Should be one of: UTF-8, UTF-16-BE, UTF-32-BE"));
   }
   return Status::OK();
 }
@@ -48,10 +49,10 @@ Status ParseCharUnit(const string& str, CharUnit* unit) {
 
 // Return the number of Unicode characters in a UTF-8 string.
 // Result may be incorrect if the input string is not valid UTF-8.
-int32 UTF8StrLen(const string& string) {
-  const int32 byte_size = string.size();
-  const char* const end = string.data() + byte_size;
-  const char* ptr = string.data();
+int32 UTF8StrLen(const string& str) {
+  const int32 byte_size = str.size();
+  const char* const end = str.data() + byte_size;
+  const char* ptr = str.data();
   int32 skipped_count = 0;
   while (ptr < end) {
     skipped_count += IsTrailByte(*ptr++) ? 1 : 0;

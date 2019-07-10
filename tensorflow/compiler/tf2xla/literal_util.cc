@@ -32,6 +32,12 @@ Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
   return Status::OK();
 }
 
+xla::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
+  xla::BorrowingLiteral literal;
+  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(host_tensor, &literal));
+  return literal.Clone();
+}
+
 Status HostTensorToMutableBorrowingLiteral(
     Tensor* host_tensor, xla::MutableBorrowingLiteral* literal) {
   xla::Shape xla_shape;
@@ -71,7 +77,7 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
 
 Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
                                Tensor* host_tensor) {
-  TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&
+  TF_RET_CHECK(literal.shape().IsArray() &&
                xla::ShapeUtil::ElementsIn(literal.shape()) ==
                    host_tensor->NumElements());
   xla::PrimitiveType primitive_type;

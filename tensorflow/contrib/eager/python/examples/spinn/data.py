@@ -179,7 +179,7 @@ def load_word_vectors(data_root, vocab):
 
   print("Loading word vectors...")
 
-  word2index = dict()
+  word2index = {}
   embed = []
 
   embed.append([0] * WORD_VECTOR_LEN)  # <unk>

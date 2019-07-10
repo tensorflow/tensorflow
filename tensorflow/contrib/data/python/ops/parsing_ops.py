@@ -17,92 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import parsing_ops
+from tensorflow.python.data.experimental.ops import parsing_ops
+from tensorflow.python.util import deprecation
 
 
-class _ParseExampleDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that parses `example` dataset into a `dict` dataset."""
-
-  def __init__(self, input_dataset, features, num_parallel_calls):
-    super(_ParseExampleDataset, self).__init__(input_dataset)
-    self._input_dataset = input_dataset
-    if not all(types == dtypes.string
-               for types in nest.flatten(input_dataset.output_types)):
-      raise TypeError("Input dataset should be a dataset of vectors of strings")
-    self._num_parallel_calls = num_parallel_calls
-    # pylint: disable=protected-access
-    self._features = parsing_ops._prepend_none_dimension(features)
-    # sparse_keys and dense_keys come back sorted here.
-    (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
-     dense_shapes) = parsing_ops._features_to_raw_params(
-         self._features, [
-             parsing_ops.VarLenFeature, parsing_ops.SparseFeature,
-             parsing_ops.FixedLenFeature, parsing_ops.FixedLenSequenceFeature
-         ])
-    # TODO(b/112859642): Pass sparse_index and sparse_values for SparseFeature.
-    (_, dense_defaults_vec, sparse_keys, sparse_types, dense_keys, dense_shapes,
-     dense_shape_as_shape) = parsing_ops._process_raw_parameters(
-         None, dense_defaults, sparse_keys, sparse_types, dense_keys,
-         dense_types, dense_shapes)
-    # pylint: enable=protected-access
-    self._sparse_keys = sparse_keys
-    self._sparse_types = sparse_types
-    self._dense_keys = dense_keys
-    self._dense_defaults = dense_defaults_vec
-    self._dense_shapes = dense_shapes
-    self._dense_types = dense_types
-    dense_output_shapes = [
-        self._input_dataset.output_shapes.concatenate(shape)
-        for shape in dense_shape_as_shape
-    ]
-    sparse_output_shapes = [
-        self._input_dataset.output_shapes.concatenate([None])
-        for _ in range(len(sparse_keys))
-    ]
-
-    self._output_shapes = dict(
-        zip(self._dense_keys + self._sparse_keys,
-            dense_output_shapes + sparse_output_shapes))
-    self._output_types = dict(
-        zip(self._dense_keys + self._sparse_keys,
-            self._dense_types + self._sparse_types))
-    self._output_classes = dict(
-        zip(self._dense_keys + self._sparse_keys,
-            [ops.Tensor for _ in range(len(self._dense_defaults))] +
-            [sparse_tensor.SparseTensor for _ in range(len(self._sparse_keys))
-            ]))
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.parse_example_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._num_parallel_calls,
-        self._dense_defaults,
-        self._sparse_keys,
-        self._dense_keys,
-        self._sparse_types,
-        self._dense_shapes,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-
-# TODO(b/111553342): add arguments names and example names as well.
+@deprecation.deprecated(
+    None, "Use `tf.data.experimental.parse_example_dataset(...)`.")
 def parse_example_dataset(features, num_parallel_calls=1):
   """A transformation that parses `Example` protos into a `dict` of tensors.
 
@@ -114,7 +34,7 @@ def parse_example_dataset(features, num_parallel_calls=1):
   and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
   `SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
   and `SparseFeature` is mapped to a `SparseTensor`, and each
-  `FixedLenFeature` is mapped to a `Tensor`. See `tf.parse_example` for more
+  `FixedLenFeature` is mapped to a `Tensor`. See `tf.io.parse_example` for more
   details about feature dictionaries.
 
   Args:
@@ -130,21 +50,4 @@ def parse_example_dataset(features, num_parallel_calls=1):
   Raises:
     ValueError: if features argument is None.
   """
-  if features is None:
-    raise ValueError("Missing: features was %s." % features)
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    out_dataset = _ParseExampleDataset(dataset, features, num_parallel_calls)
-    if any([
-        isinstance(feature, parsing_ops.SparseFeature)
-        for _, feature in features.items()
-    ]):
-      # pylint: disable=protected-access
-      # pylint: disable=g-long-lambda
-      out_dataset = out_dataset.map(
-          lambda x: parsing_ops._construct_sparse_tensors_for_sparse_features(
-              features, x), num_parallel_calls=num_parallel_calls)
-    return out_dataset
-
-  return _apply_fn
+  return parsing_ops.parse_example_dataset(features, num_parallel_calls)

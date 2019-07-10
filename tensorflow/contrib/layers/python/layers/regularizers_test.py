@@ -141,7 +141,7 @@ class RegularizerTest(test.TestCase):
     dummy_regularizer = lambda x: math_ops.reduce_sum(2 * x)
     array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
     tensor_weights_list = [constant_op.constant(x) for x in array_weights_list]
-    expected = sum([2 * x for l in array_weights_list for x in l])
+    expected = sum(2 * x for l in array_weights_list for x in l)
     with self.cached_session():
       result = regularizers.apply_regularization(dummy_regularizer,
                                                  tensor_weights_list)

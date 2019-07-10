@@ -1,39 +1,103 @@
 path: "tensorflow.saved_model"
 tf_module {
   member {
-    name: "builder"
-    mtype: "<type \'module\'>"
+    name: "ASSETS_DIRECTORY"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "constants"
-    mtype: "<type \'module\'>"
+    name: "ASSETS_KEY"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "loader"
-    mtype: "<type \'module\'>"
+    name: "CLASSIFY_INPUTS"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "main_op"
-    mtype: "<type \'module\'>"
+    name: "CLASSIFY_METHOD_NAME"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "signature_constants"
-    mtype: "<type \'module\'>"
+    name: "CLASSIFY_OUTPUT_CLASSES"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "signature_def_utils"
-    mtype: "<type \'module\'>"
+    name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "tag_constants"
-    mtype: "<type \'module\'>"
+    name: "DEFAULT_SERVING_SIGNATURE_DEF_KEY"
+    mtype: "<type \'str\'>"
   }
   member {
-    name: "utils"
-    mtype: "<type \'module\'>"
+    name: "GPU"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_INPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_METHOD_NAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_OUTPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_INPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_METHOD_NAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_OUTPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PB"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PBTXT"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_SCHEMA_VERSION"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "SERVING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "TPU"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "TRAINING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "VARIABLES_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "VARIABLES_FILENAME"
+    mtype: "<type \'str\'>"
   }
   member_method {
-    name: "simple_save"
-    argspec: "args=[\'session\', \'export_dir\', \'inputs\', \'outputs\', \'legacy_init_op\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load"
+    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

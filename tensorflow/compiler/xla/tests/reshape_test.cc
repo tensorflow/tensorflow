@@ -618,7 +618,8 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(use_bfloat16() ? BF16 : F32, {2, 8},
-                                     {1, 0});
+                                     {1, 0})
+          .ToProto();
   Literal actual =
       client_
           ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
@@ -767,7 +768,8 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(use_bfloat16() ? BF16 : F32, {7, 2, 3, 5},
-                                     {2, 3, 0, 1});
+                                     {2, 3, 0, 1})
+          .ToProto();
   Literal output_literal =
       client_
           ->ExecuteAndTransfer(computation, {input_data.get()},

@@ -36,19 +36,19 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def _random_types(self):
     return set(self.numeric_types) - set(
-        self.complex_types) - {np.uint8, np.int8}
+        self.complex_types) - {np.uint64, np.int64, np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = rng(dtype)
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -72,6 +72,30 @@ class RandomOpsTest(xla_test.XLATestCase):
     for dtype in self._random_types() & self.float_types:
       self._testRngIsNotConstant(rng, dtype)
 
+  def testRandomNormalMean(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=1.4,
+                                            stddev=1.2)
+          mean = math_ops.reduce_mean(normal)
+          x = self.evaluate(mean)
+          self.assertAllClose(x, 1.4, rtol=1e-1, atol=1e-1)
+
+  def testRandomNormalVariance(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=2.3,
+                                            stddev=2.0)
+          variance = math_ops.reduce_variance(normal)
+          x = self.evaluate(variance)
+          self.assertAllClose(x, 4.0, rtol=1e-1, atol=1e-1)
+
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
       # TODO (b/112272078): enable bfloat16 for CPU and GPU when the bug is
@@ -79,11 +103,11 @@ class RandomOpsTest(xla_test.XLATestCase):
       if (self.device in ["XLA_GPU", "XLA_CPU"
                          ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
-        y = sess.run(x)
+        y = self.evaluate(x)
         self.assertTrue((y >= -2).sum() == 1000)
         self.assertTrue((y < 33).sum() == 1000)
 
@@ -92,17 +116,16 @@ class RandomOpsTest(xla_test.XLATestCase):
     def rng(dtype):
       return random_ops.truncated_normal(shape=[2], dtype=dtype)
 
-    for dtype in self._random_types() & self.float_types:
-      self._testRngIsNotConstant(rng, dtype)
+    self._testRngIsNotConstant(rng, dtypes.float32)
 
   def testTruncatedNormalIsInRange(self):
     count = 10000000
     # TODO(b/34339814): make this test work with 16 bit float types.
     for dtype in self._random_types() & {dtypes.float32, dtypes.float64}:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           x = random_ops.truncated_normal(shape=[count], dtype=dtype)
-        y = sess.run(x)
+        y = self.evaluate(x)
 
         def normal_cdf(x):
           return .5 * math.erfc(-x / math.sqrt(2))
@@ -111,7 +134,7 @@ class RandomOpsTest(xla_test.XLATestCase):
           return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
         def probit(x, sess=sess):
-          return sess.run(special_math.ndtri(x))
+          return self.evaluate(special_math.ndtri(x))
 
         a = -2.
         b = 2.
@@ -122,8 +145,8 @@ class RandomOpsTest(xla_test.XLATestCase):
         beta = (b - mu) / sigma
         z = normal_cdf(beta) - normal_cdf(alpha)
 
-        self.assertTrue((y >= a).sum() == count)
-        self.assertTrue((y <= b).sum() == count)
+        self.assertEqual((y >= a).sum(), count)
+        self.assertEqual((y <= b).sum(), count)
 
         # For more information on these calculations, see:
         # Burkardt, John. "The Truncated Normal Distribution".
@@ -144,22 +167,22 @@ class RandomOpsTest(xla_test.XLATestCase):
         self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = range(1 << 16)
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.
       self.assertAllEqual(set(result), set(expected))
 
   def testShuffle2d(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = np.diag(range(20)).flatten()
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.

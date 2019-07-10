@@ -21,12 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -55,11 +49,17 @@ limitations under the License.
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -68,53 +68,10 @@ namespace {
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Gets the libdevice filename for a particular compute capability.  When
-// presented with a GPU we don't recognize, we just return the libdevice from
-// compute_20.
-static string GetLibdeviceFilename(const string& libdevice_dir_path,
-                                   std::pair<int, int> compute_capability) {
-  // Since CUDA 9.0, all GPU versions are included in a single file
-  const char* unified_libdevice_filename = "libdevice.10.bc";
-  std::vector<string> unified_libdevice_files;
-  const Status status = tensorflow::Env::Default()->GetMatchingPaths(
-      tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
-      &unified_libdevice_files);
-  if (status.ok() && unified_libdevice_files.size() == 1) {
-    return unified_libdevice_filename;
-  }
-  // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
-  // version gets mapped to one of these.  Note in particular that sm_60 and
-  // sm_61 map to libdevice.compute_30.
-  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
-                                                           {{2, 1}, 20},
-                                                           {{3, 0}, 30},
-                                                           {{3, 2}, 30},
-                                                           {{3, 5}, 35},
-                                                           {{3, 7}, 35},
-                                                           {{5, 0}, 50},
-                                                           {{5, 2}, 50},
-                                                           {{5, 3}, 50},
-                                                           {{6, 0}, 30},
-                                                           {{6, 1}, 30},
-                                                           {{6, 2}, 30}});
-  int libdevice_version = 20;
-  auto it = m->find(compute_capability);
-  if (it != m->end()) {
-    libdevice_version = it->second;
-  } else {
-    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
-                 << ", " << compute_capability.second << ") ."
-                 << "Defaulting to libdevice for compute_" << libdevice_version;
-  }
-  return absl::StrCat("libdevice.compute_", libdevice_version, ".10.bc");
-}
-
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_30".
+// we see an unrecognized compute capability, we return "sm_35".
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({
-      {{3, 0}, 30},
-      {{3, 2}, 32},
       {{3, 5}, 35},
       {{3, 7}, 37},
       {{5, 0}, 50},
@@ -125,8 +82,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
       {{6, 2}, 62},
       {{7, 0}, 70},
       {{7, 2}, 72},
+      {{7, 5}, 75},
   });
-  int sm_version = 30;
+  int sm_version = 35;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
     sm_version = it->second;
@@ -141,10 +99,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
-string MakeNameForTempProduct(const std::string& input_filename,
+string MakeNameForTempProduct(absl::string_view input_filename,
                               absl::string_view extension) {
-  return ReplaceFilenameExtension(absl::string_view(tensorflow::io::Basename(
-                                      llvm_ir::AsString(input_filename))),
+  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
                                   extension);
 }
 
@@ -177,13 +134,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_gpu_enable_fast_math(),
-      &target_options);
-
-  // Enable FMA synthesis.
-  target_options.AllowFPOpFusion = FPOpFusion::Fast;
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
@@ -206,8 +156,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
-      Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
-      codegen_opt_level));
+      getRelocModel(), getCodeModel(), codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -229,7 +178,6 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0;
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
@@ -263,11 +211,8 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     llvm::buffer_ostream pstream(stream);
     // The extension is stripped by IrDumpingPassManager, so we need to
     // get creative to add a suffix.
-    string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(
-            absl::string_view(tensorflow::io::Basename(module_id)),
-            "-nvptx.dummy"),
+        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
@@ -317,14 +262,22 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
     return Status::OK();
   }
 
-  llvm::Linker linker(*module);
-  string libdevice_path = tensorflow::io::JoinPath(
-      libdevice_dir_path,
-      GetLibdeviceFilename(libdevice_dir_path, compute_capability));
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
+  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
+  // older CUDAs.
+  string libdevice_path =
+      tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+  if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
+    LOG(WARNING)
+        << "libdevice is required by this HLO module but was not found at "
+        << libdevice_path;
+    return xla::InternalError("libdevice not found at %s", libdevice_path);
+  }
+
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
       LoadIRModule(libdevice_path, &module->getContext());
+
+  llvm::Linker linker(*module);
   if (linker.linkInModule(
           std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
           [](Module& M, const StringSet<>& GVS) {
@@ -332,8 +285,8 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {
-    return tensorflow::errors::Internal(
-        absl::StrCat("Error linking libdevice from ", libdevice_path));
+    return xla::InternalError("Error linking libdevice from %s",
+                              libdevice_path);
   }
   return Status::OK();
 }
@@ -345,7 +298,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // If the module has no functions or globals, there's nothing to compile. Just
   // return an empty string.
   if (module->empty() && module->global_empty()) {
-    VLOG(2) << "Module '" << llvm_ir::AsString(module->getName())
+    VLOG(2) << "Module '" << module->getName().str()
             << "' is empty. Skipping compilation.";
     return string();
   }
@@ -401,8 +354,16 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   int32 opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
 
-  CHECK_GE(opt_level, 2)
-      << "The XLA GPU backend doesn't support unoptimized code generation";
+  if (opt_level < 2) {
+    LOG(ERROR) << std::string(80, '*');
+    LOG(ERROR) << "The XLA GPU backend doesn't support unoptimized code "
+                  "generation but ";
+    LOG(ERROR) << "--xla_backend_optimization_level is set to " << opt_level
+               << "!";
+    LOG(ERROR) << "(Supported configuration is "
+                  "--xla_backend_optimization_level >= 2.)";
+    LOG(ERROR) << std::string(80, '*');
+  }
 
   AddOptimizationPasses(opt_level,
                         /*size_level=*/0, target_machine.get(), &module_passes,
@@ -453,17 +414,21 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // * 3-6 gives similar results as 2;
   // * >6 start hurting the performance of at least dot product kernels.
   //
-  // TODO(jingyue): The current threshold only considers the numbr of IR
+  // TODO(jingyue): The current threshold only considers the number of IR
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // TODO(b/22073864): Increase limit when scan memory dependency.
-  // This helps to reduce more redundant load instructions.
+  // Increase limit when scanning memory dependencies.  This helps to reduce
+  // more redundant load instructions.
   //
   // The specific value is currently large enough for s3d in shoc benchmark,
   // which contains a lot of load instructions and many arithmetic instructions
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
+
+  // Use div.full -- it matters for some float-division heavy benchmarks.
+  // Using div.approx produces incorrect result for float32(max)/float32(max).
+  FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
   llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 
@@ -490,11 +455,10 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::tracing::ScopedActivity activity(
-        "Compiling IR", llvm_ir::AsString(module->getName()),
-        /*is_expensive=*/true);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " +
-                             llvm_ir::AsString(module->getName()));
+    tensorflow::profiler::TraceMe activity(
+        [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
         ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
                                 libdevice_dir_path));

@@ -19,9 +19,11 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -46,7 +48,7 @@ namespace xla {
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
+  MultiOutputFusion() = default;
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -102,12 +104,6 @@ class MultiOutputFusion : public HloModulePass {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
-  // Optimization fuel is a compiler debugging technique that makes an
-  // optimization pass stop what it is doing after having made N changes to the
-  // program, where N is the fuel. By varying N, this can be used to find the
-  // first single change that makes a test fail.
-  int64 fuel_;
-
  private:
   // Update the internal data structures after instr1 and instr2 are fused into
   // one fusion instruction.
@@ -126,7 +122,7 @@ class MultiOutputFusion : public HloModulePass {
   std::vector<FusionCandidate> candidates_;
 
   // A map that maps an instruction to the index_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int> candidates_index_;
+  absl::flat_hash_map<HloInstruction*, int> candidates_index_;
 
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;

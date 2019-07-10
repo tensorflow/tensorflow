@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/quantize_and_dequantize_op.h"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/quantize_and_dequantize_op.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -32,10 +32,11 @@ struct QuantizeAndDequantizeOneScaleFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
                   Tensor* input_min_tensor, Tensor* input_max_tensor,
+                  QuantizerRoundMode round_mode, bool narrow_range,
                   typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<GPUDevice, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min_tensor,
-        input_max_tensor, out);
+        input_max_tensor, round_mode, narrow_range, out);
   }
 };
 }  // end namespace functor
@@ -47,4 +48,4 @@ template struct functor::QuantizeAndDequantizeOneScaleFunctor<GPUDevice,
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -135,13 +135,14 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 #endif
 }
 
-void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
+void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
   RecvTensorResponse response;
   if (is_dead) {
     response.set_is_dead(is_dead);
   }
+  response.set_require_ack(require_ack);
   response.set_send_start_micros(Env::Default()->NowMicros());
   if (!DataTypeCanUseMemcpy(val.dtype())) {
     // Straightforward but slow path for complicated kinds of tensor data

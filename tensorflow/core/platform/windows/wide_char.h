@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_WINDOWS_WIDE_CHAR_H_
 
 #include <Windows.h>
+// Windows.h #defines ERROR, but it is also used in
+// tensorflow/core/util/event.proto
+#undef ERROR
 #include <string>
 #include "tensorflow/core/platform/types.h"
 

@@ -96,10 +96,6 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
-
-# Optimization constant that can be used to enable auto-tuning.
-from tensorflow.contrib.data.python.ops.optimization import AUTOTUNE
-
 from tensorflow.contrib.data.python.ops.parsing_ops import parse_example_dataset
 from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
@@ -114,11 +110,9 @@ from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
-from tensorflow.contrib.data.python.ops.stats_ops import latency_stats
-from tensorflow.contrib.data.python.ops.stats_ops import set_stats_aggregator
-from tensorflow.contrib.data.python.ops.stats_ops import StatsAggregator
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 # pylint: enable=unused-import

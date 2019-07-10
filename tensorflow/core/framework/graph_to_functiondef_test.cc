@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -27,6 +28,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+FunctionDef RemoveDebugInfo(const FunctionDef& def) {
+  FunctionDef copy = def;
+  for (auto& node_def : *copy.mutable_node_def()) {
+    node_def.clear_experimental_debug_info();
+  }
+  return copy;
+}
 
 bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
                       string* diff) {
@@ -78,7 +87,8 @@ TEST(GraphToFunctionDefTest, Basics) {
       {{"h_0", "G:sum:0"}});  // return values
 
   string diff;
-  bool fdefs_equal = EqualFunctionDef(fdef_expected, fdef, &diff);
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
   EXPECT_TRUE(fdefs_equal) << diff;
 }
 
@@ -111,7 +121,48 @@ TEST(GraphToFunctionDefTest, ControlDependencies) {
       {{"c", "b:y:0"}});  // return values
 
   string diff;
-  bool fdefs_equal = EqualFunctionDef(fdef_expected, fdef, &diff);
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, ControlOutputs) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("a"), DT_FLOAT, 0);
+  auto b = ops::Neg(root.WithOpName("b"), a);
+  auto c = ops::_Retval(root.WithOpName("c"), b, 0);
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions options;
+  TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
+
+  // Add a 'b' node to the control return set.
+  const auto control_ret = [](const Node* n) -> absl::optional<string> {
+    if (n->name() == "b") return absl::make_optional<string>("must_execute");
+    return absl::nullopt;
+  };
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(*graph, "test_fn", control_ret, &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",     // function name
+                                {"a: float"},  // inputs
+                                {"c: float"},  // outputs
+                                {},            // attrs
+                                {
+                                    // nodes in the function body
+                                    {{"b"}, "Neg", {"a"}, {{"T", DT_FLOAT}}},
+                                },
+                                {{"c", "b:y:0"}},          // return values
+                                {{"must_execute", "b"}});  // control returns
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
   EXPECT_TRUE(fdefs_equal) << diff;
 }
 

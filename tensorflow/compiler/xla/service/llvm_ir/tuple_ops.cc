@@ -29,9 +29,14 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+static llvm::Module* getModuleFromBuilder(llvm::IRBuilder<>* b) {
+  return b->GetInsertBlock()->getModule();
+}
+
 void EmitTupleSelect(const IrArray& select, const IrArray& pred,
                      llvm::Value* on_true, llvm::Value* on_false,
-                     llvm::IRBuilder<>* b, llvm::Module* module) {
+                     llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   CHECK(ShapeUtil::IsScalar(pred.GetShape()));
 
   llvm::LoadInst* pred_value =
@@ -45,27 +50,17 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
   VLOG(2) << "  pred_value: " << DumpToString(*pred_value);
   VLOG(2) << "  pred_cond: " << DumpToString(*pred_cond);
 
-  for (int i = 0; i < ShapeUtil::TupleElementCount(select.GetShape()); ++i) {
-    llvm::Value* const element_index[] = {b->getInt64(0), b->getInt64(i)};
-    llvm::Value* on_true_element_address =
-        b->CreateInBoundsGEP(on_true, element_index);
-    llvm::Value* on_true_element = b->CreateLoad(
-        on_true_element_address, "on_true_element_" + llvm::Twine(i));
-    llvm::Value* on_false_element_address =
-        b->CreateInBoundsGEP(on_false, element_index);
-    llvm::Value* on_false_element = b->CreateLoad(
-        on_false_element_address, "on_false_element_" + llvm::Twine(i));
-
-    llvm::Value* output_element_address =
-        b->CreateInBoundsGEP(select.GetBasePointer(), element_index);
-    b->CreateStore(b->CreateSelect(pred_cond, on_true_element, on_false_element,
-                                   "select_output_element_" + llvm::Twine(i)),
-                   output_element_address);
-  }
+  llvm::Value* src = b->CreateSelect(pred_cond, on_true, on_false);
+  llvm::Value* dst = select.GetBasePointer();
+  int64 table_size = ShapeUtil::ByteSizeOfTupleIndexTable(
+      select.GetShape(), module->getDataLayout().getPointerSize());
+  b->CreateMemCpy(dst, /*DstAlign=*/1, src, /*SrcAlign=*/1,
+                  b->getInt64(table_size));
 }
 
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
-               llvm::IRBuilder<>* b, llvm::Module* module) {
+               llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   for (size_t i = 0; i < operands.size(); ++i) {
     auto* store = b->CreateStore(
         b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module)),
@@ -76,24 +71,51 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
 }
 
 void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
-               llvm::IRBuilder<>* b, llvm::Module* module) {
+               llvm::IRBuilder<>* b) {
   std::vector<llvm::Value*> buffer_ptrs;
   buffer_ptrs.reserve(buffers.size());
   absl::c_transform(
       buffers, std::back_inserter(buffer_ptrs),
       [](const llvm_ir::IrArray& buffer) { return buffer.GetBasePointer(); });
-  llvm_ir::EmitTuple(tuple, buffer_ptrs, b, module);
+  llvm_ir::EmitTuple(tuple, buffer_ptrs, b);
+}
+
+std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
+    const Shape& tuple_shape, llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  b->SetInsertPoint(&function->getEntryBlock(),
+                    function->getEntryBlock().getFirstInsertionPt());
+  CHECK(tuple_shape.IsTuple());
+  int tuple_size = tuple_shape.tuple_shapes_size();
+
+  std::vector<llvm::Value*> generated_allocas;
+  for (int i = 0; i < tuple_size; i++) {
+    const Shape& element_shape = tuple_shape.tuple_shapes(i);
+    CHECK(ShapeUtil::IsScalar(element_shape));
+    llvm::Type* type =
+        llvm_ir::PrimitiveTypeToIrType(element_shape.element_type(), module);
+    llvm::AllocaInst* alloca = b->CreateAlloca(
+        type,
+        /*ArraySize=*/nullptr, AsStringRef(absl::StrCat("tuple_element_", i)));
+    generated_allocas.push_back(alloca);
+  }
+
+  return generated_allocas;
 }
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* b, llvm::Module* module) {
+                                 llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   llvm::Value* element_ptr =
       b->CreateInBoundsGEP(operand, {b->getInt64(0), b->getInt64(index)});
   llvm::LoadInst* src_buffer = b->CreateLoad(element_ptr);
 
   // Mark the loaded pointer as dereferenceable if we know its shape.
-  if (!ShapeUtil::IsOpaque(target_shape)) {
+  if (!target_shape.IsOpaque()) {
     SetDereferenceableMetadataForLoad(
         src_buffer,
         ByteSizeOf(target_shape, src_buffer->getModule()->getDataLayout()));

@@ -69,12 +69,12 @@ int main(int argc, char** argv) {
   } else if (target_cpu == "arm") {
     triple_string = "aarch64-none-linux-gnu";
   } else if (target_cpu == "local") {
-    triple_string = xla::llvm_ir::AsString(llvm::sys::getDefaultTargetTriple());
+    triple_string = llvm::sys::getDefaultTargetTriple();
   } else {
     LOG(FATAL) << "unsupported TARGET_CPU: " << target_cpu;
   }
 
-  llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
+  llvm::Triple triple(triple_string);
 
   xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
   xla::CompileOnlyClient::AotXlaComputationInstance instance{

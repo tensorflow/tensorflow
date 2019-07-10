@@ -21,16 +21,16 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_kronecker as kronecker
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as lower_triangular
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -54,6 +54,7 @@ def _kronecker_dense(factors):
 
 class KroneckerDenseTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testKroneckerDenseMatrix(self):
     x = ops.convert_to_tensor([[2., 3.], [1., 2.]], dtype=dtypes.float32)
     y = ops.convert_to_tensor([[1., 2.], [5., -1.]], dtype=dtypes.float32)
@@ -71,8 +72,8 @@ class KroneckerDenseTest(test.TestCase):
         [5., 10., -1., -2.]], dtype=dtypes.float32)
 
     with self.cached_session():
-      self.assertAllClose(_kronecker_dense([x, y]).eval(), z.eval())
-      self.assertAllClose(_kronecker_dense([y, x]).eval(), w.eval())
+      self.assertAllClose(_kronecker_dense([x, y]).eval(), self.evaluate(z))
+      self.assertAllClose(_kronecker_dense([y, x]).eval(), self.evaluate(w))
 
 
 class SquareLinearOperatorKroneckerTest(
@@ -86,22 +87,23 @@ class SquareLinearOperatorKroneckerTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
-        build_info((1, 1), factors=[(1, 1), (1, 1)]),
-        build_info((8, 8), factors=[(2, 2), (2, 2), (2, 2)]),
-        build_info((12, 12), factors=[(2, 2), (3, 3), (2, 2)]),
-        build_info((1, 3, 3), factors=[(1, 1), (1, 3, 3)]),
-        build_info((3, 6, 6), factors=[(3, 1, 1), (1, 2, 2), (1, 3, 3)]),
+        shape_info((1, 1), factors=[(1, 1), (1, 1)]),
+        shape_info((8, 8), factors=[(2, 2), (2, 2), (2, 2)]),
+        shape_info((12, 12), factors=[(2, 2), (3, 3), (2, 2)]),
+        shape_info((1, 3, 3), factors=[(1, 1), (1, 3, 3)]),
+        shape_info((3, 6, 6), factors=[(3, 1, 1), (1, 2, 2), (1, 3, 3)]),
     ]
 
-  @property
-  def _tests_to_skip(self):
-    return ["det", "solve", "solve_with_broadcast"]
-
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    # Kronecker products constructed below will be from symmetric
+    # positive-definite matrices.
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
     expected_factors = build_info.__dict__["factors"]
     matrices = [
@@ -118,7 +120,11 @@ class SquareLinearOperatorKroneckerTest(
 
     operator = kronecker.LinearOperatorKronecker(
         [linalg.LinearOperatorFullMatrix(
-            l, is_square=True) for l in lin_op_matrices])
+            l,
+            is_square=True,
+            is_self_adjoint=True,
+            is_positive_definite=True)
+         for l in lin_op_matrices])
 
     matrices = linear_operator_util.broadcast_matrix_batch_dims(matrices)
 
@@ -182,6 +188,71 @@ class SquareLinearOperatorKroneckerTest(
     with self.assertRaisesRegexp(ValueError, ">=1 operators"):
       kronecker.LinearOperatorKronecker([])
 
+  def test_kronecker_adjoint_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    adjoint = operator.adjoint()
+    self.assertIsInstance(
+        adjoint,
+        kronecker.LinearOperatorKronecker)
+    self.assertEqual(2, len(adjoint.operators))
+
+  def test_kronecker_cholesky_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+        ],
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    cholesky_factor = operator.cholesky()
+    self.assertIsInstance(
+        cholesky_factor,
+        kronecker.LinearOperatorKronecker)
+    self.assertEqual(2, len(cholesky_factor.operators))
+    self.assertIsInstance(
+        cholesky_factor.operators[0],
+        lower_triangular.LinearOperatorLowerTriangular)
+    self.assertIsInstance(
+        cholesky_factor.operators[1],
+        lower_triangular.LinearOperatorLowerTriangular)
+
+  def test_kronecker_inverse_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    inverse = operator.inverse()
+    self.assertIsInstance(
+        inverse,
+        kronecker.LinearOperatorKronecker)
+    self.assertEqual(2, len(inverse.operators))
+
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorKroneckerTest)
   test.main()

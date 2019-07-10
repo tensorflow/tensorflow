@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "greater"
-    deprecated: true
   }
 }

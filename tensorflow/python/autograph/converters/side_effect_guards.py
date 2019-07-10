@@ -21,10 +21,10 @@ arguments passed to functions, and does not account for indirectly modified
 state.
 
 Example:
-  y = tf.layers.dense(x)       # Creates TF variable 'foo'
+  y = tf.compat.v1.layers.dense(x)       # Creates TF variable 'foo'
   loss = loss(y)
   opt.minimize(loss)           # indirectly affects 'foo'
-  z = tf.get_variable('foo')   # Indirectly affects `loss` and 'foo'
+  z = tf.compat.v1.get_variable('foo')   # Indirectly affects `loss` and 'foo'
   # Here, `loss` can be guarded. But `z` cannot.
 
 # TODO(mdan): We should probably define a safe mode where we guard everything.
@@ -85,11 +85,26 @@ class SideEffectGuardTransformer(converter.Base):
         new_alias_map.update(alias_map)
         alias_map = new_alias_map
         current_dest = new_dest
-    if reindent_requested and not current_dest:
-      # TODO(mdan): There may still be something that could be done.
-      raise ValueError('Unable to insert statement into the computation flow: '
-                       'it is not followed by any computation which '
-                       'the statement could gate.')
+
+    if reindent_requested:
+      no_controls_to_gate = False
+      if not current_dest:
+        no_controls_to_gate = True
+      if len(current_dest) == 1:
+        if ast_util.matches(current_dest[0], 'return'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return ()'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return []'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return {}'):
+          no_controls_to_gate = True
+      if no_controls_to_gate:
+        # TODO(mdan): There may still be something that could be done.
+        raise ValueError(
+            'Unable to insert statement into the computation flow: it is not'
+            ' followed by any computation which the statement could gate.')
+
     return new_nodes
 
   def visit_FunctionDef(self, node):
@@ -110,30 +125,35 @@ class SideEffectGuardTransformer(converter.Base):
     node.orelse = self._visit_and_reindent(node.orelse)
     return node
 
+  # TODO(b/123995141) Remove once ExceptionHandlers are in the CFG
+  def visit_ExceptHandler(self, node):
+    return node
+
   def visit_Expr(self, node):
     self.generic_visit(node)
     if isinstance(node.value, gast.Call):
       # Patterns of single function calls, like:
       #   opt.minimize(loss)
       # or:
-      #   tf.py_func(...)
+      #   tf.compat.v1.py_func(...)
 
       # First, attempt to gate future evaluation of args. If that's not
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
       args_scope = anno.getanno(node.value, NodeAnno.ARGS_SCOPE)
+      live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
       # NOTE: We can't guard object attributes because they may not be writable.
       # In addition, avoid renaming well-known names.
       # TODO(mdan): Move these names into config.
-      unguarded_names = (qual_names.QN('self'), qual_names.QN('tf'))
-      guarded_args = tuple(s for s in args_scope.used
+      unguarded_names = (qual_names.QN('self'), qual_names.QN('ag__'))
+      guarded_args = tuple(s for s in live_out
                            if not s.is_composite() and s not in unguarded_names)
 
       # TODO(mdan): Include all arguments which depended on guarded_args too.
       # For example, the following will still cause a race:
-      #   tf.assign(a, a + 1)
+      #   tf.compat.v1.assign(a, a + 1)
       #   b = a + 1
-      #   tf.assign(a, a + 1)  # Control deps here should include `b`
+      #   tf.compat.v1.assign(a, a + 1)  # Control deps here should include `b`
       #   c = b + 1
       # Or maybe we should just raise an "unsafe assign" error?
 

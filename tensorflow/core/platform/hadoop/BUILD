@@ -1,15 +1,14 @@
 # Description:
 # Hadoop file system implementation.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -26,7 +25,7 @@ cc_library(
 
 # This test is set to manual because it requires downloading the Hadoop
 # distribution to run. To run this test:
-# 1. Ensure $JAVA_HOME is set.
+# 1. Ensure $JAVA_HOME is set to the location of a JDK 8 installation.
 # 2. Download the binary Hadoop distribution from:
 #    http://hadoop.apache.org/releases.html
 # 3. Extract the Hadoop distribution and run:

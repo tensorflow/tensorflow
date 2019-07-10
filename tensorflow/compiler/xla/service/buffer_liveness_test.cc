@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -52,8 +53,8 @@ class BufferLivenessTest : public HloTestBase {
   // interfere. Precondition: 'a' and 'b' are array-shaped.
   bool InstructionsMayInterfere(const BufferLiveness& liveness,
                                 HloInstruction* a, HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return liveness.MayInterfere(
         GetBuffer(liveness, /*instruction=*/a, /*index=*/{}),
         GetBuffer(liveness, /*instruction=*/b, /*index=*/{}));
@@ -66,8 +67,8 @@ class BufferLivenessTest : public HloTestBase {
                                  HloInstruction* a, HloInstruction* b,
                                  const ShapeIndex& index) {
     // Check that top-level shapes are tuple and tuple element shapes are equal.
-    EXPECT_TRUE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_TRUE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_TRUE(a->shape().IsTuple());
+    EXPECT_TRUE(b->shape().IsTuple());
     EXPECT_TRUE(
         ShapeUtil::Compatible(ShapeUtil::GetSubshape(a->shape(), index),
                               ShapeUtil::GetSubshape(b->shape(), index)));
@@ -117,7 +118,7 @@ TEST_F(BufferLivenessTest, ElementwiseChain) {
   auto log = builder.AddInstruction(
       HloInstruction::CreateUnary(vec_, HloOpcode::kLog, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -164,7 +165,7 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry = module->AddEntryComputation(builder.Build());
 
   HloSchedule schedule(module.get());
@@ -196,6 +197,82 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, add, exp));
 }
 
+TEST_F(BufferLivenessTest, EmbeddedComputationParameters) {
+  absl::string_view hlo_string = R"(
+HloModule EmbeddedComputationParameters, is_scheduled=true
+
+%EmbeddedComputationParameters_embedded (embedded_param0: f32[42], embedded_param1: f32[42]) -> (f32[42], f32[42]) {
+  %embedded_param0 = f32[42]{0} parameter(0)
+  %log = f32[42]{0} log(f32[42]{0} %embedded_param0)
+  %add = f32[42]{0} add(f32[42]{0} %log, f32[42]{0} %log)
+  %embedded_param1 = f32[42]{0} parameter(1)
+  ROOT %tuple = (f32[42]{0}, f32[42]{0}) tuple(f32[42]{0} %add, f32[42]{0} %embedded_param1)
+}
+
+ENTRY %EmbeddedComputationParameters (param0: f32[42], param1: f32[42]) -> (f32[42], f32[42]) {
+  %param0 = f32[42]{0} parameter(0)
+  %param1 = f32[42]{0} parameter(1)
+  ROOT %call = (f32[42]{0}, f32[42]{0}) call(f32[42]{0} %param0, f32[42]{0} %param1), to_apply=%EmbeddedComputationParameters_embedded
+}
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
+  auto liveness =
+      BufferLiveness::Run(
+          module.get(),
+          absl::make_unique<SequentialHloOrdering>(module->schedule()))
+          .ConsumeValueOrDie();
+
+  auto embedded_log = FindInstruction(module.get(), "log");
+  auto embedded_param0 = FindInstruction(module.get(), "embedded_param0");
+  auto embedded_param1 = FindInstruction(module.get(), "embedded_param1");
+  auto param0 = FindInstruction(module.get(), "param0");
+  auto param1 = FindInstruction(module.get(), "param1");
+
+  // Parameters should interfere with other instructions inside the computation.
+  EXPECT_TRUE(
+      InstructionsMayInterfere(*liveness, embedded_log, embedded_param1));
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, embedded_log, param0));
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, embedded_log, param1));
+  EXPECT_TRUE(
+      InstructionsMayInterfere(*liveness, embedded_param0, embedded_param1));
+}
+
+TEST_F(BufferLivenessTest, InterferenceWithOuterRoot) {
+  absl::string_view hlo_string = R"(
+HloModule InterferenceWithOuterRoot, is_scheduled=true
+
+Emmbedded (embedded_param: f32[42]) -> f32[42] {
+  embedded_param = f32[42]{0} parameter(0)
+  multiply = f32[42]{0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[42]{0} log(multiply)
+}
+
+ENTRY InterferenceWithOuterRoot {
+  param = f32[4096,4096]{1,0} parameter(0)
+  ROOT add = f32[4096,4096]{1,0} add(param, param)
+  call = f32[42]{0} call(param), to_apply=Emmbedded
+}
+
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
+  auto liveness =
+      BufferLiveness::Run(
+          module.get(),
+          absl::make_unique<SequentialHloOrdering>(module->schedule()))
+          .ConsumeValueOrDie();
+
+  auto multiply = FindInstruction(module.get(), "multiply");
+  auto add = FindInstruction(module.get(), "add");
+
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, multiply, add));
+}
+
 TEST_F(BufferLivenessTest, NonElementwiseOperand) {
   // A chain of operations with two elementwise and one non-elementwise. The
   // elementwise op should not interfere with its operand, while the
@@ -213,7 +290,7 @@ TEST_F(BufferLivenessTest, NonElementwiseOperand) {
   auto reverse =
       builder.AddInstruction(HloInstruction::CreateReverse(vec_, negate, {0}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -247,7 +324,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffers) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -289,7 +366,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloSchedule schedule(module.get());
@@ -336,7 +413,7 @@ TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
       HloInstruction::CreateSend(recv_done, token, /*channel_id=*/1));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build(add));
 
   HloSchedule schedule(module.get());
@@ -373,7 +450,7 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
   auto outer_tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({inner_tuple, exp}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -393,7 +470,7 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
 
 TEST_F(BufferLivenessTest, EmbeddedComputation) {
   // Test MaybeLiveOut and MayInterfere for embedded computation.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto embedded_builder = HloComputation::Builder(TestName() + "_embedded");
   auto embedded_param = embedded_builder.AddInstruction(
@@ -450,7 +527,7 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
   builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       inner_tuple0.shape(), tuple_constant, 0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -514,7 +591,7 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
   auto tuple_root =
       builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(BuildDummyComputation());
   module->AddEmbeddedComputation(builder.Build());
 
@@ -576,7 +653,7 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
   auto tuple_root =
       builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(BuildDummyComputation());
   module->AddEmbeddedComputation(builder.Build());
 
@@ -611,8 +688,8 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
 class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
  protected:
   // Builds and runs a computation (see test case computation graphs below).
-  std::unique_ptr<HloModule> BuildModule(const bool update_uses_tuple_element1,
-                                         const bool fuse_gte0) {
+  std::unique_ptr<VerifiedHloModule> BuildModule(
+      const bool update_uses_tuple_element1, const bool fuse_gte0) {
     auto builder = HloComputation::Builder(TestName());
     // Create param0 Tuple.
     Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -638,15 +715,15 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
     // Build module and get reference to entry computation.
-    auto module = CreateNewModule();
+    auto module = CreateNewVerifiedModule();
     module->AddEntryComputation(builder.Build());
     auto* computation = module->entry_computation();
     // Create fusion instruction based on number of tuple element 1 users.
@@ -794,15 +871,15 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     auto tuple_root = builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
     // Build module and get reference to entry computation.
-    auto module = CreateNewModule();
+    auto module = CreateNewVerifiedModule();
     module->AddEntryComputation(BuildDummyComputation());
     module->AddEmbeddedComputation(builder.Build());
     // Run BufferLiveness on 'module'.

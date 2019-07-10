@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import add_arg_scope
-from tensorflow.contrib.framework.python.ops import model_variable
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -29,7 +27,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import moving_averages
 
 
-@add_arg_scope
 def FixedQuantize(inputs, init_min=-6.0, init_max=6.0, scope=None):
   """Adds a fake quantize layer with fixed quantization interval.
 
@@ -46,17 +43,33 @@ def FixedQuantize(inputs, init_min=-6.0, init_max=6.0, scope=None):
         inputs, min=init_min, max=init_max)
 
 
-@add_arg_scope
+def _ModelVariable(name,
+                   shape=None,
+                   initializer=None,
+                   collections=None,
+                   trainable=None):
+  collections = list(collections or [])
+  collections += [ops.GraphKeys.GLOBAL_VARIABLES]
+  return variable_scope.get_variable(
+      name,
+      shape=shape,
+      initializer=initializer,
+      collections=collections,
+      trainable=trainable,
+      aggregation=variable_scope.VariableAggregation.MEAN)
+
+
 def LastValueQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
                       init_max=6.0,
-                      vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+                      vars_collection=None,
                       name_prefix='LastValueQuant',
                       reuse=None,
                       is_training=True,
                       num_bits=8,
-                      narrow_range=False):
+                      narrow_range=False,
+                      symmetric=False):
   """Adds a layer that collects quantization ranges as last input ranges.
 
   LastValueQuantize creates variables called 'min' and 'max', representing the
@@ -77,6 +90,8 @@ def LastValueQuantize(inputs,
     num_bits: Number of bits to use for quantization, must be between 2 and 8.
     narrow_range: Whether to use the narrow quantization range
       [1; 2^num_bits - 1] or wide range [0; 2^num_bits - 1].
+    symmetric: If true, use symmetric quantization limits instead of training
+      the minimum and maximum of each quantization range separately.
   Returns:
     a tensor containing quantized values.
   """
@@ -93,17 +108,18 @@ def LastValueQuantize(inputs,
     else:
       min_max_shape = []
 
-    min_var = model_variable(
+    vars_collections = [vars_collection] if vars_collection else []
+    min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
-    max_var = model_variable(
+    max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     if not is_training:
       return _FakeQuantWithMinMaxVars(
@@ -123,26 +139,40 @@ def LastValueQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
+            inputs, axis=reduce_dims, name='BatchMin')
       else:
         batch_min = inputs
     else:
       batch_min = math_ops.reduce_min(inputs, name='BatchMin')
-    # TFLite requires that 0.0 if always in the [min; max] range.
-    batch_min = math_ops.minimum(batch_min, 0.0)
-    assign_min = state_ops.assign(min_var, batch_min, name='AssignMinLast')
 
     if per_channel:
       if input_dim >= 2:
         batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
+            inputs, axis=reduce_dims, name='BatchMax')
       else:
         batch_max = inputs
     else:
       batch_max = math_ops.reduce_max(inputs, name='BatchMax')
-    # TFLite requires that 0.0 if always in the [min; max] range.
-    batch_max = math_ops.maximum(batch_max, 0.0)
-    assign_max = state_ops.assign(max_var, batch_max, name='AssignMaxLast')
+
+    if symmetric:
+      if narrow_range:
+        min_max_ratio = -1
+      else:
+        # In two's complement notation, the negative range is slightly larger
+        # than the positive range.
+        min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
+
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
+      # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
+      range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
+      range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
+    else:
+      # TFLite requires that 0.0 is always in the [min; max] range.
+      range_min = math_ops.minimum(batch_min, 0.0)
+      range_max = math_ops.maximum(batch_max, 0.0)
+
+    assign_min = state_ops.assign(min_var, range_min, name='AssignMinLast')
+    assign_max = state_ops.assign(max_var, range_max, name='AssignMaxLast')
 
     return _FakeQuantWithMinMaxVars(
         inputs,
@@ -153,7 +183,6 @@ def LastValueQuantize(inputs,
         narrow_range=narrow_range)
 
 
-@add_arg_scope
 def MovingAvgQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
@@ -164,7 +193,8 @@ def MovingAvgQuantize(inputs,
                       reuse=None,
                       is_training=True,
                       num_bits=8,
-                      narrow_range=False):
+                      narrow_range=False,
+                      symmetric=False):
   """Adds a layer that collects quantization ranges as EMAs of input ranges.
 
   MovingAvgQuantize creates variables called 'min' and 'max', representing the
@@ -186,6 +216,8 @@ def MovingAvgQuantize(inputs,
     num_bits: Number of bits to use for quantization, must be between 2 and 8.
     narrow_range: Whether to use the narrow quantization range
       [1; 2^num_bits - 1] or wide range [0; 2^num_bits - 1].
+    symmetric: If true, use symmetric quantization limits instead of training
+      the minimum and maximum of each quantization range separately.
   Returns:
     a tensor containing quantized values.
   """
@@ -193,8 +225,8 @@ def MovingAvgQuantize(inputs,
       None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
     scope.set_partitioner(None)
     input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
     if per_channel:
+      input_dim = len(input_shape)
       # Only support quantizing 1-, 2- and 4-dimensional tensors.
       assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
                                       ' scope: %s' % (input_shape, name_prefix))
@@ -202,17 +234,18 @@ def MovingAvgQuantize(inputs,
     else:
       min_max_shape = []
 
-    min_var = model_variable(
+    vars_collections = [vars_collection] if vars_collection else []
+    min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
-    max_var = model_variable(
+    max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     if not is_training:
       return _FakeQuantWithMinMaxVars(
@@ -231,28 +264,42 @@ def MovingAvgQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
+            inputs, axis=reduce_dims, name='BatchMin')
       else:
         batch_min = inputs
     else:
       batch_min = math_ops.reduce_min(inputs, name='BatchMin')
-    # B-eng requires that 0.0 if always in the [min; max] range.
-    batch_min = math_ops.minimum(batch_min, 0.0)
-    assign_min = moving_averages.assign_moving_average(
-        min_var, batch_min, ema_decay, name='AssignMinEma')
 
     if per_channel:
       if input_dim >= 2:
         batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
+            inputs, axis=reduce_dims, name='BatchMax')
       else:
         batch_max = inputs
     else:
       batch_max = math_ops.reduce_max(inputs, name='BatchMax')
-    # B-eng requires that 0.0 if always in the [min; max] range.
-    batch_max = math_ops.maximum(batch_max, 0.0)
+
+    if symmetric:
+      if narrow_range:
+        min_max_ratio = -1
+      else:
+        # In two's complement notation, the negative range is slightly larger
+        # than the positive range.
+        min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
+
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
+      # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
+      range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
+      range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
+    else:
+      # TFLite requires that 0.0 is always in the [min; max] range.
+      range_min = math_ops.minimum(batch_min, 0.0)
+      range_max = math_ops.maximum(batch_max, 0.0)
+
+    assign_min = moving_averages.assign_moving_average(
+        min_var, range_min, ema_decay, name='AssignMinEma')
     assign_max = moving_averages.assign_moving_average(
-        max_var, batch_max, ema_decay, name='AssignMaxEma')
+        max_var, range_max, ema_decay, name='AssignMaxEma')
 
     return _FakeQuantWithMinMaxVars(
         inputs,

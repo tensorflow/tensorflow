@@ -18,12 +18,25 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace Eigen {
+class Allocator;
+class ThreadPoolInterface;
+struct ThreadPoolDevice;
+
+template <typename Environment>
+class ThreadPoolTempl;
+}  // namespace Eigen
+
 namespace tensorflow {
 namespace thread {
+
+struct EigenEnvironment;
 
 class ThreadPool {
  public:
@@ -37,7 +50,8 @@ class ThreadPool {
   //
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads, bool low_latency_hint);
+             int num_threads, bool low_latency_hint,
+             Eigen::Allocator* allocator = nullptr);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
@@ -52,6 +66,12 @@ class ThreadPool {
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
              int num_threads);
 
+  // Constructs a pool that wraps around the thread::ThreadPoolInterface
+  // instance provided by the caller. Caller retains ownership of
+  // `user_threadpool` and must ensure its lifetime is longer than the
+  // ThreadPool instance.
+  explicit ThreadPool(thread::ThreadPoolInterface* user_threadpool);
+
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
   ~ThreadPool();
@@ -59,6 +79,10 @@ class ThreadPool {
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
+  void SetStealPartitions(
+      const std::vector<std::pair<unsigned, unsigned>>& partitions);
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int limit);
   // Requires 0 < block_size <= total.
   // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
   // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
@@ -112,10 +136,19 @@ class ThreadPool {
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
 
-  struct Impl;
+  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // returns a non-null pointer. The caller does not own the object the returned
+  // pointer points to, and should not attempt to delete.
+  Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
 
  private:
-  std::unique_ptr<Impl> impl_;
+  // underlying_threadpool_ is the user_threadpool if user_threadpool is
+  // provided in the constructor. Otherwise it is the eigen_threadpool_.
+  Eigen::ThreadPoolInterface* underlying_threadpool_;
+  // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
+  // user_threadpool is not in the constructor.
+  std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
 

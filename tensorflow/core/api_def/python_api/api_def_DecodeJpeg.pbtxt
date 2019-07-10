@@ -1,6 +1,4 @@
 op {
   graph_op_name: "DecodeJpeg"
-  endpoint {
-    name: "image.decode_jpeg"
-  }
+  visibility: HIDDEN
 }

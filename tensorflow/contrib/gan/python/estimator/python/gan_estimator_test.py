@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TFGAN's estimator.py."""
+"""Tests for TF-GAN's estimator.py."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
@@ -33,9 +32,12 @@ from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.estimator.estimator import WarmStartSettings
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -45,6 +47,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import learning_rate_decay
+from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 
@@ -52,7 +55,8 @@ from tensorflow.python.training import training_util
 def generator_fn(noise_dict, mode):
   del mode
   noise = noise_dict['x']
-  return layers.fully_connected(noise, noise.shape[1].value)
+  return layers.fully_connected(noise, tensor_shape.dimension_value(
+      noise.shape[1]))
 
 
 def discriminator_fn(data, unused_conditioning, mode):
@@ -70,15 +74,15 @@ class GetGANModelTest(test.TestCase, parameterized.TestCase):
   def test_get_gan_model(self, mode):
     with ops.Graph().as_default():
       generator_inputs = {'x': array_ops.ones([3, 4])}
-      real_data = (array_ops.zeros([3, 4]) if
-                   mode != model_fn_lib.ModeKeys.PREDICT else None)
+      is_predict = mode == model_fn_lib.ModeKeys.PREDICT
+      real_data = array_ops.zeros([3, 4]) if not is_predict else None
       gan_model = estimator._get_gan_model(
           mode, generator_fn, discriminator_fn, real_data, generator_inputs,
           add_summaries=False)
 
     self.assertEqual(generator_inputs, gan_model.generator_inputs)
     self.assertIsNotNone(gan_model.generated_data)
-    self.assertEqual(2, len(gan_model.generator_variables))  # 1 FC layer
+    self.assertLen(gan_model.generator_variables, 2)  # 1 FC layer
     self.assertIsNotNone(gan_model.generator_fn)
     if mode == model_fn_lib.ModeKeys.PREDICT:
       self.assertIsNone(gan_model.real_data)
@@ -91,7 +95,7 @@ class GetGANModelTest(test.TestCase, parameterized.TestCase):
       self.assertIsNotNone(gan_model.real_data)
       self.assertIsNotNone(gan_model.discriminator_real_outputs)
       self.assertIsNotNone(gan_model.discriminator_gen_outputs)
-      self.assertEqual(2, len(gan_model.discriminator_variables))  # 1 FC layer
+      self.assertLen(gan_model.discriminator_variables, 2)  # 1 FC layer
       self.assertIsNotNone(gan_model.discriminator_scope)
       self.assertIsNotNone(gan_model.discriminator_fn)
 
@@ -117,6 +121,7 @@ def get_dummy_gan_model():
 
 
 def dummy_loss_fn(gan_model, add_summaries=True):
+  del add_summaries
   return math_ops.reduce_sum(gan_model.discriminator_real_outputs -
                              gan_model.discriminator_gen_outputs)
 
@@ -133,6 +138,7 @@ class GetEstimatorSpecTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
+    super(GetEstimatorSpecTest, cls).setUpClass()
     cls._generator_optimizer = training.GradientDescentOptimizer(1.0)
     cls._discriminator_optimizer = training.GradientDescentOptimizer(1.0)
 
@@ -164,8 +170,36 @@ class GetEstimatorSpecTest(test.TestCase, parameterized.TestCase):
       self.assertShapeEqual(np.array(0), spec.loss)  # must be a scalar
       self.assertIsNotNone(spec.eval_metric_ops)
 
+  def test_get_sync_estimator_spec(self):
+    """Make sure spec is loaded with sync hooks for sync opts."""
 
-# TODO(joelshor): Add pandas test.
+    def get_sync_optimizer():
+      return sync_replicas_optimizer.SyncReplicasOptimizer(
+          training.GradientDescentOptimizer(learning_rate=1.0),
+          replicas_to_aggregate=1)
+
+    with ops.Graph().as_default():
+      self._gan_model = get_dummy_gan_model()
+      g_opt = get_sync_optimizer()
+      d_opt = get_sync_optimizer()
+
+      spec = estimator._get_estimator_spec(
+          model_fn_lib.ModeKeys.TRAIN,
+          self._gan_model,
+          generator_loss_fn=dummy_loss_fn,
+          discriminator_loss_fn=dummy_loss_fn,
+          get_eval_metric_ops_fn=get_metrics,
+          generator_optimizer=g_opt,
+          discriminator_optimizer=d_opt)
+
+      self.assertLen(spec.training_hooks, 4)
+      sync_opts = [
+          hook._sync_optimizer for hook in spec.training_hooks if
+          isinstance(hook, sync_replicas_optimizer._SyncReplicasOptimizerHook)]
+      self.assertLen(sync_opts, 2)
+      self.assertSetEqual(frozenset(sync_opts), frozenset((g_opt, d_opt)))
+
+
 class GANEstimatorIntegrationTest(test.TestCase):
 
   def setUp(self):
@@ -196,19 +230,19 @@ class GANEstimatorIntegrationTest(test.TestCase):
         get_eval_metric_ops_fn=get_metrics,
         model_dir=self._model_dir)
 
-    # TRAIN
+    # Train.
     num_steps = 10
     est.train(train_input_fn, steps=num_steps)
 
-    # EVALUTE
+    # Evaluate.
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn('loss', scores)
     self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
                      scores['loss'])
-    self.assertIn('mse_custom_metric', six.iterkeys(scores))
+    self.assertIn('mse_custom_metric', scores)
 
-    # PREDICT
+    # Predict.
     predictions = np.array([x for x in est.predict(predict_input_fn)])
 
     self.assertAllEqual(prediction_size, predictions.shape)
@@ -315,6 +349,72 @@ class GANEstimatorIntegrationTest(test.TestCase):
         eval_input_fn=_eval_input_fn,
         predict_input_fn=_predict_input_fn,
         prediction_size=[batch_size, input_dim])
+
+
+class GANEstimatorWarmStartTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = self.get_temp_dir()
+    self.new_variable_name = 'new_var'
+    self.new_variable_value = [1, 2, 3]
+
+  def tearDown(self):
+    writer_cache.FileWriterCache.clear()
+
+  def _test_warm_start(self, warm_start_from=None):
+    """Tests whether WarmStartSettings work as intended."""
+    def generator_with_new_variable(noise_dict, mode):
+      variable_scope.get_variable(name=self.new_variable_name,
+                                  initializer=self.new_variable_value,
+                                  trainable=True)
+      return generator_fn(noise_dict, mode)
+
+    def train_input_fn():
+      data = np.zeros([3, 4])
+      return {'x': data}, data
+
+    est = estimator.GANEstimator(
+        generator_fn=generator_fn,
+        discriminator_fn=discriminator_fn,
+        generator_loss_fn=losses.wasserstein_generator_loss,
+        discriminator_loss_fn=losses.wasserstein_discriminator_loss,
+        generator_optimizer=training.GradientDescentOptimizer(1.0),
+        discriminator_optimizer=training.GradientDescentOptimizer(1.0),
+        model_dir=self._model_dir)
+
+    est.train(train_input_fn, steps=1)
+
+    est_warm = estimator.GANEstimator(
+        generator_fn=generator_with_new_variable,
+        discriminator_fn=discriminator_fn,
+        generator_loss_fn=losses.wasserstein_generator_loss,
+        discriminator_loss_fn=losses.wasserstein_discriminator_loss,
+        generator_optimizer=training.GradientDescentOptimizer(1.0),
+        discriminator_optimizer=training.GradientDescentOptimizer(1.0),
+        model_dir=None if warm_start_from else self._model_dir,
+        warm_start_from=warm_start_from)
+
+    est_warm.train(train_input_fn, steps=1)
+
+    return est_warm
+
+  def test_warm_start_error(self):
+    """Test if exception when reloading different estimators."""
+    with self.assertRaises(NotFoundError):
+      self._test_warm_start()
+
+  def test_warm_start_success(self):
+    """Test if GANEstimator allows explicit warm start variable assignment."""
+    # Regex matches all variable names in ckpt except for new_var.
+    var_regex = '^(?!.*%s.*)' % self.new_variable_name
+    warmstart = WarmStartSettings(ckpt_to_initialize_from=self._model_dir,
+                                  vars_to_warm_start=var_regex)
+    est_warm = self._test_warm_start(warm_start_from=warmstart)
+    full_variable_name = 'Generator/%s' % self.new_variable_name
+    self.assertIn(full_variable_name, est_warm.get_variable_names())
+    equal_vals = np.array_equal(est_warm.get_variable_value(full_variable_name),
+                                self.new_variable_value)
+    self.assertTrue(equal_vals)
 
 
 if __name__ == '__main__':

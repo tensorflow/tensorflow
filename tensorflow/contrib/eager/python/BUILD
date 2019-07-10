@@ -1,9 +1,10 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "tfe",
@@ -15,7 +16,6 @@ py_library(
         ":metrics",
         ":network",
         ":parameter_server",
-        ":remote",
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -28,8 +28,10 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:remote",
     ],
 )
 
@@ -143,13 +145,14 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
 py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
@@ -187,6 +190,7 @@ py_library(
 py_test(
     name = "evaluator_test",
     srcs = ["evaluator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":evaluator",
@@ -219,6 +223,7 @@ py_library(
 py_test(
     name = "network_test",
     srcs = ["network_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":network",
@@ -237,25 +242,12 @@ py_test(
     ],
 )
 
-py_library(
-    name = "remote",
-    srcs = ["remote.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
-py_test(
+cuda_py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":parameter_server",
-        ":remote",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

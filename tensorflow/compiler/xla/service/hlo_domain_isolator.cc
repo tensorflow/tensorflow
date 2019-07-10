@@ -23,23 +23,12 @@ limitations under the License.
 
 namespace xla {
 
-class HloDomainIsolator::RunContext {
- public:
-  RunContext(HloModule* module, HloDomainIsolator* isolator)
-      : module_(module), isolator_(isolator) {}
+namespace {
 
-  StatusOr<bool> Run();
-
- private:
-  HloModule* module_;
-  HloDomainIsolator* isolator_;
-};
-
-StatusOr<bool> HloDomainIsolator::RunContext::Run() {
-  hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before Domain Isolator");
-
+StatusOr<bool> RunInternal(HloModule* module,
+                           HloDomainIsolator::DomainCreator* creator) {
   int64 added_domains = 0;
-  for (HloComputation* computation : module_->computations()) {
+  for (HloComputation* computation : module->computations()) {
     // Walk in post order and place all the required kDomain instructions.
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -55,29 +44,31 @@ StatusOr<bool> HloDomainIsolator::RunContext::Run() {
           root = root->mutable_operand(0);
         }
         // Check whether a kDomain is necessary between instruction and operand.
-        HloInstruction* domain =
-            isolator_->creator_(instruction, root, operand);
+        HloInstruction* domain = (*creator)(instruction, root, operand);
         if (domain != nullptr) {
           VLOG(4) << "New domain: " << domain->ToString();
-          TF_RETURN_IF_ERROR(operand->ReplaceUseWith(instruction, domain));
+          // Call ReplaceUseWithDifferentShape even though the shapes are
+          // expected to match to avoid an expensive shape check between the
+          // original and the new instruction.
+          TF_RETURN_IF_ERROR(
+              operand->ReplaceUseWithDifferentShape(instruction, domain));
           ++added_domains;
         }
       }
     }
   }
   VLOG(3) << "Added " << added_domains << " kDomain instructions";
-  if (added_domains > 0) {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "After Domain Isolator");
-  }
   return added_domains > 0;
 }
 
-HloDomainIsolator::HloDomainIsolator(DomainCreator creator)
-    : creator_(std::move(creator)) {}
+}  // namespace
+
+HloDomainIsolator::HloDomainIsolator(DomainCreatorFactory creator_factory)
+    : creator_factory_(std::move(creator_factory)) {}
 
 StatusOr<bool> HloDomainIsolator::Run(HloModule* module) {
-  RunContext run_context(module, this);
-  return run_context.Run();
+  DomainCreator creator = creator_factory_();
+  return RunInternal(module, &creator);
 }
 
 }  // namespace xla

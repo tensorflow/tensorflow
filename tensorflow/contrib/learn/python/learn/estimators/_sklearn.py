@@ -50,7 +50,7 @@ class _BaseEstimator(object):
       params : mapping of string to any
       Parameter names mapped to their values.
     """
-    out = dict()
+    out = {}
     param_names = [name for name in self.__dict__ if not name.startswith('_')]
     for key in param_names:
       value = getattr(self, key, None)
@@ -194,7 +194,7 @@ if TRY_IMPORT_SKLEARN:
   # pylint: disable=g-import-not-at-top,g-multiple-import,unused-import
   from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
   from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
-  from sklearn.cross_validation import train_test_split
+  from sklearn.model_selection import train_test_split
   try:
     from sklearn.exceptions import NotFittedError
   except ImportError:

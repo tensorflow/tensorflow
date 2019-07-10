@@ -30,8 +30,11 @@ namespace gpu {
 class GpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit GpuLayoutAssignment(ComputationLayout* entry_computation_layout,
+                               std::function<bool(const HloInstruction*)>
+                                   instruction_can_change_layout_func,
                                se::StreamExecutor* stream_executor)
-      : LayoutAssignment(entry_computation_layout),
+      : LayoutAssignment(entry_computation_layout,
+                         std::move(instruction_can_change_layout_func)),
         stream_executor_(stream_executor) {}
   ~GpuLayoutAssignment() override {}
 
@@ -43,8 +46,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
   Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override;
-  bool CustomCallRequiresMajorFirstLayout(
-      const HloInstruction* instruction) override;
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(

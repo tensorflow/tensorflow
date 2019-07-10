@@ -19,12 +19,12 @@ submodule, and made some semantic tweaks. The first thing to note is that we
 moved the APIs around as follows:
 
 ```python
-tf.scalar_summary -> tf.summary.scalar
-tf.histogram_summary -> tf.summary.histogram
-tf.audio_summary -> tf.summary.audio
-tf.image_summary -> tf.summary.image
-tf.merge_summary -> tf.summary.merge
-tf.merge_all_summaries -> tf.summary.merge_all
+tf.scalar_summary -> tf.compat.v1.summary.scalar
+tf.histogram_summary -> tf.compat.v1.summary.histogram
+tf.audio_summary -> tf.compat.v1.summary.audio
+tf.image_summary -> tf.compat.v1.summary.image
+tf.merge_summary -> tf.compat.v1.summary.merge
+tf.merge_all_summaries -> tf.compat.v1.summary.merge_all
 ```
 
 We think this API is cleaner and will improve long-term discoverability and
@@ -59,8 +59,8 @@ def add_activation_summaries(v, scope):
 
 # After
 def add_activation_summaries(v):
-  tf.summary.scalar("fraction_of_zero", tf.nn.fraction_of_zero(v))
-  tf.summary.histogram("activations", v)
+  tf.compat.v1.summary.scalar("fraction_of_zero", tf.nn.fraction_of_zero(v))
+  tf.compat.v1.summary.histogram("activations", v)
 ```
 
 Now, so long as the add_activation_summaries function is called from within the
@@ -74,10 +74,12 @@ In addition to the name change described above, there are two further changes
 to the new summary ops:
 
 - the "max_images" argument for `tf.image_summary` was renamed to "max_outputs
-  for `tf.summary.image`
+  for `tf.compat.v1.summary.image`
 - `tf.scalar_summary` accepted arbitrary tensors of tags and values. But
-  `tf.summary.scalar` requires a single scalar name and scalar value. In most
-  cases, you can create `tf.summary.scalar` in a loop to get the same behavior
+  `tf.compat.v1.summary.scalar` requires a single scalar name and scalar value.
+  In most
+  cases, you can create `tf.compat.v1.summary.scalar` in a loop to get the same
+  behavior
 
 As before, TensorBoard groups charts by the top-level `tf.name_scope` which may
 be inconvenient, for in the new summary ops, the summary will inherit that
@@ -90,7 +92,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 # pylint: disable=unused-import
 from tensorflow.python.ops.logging_ops import audio_summary
 from tensorflow.python.ops.logging_ops import histogram_summary
@@ -102,8 +103,9 @@ from tensorflow.python.ops.logging_ops import scalar_summary
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
 
-_allowed_symbols = ['audio_summary', 'histogram_summary',
-                    'image_summary', 'merge_all_summaries',
-                    'merge_summary', 'scalar_summary']
+_allowed_symbols = [
+    'audio_summary', 'histogram_summary', 'image_summary',
+    'merge_all_summaries', 'merge_summary', 'scalar_summary'
+]
 
 remove_undocumented(__name__, _allowed_symbols)

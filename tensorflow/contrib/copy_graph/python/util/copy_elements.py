@@ -31,7 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 from copy import deepcopy
-from tensorflow.python.ops.variables import Variable
+from tensorflow.python.ops.variables import VariableV1
 from tensorflow.python.client.session import Session
 from tensorflow.python.framework import ops
 
@@ -55,7 +55,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=''):
     TypeError: If `org_instance` is not a `Variable`.
   """
 
-  if not isinstance(org_instance, Variable):
+  if not isinstance(org_instance, VariableV1):
     raise TypeError(str(org_instance) + ' is not a Variable')
 
   #The name of the new variable
@@ -88,7 +88,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=''):
 
   #Initialize the new variable
   with to_graph.as_default():
-    new_var = Variable(
+    new_var = VariableV1(
         init_value,
         trainable,
         name=new_name,

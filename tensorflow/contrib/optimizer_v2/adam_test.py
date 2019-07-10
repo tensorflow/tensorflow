@@ -109,7 +109,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session(force_gpu=test.is_gpu_available()):
+      with self.cached_session(force_gpu=test.is_gpu_available()):
         # If a GPU is available, tests that all optimizer ops can be placed on
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])

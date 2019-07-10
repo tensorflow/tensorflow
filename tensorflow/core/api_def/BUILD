@@ -6,16 +6,23 @@
 #   :python_api_def
 #   :java_api_def
 
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+load(
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+)
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(
@@ -40,6 +47,7 @@ cc_library(
     name = "excluded_ops_lib",
     srcs = ["excluded_ops.cc"],
     hdrs = ["excluded_ops.h"],
+    copts = if_mkl(["-DINTEL_MKL=1"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
 )
 
 cc_library(

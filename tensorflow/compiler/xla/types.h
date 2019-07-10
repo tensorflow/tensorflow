@@ -41,6 +41,7 @@ using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 
 using complex64 = std::complex<float>;
+using complex128 = std::complex<double>;
 
 using ::Eigen::half;
 

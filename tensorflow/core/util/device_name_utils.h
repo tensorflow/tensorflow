@@ -86,6 +86,14 @@ class DeviceNameUtils {
     int id = 0;
   };
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
+  // Legacy names like "/cpu:0" that don't contain "device",
+  // are parsed to mean their current counterparts "/device:CPU:0". More
+  // specifically, the lower case "cpu" and "gpu" is capitalized and "device"
+  // is added. "/tpu:0" is not treated the same way - it has use the current
+  // full syntax.
+  // Also, note that lower case "cpu" and "gpu" device types in current syntax
+  // are not capitalized. For example, "/device:CPU:0" is different from
+  // "/device:cpu:0"
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
 
   // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
@@ -110,6 +118,11 @@ class DeviceNameUtils {
   static bool IsSpecification(const ParsedName& less_specific,
                               const ParsedName& more_specific);
 
+  // Makes minimal changes to more_specific so that it becomes a
+  // specification of less_specific.
+  static void EnsureSpecification(ParsedName* more_specific,
+                                  const ParsedName& less_specific);
+
   // Like IsSpecification, but the second argument "name" must have a
   // non-wildcard value for all of its components.
   static bool IsCompleteSpecification(const ParsedName& pattern,
@@ -130,6 +143,10 @@ class DeviceNameUtils {
   }
   static Status MergeDevNames(ParsedName* target, const ParsedName& other,
                               bool allow_soft_placement);
+  // Same as MergeDevNames with allow_soft_placement=true, but instead of
+  // clearing conflicting fields, overrides them with `other`'s values.
+  static Status MergeOverrideDevNames(ParsedName* target,
+                                      const ParsedName& other);
 
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
@@ -157,6 +174,10 @@ class DeviceNameUtils {
   // component to be fully specified.
   static bool SplitDeviceName(StringPiece name, string* task, string* device);
 
+  // Get the task name from ParsedName. Return false if the task component is
+  // not fully specified.
+  static bool GetTaskName(const ParsedName& pn, string* task);
+
   static string ParsedNameToString(const ParsedName& pn);
 
   // Returns canonical and legacy full names for the given parsed
@@ -169,7 +190,15 @@ class DeviceNameUtils {
   // mapping.
   static std::vector<string> GetLocalNamesForDeviceMappings(
       const ParsedName& pn);
+
+  // Returns name of the CPU:0 device on the same host as the device
+  // `device_name`.
+  static Status DeviceNameToCpuDeviceName(const string& device_name,
+                                          string* host_device_name);
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const DeviceNameUtils::ParsedName& x);
 
 }  // namespace tensorflow
 

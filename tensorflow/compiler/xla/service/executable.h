@@ -22,15 +22,13 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -40,20 +38,66 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
 // ExecutionOutput encapsulates the output buffers of a execution and the
 // leftover buffers to be released by the caller.
-struct ExecutionOutput {
+class ExecutionOutput {
+ public:
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<OwningDeviceMemory> to_be_released)
-      : result(std::move(result)), to_be_released(std::move(to_be_released)) {}
-  ScopedShapedBuffer result;
+                  std::vector<se::OwningDeviceMemory> to_be_released,
+                  std::vector<ShapeIndex> aliased_indices)
+      : result_(std::move(result)),
+        to_be_released_(std::move(to_be_released)),
+        aliased_indices_(std::move(aliased_indices)) {}
+  ExecutionOutput(ExecutionOutput&&) = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+
+  ~ExecutionOutput() {
+    // If the ExecutionOutput has not been committed, and if there are aliased
+    // indices, clear them off the ScopedShapedBuffer to prevent them to be
+    // released.
+    for (auto& index : aliased_indices_) {
+      result_.set_buffer(se::OwningDeviceMemory(), index);
+    }
+  }
+
+  // Should be called once it is known that the execute operation succeeded,
+  // before returning the ExecutionOutput to the caller.
+  ExecutionOutput& Commit() {
+    aliased_indices_.clear();
+    return *this;
+  }
+
+  const ScopedShapedBuffer& Result() const { return result_; }
+
+  ScopedShapedBuffer ConsumeResult() {
+    aliased_indices_.clear();
+    return std::move(result_);
+  }
+
+  const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
+    return to_be_released_;
+  }
+
+  std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
+    return std::move(to_be_released_);
+  }
+
+ private:
+  ScopedShapedBuffer result_;
 
   // Leftover buffers for the caller to release. Elements in this list are
   // donated input memory buffers that are not reused by XLA as outputs.
-  std::vector<OwningDeviceMemory> to_be_released;
+  std::vector<se::OwningDeviceMemory> to_be_released_;
+
+  // These are the indices in result_ which have been aliased from the caller.
+  // If the execution operation fails, the caller should maintain ownership of
+  // the buffer, so we track the indices here, and unless the ExecutionOutput is
+  // committed, we remove them from the result_ before destruction.
+  std::vector<ShapeIndex> aliased_indices_;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform
@@ -61,7 +105,7 @@ struct ExecutionOutput {
 class Executable {
  public:
   explicit Executable(
-      std::unique_ptr<const HloModule> hlo_module,
+      std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
@@ -162,7 +206,8 @@ class Executable {
     return hlo_profile_printer_data_ != nullptr;
   }
 
-  const HloModule& module() const { return *hlo_module_; }
+  HloModule& module() const { return *hlo_module_; }
+  std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
 
   const bool has_module() const { return hlo_module_ != nullptr; }
 
@@ -184,11 +229,6 @@ class Executable {
   }
   bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
   HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
-  Status DumpHloSnapshot();
-
-  // Dump hlo snapshot to directory_path/filename.
-  static Status DumpToDirectory(const string& directory_path, string filename,
-                                const HloSnapshot& hlo_session);
 
  protected:
   mutable tensorflow::mutex mutex_;
@@ -199,7 +239,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  const std::unique_ptr<const HloModule> hlo_module_;
+  const std::shared_ptr<HloModule> hlo_module_;
 
   // HloSnapshot this was compiled from. Null if not dumping executions.
   std::unique_ptr<HloSnapshot> hlo_snapshot_;

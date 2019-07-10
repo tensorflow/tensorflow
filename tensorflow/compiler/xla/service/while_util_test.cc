@@ -51,7 +51,7 @@ ENTRY entry {
 )";
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseHloString(hlo_string));
+                      ParseAndReturnUnverifiedModule(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);
@@ -152,7 +152,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   HloComputation* while_body = module->GetComputationWithName("body");
 
@@ -180,8 +180,8 @@ body {
 
 cond {
   param.c = (s32[], s32[]) parameter(0)
-  token = token[] after-all()
-  infeed = (pred[], token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = (pred[], token[]) infeed(token0)
   ROOT condition = pred[] get-tuple-element(infeed), index=0
 }
 
@@ -193,7 +193,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   HloComputation* main = module->GetComputationWithName("main");
   HloInstruction* while_instr = main->root_instruction();

@@ -17,11 +17,21 @@
 This converter removes the directive functions from the code and moves the
 information they specify into AST annotations. It is a specialized form of
 static analysis, one that is specific to AutoGraph.
+
+Note that this requires that the actual directive functions are static - that
+is, they do not change at runtime. So if you do something like this:
+
+  tf.autograph.set_loop_options = <new function>
+
+Then the directive will may no longer be recognized. Furthermore, if the
+converted function is cached, such an action action may be irreversible.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import inspect
 
 import gast
 
@@ -31,6 +41,8 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.util import tf_inspect
 
 ENCLOSING_LOOP = 'enclosing_loop'
+STATIC_VALUE = 'static_value'
+"""Used for AST annotations, see visit_Name."""
 
 
 def _map_args(call_node, function):
@@ -82,7 +94,7 @@ class DirectivesTransformer(converter.Base):
     return call_node
 
   def _process_statement_directive(self, call_node, directive):
-    if self.local_scope_level < 1:
+    if self.local_scope_level < 2:
       raise ValueError(
           '"%s" must be used inside a statement' % directive.__name__)
     target = self.get_local(ENCLOSING_LOOP)
@@ -91,21 +103,39 @@ class DirectivesTransformer(converter.Base):
     anno.setanno(target, converter.AgAnno.DIRECTIVES, node_anno)
     return call_node
 
+  def visit_Name(self, node):
+    node = self.generic_visit(node)
+    if isinstance(node.ctx, gast.Load):
+      defs = anno.getanno(node, anno.Static.DEFINITIONS, ())
+      is_defined = bool(defs)
+      if not is_defined and node.id in self.ctx.info.namespace:
+        anno.setanno(node, STATIC_VALUE, self.ctx.info.namespace[node.id])
+    return node
+
+  def visit_Attribute(self, node):
+    node = self.generic_visit(node)
+    parent_val = anno.getanno(node.value, STATIC_VALUE, default=None)
+    if parent_val is not None and inspect.ismodule(parent_val):
+      if hasattr(parent_val, node.attr):
+        anno.setanno(node, STATIC_VALUE, getattr(parent_val, node.attr))
+    return node
+
   def visit_Expr(self, node):
+    node = self.generic_visit(node)
     if isinstance(node.value, gast.Call):
       call_node = node.value
-      if anno.hasanno(call_node.func, 'live_val'):
-        live_val = anno.getanno(call_node.func, 'live_val')
+      static_val = anno.getanno(call_node.func, STATIC_VALUE, default=None)
+      if static_val is not None:
+        # Note: directive calls are not output in the generated code, hence
+        # the removal from the code by returning None.
 
-        if live_val is directives.set_element_type:
-          call_node = self._process_symbol_directive(call_node, live_val)
-        elif live_val is directives.set_loop_options:
-          call_node = self._process_statement_directive(call_node, live_val)
-        else:
-          return self.generic_visit(node)
-
-        return None  # Directive calls are not output in the generated code.
-    return self.generic_visit(node)
+        if static_val is directives.set_element_type:
+          self._process_symbol_directive(call_node, static_val)
+          return None
+        elif static_val is directives.set_loop_options:
+          self._process_statement_directive(call_node, static_val)
+          return None
+    return node
 
   # TODO(mdan): This will be insufficient for other control flow.
   # That means that if we ever have a directive that affects things other than

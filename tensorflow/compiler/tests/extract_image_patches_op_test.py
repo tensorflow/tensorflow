@@ -44,7 +44,7 @@ class ExtractImagePatches(xla_test.XLATestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with self.cached_session():
+    with self.session():
       image_placeholder = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         out_tensor = array_ops.extract_image_patches(
@@ -129,6 +129,21 @@ class ExtractImagePatches(xla_test.XLATestCase):
         rates=[2, 2],
         padding="VALID",
         patches=patches)
+
+  def testKsize2x2Stride1x1Rate1x1ValidDepth2(self):
+    """Test for 2x2 kernel with VALID padding."""
+    # [1, 2, 2, 2]
+    image = [[[[1, 5], [2, 6]], [[3, 7], [4, 8]]]]
+    # [1, 1, 1, 8]
+    patches = [[[[1, 5, 2, 6, 3, 7, 4, 8]]]]
+    self._VerifyValues(
+        image,
+        ksizes=[2, 2],
+        strides=[1, 1],
+        rates=[1, 1],
+        padding="VALID",
+        patches=patches)
+
 
 if __name__ == "__main__":
   test.main()

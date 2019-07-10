@@ -23,6 +23,9 @@ import traceback
 
 import six  # pylint: disable=unused-import
 
+
+from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
 # pylint: enable=g-bad-import-order,g-import-not-at-top
@@ -32,7 +35,9 @@ class _TFShouldUseHelper(object):
   """Object stored in TFShouldUse-wrapped objects.
 
   When it is deleted it will emit a warning or error if its `sate` method
-  has not been called by time of deletion.
+  has not been called by time of deletion, and Tensorflow is not executing
+  eagerly or inside a tf.function (which use autodeps and resolve the
+  main issues this wrapper warns about).
   """
 
   def __init__(self, type_, repr_, stack_frame, fatal_error_if_unsated):
@@ -40,7 +45,10 @@ class _TFShouldUseHelper(object):
     self._repr = repr_
     self._stack_frame = stack_frame
     self._fatal_error_if_unsated = fatal_error_if_unsated
-    self._sated = False
+    # If in eager mode or building a function with autodeps, we generally do not
+    # need these warnings since behavior is eager-like.
+    self._sated = (context.executing_eagerly()
+                   or ops.get_default_graph()._building_function)  # pylint: disable=protected-access
 
   def sate(self):
     self._sated = True
@@ -100,7 +108,7 @@ def _new_mark_used(self, *args, **kwargs):
     pass
 
 
-_WRAPPERS = dict()
+_WRAPPERS = {}
 
 
 def _get_wrapper(x, tf_should_use_helper):
@@ -137,7 +145,7 @@ def _add_should_use_warning(x, fatal_error=False):
 
   Args:
     x: Python object.
-    fatal_error: Python bool.  If `True`, tf.logging.fatal is raised
+    fatal_error: Python bool.  If `True`, tf.compat.v1.logging.fatal is raised
       if the returned value is never used.
 
   Returns:
@@ -165,7 +173,7 @@ def _add_should_use_warning(x, fatal_error=False):
 def should_use_result(fn):
   """Function wrapper that ensures the function's output is used.
 
-  If the output is not used, a `tf.logging.error` is logged.
+  If the output is not used, a `tf.compat.v1.logging.error` is logged.
 
   An output is marked as used if any of its attributes are read, modified, or
   updated.  Examples when the output is a `Tensor` include:
@@ -199,7 +207,7 @@ def should_use_result(fn):
 def must_use_result_or_fatal(fn):
   """Function wrapper that ensures the function's output is used.
 
-  If the output is not used, a `tf.logging.fatal` error is raised.
+  If the output is not used, a `tf.compat.v1.logging.fatal` error is raised.
 
   An output is marked as used if any of its attributes are read, modified, or
   updated.  Examples when the output is a `Tensor` include:

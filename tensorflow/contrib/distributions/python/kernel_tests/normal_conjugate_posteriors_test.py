@@ -82,7 +82,7 @@ class NormalTest(test.TestCase):
       x = constant_op.constant(
           [[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0], [2.5, -2.5, -4.0, 0.0, 1.0, -2.0]],
           dtype=dtypes.float32)
-      s = math_ops.reduce_sum(x, reduction_indices=[1])
+      s = math_ops.reduce_sum(x, axis=[1])
       x = array_ops.transpose(x)  # Reshape to shape (6, 2)
       n = constant_op.constant([6] * 2)
       prior = distributions.Normal(loc=mu0, scale=sigma0)

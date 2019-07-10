@@ -114,7 +114,7 @@ class _DistributionShape(object):
       E.g., Jacobian of the transform `Y = g(X) = exp(X)`:
 
       ```python
-      tf.div(1., tf.reduce_prod(x, event_dims))
+      tf.compat.v1.div(1., tf.reduce_prod(x, event_dims))
       ```
 
   We show examples using this class.

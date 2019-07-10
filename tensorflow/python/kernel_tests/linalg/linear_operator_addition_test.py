@@ -19,14 +19,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_addition
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 add_operators = linear_operator_addition.add_operators
@@ -71,6 +70,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "contain only LinearOperator"):
       add_operators([1, 2])
 
+  @test_util.run_deprecated_v1
   def test_two_diag_operators(self):
     op_a = linalg.LinearOperatorDiag(
         [1., 1.], is_positive_definite=True, name="A")
@@ -91,6 +91,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Enforce particular name for this simple case
       self.assertEqual("Add/B__A/", op.name)
 
+  @test_util.run_deprecated_v1
   def test_three_diag_operators(self):
     op1 = linalg.LinearOperatorDiag(
         [1., 1.], is_positive_definite=True, name="op1")
@@ -111,6 +112,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Positive definite ==> non-singular
       self.assertTrue(op.is_non_singular)
 
+  @test_util.run_deprecated_v1
   def test_diag_tril_diag(self):
     op1 = linalg.LinearOperatorDiag(
         [1., 1.], is_non_singular=True, name="diag_a")
@@ -136,6 +138,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Since no custom hint was provided, we default to None (unknown).
       self.assertEqual(None, op.is_non_singular)
 
+  @test_util.run_deprecated_v1
   def test_matrix_diag_tril_diag_uses_custom_name(self):
     op0 = linalg.LinearOperatorFullMatrix(
         [[-1., -1.], [-1., -1.]], name="matrix")
@@ -219,6 +222,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     self.assertEqual(1, len(op_sum))
     self.assertIsInstance(op_sum[0], linalg.LinearOperatorLowerTriangular)
 
+  @test_util.run_deprecated_v1
   def test_cannot_add_everything_so_return_more_than_one_operator(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([2.])
@@ -263,6 +267,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnScaledIdentity()
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_identity(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2)
     id2 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
@@ -281,6 +286,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_scaled_identity(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
     id2 = linalg.LinearOperatorScaledIdentity(num_rows=2, multiplier=2.2)
@@ -299,6 +305,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_scaled_identity_plus_scaled_identity(self):
     id1 = linalg.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=[2.2, 2.2, 2.2])
@@ -324,6 +331,7 @@ class AddAndReturnDiagTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnDiag()
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_identity_returns_diag(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2)
     id2 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
@@ -342,6 +350,7 @@ class AddAndReturnDiagTest(test.TestCase):
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_diag(self):
     diag1 = rng.rand(2, 3, 4)
     diag2 = rng.rand(4)
@@ -368,6 +377,7 @@ class AddAndReturnTriLTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnTriL()
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_tril(self):
     diag = linalg.LinearOperatorDiag([1., 2.])
     tril = linalg.LinearOperatorLowerTriangular([[10., 0.], [30., 0.]])
@@ -391,6 +401,7 @@ class AddAndReturnMatrixTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnMatrix()
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_diag(self):
     diag1 = linalg.LinearOperatorDiag([1., 2.])
     diag2 = linalg.LinearOperatorDiag([-1., 3.])

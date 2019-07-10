@@ -62,7 +62,7 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
 
 bool IsFunctionCallOp(const string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
-         op_type == "StatefulPartitionedCall";
+         op_type == "StatefulPartitionedCall" || op_type == "While";
 }
 
 }  // namespace
@@ -70,6 +70,10 @@ bool IsFunctionCallOp(const string& op_type) {
 MemoryType MTypeFromDType(const DataType dtype) {
   return (dtype == DT_INT32 || DataTypeAlwaysOnHost(dtype)) ? HOST_MEMORY
                                                             : DEVICE_MEMORY;
+}
+
+MemoryType MTypeFromDTypeIntsOnDevice(const DataType dtype) {
+  return DataTypeAlwaysOnHost(dtype) ? HOST_MEMORY : DEVICE_MEMORY;
 }
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
@@ -100,8 +104,20 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   // to derive the correct input/output memory types. We should also split
   // host-memory and non host-memory arguments into separate type lists.
   if (!status.ok() || IsFunctionCallOp(ndef.op())) {
-    for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
-    for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
+    if (device_type.type_string() == "TPU") {
+      // Here we assume that if tf.function() is called within
+      // "with tf.device('/device:TPU:0')", the whole function will be compiled
+      // and executed on TPU. This is true today, but when we implement auto
+      // clustering on function body, this will no longer be true. For example,
+      // we might want to place string arguments on host.
+      for (const auto& t : inp_dtypes)
+        inp_mtypes->push_back(MTypeFromDTypeIntsOnDevice(t));
+      for (const auto& t : out_dtypes)
+        out_mtypes->push_back(MTypeFromDTypeIntsOnDevice(t));
+    } else {
+      for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
+      for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
+    }
     return Status::OK();
   }
 
@@ -121,7 +137,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
   if (!host_memory_args.empty()) {
     return errors::InvalidArgument(
-        "HostMemory args '", str_util::Join(host_memory_args, "', '"),
+        "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
   }
   CHECK_LE(inp_mtypes->size(), inp_dtypes.size());

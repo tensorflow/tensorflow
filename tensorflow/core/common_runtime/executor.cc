@@ -22,9 +22,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -45,7 +48,9 @@ limitations under the License.
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -54,12 +59,17 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -130,6 +140,16 @@ struct EdgeInfo {
   int input_slot;
 };
 
+// Time the execution of kernels (in CPU cycles).  Used to dynamically identify
+// inexpensive kernels which can be dispatched inline.
+struct KernelTimer {
+  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+
+  uint64 ElapsedCycles() {
+    return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
+  }
+};
+
 struct NodeItem {
   NodeItem() {}
 
@@ -139,15 +159,14 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_expensive : 1;  // True iff kernel->IsExpensive()
-  bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
-  bool is_merge : 1;             // True iff IsMerge(node)
-  bool is_enter : 1;             // True iff IsEnter(node)
-  bool is_constant_enter : 1;    // True iff IsEnter(node) and
-                                 // node->GetAttr("is_constant") == true.
-  bool is_exit : 1;              // True iff IsExit(node)
-  bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
-  bool is_sink : 1;              // True iff IsSink(node)
+  bool kernel_is_async : 1;     // True iff kernel->AsAsync() != nullptr
+  bool is_merge : 1;            // True iff IsMerge(node)
+  bool is_enter : 1;            // True iff IsEnter(node)
+  bool is_constant_enter : 1;   // True iff IsEnter(node) and
+                                // node->GetAttr("is_constant") == true.
+  bool is_exit : 1;             // True iff IsExit(node)
+  bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
+  bool is_sink : 1;             // True iff IsSink(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
 
@@ -624,7 +643,6 @@ Status ExecutorImpl::Initialize() {
       return s;
     }
     CHECK(item->kernel);
-    item->kernel_is_expensive = item->kernel->IsExpensive();
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
     item->is_enter = IsEnter(n);
@@ -1232,14 +1250,17 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
+  string session_handle_;
+  const SessionMetadata* session_metadata_ = nullptr;
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tracing::TraceCollector* const trace_collector_;
   const tracing::EventCollector* const event_collector_;
+  Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -1247,6 +1268,8 @@ class ExecutorState {
   CallFrameInterface* call_frame_;
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
+  // If not null, use this device to schedule intra-op operation
+  std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
   const bool trace_using_annotations_;
@@ -1264,6 +1287,11 @@ class ExecutorState {
   Executor::DoneCallback done_cb_;
 
   std::atomic_int_fast32_t num_outstanding_ops_;
+
+  // Available via OpKernelContext to every OpKernel invocation.
+  mutex num_deferred_ops_mu_;
+  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
+  bool finish_when_deferred_ops_done_ GUARDED_BY(num_deferred_ops_mu_) = false;
 
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -1342,6 +1370,7 @@ class ExecutorState {
 
   // Clean up when this executor is done.
   void Finish();
+  void ScheduleFinish();
 
   // A standalone routine for this expression so that we can express
   // that we don't want thread safety analysis on this reference (it's
@@ -1359,14 +1388,17 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      create_rendezvous_(&impl->params_.rendezvous_factory),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
+      session_handle_(args.session_handle),
+      session_metadata_(impl->params_.session_metadata),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      trace_collector_(tracing::GetTraceCollector()),
       event_collector_(
           tracing::GetEventCollector(tracing::EventCategory::kCompute)),
+      context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
@@ -1375,6 +1407,12 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       sync_on_finish_(args.sync_on_finish),
       trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
+  if (args.user_intra_op_threadpool != nullptr) {
+    Device* device = impl_->params_.device;
+    user_device_ = RenamedDevice::NewRenamedDevice(
+        device->name(), device, false, false, args.user_intra_op_threadpool);
+  }
+
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
@@ -1562,30 +1600,30 @@ struct ExecutorState::AsyncState {
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
 bool MightTrace(const NodeItem& item,
-                const tracing::TraceCollector* trace_collector,
                 const tracing::EventCollector* event_collector,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `tracing::ScopedActivity`,
-  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
-  // these properties internally in their constructors, the cost of passing the
-  // necessary arguments to them can be significant, so we avoid constructing
-  // them in the common case (when we know they will not be used).
+  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // `tracing::ScopedRegion` check subsets of these properties internally in
+  // their constructors, the cost of passing the necessary arguments to them can
+  // be significant, so we avoid constructing them in the common case (when we
+  // know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
+  auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
-    if (using_annotations) {
-      return trace_collector->IsEnabledForAnnotations();
-    } else {
-      return trace_collector->IsEnabledForActivities(item.kernel_is_expensive);
+    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
+      return true;
     }
   }
-  return false;
+  return profiler::TraceMeRecorder::Active(
+      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
+  WithContext wc(context_);
   const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1597,13 +1635,21 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
   OpKernelContext::Params params;
   params.step_id = step_id_;
+  // Override device's threadpool if user provides an intra_op_threadpool
   Device* device = impl_->params_.device;
-  params.device = device;
+  if (user_device_) {
+    params.device = user_device_.get();
+  } else {
+    params.device = device;
+  }
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
+  params.create_rendezvous = create_rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
+  params.session_handle = session_handle_;
+  params.session_metadata = session_metadata_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
@@ -1616,6 +1662,24 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    bool finish_when_deferred_ops_done = false;
+    {
+      mutex_lock lock(num_deferred_ops_mu_);
+      num_deferred_ops_--;
+      if (num_deferred_ops_ == 0) {
+        finish_when_deferred_ops_done = finish_when_deferred_ops_done_;
+      }
+    }
+    // Invoke Finish if the graph processing has completed. Finish is always
+    // called exactly once per ExecutorState, either here if there are any
+    // deferred ops, or in ScheduleFinish if there aren't any deferred ops.
+    if (finish_when_deferred_ops_done) Finish();
+  };
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;
@@ -1647,9 +1711,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     params.track_allocations = false;
     stats = nullptr;
     if (stats_collector_ && !tagged_node.is_dead) {
-      // track allocations if and only if we are collecting statistics
-      params.track_allocations = true;
       stats = stats_collector_->CreateNodeExecStats(node);
+      // Track allocations if and only if we are collecting statistics, and
+      // `stats` object is expecting allocations to be tracked.
+      params.track_allocations = stats ? stats->TrackAllocations() : false;
       nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
@@ -1708,7 +1773,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsInterface* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;     // Shorthand
+          Entry* first_input = state->first_input;       // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -1748,38 +1813,61 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
           delete state;
-          if (completed) Finish();
+          if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, &state->ctx, done);
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
+          profiler::TraceMe activity(
+              [&] {
+                return strings::StrCat(
+                    op_kernel->name(), ":", op_kernel->type_string(),
+                    "#id=", step_container_ ? step_container_->step_id() : 0,
+                    ",device=", device->name(), ",async=true#");
+              },
+              profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+          device->ComputeAsync(async, &state->ctx, done);
+        } else {
+          device->ComputeAsync(async, &state->ctx, done);
+        }
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
 
-        if (TF_PREDICT_FALSE(MightTrace(item, trace_collector_,
-                                        event_collector_,
-                                        trace_using_annotations_))) {
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
+          const string kernel_label = strings::StrCat(
+              op_name, ":", op_kernel->type_string(),
+              "#id=", step_container_ ? step_container_->step_id() : 0,
+              ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
-            // The OpKernel may create child activities (such as GPU kernel
-            // launches), so use a `ScopedAnnotation` to relate these activities
-            // in the trace.
-            tracing::ScopedAnnotation activity(op_name,
-                                               op_kernel->type_string());
+            // 'TraceMe' will trace the OpKernel scheduling time.
+            profiler::TraceMe activity(absl::string_view(kernel_label),
+                                       profiler::TraceMeLevel::kInfo);
+            // 'ScopedAnnotation' will trace the OpKernel execution time.
+            tracing::ScopedAnnotation annotation(kernel_label);
             device->Compute(op_kernel, &ctx);
           } else {
-            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // Use the cheaper `TraceMe` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(op_name, op_kernel->type_string(),
-                                             item.kernel_is_expensive);
+            profiler::TraceMe activity(
+                absl::string_view(kernel_label),
+                profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
             device->Compute(op_kernel, &ctx);
           }
         } else {
           // In the common case, avoid creating any tracing objects.
-          device->Compute(op_kernel, &ctx);
+          if (op_kernel->IsExpensive()) {
+            KernelTimer timer;
+            device->Compute(op_kernel, &ctx);
+            op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+          } else {
+            device->Compute(op_kernel, &ctx);
+          }
         }
 
         nodestats::SetOpEnd(stats);
@@ -1826,7 +1914,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   }  // while !inline_ready.empty()
 
   // This thread of computation is done if completed = true.
-  if (completed) Finish();
+  if (completed) ScheduleFinish();
 }
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
@@ -1877,7 +1965,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       inp->tensor = entry->val.get();
     } else {
       {
-        mutex_lock ml(*entry->ref_mu);
+        tf_shared_lock ml(*entry->ref_mu);
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
@@ -1893,7 +1981,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // tensor but is given a ref to a tensor.  Need to deref it
         // under the mutex.
         {
-          mutex_lock l(*(entry->ref_mu));
+          tf_shared_lock l(*(entry->ref_mu));
           DCHECK(!entry->val_field_is_set);
           entry->val.Init(*entry->ref);
           entry->val_field_is_set = true;
@@ -1968,7 +2056,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // tensor value at i-th output.
       if (!IsSwitch(node) && !IsRecv(node)) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
-                                  SummarizeNode(*node)));
+                                  FormatNodeForError(*node)));
       }
     } else {
       Entry* out = &((*outputs)[i]);
@@ -1979,14 +2067,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
-      // Sanity check of output tensor types.
-      DataType dtype;
-      if (val.is_ref()) {
-        mutex_lock ml(*val.mutex_if_ref);
-        dtype = MakeRefType(val->dtype());
-      } else {
-        dtype = val->dtype();
-      }
+      // Sanity check of output tensor types. We need to inspect this safely as
+      // we are in the tensor buffer.
+      DataType dtype = val.dtype_safe();
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);
@@ -1999,7 +2082,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             Tensor to_log;
             {
               // Dereference the tensor under the lock.
-              mutex_lock l(*out->ref_mu);
+              tf_shared_lock l(*out->ref_mu);
               to_log = *out->ref;
             }
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
@@ -2022,7 +2105,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                   DataTypeString(dtype),
                                   " does not match declared output type ",
                                   DataTypeString(item.output_type(i)),
-                                  " for node ", SummarizeNode(*node)));
+                                  " for node ", FormatNodeForError(*node)));
       }
     }
     if (!val.is_ref()) {
@@ -2037,6 +2120,13 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
+  auto activity_handle = absl::make_unique<profiler::TraceMe>(
+      [&]() {
+        return strings::StrCat("ExecutorPropagateOutputs:",
+                               item->kernel->name(), "#id=", step_id_, "#");
+      },
+      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
@@ -2155,11 +2245,28 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     mutex_lock l(mu_);
     if (status_.ok()) {
       abort_run = true;
-      status_ = s;
+
+      // If execution has been cancelled, mark any new errors as being derived.
+      // This ensures any errors triggered by cancellation are marked as
+      // derived.
+      if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        status_ = StatusGroup::MakeDerived(s);
+      } else {
+        status_ = s;
+      }
     }
   }
   if (abort_run) {
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+    if (cancellation_manager_) {
+      // only log when the abort happens during the actual run time.
+      auto device_name = impl_->params_.device->name();
+      // Use VLOG instead of LOG(warning) because error status is expected when
+      // the executor is run under the grappler optimization phase or when
+      // iterating through a tf.data input pipeline.
+      VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
+    }
+
     if (rendezvous_) {
       rendezvous_->StartAbort(s);
     }
@@ -2194,6 +2301,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
+
   if (inline_ready == nullptr) {
     // Schedule to run all the ready ops in thread pool.
     for (auto& tagged_node : ready) {
@@ -2201,11 +2309,12 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     }
     return;
   }
+
   const GraphView& gview = impl_->gview_;
   const TaggedNode* curr_expensive_node = nullptr;
   for (auto& tagged_node : ready) {
     const NodeItem& item = *gview.node(tagged_node.node->id());
-    if (tagged_node.is_dead || !item.kernel_is_expensive) {
+    if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
       // Inline this inexpensive node.
       inline_ready->push_back(tagged_node);
     } else {
@@ -2362,24 +2471,95 @@ void ExecutorState::DumpState() {
   }
 }
 
+void ExecutorState::ScheduleFinish() {
+  // Checks condition to decide if needs to invoke Finish(). If there are
+  // in-flight deffered ops, wait for `num_deferred_ops_` reaches 0 to invoke
+  // Finish(). Otherwise, invoke Finish() directly.
+  // Note that it is critical that the ScheduleFinish / Finish codepath does not
+  // block, otherwise we might deadlock.  See b/124523000 for details.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    if (num_deferred_ops_ > 0) {
+      finish_when_deferred_ops_done_ = true;
+      return;
+    }
+  }
+  // Finish is always called exactly once per ExecutorState, either here if
+  // there aren't any deferred ops, or in the dec_num_deferred_ops_function if
+  // there are deferred ops.
+  Finish();
+}
+
 void ExecutorState::Finish() {
   mu_.lock();
   auto status = status_;
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
-  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
+
+  // There are several potential race conditions below. To name a few:
+  // 1. Even if the device's status is OK at the precise moment when
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
+  // is called below, caused by work enqueued onto the same device by other
+  // concurrent ExecutorState objects.
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
+  // device mutex after a stream pointer is acquired and before the stream is
+  // queried for status.
+  // 3. It's the same for some implementations of Device::Sync, such as
+  // XlaDevice::Sync.
+  //
+  // However, these race conditions are acceptable because a stream (and
+  // therefore an XlaDevice) can only go from OK to not-OK, never the opposite,
+  // which means we will at worst report errors when there isn't any, never the
+  // opposite.
+
+  // An early exit for devices don't allow sync on completion. Ops that run on
+  // these devices should have used num_deferred_ops correctly to ensure the
+  // device has finished all relevant work at this point.
+  if (!device->AllowsSyncOnCompletion()) {
+    status.Update(device->RefreshStatus());
+    if (!status.ok()) {
+      // In device async execution mode, it's possible for device execution to
+      // lag behind ExecutorState scheduling so much that this is the first
+      // place a device execution error surfaces.
+      // If so, all ExecutorState::NodeDone calls have already happened with OK
+      // status. This is the last defense where StartCancel must be called to
+      // abort all computation still running on any device.
+      // TODO(b/124523000): Always call Finish in a separate thread, so even if
+      // StartCancel blocks the current thread's execution, we won't encounter
+      // deadlocks caused by inter-op thread exhaustion.
+      if (rendezvous_) {
+        rendezvous_->StartAbort(status);
+      }
+      if (collective_executor_) {
+        collective_executor_->StartAbort(status);
+      }
+      if (cancellation_manager_) {
+        cancellation_manager_->StartCancel();
+      }
+    }
+    delete this;
+    runner([=]() { done_cb(status); });
+    return;
+  }
+
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status.Update(device->Sync());
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
+      delete this;
+      runner([=]() { done_cb(status); });
+    });
+  } else {
+    delete this;
+    runner([=]() { done_cb(status); });
   }
-
-  delete this;
-  CHECK(done_cb != nullptr);
-  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,

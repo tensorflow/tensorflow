@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -85,6 +86,8 @@ class Sampler {
   SamplerCell* GetCell(const Labels&... labels) {
     return &default_sampler_cell_;
   }
+
+  Status GetStatus() { return Status::OK(); }
 
  private:
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}

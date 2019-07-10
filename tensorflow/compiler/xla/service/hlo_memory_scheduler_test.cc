@@ -19,10 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -36,6 +38,25 @@ namespace xla {
 namespace {
 
 class HloSchedulingTest : public HloTestBase {};
+
+int64 PeakMemoryUseOfEntryComputation(
+    HloModule* module, LogicalBuffer::SizeFunction size_function) {
+  CHECK(module->has_entry_computation());
+  CHECK(module->has_schedule());
+
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+
+  const HloSchedule& schedule = module->schedule();
+
+  HloComputation* computation = module->entry_computation();
+  const HloInstructionSequence& sequence = schedule.sequence(computation);
+  return HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                            *computation, sequence, *alias_analysis,
+                            size_function)
+      .ValueOrDie()
+      .heap_size;
+}
 
 TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   // Tests scheduling of the following HLO code:
@@ -64,7 +85,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   HloMemoryScheduler scheduler([](const BufferValue& buffer) {
@@ -77,7 +98,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   TF_ASSERT_OK(module->schedule().Verify());
 
   // Verify that all instructions are in the sequence.
-  const std::vector<const HloInstruction*>& sequence =
+  const std::vector<HloInstruction*>& sequence =
       module->schedule().sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
@@ -116,16 +137,18 @@ ENTRY root {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
+  int64 peak_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler, &peak_memory));
+  TF_ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
-  const std::vector<const HloInstruction*>& sequence =
+  const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
@@ -144,126 +167,49 @@ ENTRY root {
   SequentialHloOrdering ordering(schedule);
   EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("d"),
                                       instructions_by_name.at("e")));
+  EXPECT_EQ(PeakMemoryUseOfEntryComputation(module.get(), size_fn),
+            peak_memory);
 }
 
-TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
-  // %WhileCond (cond_param: f32[4]) -> pred[] {
-  //   %cond_param = f32[4]{0} parameter(0)
-  //   %constant = f32[1,4]{1,0} constant(f32[1,4] { { 0, 0, 0, 0 } })
-  //   ROOT %not-equal-to = pred[] not-equal-to(
-  //     f32[4]{0} %cond_param, f32[1,4]{1,0} %constant)
-  // }
-  // %WhileBody (body_param: f32[4]) -> f32[4] {
-  //   %body_param = f32[4]{0} parameter(0)
-  //   %constant.1 = f32[1,4]{1,0} constant(f32[1,4] { { 1, 1, 1, 1 } })
-  //   ROOT %subtract = f32[4]{0} subtract(
-  //     f32[4]{0} %body_param, f32[1,4]{1,0} %constant.1)
-  // }
-  // %ListAccountsForSubcomputations () -> f32[2,4] {
-  //   %constant.3 = f32[2,4]{1,0} constant(
-  //     f32[2,4] { { 1, 2, 3, 4 }, { 1, 2, 3, 4 } })
-  //   %transpose = f32[2,4]{1,0} transpose(
-  //     f32[2,4]{1,0} %constant.3), dimensions={0,1}
-  //   %constant.2 = f32[1,4]{1,0} constant(f32[1,4] { { 1, 1, 1, 1 } })
-  //   %while = f32[4]{0} while(f32[1,4]{1,0} %constant.2),
-  //      condition=%WhileCond,
-  //      body=%WhileBody
-  //   %broadcast = f32[2,4]{1,0} broadcast(f32[4]{0} %while), dimensions={0}
-  //   ROOT %add = f32[2,4]{1,0} add(
-  //     f32[2,4]{1,0} %transpose, f32[2,4]{1,0} %broadcast)
-  // }
+TEST_F(HloSchedulingTest, HostSendDoneSchedule) {
+  const char* const module_str = R"(
+HloModule module
 
-  auto module = CreateNewModule();
-  const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
-  const Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 4});
+ENTRY entry {
+  %p = f32[1000, 1000] parameter(0)
+  %token.0 = token[] after-all()
+  %send = (f32[1000, 1000], token[]) send(%p, %token.0),
+    channel_id=1, is_host_transfer=true
+  %n1 = f32[1000, 1000] negate(%p)
+  %n2 = f32[1000, 1000] negate(%n1)
+  %n3 = f32[1000, 1000] negate(%n2)
+  %send-done = token[] send-done(%send), channel_id=1, is_host_transfer=true
+}
+)";
 
-  // param != 0
-  // Needs 17 bytes
-  auto cond_builder = HloComputation::Builder("WhileCond");
-  HloInstruction* cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r1f32, "cond_param"));
-  HloInstruction* zero_vector =
-      cond_builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
-  cond_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
-  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
-
-  // param - 1
-  // Needs 16 bytes
-  auto body_builder = HloComputation::Builder("WhileBody");
-  HloInstruction* body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r1f32, "body_param"));
-  HloInstruction* one_vector =
-      body_builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
-  body_builder.AddInstruction(HloInstruction::CreateBinary(
-      r1f32, HloOpcode::kSubtract, body_param, one_vector));
-  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
-
-  // transpose(matrix) + bcast(while)
-  auto builder = HloComputation::Builder(TestName());
-  HloInstruction* while_init =
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
-  // Creates 16 bytes, ignoring subcomputations
-  HloInstruction* while_loop =
-      builder.AddInstruction(HloInstruction::CreateWhile(
-          r1f32, cond_computation, body_computation, while_init));
-
-  // Creates 32 bytes and frees 16
-  HloInstruction* bcast = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(r2f32, while_loop, {0}));
-
-  HloInstruction* matrix = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
-          {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}})));
-  // Creates 32 bytes
-  HloInstruction* transpose = builder.AddInstruction(
-      HloInstruction::CreateTranspose(r2f32, matrix, {0, 1}));
-
-  // Creates 32 bytes and frees 64
-  HloInstruction* add = builder.AddInstruction(
-      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, transpose, bcast));
-
-  module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(module_str));
 
   auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape());
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
+
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
-  auto entry_computation = module->entry_computation();
-  EXPECT_EQ(entry_computation->instruction_count(),
-            schedule.sequence(entry_computation).size());
+  const std::vector<HloInstruction*>& sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
+
+  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction : sequence) {
+    instructions_by_name[instruction->name()] = instruction;
+  }
+
   SequentialHloOrdering ordering(schedule);
-  // This schedule is an example of List's greedy heuristics being suboptimal.
-  // The while_loop is more expensive than transpose, so it would have been
-  // better to schedule it first, instead of during the busy time.
-  EXPECT_TRUE(ordering.ExecutesBefore(transpose, while_loop));
-  EXPECT_TRUE(ordering.ExecutesBefore(transpose, bcast));
-  EXPECT_TRUE(ordering.ExecutesBefore(bcast, add));
-  EXPECT_TRUE(ordering.ExecutesBefore(transpose, add));
-
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
-  memory_by_computation[cond_computation] = 17;
-  memory_by_computation[body_computation] = 16;
-  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
-      TuplePointsToAnalysis::Run(module.get()).ValueOrDie();
-
-  // HeapSimulator doesn't account for subcomputations
-  EXPECT_EQ(80, HeapSimulator::MinimumMemoryForComputation(
-                    *entry_computation, schedule.sequence(entry_computation),
-                    *points_to_analysis, size_fn)
-                    .ValueOrDie());
-  // HeapSimulator accounts for subcomputations. The output buffer is aliased,
-  // so we don't double count.
-  EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
-                    *entry_computation, schedule.sequence(entry_computation),
-                    *points_to_analysis, size_fn, &memory_by_computation)
-                    .ValueOrDie());
+  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
+                                      instructions_by_name.at("n1")));
 }
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
@@ -291,15 +237,16 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd,
                                                       tuple_elm, abs_abs2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(*module,
-                                         [](const BufferValue& buffer) {
-                                           return ShapeUtil::ByteSizeOf(
-                                               buffer.shape(), TUPLE_SIZE);
-                                         },
-                                         ListMemoryScheduler));
+                          ScheduleModule(
+                              module.get(),
+                              [](const BufferValue& buffer) {
+                                return ShapeUtil::ByteSizeOf(buffer.shape(),
+                                                             TUPLE_SIZE);
+                              },
+                              ListMemoryScheduler));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -337,19 +284,19 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, tuple_elm, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto fusion = computation->CreateFusionInstruction(
       {tuple, mul, add}, HloInstruction::FusionKind::kLoop);
 
   TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(*module,
-                                         [](const BufferValue& buffer) {
-                                           return ShapeUtil::ByteSizeOf(
-                                               buffer.shape(), 2);
-                                         },
-                                         ListMemoryScheduler));
+                          ScheduleModule(
+                              module.get(),
+                              [](const BufferValue& buffer) {
+                                return ShapeUtil::ByteSizeOf(buffer.shape(), 2);
+                              },
+                              ListMemoryScheduler));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -360,72 +307,39 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   EXPECT_TRUE(ordering.ExecutesBefore(exp, fusion));
 }
 
-TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
-  auto module = CreateNewModule();
-  const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
+TEST_F(HloSchedulingTest, TrivialScheduler) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
 
-  // param != 0
-  // Needs 17 bytes
-  auto cond_builder = HloComputation::Builder("WhileCond");
-  HloInstruction* cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r1f32, "cond_param"));
-  HloInstruction* zero_vector =
-      cond_builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
-  cond_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
-  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+body {
+  param.b = (s32[], s32[]) parameter(0)
+  gte.0 = s32[] get-tuple-element(param.b), index=0
+  gte.1 = s32[] get-tuple-element(param.b), index=1
+  add = s32[] add(gte.0, gte.1)
+  ROOT tuple = (s32[], s32[]) tuple(gte.0, add)
+}
 
-  // param - 1
-  // Needs 16 bytes
-  auto body_builder = HloComputation::Builder("WhileBody");
-  HloInstruction* body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r1f32, "body_param"));
-  HloInstruction* one_vector =
-      body_builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
-  body_builder.AddInstruction(HloInstruction::CreateBinary(
-      r1f32, HloOpcode::kSubtract, body_param, one_vector));
-  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+cond {
+  param.c = (s32[], s32[]) parameter(0)
+  ROOT constant = pred[] constant(true)
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  HloInstruction* while_init =
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
-  // Creates 16 bytes, ignoring subcomputations
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      r1f32, cond_computation, body_computation, while_init));
+ENTRY main {
+  init = (s32[], s32[]) parameter(0)
+  ROOT while = (s32[], s32[]) while(init), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_FALSE(module->has_schedule());
+  TF_ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
 
-  module->AddEntryComputation(builder.Build());
-
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape());
-  };
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(*module, size_fn, ListMemoryScheduler));
-  // Verify that all instructions are in the sequence.
-  auto entry_computation = module->entry_computation();
-  EXPECT_EQ(module->entry_computation()->instruction_count(),
-            schedule.sequence(module->entry_computation()).size());
-
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
-  memory_by_computation[cond_computation] = 17;
-  memory_by_computation[body_computation] = 16;
-  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
-      TuplePointsToAnalysis::Run(module.get()).ValueOrDie();
-
-  // HeapSimulator doesn't account for subcomputations
-  EXPECT_EQ(16, HeapSimulator::MinimumMemoryForComputation(
-                    *entry_computation, schedule.sequence(entry_computation),
-                    *points_to_analysis, size_fn)
-                    .ValueOrDie());
-  // HeapSimulator accounts for subcomputations. Cond is the largest one.
-  // The output buffer of the while is aliased.
-  EXPECT_EQ(17, HeapSimulator::MinimumMemoryForComputation(
-                    *entry_computation, schedule.sequence(entry_computation),
-                    *points_to_analysis, size_fn, &memory_by_computation)
-                    .ValueOrDie());
+  // Verify that a clone of the module also has a schedule.
+  std::unique_ptr<HloModule> clone = module->Clone();
+  ASSERT_TRUE(clone->has_schedule());
+  TF_ASSERT_OK(clone->schedule().Verify());
 }
 
 }  // namespace

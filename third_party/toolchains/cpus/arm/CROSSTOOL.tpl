@@ -3,14 +3,6 @@ minor_version: ""
 default_target_cpu: "same_as_host"
 
 default_toolchain {
-  cpu: "k8"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "piii"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
   cpu: "darwin"
   toolchain_identifier: "local_darwin"
 }
@@ -19,24 +11,12 @@ default_toolchain {
   toolchain_identifier: "local_freebsd"
 }
 default_toolchain {
-  cpu: "armeabi"
-  toolchain_identifier: "arm-linux-gnueabihf"
-}
-default_toolchain {
-  cpu: "arm"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
   cpu: "x64_windows"
   toolchain_identifier: "local_windows_msys64"
 }
 default_toolchain {
   cpu: "x64_windows_msvc"
   toolchain_identifier: "vc_14_0_x64"
-}
-default_toolchain {
-  cpu: "s390x"
-  toolchain_identifier: "local_linux"
 }
 
 toolchain {
@@ -81,11 +61,18 @@ toolchain {
   # tensorflow/tools/ci_build/pi/build_raspberry_pi.sh.
   cxx_builtin_include_directory: "/tmp/openblas_install/include/"
   cxx_flag: "-std=c++11"
-  # The cxx_builtin_include_directory directives don't seem to be adding these, so
-  # explicitly set them as flags. There's a query to the Bazel team outstanding about
-  # why this is necessary.
   cxx_flag: "-isystem"
-  cxx_flag: "/usr/include/arm-linux-gnueabihf"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/4.9.3/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/sysroot/usr/include/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/local_include"
   cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"

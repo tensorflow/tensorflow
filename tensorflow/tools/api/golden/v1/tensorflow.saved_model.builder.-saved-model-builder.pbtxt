@@ -1,6 +1,7 @@
 path: "tensorflow.saved_model.builder.SavedModelBuilder"
 tf_class {
   is_instance: "<class \'tensorflow.python.saved_model.builder_impl.SavedModelBuilder\'>"
+  is_instance: "<class \'tensorflow.python.saved_model.builder_impl._SavedModelBuilder\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

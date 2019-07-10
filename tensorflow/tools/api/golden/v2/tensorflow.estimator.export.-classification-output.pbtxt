@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.export.ClassificationOutput"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.export.export_output.ClassificationOutput\'>"
-  is_instance: "<class \'tensorflow.python.estimator.export.export_output.ExportOutput\'>"
+  is_instance: "<class \'tensorflow.python.saved_model.model_utils.export_output.ClassificationOutput\'>"
+  is_instance: "<class \'tensorflow.python.saved_model.model_utils.export_output.ExportOutput\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "classes"

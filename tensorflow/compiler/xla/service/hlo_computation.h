@@ -20,28 +20,25 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -117,20 +114,40 @@ class HloComputation {
   // Remove unused parameters from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveUnusedParameters();
+  Status RemoveUnusedParametersFromFusedComputation();
 
-  // Add new parameter instruction to the computation.
+  // Remove unused parameters from the computation. Unlike
+  // RemoveUnusedParametersFromFusedComputation, this function can be used
+  // to remove parameters from non-fusion computations.
+  Status RemoveUnusedParametersFromAnyComputation();
+
+  // Adds a new parameter instruction to a fusion computation.
+  //
   // This should be a new parameter. Instruction will be appended to parameters
   // and inserted to the instruction list.
   HloInstruction* AddParameter(std::unique_ptr<HloInstruction> instruction);
+
+  // Adds a new parameter instruction to the entry computation and update
+  // the parent module config to reflect the change.
+  //
+  // This should be a new parameter. Instruction will be appended to parameters
+  // and inserted to the instruction list.
+  HloInstruction* AddEntryComputationParameter(
+      std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
 
-  // Remove an instruction from the computation and also transitively any
-  // operand that has no users post removing an instruction. The instruction
-  // must have no users. Instruction is deallocated with this call.
+  // Removes an instruction from the computation. The instruction must have no
+  // users. Instruction is deallocated with this call. The instruction will be
+  // removed even if it is marked as not removable.
+  Status ForceRemoveInstruction(HloInstruction* instruction);
+
+  // Remove an instruction (including side effecting ones) from the computation
+  // and also transitively any operand that has no side effect and no users post
+  // removing an instruction. The instruction must have no users. Instruction is
+  // deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction
@@ -188,7 +205,14 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
+
+  using InstructionSequence = tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
+
+  using ConstInstructionSequence =
+      tensorflow::gtl::iterator_range<UnwrappingIterator<
+          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
 
   // Gets the instructions in this computation.
   //
@@ -197,15 +221,11 @@ class HloComputation {
   //
   //   for (HloInstruction* instr : computation->instructions()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
-  instructions() const {
+  ConstInstructionSequence instructions() const {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
-  tensorflow::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
-  instructions() {
+  InstructionSequence instructions() {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
@@ -213,19 +233,6 @@ class HloComputation {
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
-
-  // Computes and returns the reachability between HLO instructions in the
-  // computation. The returned HloReachabilityMap is constructed such that
-  // HloReachabilityMap::IsReachable(a, b) returns true iff there exists a
-  // directed path (from producer to consumer) from 'a' to 'b'. Both data
-  // dependencies (operands) and control dependencies are considered for
-  // reachability. Trivially an instruction is reachable from itself.
-  std::unique_ptr<HloReachabilityMap> ComputeReachability() const;
-
-  // Updates the given reachability map after the immediate predecessor set
-  // (operands and control predecessors) of 'instruction' has changed.
-  void UpdateReachabilityThroughInstruction(
-      const HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
   int64 instruction_count() const { return instruction_iterators_.size(); }
 
@@ -275,7 +282,12 @@ class HloComputation {
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool operator==(const HloComputation& other) const;
+  bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
+
+  // Return whether `*this` and `other` are functionally equivalent.
+  bool operator==(const HloComputation& other) const {
+    return Equal(other, true);
+  }
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
@@ -314,12 +326,7 @@ class HloComputation {
   // be a topological sort of all instructions in the computation.
   template <typename HloInstructionPtr>
   Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                       const std::vector<const HloInstruction*>& order) const;
-
-  // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
+                       absl::Span<HloInstruction* const> order) const;
 
   // Returns a deep copy of this computation including all instructions.
   // If the clone context is specified, it will be populated with the cloned
@@ -332,27 +339,64 @@ class HloComputation {
   // the map's value to replace that instruction in the cloned computation.
   //
   // If replacements maps a key to nullptr, we remove that instruction from the
-  // new computation.
-  // If additional instructions are used by instructions in replacement map,
-  // they must be passed in post-order in the extras span.
+  // new computation.  If an element of `replacements` references an instruction
+  // that's not already in the computation, it's cloned and added to the new
+  // computation.
+  //
+  // 'extra_parameters' allows to specify additional parameters that should be
+  // added to the computation.
+  //
+  // All relevant instructions are cloned, *including* unique_ptr in the
+  // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      absl::flat_hash_map<const HloInstruction*,
+                          std::unique_ptr<HloInstruction>>
           replacements,
-      absl::Span<HloInstruction*> extras, HloCloneContext* context = nullptr,
-      const string& suffix = "clone");
+      absl::Span<const HloInstruction* const> extra_parameters = {},
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
+
+  // Convenience overloads for CloneWithReplacements.  You want to do
+  //
+  //   CloneWithReplacements({{a, std::move(b)}, {c, std::move(d)}})  // ERROR
+  //
+  // but that doesn't work because std::initializer_list is not movable.  These
+  // overloads let you do
+  //
+  //   CloneWithReplacementPairs({a, std::move(b)}, {c, std::move(d)});   // OK
+  //
+  std::unique_ptr<HloComputation> CloneWithReplacementPairs(
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
+  std::unique_ptr<HloComputation> CloneWithReplacementPairs(
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
+  std::unique_ptr<HloComputation> CloneWithReplacementPairs(
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
+      std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r3,
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of
   // the HLO computation with the exception of fusion computation. A parameter
   // instruction is removable for a fusion computation.
   //
-  // Note that IsRemovable() is a necessariy condition to remove an instruction
-  // rather than a sufficient condition. For example, instructions with
-  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
-  // transformation must guarantee the invariants relevant to the instructions
-  // still hold (e.g., Send and Recv must be removed together to make each
-  // channel complete).
-  bool IsRemovable(const HloInstruction* instruction);
+  // Note that IsSafelyRemovable() is a necassarily condition to remove an
+  // instruction rather than a sufficient condition. For example, instructions
+  // with side-effect (e.g., Send, Infeed) may be removed from a computation,
+  // but the transformation must guarantee the invariants relevant to the
+  // instructions still hold (e.g., Send and Recv must be removed together to
+  // make each channel complete).
+  bool IsSafelyRemovable(const HloInstruction* instruction);
+
+  // Returns a map from channel-id to the group of instructions associated with
+  // the channel. These instructions will be considered as a single node for
+  // dependency purposes. Send and RecvDone are in the group, and AllReduces
+  // with the same channel id are in the group.
+  using ChannelDependencyGroup =
+      absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
+  ChannelDependencyGroup ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
@@ -361,12 +405,19 @@ class HloComputation {
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
 
+  // Returns if this computation is the entry computation of the module.
+  bool IsEntryComputation() const;
+
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     fusion_instruction_ = fusion_instruction;
   }
+
+  // Clear the unique ID of the computation so that it can be re-assigned, such
+  // as for the purpose of compacting the unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // The id of this computation should be unique within the module.
   void SetUniqueId(int64 id) {
@@ -409,19 +460,16 @@ class HloComputation {
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
-  // Returns a map from channel-id to directed dependencies of the channel
-  // instructions. For send&recv pairs it means the send instruction and for
-  // cross-replica-sum the union of the dependencies for all participating
-  // instructions.
-  using ChannelDependencyMap =
-      tensorflow::gtl::FlatMap<int64, absl::InlinedVector<HloInstruction*, 1>>;
-  ChannelDependencyMap ComputeChannelDependencies() const;
-
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyMap& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
-      tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const;
+      absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
+
+  Status RemoveUnusedParametersImpl(bool allow_non_fusion);
+
+  Status RemoveInstructionImpl(HloInstruction* instruction,
+                               bool ignore_safety_check);
 
   string name_;
   int64 unique_id_;
@@ -439,7 +487,7 @@ class HloComputation {
   // instruction pointer to location in the list for fast lookup.
   using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
-  tensorflow::gtl::FlatMap<const HloInstruction*, InstructionList::iterator>
+  absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;

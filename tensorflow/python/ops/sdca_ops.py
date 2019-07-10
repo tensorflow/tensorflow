@@ -29,4 +29,5 @@ from tensorflow.python.ops.gen_sdca_ops import *
 
 ops.NotDifferentiable("SdcaFprint")
 ops.NotDifferentiable("SdcaOptimizer")
+ops.NotDifferentiable("SdcaOptimizerV2")
 ops.NotDifferentiable("SdcaShrinkL1")

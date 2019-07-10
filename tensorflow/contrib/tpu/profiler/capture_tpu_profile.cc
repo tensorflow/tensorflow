@@ -18,233 +18,32 @@ limitations under the License.
 // Initiates a TPU profiling on the TPUProfiler service at service_addr,
 // receives and dumps the profile data to a tensorboard log directory.
 
-#include "grpcpp/grpcpp.h"
-
-#include <cstdio>
-#include <ctime>
-#include <vector>
-
-#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler_analysis.grpc.pb.h"
 #include "tensorflow/contrib/tpu/profiler/version.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
-namespace tpu {
 namespace {
 
-using ::tensorflow::TPUProfileAnalysis;
-using ::tensorflow::TPUProfiler;
-
-constexpr uint64 kMaxEvents = 1000000;
-
-string GetCurrentTimeStampAsString() {
-  char s[128];
-  std::time_t t = std::time(nullptr);
-  CHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
-  return s;
-}
-
-Status ValidateHostPortPair(const string& host_port) {
-  uint32 port;
-  std::vector<string> parts = str_util::Split(host_port, ':');
-  // Must be host:port, port must be a number, host must not contain a '/',
-  // host also must not be empty.
-  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
-      parts[0].find("/") != string::npos || parts[0].empty()) {
-    return errors::InvalidArgument("Could not interpret \"", host_port,
-                                   "\" as a host-port pair.");
+Status MonitoringHelper(const string& service_addr, int duration_ms,
+                        int monitoring_level, bool display_timestamp,
+                        int num_queries) {
+  for (int query = 0; query < num_queries; ++query) {
+    string result;
+    TF_RETURN_IF_ERROR(tensorflow::profiler::client::Monitor(
+        service_addr, duration_ms, monitoring_level, display_timestamp,
+        &result));
+    std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
+              << "):\n\n"
+              << result << std::flush;
   }
   return Status::OK();
 }
 
-ProfileRequest PopulateProfileRequest(int duration_ms,
-                                      const string& repository_root,
-                                      const string& session_id,
-                                      const ProfileOptions& opts) {
-  ProfileRequest request;
-  request.set_duration_ms(duration_ms);
-  request.set_max_events(kMaxEvents);
-  if (tensorflow::str_util::StartsWith(repository_root, "gs://")) {
-    // For backward compatibilities, only generate tracetable etc when the
-    // user provide a GCS path for model directory.
-    request.set_repository_root(repository_root);
-    request.set_session_id(session_id);
-  }
-  request.add_tools("op_profile");
-  request.add_tools("input_pipeline");
-  request.add_tools("memory_viewer");
-  request.add_tools("overview_page");
-  *request.mutable_opts() = opts;
-  return request;
-}
-
-// Returns whether the returned trace is empty.
-// Failure are handled by CHECK, i.e. abort()
-bool Profile(const string& service_addr, const string& logdir, int duration_ms,
-             const string& repository_root, const string& session_id,
-             const ProfileOptions& opts) {
-  ProfileRequest request =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
-
-  ::grpc::ClientContext context;
-  ::grpc::ChannelArguments channel_args;
-  // TODO(qiuminxu): use `NewHostPortGrpcChannel` instead once their
-  // `ValidateHostPortPair` checks for empty host string case.
-  channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
-                      std::numeric_limits<int32>::max());
-  std::unique_ptr<TPUProfiler::Stub> stub =
-      TPUProfiler::NewStub(::grpc::CreateCustomChannel(
-          "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-          channel_args));
-  ProfileResponse response;
-  TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
-
-  if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
-        logdir, session_id, "", response, &std::cout));
-    // Print this at the end so that it's not buried in irrelevant LOG messages.
-    std::cout
-        << "NOTE: using the trace duration " << duration_ms << "ms."
-        << std::endl
-        << "Set an appropriate duration (with --duration_ms) if you "
-           "don't see a full step in your trace or the captured trace is too "
-           "large."
-        << std::endl;
-  }
-
-  return response.encoded_trace().empty();
-}
-
-// Start a new profiling session that include all the hosts included in
-// hostnames, for the time interval of duration_ms. Possibly save the profiling
-// result in the directory specified by repository_root and session_id.
-bool NewSession(const string& service_addr,
-                const std::vector<tensorflow::string>& hostnames,
-                int duration_ms, const string& repository_root,
-                const string& session_id, const ProfileOptions& opts) {
-  NewProfileSessionRequest new_session_request;
-  *new_session_request.mutable_request() =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
-  new_session_request.set_repository_root(repository_root);
-  new_session_request.set_session_id(session_id);
-  for (const auto& hostname : hostnames) {
-    new_session_request.add_hosts(hostname);
-  }
-
-  ::grpc::ClientContext context;
-  ::grpc::ChannelArguments channel_args;
-  // TODO(qiuminxu): use `NewHostPortGrpcChannel` instead once their
-  // `ValidateHostPortPair` checks for empty host string case.
-  channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
-  // TODO(jiesun): GRPC support following relevant naming scheme:
-  // 1. dns:///host:port
-  // 2. ipv4:host:port or ipv6:[host]:port
-  // We might need to change the prefix which depends on what TPU name resolver
-  // will give us.
-  std::unique_ptr<TPUProfileAnalysis::Stub> stub =
-      TPUProfileAnalysis::NewStub(::grpc::CreateCustomChannel(
-          "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-          channel_args));
-  NewProfileSessionResponse new_session_response;
-  TF_QCHECK_OK(FromGrpcStatus(
-      stub->NewSession(&context, new_session_request, &new_session_response)))
-      << new_session_response.error_message();
-
-  std::cout << "Profile session succeed for host(s):"
-            << str_util::Join(hostnames, ",") << std::endl;
-  return new_session_response.empty_trace();
-}
-
-// Starts tracing on a single or multiple TPU hosts and saves the result in the
-// given logdir. If no trace was collected, retries tracing for
-// num_tracing_attempts.
-void StartTracing(const tensorflow::string& service_addr,
-                  const tensorflow::string& logdir,
-                  const tensorflow::string& workers_list,
-                  bool include_dataset_ops, int duration_ms,
-                  int num_tracing_attempts) {
-  // Use the current timestamp as the run name.
-  tensorflow::string session_id = GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  tensorflow::string repository_root =
-      io::JoinPath(logdir, kProfilePluginDirectory);
-  std::vector<tensorflow::string> hostnames =
-      tensorflow::str_util::Split(workers_list, ",");
-
-  bool empty_trace = false;
-  int remaining_attempts = num_tracing_attempts;
-  tensorflow::ProfileOptions opts;
-  opts.set_include_dataset_ops(include_dataset_ops);
-  while (true) {
-    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
-              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
-    if (hostnames.empty()) {
-      empty_trace = tensorflow::tpu::Profile(service_addr, logdir, duration_ms,
-                                             repository_root, session_id, opts);
-    } else {
-      tensorflow::string tpu_master = service_addr;
-      empty_trace =
-          tensorflow::tpu::NewSession(tpu_master, hostnames, duration_ms,
-                                      repository_root, session_id, opts);
-    }
-    if (remaining_attempts <= 0 || !empty_trace) break;
-    std::cout << "No trace event is collected. Automatically retrying."
-              << std::endl
-              << std::endl;
-  }
-
-  if (empty_trace) {
-    std::cout << "No trace event is collected after " << num_tracing_attempts
-              << " attempt(s). "
-              << "Perhaps, you want to try again (with more attempts?)."
-              << std::endl
-              << "Tip: increase number of attempts with --num_tracing_attempts."
-              << std::endl;
-  }
-}
-
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
-  MonitorRequest request;
-  request.set_duration_ms(duration_ms);
-  request.set_monitoring_level(monitoring_level);
-  return request;
-}
-
-// Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
-void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries) {
-  for (int query = 0; query < num_queries; ++query) {
-    MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level);
-
-    ::grpc::ClientContext context;
-    ::grpc::ChannelArguments channel_args;
-    channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
-                        std::numeric_limits<int32>::max());
-    std::unique_ptr<TPUProfiler::Stub> stub =
-        TPUProfiler::NewStub(::grpc::CreateCustomChannel(
-            "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-            channel_args));
-    MonitorResponse response;
-    TF_QCHECK_OK(FromGrpcStatus(stub->Monitor(&context, request, &response)));
-
-    std::cout << "Xprof Monitoring Results (Sample " << query + 1 << "):\n\n"
-              << response.data() << std::flush;
-  }
-}
-
 }  // namespace
-}  // namespace tpu
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
@@ -255,6 +54,7 @@ int main(int argc, char** argv) {
   int FLAGS_num_tracing_attempts = 3;
   bool FLAGS_include_dataset_ops = true;
   int FLAGS_monitoring_level = 0;
+  bool FLAGS_display_timestamp = false;
   int FLAGS_num_queries = 100;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
@@ -278,6 +78,9 @@ int main(int argc, char** argv) {
                        "Choose a monitoring level between 1 and 2 to monitor "
                        "your TPU job continuously. Level 2 is more verbose "
                        "than level 1 and shows more metrics."),
+      tensorflow::Flag("display_timestamp", &FLAGS_display_timestamp,
+                       "Set to true to display timestamp in monitoring "
+                       "results."),
       tensorflow::Flag("num_queries", &FLAGS_num_queries,
                        "This script will run monitoring for num_queries before "
                        "it stops.")};
@@ -300,8 +103,9 @@ int main(int argc, char** argv) {
     std::cout << usage.c_str() << std::endl;
     return 2;
   }
-  tensorflow::Status status =
-      tensorflow::tpu::ValidateHostPortPair(FLAGS_service_addr);
+  tensorflow::Status status;
+  status =
+      tensorflow::profiler::client::ValidateHostPortPair(FLAGS_service_addr);
   if (!status.ok()) {
     std::cout << status.error_message() << std::endl;
     std::cout << usage.c_str() << std::endl;
@@ -324,12 +128,19 @@ int main(int argc, char** argv) {
               << FLAGS_service_addr << " for " << duration_ms
               << "ms and show metrics for " << num_queries << " time(s)."
               << std::endl;
-    tensorflow::tpu::StartMonitoring(FLAGS_service_addr, duration_ms,
-                                     FLAGS_monitoring_level, num_queries);
+    status = tensorflow::MonitoringHelper(FLAGS_service_addr, duration_ms,
+                                          FLAGS_monitoring_level,
+                                          FLAGS_display_timestamp, num_queries);
   } else {
-    tensorflow::tpu::StartTracing(FLAGS_service_addr, FLAGS_logdir,
-                                  FLAGS_workers_list, FLAGS_include_dataset_ops,
-                                  duration_ms, num_tracing_attempts);
+    status = tensorflow::profiler::client::StartTracing(
+        FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
+        FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
+  }
+
+  if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
+    std::cout << status.error_message() << std::endl;
+    std::cout << usage.c_str() << std::endl;
+    return 2;
   }
   return 0;
 }

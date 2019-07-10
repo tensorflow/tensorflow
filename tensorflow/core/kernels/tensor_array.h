@@ -57,7 +57,7 @@ Status AddToTensor(OpKernelContext* ctx, Tensor* sum, const Tensor* current,
 TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
 #undef TENSOR_ARRAY_WRITE_OR_ADD_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
@@ -65,7 +65,7 @@ TF_CALL_complex64(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 TF_CALL_complex128(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 #undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef TENSOR_ARRAY_WRITE_OR_ADD
 
@@ -85,7 +85,7 @@ TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU);
 TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
@@ -93,7 +93,7 @@ TF_CALL_complex64(TENSOR_ARRAY_SET_ZERO_GPU);
 TF_CALL_complex128(TENSOR_ARRAY_SET_ZERO_GPU);
 #undef TENSOR_ARRAY_SET_ZERO_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef TENSOR_ARRAY_SET_ZERO
 
@@ -261,7 +261,7 @@ class TensorArray : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     CHECK(!closed_);
     return strings::StrCat("TensorArray[", tensors_.size(), "]");
@@ -376,7 +376,7 @@ class TensorArray : public ResourceBase {
   const DataType dtype_;
   Tensor handle_;
 
-  mutex mu_;
+  mutable mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
   bool closed_ GUARDED_BY(mu_);

@@ -22,10 +22,14 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("python_io.TFRecordCompressionType")
+@tf_export(
+    v1=["io.TFRecordCompressionType", "python_io.TFRecordCompressionType"])
+@deprecation.deprecated_endpoints("io.TFRecordCompressionType",
+                                  "python_io.TFRecordCompressionType")
 class TFRecordCompressionType(object):
   """The type of compression for the record."""
   NONE = 0
@@ -33,7 +37,10 @@ class TFRecordCompressionType(object):
   GZIP = 2
 
 
-@tf_export("python_io.TFRecordOptions")
+@tf_export(
+    "io.TFRecordOptions",
+    v1=["io.TFRecordOptions", "python_io.TFRecordOptions"])
+@deprecation.deprecated_endpoints("python_io.TFRecordOptions")
 class TFRecordOptions(object):
   """Options used for manipulating TFRecord files."""
   compression_type_map = {
@@ -62,7 +69,7 @@ class TFRecordOptions(object):
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `TFRecordCompressionType` or `None`.
+      compression_type: `"GZIP"`, `"ZLIB"`, or `""` (no compression).
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.
@@ -143,7 +150,11 @@ class TFRecordOptions(object):
     return options
 
 
-@tf_export("python_io.tf_record_iterator")
+@tf_export(v1=["io.tf_record_iterator", "python_io.tf_record_iterator"])
+@deprecation.deprecated(
+    date=None,
+    instructions=("Use eager execution and: \n"
+                  "`tf.data.TFRecordDataset(path)`"))
 def tf_record_iterator(path, options=None):
   """An iterator that read the records from a TFRecords file.
 
@@ -175,7 +186,9 @@ def tf_record_iterator(path, options=None):
     reader.Close()
 
 
-@tf_export("python_io.TFRecordWriter")
+@tf_export(
+    "io.TFRecordWriter", v1=["io.TFRecordWriter", "python_io.TFRecordWriter"])
+@deprecation.deprecated_endpoints("python_io.TFRecordWriter")
 class TFRecordWriter(object):
   """A class to write records to a TFRecords file.
 

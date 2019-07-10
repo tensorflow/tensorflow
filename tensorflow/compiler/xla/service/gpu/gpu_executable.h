@@ -19,25 +19,25 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -51,13 +51,17 @@ class GpuExecutable : public Executable {
  public:
   // cubin (i.e. the compiled ptx) may be empty, in which case we leave
   // compilation up to the GPU driver.
+  // We need to share ownership of hlo_module and assignment with profiler to
+  // safely keep a reference to these objects during tracing period, thus they
+  // are passed as shared pointers.
   GpuExecutable(const string& ptx, const std::vector<uint8>& cubin,
                 std::pair<int, int> compute_capability,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::unique_ptr<const HloModule> hlo_module,
-                std::unique_ptr<const BufferAssignment> assignment,
+                std::shared_ptr<HloModule> hlo_module,
+                std::shared_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  ~GpuExecutable() override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -85,7 +89,16 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments) override;
 
+  std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
+    return assignment_;
+  }
+
  private:
+  StatusOr<ScopedShapedBuffer> Execute(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile, bool block_host_until_done);
+
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
@@ -96,18 +109,21 @@ class GpuExecutable : public Executable {
                        bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
-  // Returns the points-to set of the root instruction of the entry
-  // computation. Uses points-to analysis from buffer assignment.
-  const PointsToSet& GetRootPointsToSet() const;
+  // Returns the value set of the root instruction of the entry
+  // computation. Uses dataflow analysis from buffer assignment.
+  const InstructionValueSet& GetRootValueSet() const;
 
   using BufferAllocToDeviceMemoryMap =
-      tensorflow::gtl::FlatMap<BufferAllocation::Index, se::DeviceMemoryBase>;
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
   // Loads the PTX or CUBIN for this executable into `executor` and resolves the
   // globals corresponding to constant buffers.  Returns a map mapping buffer
   // allocation indices to GPU pointers.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::StreamExecutor* executor);
+
+  // Computes annotations for each thunk and store them in thunk_annotations_.
+  void ComputeThunkAnnotations();
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -135,7 +151,11 @@ class GpuExecutable : public Executable {
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::unique_ptr<const BufferAssignment> assignment_;
+  const std::shared_ptr<const BufferAssignment> assignment_;
+
+  // Maps a thunk to a string describing the thunk.  This is useful when
+  // constructing ScopeAnnotation objects.
+  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

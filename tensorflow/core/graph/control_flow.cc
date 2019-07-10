@@ -59,7 +59,7 @@ Status ValidateControlFlowInfo(const Graph* graph,
           "Invalid loop structure: Mismatched parent frames for \"",
           cf.frame_name, "\": \"", parent->name, "\" vs \"", frame.parent->name,
           "\". The node giving this error: ", FormatNodeForError(*node),
-          "This is an internal bug, please file a bug report with "
+          ". This is an internal bug, please file a bug report with "
           "instructions on how to reproduce the error.");
     }
     if (IsLoopCond(node)) {
@@ -67,8 +67,8 @@ Status ValidateControlFlowInfo(const Graph* graph,
       // BackPropLoopCounter runs in the same frame as the backprop loop. They
       // are the only cases that multiple loops share the same frame.
       if (frame.loop_cond &&
-          !str_util::StrContains(frame.loop_cond->name(), "LoopCounter") &&
-          !str_util::StrContains(node->name(), "LoopCounter")) {
+          !absl::StrContains(frame.loop_cond->name(), "LoopCounter") &&
+          !absl::StrContains(node->name(), "LoopCounter")) {
         return errors::InvalidArgument(
             "Invalid loop structure: Loop \"", cf.frame_name,
             "\" has more than one LoopCond node: ", FormatNodeForError(*node),

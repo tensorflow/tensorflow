@@ -30,6 +30,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.saving import saveable_object_util
 
 LOCAL_VARIABLE_NAME = 'local_center_variable'
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
@@ -38,6 +39,7 @@ GLOBAL_STEP = 'global_step'
 
 class ElasticAverageCustomGetter(object):
   """Custom_getter class is used to do:
+
   1. Change trainable variables to local collection and place them at worker
     device
   2. Generate global variables(global center variables)
@@ -45,22 +47,23 @@ class ElasticAverageCustomGetter(object):
     variables and place them at worker device
     Notice that the class should be used with tf.replica_device_setter,
     so that the global center variables and global step variable can be placed
-    at ps device. Besides, use 'tf.get_variable' instead of 'tf.Variable' to
+    at ps device. Besides, use 'tf.compat.v1.get_variable' instead of
+    'tf.Variable' to
     use this custom getter.
 
   For example,
   ea_custom_getter = ElasticAverageCustomGetter(worker_device)
   with tf.device(
-    tf.train.replica_device_setter(
+    tf.compat.v1.train.replica_device_setter(
       worker_device=worker_device,
       ps_device="/job:ps",
       cluster=cluster)),
-    tf.variable_scope('',custom_getter=ea_custom_getter):
+    tf.compat.v1.variable_scope('',custom_getter=ea_custom_getter):
     ...
     create your model here
     ...
     with tf.device(worker_device):
-      opt = tf.train.MomentumOptimizer(...)
+      opt = tf.compat.v1.train.MomentumOptimizer(...)
       optimizer = ElasticAverageOptimizer(
             opt,
             num_worker=2,
@@ -74,7 +77,7 @@ class ElasticAverageCustomGetter(object):
     ...
     hooks = [optimizer.make_session_run_hook(is_chief, task_index)]
     ...
-    with tf.train.MonitoredTrainingSession(master=server.target,
+    with tf.compat.v1.train.MonitoredTrainingSession(master=server.target,
                                            is_chief=is_chief,
                                            checkpoint_dir=("...),
                                            save_checkpoint_secs=600,
@@ -137,9 +140,9 @@ class ElasticAverageCustomGetter(object):
         return getter(name, *args, **kwargs)
 
 
-
 class ElasticAverageOptimizer(optimizer.Optimizer):
   """Wrapper optimizer that implements the Elastic Average SGD algorithm.
+
   This is an async optimizer. During the training, Each worker will update
   the local variables and maintains its own local_step, which starts from 0
   and is incremented by 1 after each update of local variables. Whenever
@@ -169,19 +172,18 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
         Must be one of the Optimizer classes.
       num_worker: The number of workers
       ea_custom_getter: The ElasticAverageCustomGetter
-      communication_period: An int point value to controls the frequency
-        of the communication between every worker and the ps.
+      communication_period: An int point value to controls the frequency of the
+        communication between every worker and the ps.
       moving_rate: A floating point value to control the elastic difference.
-      rho: the amount of exploration we allow in the model. The default
-        value is moving_rate/learning_rate
-        rho=0.0 is suggested in async mode.
+      rho: the amount of exploration we allow in the model. The default value is
+        moving_rate/learning_rate rho=0.0 is suggested in async mode.
       use_locking: If True use locks for update operations.
       synchronous: Add_sync_queues_and_barrier or not.
               True: all workers will wait for each other before start training
               False: worker can start training when its initilization is done,
-                     no need to wait for everyone is ready.
-                     in case one worker is restarted, it can join and continue
-                     training without being blocked.
+                no need to wait for everyone is ready. in case one worker is
+                restarted, it can join and continue training without being
+                blocked.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "ElasticAverageOptimizer".
     """
@@ -228,14 +230,14 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     Args:
       loss: A Tensor containing the value to minimize.
       var_list: Optional list or tuple of `tf.Variable` to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKey.TRAINABLE_VARIABLES`.
+        `loss`.  Defaults to the list of variables collected in the graph under
+        the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
         `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with
-        the corresponding op.
+      colocate_gradients_with_ops: If True, try colocating gradients with the
+        corresponding op.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
 
     Returns:
@@ -272,10 +274,10 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
         `compute_gradients()`.
-      global_step: Optional `Variable` to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation.  Default to the
-        name passed to the `Optimizer` constructor.
+      global_step: Optional `Variable` to increment by one after the variables
+        have been updated.
+      name: Optional name for the returned operation.  Default to the name
+        passed to the `Optimizer` constructor.
 
     Returns:
       An `Operation` that applies the specified gradients. If `global_step`
@@ -343,13 +345,16 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     with ops.control_dependencies([local_update]):
       condition = math_ops.equal(
           math_ops.mod(self._local_step, self._period), 0)
-      conditional_update = control_flow_ops.cond(
-          condition, _Update_global_variables, control_flow_ops.no_op)
+      conditional_update = control_flow_ops.cond(condition,
+                                                 _Update_global_variables,
+                                                 control_flow_ops.no_op)
     return conditional_update
 
   def get_init_op(self, task_index):
     """Returns the op to let all the local variables and local center
-    variables equal to the global center variables before the training begins"""
+
+    variables equal to the global center variables before the training begins
+    """
 
     def _Add_sync_queues_and_barrier(enqueue_after_list):
       """Adds ops to enqueue on all worker queues"""
@@ -398,18 +403,20 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
   def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
     """Create a saver copy global_center_variable to trainable variables
+
     Please call this function after all your variables created with
     ElasticAverageCustomGetter. For evaluations or inference, use this saver
     during training.  It will save the global_center_variable of the trained
     parameters under the original parameter names.
     Args:
-      var_list: List of variables to save, as per `Saver()`.
-                If set to None, save all the trainable_variables that have
-                been created before this call.
+      var_list: List of variables to save, as per `Saver()`. If set to None,
+        save all the trainable_variables that have been created before this
+        call.
       name: The name of the saver.
       **kwargs: Keyword arguments of `Saver()`.
+
     Returns:
-      A `tf.train.Saver` object.
+      A `tf.compat.v1.train.Saver` object.
     Raises:
       RuntimeError: global_center_variable is empty, please make sure
                     this is called after model created and
@@ -424,7 +431,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     if var_list is None:
       var_list = variables.trainable_variables()
     if not isinstance(var_list, dict):
-      var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
+      var_list = saveable_object_util.op_list_to_dict(var_list)
 
     swapped_var_list = {}
     for key, var in var_list.items():
@@ -435,12 +442,13 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
           if tvar.op.name == var.op.name:
             tensor = self._global_map.get(tvar, var)
             break
-      else: #partitioned variable
+      else:  #partitioned variable
         tensor = [self._global_map.get(lvar, lvar) for lvar in var]
 
       swapped_var_list[key] = tensor
 
     return saver.Saver(swapped_var_list, name=name, **kwargs)
+
 
 class _ElasticAverageOptimizerHook(session_run_hook.SessionRunHook):
 

@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/cc_op_gen.h"
+
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/cc/framework/cc_op_gen.h"
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -42,14 +44,19 @@ namespace {
 const int kRightMargin = 79;
 
 // Converts:
-//   bazel-out/.../genfiles/(external/YYY/)?XX
+//   bazel-out/.../(bin|genfiles)/(external/YYY/)?XX
 // to: XX.
 string GetPath(const string& dot_h_fname) {
-  auto pos = dot_h_fname.find("/genfiles/");
+  auto pos = dot_h_fname.find("/bin/");
   string result = dot_h_fname;
   if (pos != string::npos) {
     // - 1 account for the terminating null character (\0) in "/genfiles/".
-    result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+    result = dot_h_fname.substr(pos + sizeof("/bin/") - 1);
+  } else {
+    pos = dot_h_fname.find("/genfiles/");
+    if (pos != string::npos) {
+      result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+    }
   }
   if (result.size() > sizeof("external/") &&
       result.compare(0, sizeof("external/") - 1, "external/") == 0) {
@@ -128,7 +135,7 @@ string MakeComment(StringPiece text, StringPiece indent) {
 }
 
 string PrintString(const string& str) {
-  return strings::StrCat("\"", str_util::CEscape(str), "\"");
+  return strings::StrCat("\"", absl::CEscape(str), "\"");
 }
 
 string PrintTensorShape(const TensorShapeProto& shape_proto) {
@@ -186,7 +193,7 @@ string PrintTensor(const TensorProto& tensor_proto) {
       string ret;
       for (int64 i = 0; i < num_elts; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
-        strings::StrAppend(&ret, str_util::CEscape(t.flat<string>()(i)));
+        strings::StrAppend(&ret, absl::CEscape(t.flat<string>()(i)));
       }
       return ret;
     }
@@ -321,6 +328,7 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"tensor", {"TensorProto", true}},
           {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
           {"func", {"NameAttrList", true}},
+          {"list(func)", {"gtl::ArraySlice<NameAttrList>", true}},
       };
 
   auto entry = attr_type_map->find(attr_type);
@@ -853,11 +861,7 @@ void OpInfo::WriteClassDecl(WritableFile* h) const {
     }
   }
 
-  strings::StrAppend(&class_decl, "\n");
-
-  if (output_types.empty()) {
-    strings::StrAppend(&class_decl, "  Operation operation;\n");
-  }
+  strings::StrAppend(&class_decl, "\n  Operation operation;\n");
   for (int i = 0; i < output_types.size(); ++i) {
     strings::StrAppend(&class_decl, "  ", output_types[i], " ", output_names[i],
                        ";\n");
@@ -878,9 +882,11 @@ void OpInfo::GetOutput(string* out) const {
   string return_on_error =
       strings::StrCat("if (!", scope_str, ".ok()) return;");
 
+  strings::StrAppend(out, "  this->operation = Operation(ret);\n");
+
   // No outputs.
   if (graph_op_def.output_arg_size() == 0) {
-    strings::StrAppend(out, "  this->operation = Operation(ret);\n  return;\n");
+    strings::StrAppend(out, "  return;\n");
     return;
   }
   if (graph_op_def.output_arg_size() == 1) {

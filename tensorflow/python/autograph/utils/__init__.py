@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.utils.context_managers import control_dependency_on_returns
 from tensorflow.python.autograph.utils.misc import alias_tensors
-from tensorflow.python.autograph.utils.multiple_dispatch import run_cond
 from tensorflow.python.autograph.utils.py_func import wrap_py_func
 from tensorflow.python.autograph.utils.tensor_list import dynamic_list_append
 from tensorflow.python.autograph.utils.testing import fake_tf

@@ -22,12 +22,17 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.deprecation import deprecated
 
 
 _libsvm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_libsvm_ops.so"))
 
 
+@deprecated(None,
+            'tf.contrib.libsvm will be removed in 2.0, the support for libsvm '
+            'format will continue to be provided in tensorflow-io: '
+            'https://github.com/tensorflow/io')
 def decode_libsvm(content, num_features, dtype=None, label_dtype=None):
   """Convert Libsvm records to a tensor of label and a tensor of feature.
 

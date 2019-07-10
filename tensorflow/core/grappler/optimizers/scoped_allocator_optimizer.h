@@ -15,15 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_SCOPED_ALLOCATOR_OPTIMIZER_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_SCOPED_ALLOCATOR_OPTIMIZER_H_
 
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
-namespace grappler {
 class Graph;
+
+namespace grappler {
 class GraphProperties;
 class NodeMap;
 class ScopedAllocatorOptimizer;
@@ -62,6 +66,10 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   // will allocate num_fields (> 0) separate tensors.
   int NewScopedAllocatorId(int num_fields);
 
+  // Returns a new, unused id to be assigned to an IdentityOp used in this graph
+  // rewrite.
+  Status NewIdentityId(int* id);
+
   NodeMap* node_map() { return node_map_.get(); }
 
   // Appends values to the attr value under name in node_def, if present.
@@ -75,7 +83,8 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
    public:
     virtual ~Rewriter() {}
 
-    virtual Status Rewrite(ScopedAllocatorOptimizer* paopti, GraphDef* graph,
+    virtual Status Rewrite(ScopedAllocatorOptimizer* paopti,
+                           int64 invocation_count, GraphDef* graph,
                            const string& op_name,
                            const std::vector<NodeDef*>& nodes,
                            bool* applied) = 0;
@@ -100,6 +109,7 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   std::unordered_map<string, Rewriter*> rewriters_;
   std::vector<Rewriter*> to_delete_;
   int next_sa_id_ = 1;
+  int next_identity_id_ = 1;
   std::unique_ptr<NodeMap> node_map_;
 };
 

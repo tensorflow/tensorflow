@@ -32,6 +32,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 def GetTestConfigs():
@@ -51,12 +52,12 @@ class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
     if use_gpu:
-      if not test_util.CudaSupportsHalfMatMulAndConv():
-        return [dtypes.float32]
+      if not test_util.GpuSupportsHalfMatMulAndConv():
+        return [dtypes.float64, dtypes.float32]
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float32, dtypes.float16]
+        return [dtypes.float64, dtypes.float32, dtypes.float16]
     else:
       return [dtypes.float64, dtypes.float32, dtypes.float16]
 
@@ -74,7 +75,7 @@ class Conv3DTest(test.TestCase):
     # during the conv3d.
     x1 = [f * 1.0 / total_size_tensor for f in range(1, total_size_tensor + 1)]
     x2 = [f * 1.0 / total_size_filter for f in range(1, total_size_filter + 1)]
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
@@ -109,7 +110,7 @@ class Conv3DTest(test.TestCase):
         results.append(result)
 
       with self.cached_session() as sess:
-        values = sess.run(results)
+        values = self.evaluate(results)
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
@@ -133,7 +134,7 @@ class Conv3DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_tensor + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_filter + 1)]
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       if isinstance(stride, collections.Iterable):
@@ -184,8 +185,8 @@ class Conv3DTest(test.TestCase):
         computed_results.append(computed)
         tolerance = 1e-2 if use_gpu else 1e-5
         with self.cached_session() as sess:
-          expected_values = sess.run(expected_results)
-          computed_values = sess.run(computed_results)
+          expected_values = self.evaluate(expected_results)
+          computed_values = self.evaluate(computed_results)
           for e_value, c_value in zip(expected_values, computed_values):
             print("expected = ", e_value)
             print("actual = ", c_value)
@@ -220,7 +221,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D1x1x1Filter2x1x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 3, 6, 1, 1],
           filter_in_sizes=[1, 1, 1, 1, 1],
@@ -245,7 +246,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2Filter1x2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 4, 6, 3, 1],
           filter_in_sizes=[2, 2, 2, 1, 1],
@@ -413,7 +414,7 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float16:
         tolerance = 1e-3
 
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
             input_data, shape=input_shape, dtype=data_type, name="input")
         filter_tensor = constant_op.constant(
@@ -462,6 +463,7 @@ class Conv3DTest(test.TestCase):
       self._ConstructAndTestGradientForConfig(data_format=data_format,
                                               use_gpu=use_gpu, **kwargs)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -473,6 +475,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=4,
@@ -484,6 +487,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -495,6 +499,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -506,6 +511,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -517,6 +523,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -528,6 +535,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -539,6 +547,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -550,6 +559,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -561,6 +571,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=4,
@@ -572,6 +583,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -583,6 +595,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -594,6 +607,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingDifferentStrides(self):
     self.ConstructAndTestGradient(
         batch=1,
@@ -605,6 +619,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientKernelSizeMatchesInputSize(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -616,6 +631,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientKernelSizeMatchesInputSize(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -636,6 +652,32 @@ class Conv3DTest(test.TestCase):
         out_depth=3,
         stride=[2, 3, 1],
         padding="SAME",
+        test_input=False)
+
+  # Test the fast path in gemm_pack_rhs/gemm_pack_colmajor_block, when channel
+  # dimension is a multiple of packet size.
+  @test_util.run_deprecated_v1
+  def testInputGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(3, 5, 4),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
+        test_input=True)
+
+  @test_util.run_deprecated_v1
+  def testFilterGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(4, 6, 5),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
         test_input=False)
 
   # Testing for backprops
@@ -659,7 +701,7 @@ class Conv3DTest(test.TestCase):
     # because we currently do not have a CPU implementation for arbitrary
     # dilation rates.
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCDHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)
@@ -691,8 +733,8 @@ class Conv3DTest(test.TestCase):
         expected_grad = gradients_impl.gradients(expected, t1
                                                  if mode == "input" else t2)[0]
         # "values" consists of two tensors for two backprops
-        actual_value = sess.run(actual_grad)
-        expected_value = sess.run(expected_grad)
+        actual_value = self.evaluate(actual_grad)
+        expected_value = self.evaluate(expected_grad)
         self.assertShapeEqual(actual_value, actual_grad)
         self.assertShapeEqual(expected_value, expected_grad)
       print("expected = ", expected_value)
@@ -700,6 +742,7 @@ class Conv3DTest(test.TestCase):
       self.assertArrayNear(expected_value.flatten(), actual_value.flatten(),
                            err)
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():
@@ -715,6 +758,7 @@ class Conv3DTest(test.TestCase):
             err=1e-5,
             mode="filter")
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropInputStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():

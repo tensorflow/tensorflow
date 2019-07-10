@@ -1,22 +1,16 @@
 # Description: Utilities.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "periodic_function_dynamic",
     srcs = ["periodic_function.cc"],
     hdrs = ["periodic_function.h"],
-    visibility = [
-        "//learning/serving:__subpackages__",
-        "//tensorflow:internal",
-        "//tensorflow_serving:__subpackages__",
-    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -25,11 +19,6 @@ cc_library(
 
 cc_library(
     name = "periodic_function",
-    visibility = [
-        "//learning/serving:__subpackages__",
-        "//tensorflow:internal",
-        "//tensorflow_serving:__subpackages__",
-    ],
     deps = [
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
@@ -198,11 +187,6 @@ cc_library(
     testonly = 1,
     srcs = ["fake_clock_env.cc"],
     hdrs = ["fake_clock_env.h"],
-    visibility = [
-        "//learning/serving:__subpackages__",
-        "//tensorflow:internal",
-        "//tensorflow_serving:__subpackages__",
-    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",

@@ -1,12 +1,6 @@
 # Description:
 #   Contains ops for image manipulation.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = ["//visibility:public"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -18,6 +12,13 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_custom_op_library(
     name = "python/ops/_image_ops.so",
@@ -49,6 +50,7 @@ tf_kernel_library(
         "kernels/image_ops.h",
     ],
     deps = [
+        ":image_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -74,7 +76,6 @@ tf_custom_op_py_library(
     dso = [":python/ops/_image_ops.so"],
     kernels = [
         ":image_ops_kernels",
-        ":image_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -110,6 +111,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "notap",  # b/136286905
+    ],
 )
 
 tf_custom_op_library(
@@ -126,6 +130,26 @@ tf_custom_op_library(
     deps = [
         "//tensorflow/core/kernels:gpu_util_hdrs",
     ],
+)
+
+tf_kernel_library(
+    name = "distort_image_ops_kernels",
+    srcs = [
+        "kernels/adjust_hsv_in_yiq_op.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
+    ],
+    gpu_srcs = [
+        "kernels/adjust_hsv_in_yiq_op_gpu.cu.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
+    ],
+    deps = [
+        ":distort_image_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:gpu_util_hdrs",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -155,13 +179,16 @@ tf_gen_op_wrapper_py(
     deps = [":distort_image_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "distort_image_py",
     srcs = [
         "__init__.py",
         "python/ops/distort_image_ops.py",
     ],
-    data = [":python/ops/_distort_image_ops.so"],
+    dso = [":python/ops/_distort_image_ops.so"],
+    kernels = [
+        ":distort_image_ops_kernels",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":distort_image_ops",
@@ -330,7 +357,7 @@ tf_custom_op_library(
         "ops/single_image_random_dot_stereograms_ops.cc",
     ],
     deps = [
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -338,25 +365,36 @@ tf_gen_op_libs(
     op_lib_names = ["single_image_random_dot_stereograms_ops"],
 )
 
+tf_kernel_library(
+    name = "single_image_random_dot_stereograms_kernels",
+    srcs = [
+        "kernels/single_image_random_dot_stereograms_ops.cc",
+    ],
+    deps = [
+        ":single_image_random_dot_stereograms_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "single_image_random_dot_stereograms_ops",
     deps = [":single_image_random_dot_stereograms_ops_op_lib"],
 )
 
-cc_library(
+alias(
     name = "image_ops_cc",
-    srcs = ["ops/image_ops.cc"],
-    deps = [
-        ":image_ops_kernels",
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
+    actual = ":image_ops_op_lib",
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "single_image_random_dot_stereograms_py",
     srcs = glob(["python/ops/single*.py"]) + ["__init__.py"],
-    data = [":python/ops/_single_image_random_dot_stereograms.so"],
+    dso = [":python/ops/_single_image_random_dot_stereograms.so"],
+    kernels = [
+        ":single_image_random_dot_stereograms_kernels",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":image_py",

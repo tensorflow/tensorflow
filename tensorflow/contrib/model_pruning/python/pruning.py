@@ -60,6 +60,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.contrib.model_pruning.python import pruning_utils
 from tensorflow.contrib.model_pruning.python.layers import core_layers as core
 from tensorflow.contrib.training.python.training import hparam
@@ -153,7 +155,8 @@ def get_pruning_hparams():
       the global step at which to terminate pruning. Defaults to -1 implying
       that pruning continues till the training stops
     weight_sparsity_map: list of strings
-       comma separed list of weight variable name:target sparsity pairs.
+       comma separed list of {weight_variable_name:target sparsity} or
+       {regex:target sparsity} pairs.
        For layers/weights not in this list, sparsity as specified by the
        target_sparsity hyperparameter is used.
        Eg. [conv1:0.9,conv2/kernel:0.8]
@@ -204,17 +207,17 @@ def get_pruning_hparams():
       begin_pruning_step=0,
       end_pruning_step=-1,
       weight_sparsity_map=[''],
-      threshold_decay=0.9,
+      threshold_decay=0.0,
       pruning_frequency=10,
       nbins=256,
       block_height=1,
       block_width=1,
       block_pooling_function='AVG',
-      initial_sparsity=0,
+      initial_sparsity=0.0,
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,
-      sparsity_function_exponent=3,
+      sparsity_function_exponent=3.0,
       use_tpu=False)
 
 
@@ -247,7 +250,8 @@ class Pruning(object):
 
     # Stores the tensorflow sparsity variable.
     # Built using self._setup_sparsity() or provided externally
-    self._sparsity = sparsity if sparsity else self._setup_sparsity()
+    self._sparsity = (sparsity
+                      if sparsity is not None else self._setup_sparsity())
 
     # List of tensorflow assignments ops for new masks and thresholds
     self._assign_ops = []
@@ -354,8 +358,8 @@ class Pruning(object):
   def _get_sparsity(self, weight_name):
     """Return target sparsity for the given layer/weight name."""
     target_sparsity = [
-        sparsity for name, sparsity in self._weight_sparsity_map.items()
-        if weight_name.find(name) != -1
+        sparsity for regexp, sparsity in self._weight_sparsity_map.items()
+        if re.search(regexp, weight_name)
     ]
     if not target_sparsity:
       return self._sparsity
@@ -396,28 +400,26 @@ class Pruning(object):
       raise ValueError('Sparsity variable undefined')
 
     sparsity = self._get_sparsity(weights.op.name)
-
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(weights)
-      max_value = math_ops.reduce_max(abs_weights)
-      cdf_fn = pruning_utils.compute_cdf_from_histogram
-      if self._spec.use_tpu:
-        cdf_fn = pruning_utils.compute_cdf
-
-      norm_cdf = cdf_fn(abs_weights, [0.0, max_value], nbins=self._spec.nbins)
-      current_threshold = math_ops.multiply(
-          math_ops.div(
-              math_ops.reduce_sum(
-                  math_ops.cast(
-                      math_ops.less(norm_cdf, sparsity), dtypes.float32)),
-              float(self._spec.nbins)), max_value)
-
+      k = math_ops.cast(
+          math_ops.round(
+              math_ops.cast(array_ops.size(abs_weights), dtypes.float32) *
+              (1 - sparsity)), dtypes.int32)
+      # Sort the entire array
+      values, _ = nn_ops.top_k(
+          array_ops.reshape(abs_weights, [-1]), k=array_ops.size(abs_weights))
+      # Grab the (k-1) th value
+      current_threshold = array_ops.gather(values, k - 1)
       smoothed_threshold = math_ops.add_n([
           math_ops.multiply(current_threshold, 1 - self._spec.threshold_decay),
           math_ops.multiply(threshold, self._spec.threshold_decay)
       ])
+
       new_mask = math_ops.cast(
-          math_ops.greater(abs_weights, smoothed_threshold), dtypes.float32)
+          math_ops.greater_equal(abs_weights, smoothed_threshold),
+          dtypes.float32)
+
     return smoothed_threshold, new_mask
 
   def _maybe_update_block_mask(self, weights, threshold):
@@ -455,13 +457,14 @@ class Pruning(object):
 
       pool_window = [self._block_dim[0], self._block_dim[1]]
       pool_fn = pruning_utils.factorized_pool
-
+      squeeze_axis = None
       if not self._spec.use_tpu:
         pool_fn = nn_ops.pool
         abs_weights = array_ops.reshape(
             abs_weights,
             [1, abs_weights.get_shape()[0],
              abs_weights.get_shape()[1], 1])
+        squeeze_axis = [0, 3]
 
       pooled_weights = pool_fn(
           abs_weights,
@@ -472,7 +475,7 @@ class Pruning(object):
           name=weights.op.name + '_pooled')
 
       if pooled_weights.get_shape().ndims != 2:
-        pooled_weights = array_ops.squeeze(pooled_weights)
+        pooled_weights = array_ops.squeeze(pooled_weights, axis=squeeze_axis)
 
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)

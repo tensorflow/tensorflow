@@ -34,7 +34,11 @@ namespace tensorflow {
 // Otherwise, `indices_are_vectors`, then indices are multidimensional and the
 // minor dimension of `indices` represents a vector of indices.
 //
-// If any indices are negative, the corresponding update is discarded.
+// If `updates` is a scalar, then it will be broadcasted into the expected shape
+// of updates.
+//
+// If any part of the update region is out-of-bounds, the corresponding update
+// is discarded.
 //
 // If a `combiner` is provided, updates are combined with the existing values in
 // the buffer using the combiner function. Otherwise, the updates replace the

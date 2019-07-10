@@ -40,22 +40,56 @@ class GrpcEagerClient : public EagerClient {
       override {                                                          \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr);                              \
+        response, std::move(done), nullptr, nullptr);                     \
   }
 
   CLIENT_METHOD(CreateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
-  CLIENT_METHOD(CloseContext);
   CLIENT_METHOD(RegisterFunction);
   CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 
+  void CloseContextAsync(const CloseContextRequest* request,
+                         CloseContextResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
+        response, std::move(done), nullptr, nullptr);
+
+    if (enqueue_dispatchers_.find(request->context_id()) !=
+        enqueue_dispatchers_.end()) {
+      enqueue_dispatchers_.erase(request->context_id());
+    } else {
+      LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
+                 << " does not seems to exist.";
+    }
+  }
+
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
+    auto it = enqueue_dispatchers_.find(request->context_id());
+    if (enqueue_dispatchers_.find(request->context_id()) ==
+        enqueue_dispatchers_.end()) {
+      auto it_and_bool = enqueue_dispatchers_.emplace(
+          std::piecewise_construct,
+          std::forward_as_tuple(request->context_id()),
+          std::forward_as_tuple(
+              &stub_, cq_, "/tensorflow.eager.EagerService/StreamingEnqueue"));
+      it = it_and_bool.first;
+    }
+
+    it->second.SendNextRequest(*request, response, std::move(done));
+  }
+
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+  std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
+      enqueue_dispatchers_;
 };
 
 class GrpcEagerClientCache : public EagerClientCache {
@@ -66,18 +100,23 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  EagerClient* GetClient(const string& target) override {
+  Status GetClient(const string& target, EagerClient** client) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
+      if (shared == nullptr) {
+        return errors::InvalidArgument("Client for target ", target,
+                                       " not found.");
+      }
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
       it = clients_.emplace(target, std::move(worker)).first;
     }
 
-    return it->second.get();
+    *client = it->second.get();
+    return Status::OK();
   }
 
  private:
@@ -88,7 +127,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {

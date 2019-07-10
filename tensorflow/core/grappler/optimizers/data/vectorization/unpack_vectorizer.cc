@@ -14,40 +14,47 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer_registry.h"
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
+namespace {
 
 class UnpackVectorizer : public Vectorizer {
  public:
-  Status Vectorize(const NodeDef& node, gtl::ArraySlice<string> inputs,
-                   FunctionDef* outer_scope,
-                   std::map<string, string>* conversion_map) override {
-    if (inputs.size() != 1) {
-      return errors::Internal("Unpack op should only have one input.");
+  Status Vectorize(const Node& node, Graph* outer_scope,
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
+    NodeBuilder::NodeOut value;
+    TF_RETURN_IF_ERROR(inputs.stacked(0, &value));
+
+    int axis = 0;
+    if (HasNodeAttr(node.def(), "axis")) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "axis", &axis));
     }
 
-    // Add new Unpack node
-    NodeDef* new_unpack_node = outer_scope->add_node_def();
-    *new_unpack_node = node;
-    new_unpack_node->clear_name();
-    function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("vectorized/", node.name()), outer_scope,
-        new_unpack_node);
+    if (axis >= 0) {
+      // Since the vectorized input has an extra leading dimension, we need
+      // to increment `axis` attr by 1 for non-negative axis values.
+      // Note: negative axis values wrap around.
+      axis += 1;
+    }
 
-    // Increment "axis" attr by 1:
-    (*new_unpack_node->mutable_attr())["axis"].set_i(
-        node.attr().at("axis").i() + 1);
-    new_unpack_node->set_input(0, inputs[0]);
+    int num;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "num", &num));
 
-    // Add the output mappings to conversion map
-    int num = new_unpack_node->attr().at("num").i();
+    Node* new_node;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("vectorized/", node.name()),
+                                   node.type_string())
+                           .Input(value)
+                           .Attr("axis", axis)
+                           .Attr("num", num)
+                           .Finalize(outer_scope, &new_node));
+
+    // Add the output mappings
     for (int i = 0; i < num; ++i) {
-      (*conversion_map)[strings::StrCat(node.name(), ":output:", i)] =
-          strings::StrCat(new_unpack_node->name(), ":output:", i);
+      outputs->push_back({new_node, i, true});
     }
 
     return Status::OK();
@@ -56,6 +63,6 @@ class UnpackVectorizer : public Vectorizer {
 
 REGISTER_VECTORIZER("Unpack", UnpackVectorizer);
 
-}  // namespace vectorization_utils
+}  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

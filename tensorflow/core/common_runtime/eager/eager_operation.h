@@ -18,15 +18,19 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 class EagerOperation {
  public:
-  // t is NULL iff the EagerOperation corresponds to a TensorFlow function
-  // instead of a primitive operation.
   EagerOperation(tensorflow::EagerContext* ctx, const char* op,
-                 const tensorflow::AttrTypeMap* t)
-      : ctx_(ctx), name_(op), attrs_(op), attr_types_(t), device_(nullptr) {}
+                 bool is_function, const tensorflow::AttrTypeMap* t)
+      : ctx_(ctx),
+        name_(op),
+        attrs_(op),
+        attr_types_(t),
+        device_(nullptr),
+        is_function_(is_function) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -34,7 +38,7 @@ class EagerOperation {
     }
   }
 
-  bool is_function() const { return attr_types_ == nullptr; }
+  bool is_function() const { return is_function_; }
 
   tensorflow::EagerContext* EagerContext() { return ctx_; }
 
@@ -49,16 +53,27 @@ class EagerOperation {
   MutableInputs() {
     return &inputs_;
   }
+
   void AddInput(tensorflow::TensorHandle* h);
+  void UpdateInput(int i, tensorflow::TensorHandle* h);
+  void ConsumeInput(tensorflow::TensorHandle* h);
 
   const tensorflow::string& Name() const { return name_; }
   const tensorflow::AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   tensorflow::Device* Device() const { return device_; }
-  tensorflow::Status SetDevice(const char* device);
-  void SetDevice(tensorflow::Device* device) { device_ = device; }
+  void SetDevice(tensorflow::Device* device) {
+    device_ = device;
+    device_name_ = device->parsed_name();
+  }
+  const DeviceNameUtils::ParsedName& GetDeviceName() const {
+    return device_name_;
+  }
+  tensorflow::Status SetDeviceName(const char* device);
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
+
+  string DebugString() const;
 
  private:
   tensorflow::EagerContext* ctx_;  // Must outlive the EagerOperation.
@@ -67,7 +82,9 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* attr_types_;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
+  DeviceNameUtils::ParsedName device_name_;
   bool use_xla_ = false;
+  const bool is_function_;
 };
 }  // namespace tensorflow
 

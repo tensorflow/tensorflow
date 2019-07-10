@@ -145,7 +145,7 @@ def _FindFusedBatchNorms(graph):
   Args:
     graph: Graph to inspect.
 
-  Yields:
+  Returns:
     _FusedBatchNormMatches.
   """
   input_pattern = graph_matcher.OpTypePattern('*')
@@ -169,8 +169,15 @@ def _FindFusedBatchNorms(graph):
           graph_matcher.OpTypePattern('*'),
           graph_matcher.OpTypePattern('*')
       ])
+  # Identity between conv/matmul and bn
+  layer_pattern_with_identity = graph_matcher.OpTypePattern(
+      'Identity',
+      inputs=[
+          graph_matcher.OneofPattern([batch_to_space_pattern, layer_pattern])
+      ])
   layer_output_pattern = graph_matcher.OneofPattern(
-      [layer_pattern, batch_to_space_pattern])
+      [layer_pattern_with_identity, layer_pattern, batch_to_space_pattern])
+
   # MatMul has a Reshape between it and FusedBatchNorm.
   matmul_reshape_pattern = graph_matcher.OpTypePattern(
       'Reshape',
@@ -178,7 +185,7 @@ def _FindFusedBatchNorms(graph):
               graph_matcher.OpTypePattern('*')])
 
   batch_norm_pattern = graph_matcher.OpTypePattern(
-      'FusedBatchNorm',
+      'FusedBatchNorm|FusedBatchNormV3',
       inputs=[
           graph_matcher.OneofPattern(
               [matmul_reshape_pattern, layer_output_pattern]), gamma_pattern,
@@ -187,6 +194,11 @@ def _FindFusedBatchNorms(graph):
   matmul_bn_output_reshape_pattern = graph_matcher.OpTypePattern(
       'Reshape', inputs=[batch_norm_pattern,
                          graph_matcher.OpTypePattern('*')])
+
+  batch_norm_identity_pattern = graph_matcher.OpTypePattern(
+      'Identity', inputs=[batch_norm_pattern, matmul_bn_output_reshape_pattern])
+
+  bn_identity_matcher = graph_matcher.GraphMatcher(batch_norm_identity_pattern)
 
   bn_matcher = graph_matcher.GraphMatcher(
       graph_matcher.OneofPattern(
@@ -200,7 +212,17 @@ def _FindFusedBatchNorms(graph):
   moving_avg_mul_matcher = graph_matcher.GraphMatcher(
       moving_average_mul_pattern)
 
-  for match_result in bn_matcher.match_graph(graph):
+  def _GetLayerMatch(match_result):
+    """Populates a layer match object containing ops/tensors for folding BNs.
+
+    Args:
+      match_result: Matched result from graph matcher
+
+    Returns:
+      layer_op: Matching conv/fc op prior to batch norm
+      BatchNormMatch: _BatchNormMatch containing all required batch norm
+      parameters.
+    """
     moving_mean_tensor = None
     moving_variance_tensor = None
     bn_decay_mean_tensor = None
@@ -208,7 +230,11 @@ def _FindFusedBatchNorms(graph):
     batch_to_space_op = None
     layer_op = match_result.get_op(layer_pattern)
     layer_tensor = match_result.get_tensor(layer_pattern)
+    bn_id_op = match_result.get_op(batch_norm_identity_pattern)
     bn_op = match_result.get_op(batch_norm_pattern)
+    if bn_id_op is None:
+      bn_id_op = bn_op
+
     batch_epsilon = bn_op.get_attr('epsilon')
 
     # In the MatMul case, the output of batch norm is reshaped back into a
@@ -219,13 +245,13 @@ def _FindFusedBatchNorms(graph):
       # If the matcher didn't match matmul_bn_output_reshape, there will be
       # another match for this 'MatMul' later, so we can skip this one.
       if output_reshape_op is None:
-        continue
+        return None, None
       output_tensor = output_reshape_op.outputs[0]
 
     # Ensure that the output tensor has consumers, otherwise this is a dangling
     # node and not a match.
     if not output_tensor.consumers():
-      continue
+      return None, None
 
     batch_to_space_op = match_result.get_op(batch_to_space_pattern)
     input_tensor = match_result.get_tensor(input_pattern)
@@ -277,7 +303,7 @@ def _FindFusedBatchNorms(graph):
       mean_tensor = match_result.get_tensor(mean_pattern)
       variance_tensor = match_result.get_tensor(variance_pattern)
 
-    yield _BatchNormMatch(
+    return layer_op, _BatchNormMatch(
         layer_op=layer_op,
         bn_op=bn_op,
         output_tensor=output_tensor,
@@ -293,6 +319,26 @@ def _FindFusedBatchNorms(graph):
         bn_decay_var_tensor=bn_decay_var_tensor,
         batch_epsilon=batch_epsilon,
         batch_to_space_op=batch_to_space_op)
+
+  layer_matches = []
+  # We use matched_layer_set to ensure that layers aren't matched multiple
+  # times.
+  matched_layer_set = set()
+  for match_result in bn_identity_matcher.match_graph(graph):
+    layer_op, layer_match = _GetLayerMatch(match_result)
+    if layer_op is not None:
+      if layer_op not in matched_layer_set:
+        matched_layer_set.add(layer_op)
+        layer_matches.append(layer_match)
+
+  for match_result in bn_matcher.match_graph(graph):
+    layer_op, layer_match = _GetLayerMatch(match_result)
+    if layer_op is not None:
+      if layer_op not in matched_layer_set:
+        matched_layer_set.add(layer_op)
+        layer_matches.append(layer_match)
+
+  return layer_matches
 
 
 def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay):
@@ -408,7 +454,7 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         use_cudnn_on_gpu=layer_op.get_attr('use_cudnn_on_gpu'),
-        data_format=layer_op.get_attr('data_format'),
+        data_format=layer_op.get_attr('data_format').decode(),
         name=new_layer_name)
   elif layer_op.type == 'MatMul':
     return math_ops.matmul(
@@ -418,10 +464,11 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         transpose_b=layer_op.get_attr('transpose_b'),
         name=new_layer_name)
   elif layer_op.type == 'DepthwiseConv2dNative':
+    # We don't copy dilation rate because we reuse the input SpaceToBatch
+    # and create our own BatchToSpace operation below.
     conv = nn.depthwise_conv2d(
         input_tensor,
         weight_tensor,
-        rate=layer_op.get_attr('dilations'),
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         name=new_layer_name)
@@ -442,8 +489,14 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
 
 
 @ops.RegisterGradient('FoldFusedBatchNormGrad')
-def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
-                            unused_2):
+def _FoldFusedBatchNormGrad(op,
+                            unused_grad_y,
+                            grad_mean,
+                            grad_var,
+                            unused_1,
+                            unused_2,
+                            unused_3=None):
+  """Gradient function for the FusedBatchNorm ops matched by _GetLayerMatch."""
   x = op.inputs[0]
   n = math_ops.cast(
       array_ops.size(x) / array_ops.size(grad_mean), dtypes.float32)
@@ -509,7 +562,7 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
     if add_bypass_ctx:
       add_bypass_ctx = add_bypass_ctx + '/'
 
-    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'Add')
+    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'AddV2')
     nodes_modified_count = common.RerouteTensor(
         folded_op.outputs[0], original_op.outputs[0], can_modify=[add_bypass])
     if nodes_modified_count != 1:
@@ -797,6 +850,7 @@ class _OpCloner(object):
     self.op_type_to_action = {
         'Mul': self._CloneMul,
         'Add': self._CloneAdd,
+        'AddV2': self._CloneAdd,
         'Conv2D': self._CloneConv2d,
         'DepthwiseConv2dNative': self._CloneDepthwiseConv2d,
         'MatMul': self._CloneMatMul,
@@ -820,7 +874,7 @@ class _OpCloner(object):
         strides=op.get_attr('strides'),
         padding=op.get_attr('padding'),
         use_cudnn_on_gpu=op.get_attr('use_cudnn_on_gpu'),
-        data_format=op.get_attr('data_format'),
+        data_format=op.get_attr('data_format').decode(),
         name=new_name).op
 
   def _CloneDepthwiseConv2d(self, op, inputs, new_name):

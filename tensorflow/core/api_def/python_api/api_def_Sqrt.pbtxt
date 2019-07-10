@@ -1,4 +1,9 @@
 op {
   graph_op_name: "Sqrt"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.sqrt"
+  }
+  endpoint {
+    name: "sqrt"
+  }
 }

@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -55,6 +56,7 @@ class GrpcServerTest(test.TestCase):
       self.assertAllEqual([[4]], sess.run(e))
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
+  @test_util.run_v1_only("b/120545219")
   def testMultipleSessions(self):
     server = self._cached_server
 
@@ -73,12 +75,13 @@ class GrpcServerTest(test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   # Verifies various reset failures.
+  @test_util.run_v1_only("b/120545219")
   def testResetFails(self):
     # Creates variable with container name.
     with ops.container("test0"):
-      v0 = variables.Variable(1.0, name="v0")
+      v0 = variables.VariableV1(1.0, name="v0")
     # Creates variable with default container.
-    v1 = variables.Variable(2.0, name="v1")
+    v1 = variables.VariableV1(2.0, name="v1")
     # Verifies resetting the non-existent target returns error.
     with self.assertRaises(errors_impl.NotFoundError):
       session.Session.reset("nonexistent", ["test0"])
@@ -104,7 +107,7 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(2.0, sess.run(v1))
 
   def _useRPCConfig(self):
-    """Return a `tf.ConfigProto` that ensures we use the RPC stack for tests.
+    """Return a `tf.compat.v1.ConfigProto` that ensures we use the RPC stack for tests.
 
     This configuration ensures that we continue to exercise the gRPC
     stack when testing, rather than using the in-process optimization,
@@ -112,7 +115,7 @@ class GrpcServerTest(test.TestCase):
     master in the same process.
 
     Returns:
-      A `tf.ConfigProto`.
+      A `tf.compat.v1.ConfigProto`.
     """
     return config_pb2.ConfigProto(rpc_options=config_pb2.RPCOptions(
         use_rpc_for_inprocess_master=True))
@@ -146,6 +149,7 @@ class GrpcServerTest(test.TestCase):
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
 
+  @test_util.run_v1_only("b/120545219")
   def testCloseCancelsBlockingOperation(self):
     server = self._cached_server
     sess = session.Session(server.target, config=self._useRPCConfig())
@@ -174,7 +178,7 @@ class GrpcServerTest(test.TestCase):
     # is not supported, but it should successfully ignore it.
     sess = session.InteractiveSession(server.target)
     c = constant_op.constant(42.0)
-    self.assertEqual(42.0, c.eval())
+    self.assertEqual(42.0, self.evaluate(c))
     sess.close()
 
   def testSetConfiguration(self):
@@ -207,6 +211,7 @@ class GrpcServerTest(test.TestCase):
               "local": ["localhost"]
           }, job_name="local", task_index=0)
 
+  @test_util.run_v1_only("b/120545219")
   def testTimeoutRaisesException(self):
     server = self._cached_server
     q = data_flow_ops.FIFOQueue(1, [dtypes.float32])
@@ -234,18 +239,19 @@ class GrpcServerTest(test.TestCase):
           [0.], dtype=dtypes.float32))
       self.assertIsNotNone(input_queue)
 
-      var = variables.Variable(1., dtype=dtypes.float32, trainable=False,
-                               name="var")
+      var = variables.VariableV1(1., dtype=dtypes.float32, trainable=False,
+                                 name="var")
 
       sess.run(variables.global_variables_initializer())
       queue_runner_impl.start_queue_runners(sess)
       sess.run(var.assign(3.0))
 
+  @test_util.run_v1_only("b/120545219")
   def testIsolateSessionState(self):
     server = self._cached_server
 
     init_value = array_ops.placeholder(dtypes.int32)
-    v = variables.Variable(init_value, validate_shape=False, name="v")
+    v = variables.VariableV1(init_value, validate_shape=False, name="v")
 
     sharing_config = config_pb2.ConfigProto(isolate_session_state=False)
     sharing_sess_0 = session.Session(server.target, config=sharing_config)
@@ -296,13 +302,14 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(37, isolate_sess_0.run(v))
     self.assertAllEqual([19, 86], isolate_sess_1.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testShapeChangingIsolateState(self):
     server = self._cached_server
     sharing_config = config_pb2.ConfigProto(isolate_session_state=False)
     isolate_config = config_pb2.ConfigProto(isolate_session_state=True)
 
     with ops.Graph().as_default():
-      w_vector = variables.Variable([1, 2, 3], name="w")
+      w_vector = variables.VariableV1([1, 2, 3], name="w")
       with session.Session(server.target, config=sharing_config) as sess:
         with self.assertRaises(errors_impl.FailedPreconditionError):
           sess.run(w_vector)
@@ -310,20 +317,20 @@ class GrpcServerTest(test.TestCase):
         self.assertAllEqual([1, 2, 3], sess.run(w_vector))
 
     with ops.Graph().as_default():
-      w_vector = variables.Variable([4, 5, 6], name="w")
+      w_vector = variables.VariableV1([4, 5, 6], name="w")
       with session.Session(server.target, config=sharing_config) as sess:
         self.assertAllEqual([1, 2, 3], sess.run(w_vector))
         sess.run(w_vector.initializer)
         self.assertAllEqual([4, 5, 6], sess.run(w_vector))
 
     with ops.Graph().as_default():
-      w_scalar = variables.Variable(86, name="w")
+      w_scalar = variables.VariableV1(86, name="w")
       with session.Session(server.target, config=sharing_config) as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           sess.run(w_scalar.initializer)
 
     with ops.Graph().as_default():
-      w_scalar = variables.Variable(37, name="w")
+      w_scalar = variables.VariableV1(37, name="w")
       with session.Session(server.target, config=isolate_config) as sess:
         with self.assertRaises(errors_impl.FailedPreconditionError):
           sess.run(w_scalar)
@@ -444,6 +451,29 @@ class ClusterSpecTest(test.TestCase):
     job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
                          tasks { key: 1 value: 'worker1:2222' }
                          tasks { key: 2 value: 'worker2:2222' } }
+    """
+
+    self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+
+  def testProtoDictDefEquivalencesWithZeroWorker(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": []
+    })
+
+    expected_proto = """
+    job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                     tasks { key: 1 value: 'ps1:2222' } }
+    job { name: 'worker' }
     """
 
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())

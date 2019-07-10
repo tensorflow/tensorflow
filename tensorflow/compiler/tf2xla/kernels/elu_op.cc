@@ -15,14 +15,32 @@ limitations under the License.
 
 // Native XLA implementations of XLA Elu Ops
 
+#include "tensorflow/compiler/tf2xla/kernels/elu_op.h"
+
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
+
+namespace xla {
+XlaOp Elu(XlaOp x) {
+  const auto zero = ScalarLike(x, 0);
+  const auto pred = Gt(x, zero);
+  const auto expm1 = Expm1(x);
+  return Select(pred, x, expm1);
+}
+
+XlaOp Selu(XlaOp x) {
+  const auto zero = ScalarLike(x, 0);
+  const auto scale = ScalarLike(x, 1.0507009873554804934193349852946);
+  const auto scale_alpha = ScalarLike(x, 1.7580993408473768599402175208123);
+  const auto pred = Gt(x, zero);
+  const auto expm1 = Expm1(x);
+  return Select(pred, Mul(scale, x), Mul(scale_alpha, expm1));
+}
+}  // namespace xla
 
 namespace tensorflow {
 namespace {
@@ -32,11 +50,7 @@ class EluOp : public XlaOpKernel {
   explicit EluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    const auto zero = XlaHelpers::Zero(b, input_type(0));
-    const auto pred = xla::Gt(ctx->Input(0), zero);
-    const auto expm1 = xla::Expm1(ctx->Input(0));
-    ctx->SetOutput(0, xla::Select(pred, ctx->Input(0), expm1));
+    ctx->SetOutput(0, xla::Elu(ctx->Input(0)));
   }
 };
 
@@ -65,16 +79,7 @@ class SeluOp : public XlaOpKernel {
   explicit SeluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    const auto zero = XlaHelpers::Zero(b, input_type(0));
-    const auto scale = XlaHelpers::FloatLiteral(b, input_type(0),
-            1.0507009873554804934193349852946);
-    const auto scale_alpha = XlaHelpers::FloatLiteral(b, input_type(0),
-            1.7580993408473768599402175208123);
-    const auto pred = xla::Gt(ctx->Input(0), zero);
-    const auto expm1 = xla::Expm1(ctx->Input(0));
-    ctx->SetOutput(0, xla::Select(pred, xla::Mul(scale, ctx->Input(0)),
-                                  xla::Mul(scale_alpha, expm1)));
+    ctx->SetOutput(0, xla::Selu(ctx->Input(0)));
   }
 };
 

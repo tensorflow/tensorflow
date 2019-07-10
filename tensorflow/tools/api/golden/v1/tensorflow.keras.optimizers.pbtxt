@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Ftrl"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Nadam"
     mtype: "<type \'type\'>"
   }
@@ -31,6 +35,10 @@ tf_module {
   member {
     name: "SGD"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "schedules"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "deserialize"

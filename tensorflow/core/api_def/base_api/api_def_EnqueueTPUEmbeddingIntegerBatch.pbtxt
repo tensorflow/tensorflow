@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "EnqueueTPUEmbeddingIntegerBatch"
+  visibility: HIDDEN
+  in_arg {
+    name: "batch"
+    description: <<END
+A list of 1D tensors, one for each embedding table, containing the
+indices into the tables.
+END
+  }
+  in_arg {
+    name: "mode_override"
+    description: <<END
+A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
+END
+  }
+  attr {
+    name: "device_ordinal"
+    description: <<END
+The TPU device to use. Should be >= 0 and less than the number
+of TPU cores in the task on which the node is placed.
+END
+  }
+  summary: "An op that enqueues a list of input batch tensors to TPUEmbedding."
+}

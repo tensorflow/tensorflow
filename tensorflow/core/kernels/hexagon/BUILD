@@ -1,16 +1,15 @@
 # Description:
 #   quantization-specific OpKernels for hexagon
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_cc_test(
@@ -24,11 +23,18 @@ tf_cc_test(
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -40,6 +46,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:reshape_op",
         "//tensorflow/core/kernels:softmax_op",
+        "@com_google_absl//absl/base",
     ],
 )
 

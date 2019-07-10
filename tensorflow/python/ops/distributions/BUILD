@@ -1,10 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "distributions",
@@ -12,6 +9,13 @@ py_library(
         ["*.py"],
         exclude = ["util.py"],
     ),
+    deprecation = ("TensorFlow Distributions has migrated to " +
+                   "TensorFlow Probability " +
+                   "(https://github.com/tensorflow/probability). " +
+                   "Deprecated copies remaining in tf.distributions " +
+                   "will not receive new features, and will be removed by " +
+                   "early 2019. You should update all usage of " +
+                   "`tf.distributions` to `tfp.distributions`."),
     srcs_version = "PY2AND3",
     deps = [
         ":util",

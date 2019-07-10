@@ -110,6 +110,7 @@ class AtrousConvolutionTest(test.TestCase):
 
     add_check(check, y1, y2)
 
+  @test_util.run_v1_only("b/120545219")
   def test_unknown_spatial_dims_for_channel_last_format(self):
     x = array_ops.placeholder(dtypes.float32, [1, None, None, 10])
     w = array_ops.zeros([3, 3, 10, 20])
@@ -117,6 +118,7 @@ class AtrousConvolutionTest(test.TestCase):
         x, w, "VALID", dilation_rate=[2, 2], data_format="NHWC")
     self.assertEqual(y.shape.as_list(), [1, None, None, 20])
 
+  @test_util.run_v1_only("b/120545219")
   def test_unknown_spatial_dims_for_channel_first_format(self):
     x = array_ops.placeholder(dtypes.float32, [1, 10, None, None])
     w = array_ops.zeros([3, 3, 10, 20])
@@ -262,6 +264,7 @@ class AtrousConvolutionTest(test.TestCase):
     err_tolerance = 1e-3
     self.assertLess(err, err_tolerance)
 
+  @test_util.run_v1_only("b/120545219")
   def testGradient(self):
     with self.cached_session():
       for padding in ["SAME", "VALID"]:

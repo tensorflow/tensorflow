@@ -20,14 +20,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(2016)
 
 
@@ -35,20 +34,24 @@ class LinearOperatorZerosTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _tests_to_skip(self):
-    return ["log_abs_det", "solve", "solve_with_broadcast"]
-
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def tests_to_skip():
     return [
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 4, 4))]
+        "cholesky", "log_abs_det", "inverse", "solve", "solve_with_broadcast"]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  @staticmethod
+  def operator_shapes_infos():
+    shapes_info = linear_operator_test_util.OperatorShapesInfo
+    return [
+        shapes_info((1, 1)),
+        shapes_info((1, 3, 3)),
+        shapes_info((3, 4, 4)),
+        shapes_info((2, 1, 4, 4))]
+
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     del use_placeholder
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
@@ -72,6 +75,7 @@ class LinearOperatorZerosTest(
       operator = linalg_lib.LinearOperatorZeros(num_rows=2)
       operator.assert_non_singular()
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorZeros(num_rows=2)
@@ -107,6 +111,7 @@ class LinearOperatorZerosTest(
     with self.assertRaisesRegexp(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorZeros(num_rows=2, batch_shape=[-2])
 
+  @test_util.run_deprecated_v1
   def test_non_scalar_num_rows_raises_dynamic(self):
     with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
@@ -115,6 +120,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be a 0-D Tensor"):
         operator.to_dense().eval(feed_dict={num_rows: [2]})
 
+  @test_util.run_deprecated_v1
   def test_negative_num_rows_raises_dynamic(self):
     with self.cached_session():
       n = array_ops.placeholder(dtypes.int32)
@@ -128,6 +134,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be non-negative"):
         operator.to_dense().eval(feed_dict={n: -2})
 
+  @test_util.run_deprecated_v1
   def test_non_1d_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -136,6 +143,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be a 1-D"):
         operator.to_dense().eval(feed_dict={batch_shape: 2})
 
+  @test_util.run_deprecated_v1
   def test_negative_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -150,6 +158,7 @@ class LinearOperatorZerosTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
+  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
@@ -168,11 +177,22 @@ class LinearOperatorZerosTest(
     self.assertFalse(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint)
 
+  def test_zeros_matmul(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorZeros(num_rows=2)
+    self.assertTrue(isinstance(
+        operator1.matmul(operator2),
+        linalg_lib.LinearOperatorZeros))
+
+    self.assertTrue(isinstance(
+        operator2.matmul(operator1),
+        linalg_lib.LinearOperatorZeros))
+
 
 class LinearOperatorZerosNotSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     del use_placeholder
     shape = list(build_info.shape)
 
@@ -189,4 +209,6 @@ class LinearOperatorZerosNotSquareTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorZerosTest)
+  linear_operator_test_util.add_tests(LinearOperatorZerosNotSquareTest)
   test.main()

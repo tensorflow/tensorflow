@@ -2,5 +2,10 @@ op {
   graph_op_name: "DepthwiseConv2dNativeBackpropInput"
   endpoint {
     name: "nn.depthwise_conv2d_native_backprop_input"
+    deprecated: true
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "nn.depthwise_conv2d_backprop_input"
   }
 }

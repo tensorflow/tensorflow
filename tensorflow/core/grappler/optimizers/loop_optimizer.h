@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
 
 #include <unordered_set>
+
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -61,7 +62,9 @@ class LoopOptimizer : public GraphOptimizer {
   };
 
   Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
-                            const NodeMap& node_map, GraphDef* optimized_graph);
+                            const NodeMap& node_map,
+                            const absl::flat_hash_set<string>& feed_nodes,
+                            GraphDef* optimized_graph);
 
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;

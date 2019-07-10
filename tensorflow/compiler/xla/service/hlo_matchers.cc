@@ -89,6 +89,22 @@ bool HloParameterMatcher::MatchAndExplain(
   return true;
 }
 
+bool HloComparisonMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->comparison_direction() != direction_) {
+    *listener << "has wrong comparison direction (got "
+              << ComparisonDirectionToString(
+                     instruction->comparison_direction())
+              << ", want " << ComparisonDirectionToString(direction_) << ")";
+    return false;
+  }
+  return true;
+}
+
 bool HloGetTupleElementMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
@@ -231,14 +247,55 @@ void HloDotWithContractingDimsMatcher::DescribeTo(std::ostream* os) const {
       << "} and rhs_contracting_dims={" << rhs_contracting_dim_ << "}";
 }
 
+bool HloAsyncCopyMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+
+  const HloInstruction* copy_done = instruction;
+  if (!copy_done->shape().has_layout()) {
+    *listener << copy_done->ToString()
+              << " does not have layout, expected a layout with memory space "
+              << to_space_;
+    return false;
+  }
+  if (copy_done->shape().layout().memory_space() != to_space_) {
+    *listener << copy_done->ToString() << " copies to memory space "
+              << copy_done->shape().layout().memory_space() << ", expected "
+              << to_space_;
+    return false;
+  }
+
+  const HloInstruction* copy_start_operand =
+      copy_done->operands()[0]->operands()[0];
+  if (!copy_start_operand->shape().has_layout()) {
+    *listener << copy_start_operand->ToString()
+              << " does not have layout, expected a layout with memory space "
+              << from_space_;
+    return false;
+  }
+  if (copy_start_operand->shape().layout().memory_space() != from_space_) {
+    *listener << copy_done->ToString() << " is in the memory space "
+              << copy_start_operand->shape().layout().memory_space()
+              << ", expected " << from_space_;
+    return false;
+  }
+
+  return true;
+}
+
+void HloAsyncCopyMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " (copy from memory space " << from_space_ << " to " << to_space_
+      << ")";
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
   *os << (inst ? inst->ToString() : "nullptr");
-}
-
-void PrintTo(HloInstruction* inst, ::std::ostream* os) {
-  PrintTo(const_cast<const HloInstruction*>(inst), os);
 }
 
 }  // namespace xla

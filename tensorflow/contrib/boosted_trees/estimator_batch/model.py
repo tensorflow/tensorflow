@@ -25,6 +25,7 @@ from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_util
@@ -88,6 +89,12 @@ def model_builder(features,
 
   if config is None:
     raise ValueError("Missing estimator RunConfig.")
+  if config.session_config is not None:
+    session_config = config.session_config
+    session_config.allow_soft_placement = True
+  else:
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+  config = config.replace(session_config=session_config)
 
   center_bias = params["center_bias"]
 
@@ -178,6 +185,10 @@ def model_builder(features,
         labels=labels,
         train_op_fn=_train_op_fn,
         logits=logits)
+
+    if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
+      estimator_spec.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
+          gbdt_batch.LEAF_INDEX]
 
     estimator_spec = estimator_spec._replace(
         training_hooks=training_hooks + list(estimator_spec.training_hooks))

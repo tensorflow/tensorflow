@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN is a lightweight library for training and evaluating GANs.
+"""TF-GAN is a lightweight library for training and evaluating GANs.
 
 In addition to providing the infrastructure for easily training and evaluating
 GANS, this library contains modules for a TFGAN-backed Estimator,
@@ -24,7 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
+# Collapse TF-GAN into a tiered namespace.
 from tensorflow.contrib.gan.python import estimator
 from tensorflow.contrib.gan.python import eval  # pylint:disable=redefined-builtin
 from tensorflow.contrib.gan.python import features

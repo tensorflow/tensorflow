@@ -110,10 +110,11 @@ def _get_workers(num_workers, steps, workers):
 
 
 class ModelAverageOptimizerTest(test.TestCase):
+
   def _run(self, train_op, sess):
     sess.run(train_op)
 
-  def test1Workers2Period(self):
+  def disabled_test1Workers2Period(self):
     num_workers = 2
     steps = 2
     num_ps = 1

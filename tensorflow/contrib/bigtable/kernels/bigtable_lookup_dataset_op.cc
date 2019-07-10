@@ -26,9 +26,8 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    BigtableTableResource* table;
+    core::RefCountPtr<BigtableTableResource> table;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &table));
-    core::ScopedUnref scoped_unref(table);
 
     std::vector<string> column_families;
     std::vector<string> columns;
@@ -50,7 +49,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
     }
 
     *output =
-        new Dataset(ctx, input, table, std::move(column_families),
+        new Dataset(ctx, input, table.get(), std::move(column_families),
                     std::move(columns), output_types, std::move(output_shapes));
   }
 
@@ -152,18 +151,19 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
         }
         if (input_tensors[0].NumElements() == 1) {
           // Single key lookup.
-          ::grpc::Status status;
-          auto pair = dataset()->table_->table().ReadRow(
-              input_tensors[0].scalar<string>()(), dataset()->filter_, status);
-          if (!status.ok()) {
-            return GrpcStatusToTfStatus(status);
+          ::google::cloud::StatusOr<
+              std::pair<bool, ::google::cloud::bigtable::Row>>
+              row = dataset()->table_->table().ReadRow(
+                  input_tensors[0].scalar<string>()(), dataset()->filter_);
+          if (!row.ok()) {
+            return GcpStatusToTfStatus(row.status());
           }
-          if (!pair.first) {
+          if (!row->first) {
             return errors::DataLoss("Row key '",
                                     input_tensors[0].scalar<string>()(),
                                     "' not found.");
           }
-          TF_RETURN_IF_ERROR(ParseRow(ctx, pair.second, out_tensors));
+          TF_RETURN_IF_ERROR(ParseRow(ctx, row->second, out_tensors));
         } else {
           // Batched get.
           return errors::Unimplemented(

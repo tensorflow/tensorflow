@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -147,8 +148,9 @@ class MixtureSameFamily(distribution.Distribution):
       self._runtime_assertions = []
 
       s = components_distribution.event_shape_tensor()
-      self._event_ndims = (s.shape[0].value
-                           if s.shape.with_rank_at_least(1)[0].value is not None
+      s_dim0 = tensor_shape.dimension_value(s.shape[0])
+      self._event_ndims = (s_dim0
+                           if s_dim0 is not None
                            else array_ops.shape(s)[0])
 
       if not mixture_distribution.dtype.is_integer:
@@ -186,8 +188,10 @@ class MixtureSameFamily(distribution.Distribution):
                     "`mixture_distribution.batch_shape` is not "
                     "compatible with `components_distribution.batch_shape`"))]
 
-      km = mixture_distribution.logits.shape.with_rank_at_least(1)[-1].value
-      kc = components_distribution.batch_shape.with_rank_at_least(1)[-1].value
+      km = tensor_shape.dimension_value(
+          mixture_distribution.logits.shape.with_rank_at_least(1)[-1])
+      kc = tensor_shape.dimension_value(
+          components_distribution.batch_shape.with_rank_at_least(1)[-1])
       if km is not None and kc is not None and km != kc:
         raise ValueError("`mixture_distribution components` ({}) does not "
                          "equal `components_distribution.batch_shape[-1]` "

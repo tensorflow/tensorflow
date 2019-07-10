@@ -42,7 +42,7 @@ In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 
 ```
 out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
-if T == qint8, out[i] -= (range(T) + 1) / 2.0
+if T == qint8: out[i] -= (range(T) + 1) / 2.0
 ```
 
 here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`

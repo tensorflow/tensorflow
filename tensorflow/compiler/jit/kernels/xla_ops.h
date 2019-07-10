@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_
 #define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_OPS_H_
 
+#include <atomic>
+
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -33,11 +36,12 @@ namespace tensorflow {
 class XlaPlatformInfo {
  public:
   XlaPlatformInfo() : device_type_("") {}
-  explicit XlaPlatformInfo(const DeviceType device_type,
-                           se::Platform::Id platform_id,
-                           const XlaDevice::Metadata* xla_device_metadata,
-                           std::unique_ptr<XlaAllocator> xla_allocator,
-                           xla::DeviceMemoryAllocator* device_allocator)
+  XlaPlatformInfo(XlaPlatformInfo&&) = default;
+  explicit XlaPlatformInfo(
+      const DeviceType device_type, se::Platform::Id platform_id,
+      const XlaDevice::Metadata* xla_device_metadata,
+      std::unique_ptr<se::TfAllocatorAdapter> xla_allocator,
+      se::DeviceMemoryAllocator* device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
@@ -52,7 +56,7 @@ class XlaPlatformInfo {
     return xla_device_metadata_ && xla_device_metadata_->UseMultipleStreams();
   }
 
-  xla::DeviceMemoryAllocator* allocator() const {
+  se::DeviceMemoryAllocator* allocator() const {
     return device_allocator_ ? device_allocator_ : xla_allocator_.get();
   }
   DeviceType device_type() const { return device_type_; }
@@ -81,9 +85,9 @@ class XlaPlatformInfo {
   // then device_allocator_ is the xla::Backend's memory allocator and
   // xla_allocator_ is null.  If the op is placed on a regular CPU or GPU device
   // then device_allocator_ is null and xla_allocator_ points to an appropriate
-  // XlaAllocator instance.
-  std::unique_ptr<XlaAllocator> xla_allocator_;
-  xla::DeviceMemoryAllocator* device_allocator_;
+  // se::TfAllocatorAdapter instance.
+  std::unique_ptr<se::TfAllocatorAdapter> xla_allocator_;
+  se::DeviceMemoryAllocator* device_allocator_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
 };
@@ -110,12 +114,12 @@ class XlaLocalLaunchBase : public OpKernel {
 
  protected:
   // Indexes of compile-time constant inputs
-  std::vector<int> constants_;
+  const std::vector<int> constants_;
   // Indexes of resource inputs
-  std::vector<int> resources_;
+  const std::vector<int> resources_;
 
-  NameAttrList function_;
-  XlaPlatformInfo platform_info_;
+  const NameAttrList function_;
+  const XlaPlatformInfo platform_info_;
 };
 
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
@@ -144,13 +148,23 @@ class XlaCompileOp : public OpKernel {
 
  private:
   // Indexes of compile-time constant inputs
-  std::vector<int> constants_;
+  const std::vector<int> constants_;
   // Indexes of resource inputs
-  std::vector<int> resources_;
+  const std::vector<int> resources_;
 
-  NameAttrList function_;
+  const NameAttrList function_;
 
   XlaPlatformInfo platform_info_;
+
+  const bool must_compile_;
+
+  // cannot_compile_cluster_ is set to true if XLA returns an Unimplemented
+  // error when compiling the cluster this _XlaCompile is supposed to compile.
+  // If `cannot_compile_cluster_` is true then we avoid compiling this cluster
+  // on any future calls to _XlaCompile.
+  bool cannot_compile_cluster_ GUARDED_BY(cannot_compile_cluster_mu_) = false;
+
+  mutex cannot_compile_cluster_mu_;
 };
 
 class XlaRunOp : public OpKernel {
@@ -160,7 +174,7 @@ class XlaRunOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  XlaPlatformInfo platform_info_;
+  const XlaPlatformInfo platform_info_;
 };
 
 }  // namespace tensorflow

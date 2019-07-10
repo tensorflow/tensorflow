@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 #include <locale>
 #include <unordered_map>
@@ -224,7 +225,7 @@ bool safe_strto64(StringPiece str, int64* value) {
 
   int64 vlimit = kint64max;
   int sign = 1;
-  if (str_util::ConsumePrefix(&str, "-")) {
+  if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different limit for positive and negative integers.
     vlimit = kint64min;
@@ -286,7 +287,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   int64 vmax = kint32max;
   int sign = 1;
-  if (str_util::ConsumePrefix(&str, "-")) {
+  if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different max for positive and negative integers.
     ++vmax;
@@ -391,7 +392,7 @@ string FpToString(Fprint fp) {
 bool StringToFp(const string& s, Fprint* fp) {
   char junk;
   uint64_t result;
-  if (sscanf(s.c_str(), "%lx%c", &result, &junk) == 1) {
+  if (sscanf(s.c_str(), "%" SCNx64 "%c", &result, &junk) == 1) {
     *fp = result;
     return true;
   } else {

@@ -63,13 +63,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  diag = tf.random_normal(shape=[2, 3, 4])
+  diag = tf.random.normal(shape=[2, 3, 4])
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
   # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
-  y = tf.random_normal(shape=[2, 1, 4, 2])
+  y = tf.random.normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
   ==> operator.matmul(x) = y
   ```
@@ -227,12 +227,16 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
+  def _matvec(self, x, adjoint=False):
+    diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    return diag_term * x
+
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    return math_ops.reduce_prod(self._diag, axis=[-1])
 
   def _log_abs_determinant(self):
     log_det = math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), axis=[-1])
     if self.dtype.is_complex:
       log_det = math_ops.cast(log_det, dtype=self.dtype)
     return log_det

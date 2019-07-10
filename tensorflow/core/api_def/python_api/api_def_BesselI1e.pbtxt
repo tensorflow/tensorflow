@@ -1,4 +1,6 @@
 op {
   graph_op_name: "BesselI1e"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.bessel_i1e"
+  }
 }

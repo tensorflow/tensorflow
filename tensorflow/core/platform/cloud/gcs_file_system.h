@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,32 @@ limitations under the License.
 namespace tensorflow {
 
 class GcsFileSystem;
+
+// The environment variable that overrides the block size for aligned reads from
+// GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
+constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
+constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
+// The environment variable that overrides the max size of the LRU cache of
+// blocks read from GCS. Specified in MB.
+constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
+constexpr size_t kDefaultMaxCacheSize = 0;
+// The environment variable that overrides the maximum staleness of cached file
+// contents. Once any block of a file reaches this staleness, all cached blocks
+// will be evicted on the next read.
+constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
+constexpr uint64 kDefaultMaxStaleness = 0;
+
+// Helper function to extract an environment variable and convert it into a
+// value of type T.
+template <typename T>
+bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
+               T* value) {
+  const char* env_value = std::getenv(varname);
+  if (env_value == nullptr) {
+    return false;
+  }
+  return convert(env_value, value);
+}
 
 /// GcsStatsInterface allows for instrumentation of the GCS file system.
 ///
@@ -83,7 +110,7 @@ class GcsFileSystem : public FileSystem {
   struct TimeoutConfig;
 
   // Main constructor used (via RetryingFileSystem) throughout Tensorflow
-  GcsFileSystem();
+  explicit GcsFileSystem(bool make_default_cache = true);
   // Used mostly for unit testing or use cases which need to customize the
   // filesystem from defaults
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
@@ -93,13 +120,12 @@ class GcsFileSystem : public FileSystem {
                 uint64 stat_cache_max_age, size_t stat_cache_max_entries,
                 uint64 matching_paths_cache_max_age,
                 size_t matching_paths_cache_max_entries,
-                int64 initial_retry_delay_usec, TimeoutConfig timeouts,
+                RetryConfig retry_config, TimeoutConfig timeouts,
                 const std::unordered_set<string>& allowed_locations,
                 std::pair<const string, const string>* additional_header);
 
   Status NewRandomAccessFile(
-      const string& filename,
-      std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
 
   Status NewWritableFile(const string& fname,
                          std::unique_ptr<WritableFile>* result) override;
@@ -108,7 +134,7 @@ class GcsFileSystem : public FileSystem {
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& filename,
+      const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
   Status FileExists(const string& fname) override;
@@ -227,6 +253,14 @@ class GcsFileSystem : public FileSystem {
   void ResetFileBlockCache(size_t block_size_bytes, size_t max_bytes,
                            uint64 max_staleness_secs);
 
+ protected:
+  virtual std::unique_ptr<FileBlockCache> MakeFileBlockCache(
+      size_t block_size, size_t max_bytes, uint64 max_staleness);
+
+  /// Loads file contents from GCS for a given filename, offset, and length.
+  Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
+                           char* buffer, size_t* bytes_transferred);
+
  private:
   // GCS file statistics.
   struct GcsFileStat {
@@ -293,14 +327,6 @@ class GcsFileSystem : public FileSystem {
 
   Status RenameObject(const string& src, const string& target);
 
-  std::unique_ptr<FileBlockCache> MakeFileBlockCache(size_t block_size,
-                                                     size_t max_bytes,
-                                                     uint64 max_staleness);
-
-  /// Loads file contents from GCS for a given filename, offset, and length.
-  Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
-                           char* buffer, size_t* bytes_transferred);
-
   // Clear all the caches related to the file with name `filename`.
   void ClearFileCaches(const string& fname);
 
@@ -308,6 +334,10 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<ZoneProvider> zone_provider_;
+
+  // Reads smaller than block_size_ will trigger a read of block_size_.
+  uint64 block_size_;
+
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
@@ -332,7 +362,7 @@ class GcsFileSystem : public FileSystem {
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
   /// The initial delay for exponential backoffs when retrying failed calls.
-  const int64 initial_retry_delay_usec_ = 1000000L;
+  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;
@@ -344,7 +374,8 @@ class GcsFileSystem : public FileSystem {
 class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
   RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem)) {}
+      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem),
+                           RetryConfig(100000 /* init_delay_time_us */)) {}
 };
 
 }  // namespace tensorflow

@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef TENSORFLOW_USE_JEMALLOC
-#include "jemalloc/jemalloc.h"
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <processthreadsapi.h>
 #include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
@@ -58,6 +55,42 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
+int MaxParallelism(int numa_node) {
+  if (numa_node != port::kNUMANoAffinity) {
+    // Assume that CPUs are equally distributed over available NUMA nodes.
+    // This may not be true, but there isn't currently a better way of
+    // determining the number of CPUs specific to the requested node.
+    return NumSchedulableCPUs() / port::NUMANumNodes();
+  }
+  return NumSchedulableCPUs();
+}
+
+int NumTotalCPUs() {
+  // TODO(ebrevdo): Make this more accurate.
+  //
+  // This only returns the number of processors in the current
+  // processor group; which may be undercounting if you have more than 64 cores.
+  // For that case, one needs to call
+  // GetLogicalProcessorInformationEx(RelationProcessorCore, ...) and accumulate
+  // the Size fields by iterating over the written-to buffer.  Since I can't
+  // easily test this on Windows, I'm deferring this to someone who can!
+  //
+  // If you fix this, also consider updatig GetCurrentCPU below.
+  return NumSchedulableCPUs();
+}
+
+int GetCurrentCPU() {
+  // NOTE(ebrevdo): This returns the processor number within the processor
+  // group on systems with >64 processors.  Therefore it doesn't necessarily map
+  // naturally to an index in NumSchedulableCPUs().
+  //
+  // On the plus side, this number is probably guaranteed to be within
+  // [0, NumTotalCPUs()) due to its incomplete implementation.
+  return GetCurrentProcessorNumber();
+}
+
 bool NUMAEnabled() {
   // Not yet implemented: coming soon.
   return false;
@@ -70,55 +103,16 @@ void NUMASetThreadNodeAffinity(int node) {}
 int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  void* ptr = NULL;
-  // posix_memalign requires that the requested alignment be at least
-  // sizeof(void*). In this case, fall back on malloc which should return
-  // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return Malloc(size);
-  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
-  if (err != 0) {
-    return NULL;
-  } else {
-    return ptr;
-  }
-#else
   return _aligned_malloc(size, minimum_alignment);
-#endif
 }
 
-void AlignedFree(void* aligned_memory) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  jemalloc_free(aligned_memory);
-#else
-  _aligned_free(aligned_memory);
-#endif
-}
+void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
 
-void* Malloc(size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_malloc(size);
-#else
-  return malloc(size);
-#endif
-}
+void* Malloc(size_t size) { return malloc(size); }
 
-void* Realloc(void* ptr, size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_realloc(ptr, size);
-#else
-  return realloc(ptr, size);
-#endif
-}
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_free(ptr);
-#else
-  return free(ptr);
-#endif
-}
+void Free(void* ptr) { return free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);

@@ -21,9 +21,33 @@ limitations under the License.
 
 using tensorflow::string;
 
-TFE_TensorHandle* TestScalarTensorHandle() {
-  float data[] = {1.0f};
+TFE_TensorHandle* TestScalarTensorHandle(float value) {
+  float data[] = {value};
   TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(float));
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(int value) {
+  int data[] = {value};
+  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, sizeof(int));
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(bool value) {
+  bool data[] = {value};
+  TF_Tensor* t = TF_AllocateTensor(TF_BOOL, nullptr, 0, sizeof(bool));
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
   TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
@@ -99,8 +123,19 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   TFE_OpAddInput(op, b, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
-  TFE_OpSetAttrBool(op, "transpose_a", 0);
-  TFE_OpSetAttrBool(op, "transpose_b", 0);
+  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
+
+  return op;
+}
+
+TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a) {
+  TF_Status* status = TF_NewStatus();
+
+  TFE_Op* op = TFE_NewOp(ctx, "Shape", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, a, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
   TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
 
   return op;

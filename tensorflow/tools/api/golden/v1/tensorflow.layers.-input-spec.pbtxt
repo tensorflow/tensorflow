@@ -1,9 +1,17 @@
 path: "tensorflow.layers.InputSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.InputSpec\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.input_spec.InputSpec\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dtype\', \'shape\', \'ndim\', \'max_ndim\', \'min_ndim\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

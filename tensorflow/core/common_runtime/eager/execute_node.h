@@ -31,56 +31,76 @@ namespace tensorflow {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(uint64 id, EagerContext* ctx, Device* op_device,
-              const tensorflow::gtl::InlinedVector<TensorHandle*, 4>& inputs,
-              KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-              const DataTypeVector& output_dtypes,
-              const tensorflow::gtl::InlinedVector<TensorHandle*, 2>& retvals)
-      : EagerNode(id),
+  ExecuteNode(EagerContext* ctx,
+              const gtl::InlinedVector<TensorHandle*, 4>& inputs,
+              core::RefCountPtr<KernelAndDevice> kernel,
+              NodeExecStats* maybe_stats, StepStats* maybe_step_stats,
+              GraphCollector* graph_collector,
+              const DataTypeVector& output_dtypes, TensorHandle** retvals,
+              int num_retvals)
+      : EagerNode(),
         ctx_(ctx),
-        op_device_(op_device),
         inputs_(inputs),
-        kernel_(kernel),
+        kernel_(std::move(kernel)),
         maybe_stats_(maybe_stats),
-        retvals_(retvals) {
-    for (auto handle : inputs_) {
-      handle->Ref();
+        maybe_step_stats_(maybe_step_stats),
+        graph_collector_(graph_collector) {
+    // Copy the output handles, since the container for them might get
+    // destroyed.
+    for (int i = 0; i < num_retvals; i++) {
+      retvals_.push_back(retvals[i]);
+      retvals_[i]->Ref();
     }
-    for (auto handle : retvals_) {
+
+    // This is required to ensure that the tensor handles stay alive across the
+    // execution.
+    for (auto handle : inputs_) {
       handle->Ref();
     }
   }
 
-  ~ExecuteNode() override {
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
-    for (auto handle : retvals_) {
-      handle->Unref();
-    }
-  }
-
-  tensorflow::Status Run() override {
-    const Status status =
-        EagerExecute(ctx_, op_device_, inputs_, kernel_, maybe_stats_.get(),
-                     retvals_.begin(), retvals_.size());
-    if (status.ok()) {
+  Status Run() override {
+    const Status status = EagerKernelExecute(
+        ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
+        graph_collector_, retvals_.begin(), retvals_.size());
+    if (!status.ok()) {
+      Abort(status);
       return status;
-    } else {
-      return Status(status.code(),
-                    strings::StrCat("Got error, \"", status.error_message(),
-                                    "\" while executing kernel ",
-                                    kernel_->kernel()->def().DebugString()));
+    }
+
+    // If status is ok, EagerKernelExecute would have called SetTensor on
+    // all the output handles.
+
+    for (auto handle : retvals_) {
+      handle->Unref();
+    }
+
+    for (auto handle : inputs_) {
+      handle->Unref();
+    }
+
+    return status;
+  }
+
+  void Abort(Status status) override {
+    for (auto handle : retvals_) {
+      handle->Poison(status);
+      handle->Unref();
+    }
+
+    for (auto handle : inputs_) {
+      handle->Unref();
     }
   }
 
  private:
-  tensorflow::EagerContext* ctx_;
-  tensorflow::Device* op_device_;
-  tensorflow::gtl::InlinedVector<TensorHandle*, 4> inputs_;
-  tensorflow::KernelAndDevice* kernel_;
+  EagerContext* ctx_;
+  gtl::InlinedVector<TensorHandle*, 4> inputs_;
+  core::RefCountPtr<KernelAndDevice> kernel_;
   std::unique_ptr<NodeExecStats> maybe_stats_;
-  tensorflow::gtl::InlinedVector<TensorHandle*, 2> retvals_;
+  StepStats* maybe_step_stats_;
+  GraphCollector* graph_collector_;
+  gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 
 }  // namespace tensorflow

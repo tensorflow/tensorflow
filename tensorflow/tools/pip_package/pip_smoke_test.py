@@ -30,14 +30,22 @@ os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 PIP_PACKAGE_QUERY_EXPRESSION = (
     "deps(//tensorflow/tools/pip_package:build_pip_package)")
 
+# List of file paths containing BUILD files that should not be included for the
+# pip smoke test.
+BUILD_BLACKLIST = [
+    "tensorflow/lite/delegates/gpu",
+    "tensorflow/lite/delegates/gpu/metal",
+    "tensorflow/lite/delegates/gpu/metal/kernels",
+    "tensorflow/lite/experimental/objc",
+    "tensorflow/lite/experimental/swift",
+]
 
 def GetBuild(dir_base):
   """Get the list of BUILD file all targets recursively startind at dir_base."""
   items = []
   for root, _, files in os.walk(dir_base):
     for name in files:
-      if (name == "BUILD" and
-          root.find("tensorflow/contrib/lite/examples/android") == -1):
+      if (name == "BUILD" and root not in BUILD_BLACKLIST):
         items.append("//" + root + ":all")
   return items
 
@@ -67,9 +75,9 @@ def BuildPyTestDependencies():
 
 PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 
-# Hard-coded blacklist of files if not included in pip package
 # TODO(amitpatankar): Clean up blacklist.
-BLACKLIST = [
+# List of dependencies that should not included in the pip package.
+DEPENDENCY_BLACKLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
@@ -80,16 +88,25 @@ BLACKLIST = [
     "//tensorflow/core:image_testdata",
     "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+    "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
+    "//tensorflow/python:util_nest_test_main_lib",
+    # lite
+    "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
+    "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
+    "//tensorflow/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test",  # pylint:disable=line-too-long
+    "//tensorflow/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test.py",  # pylint:disable=line-too-long
+    "//tensorflow/lite/python:interpreter",
+    "//tensorflow/lite/python:interpreter_test",
+    "//tensorflow/lite/python:interpreter.py",
+    "//tensorflow/lite/python:interpreter_test.py",
     # contrib
+    "//tensorflow/contrib/eager/python/examples/revnet:blocks_test_main_lib",
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
-    "//tensorflow/contrib/lite/python:interpreter",
-    "//tensorflow/contrib/lite/python:interpreter_test",
-    "//tensorflow/contrib/lite/python:interpreter.py",
-    "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
+    "//tensorflow/contrib/fused_conv:fused_conv2d_bias_activation_op_test_base",
     "//tensorflow/contrib/hadoop:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
@@ -97,6 +114,7 @@ BLACKLIST = [
     "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/saved_model:reader",  # Not present in v2
     "//tensorflow/contrib/timeseries/examples:predict",
     "//tensorflow/contrib/timeseries/examples:multivariate",
     "//tensorflow/contrib/timeseries/examples:known_anomaly",
@@ -123,6 +141,8 @@ def main():
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
       ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
+  if isinstance(pip_package_dependencies, bytes):
+    pip_package_dependencies = pip_package_dependencies.decode("utf-8")
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   pip_package_dependencies_list = [
       x.split()[0] for x in pip_package_dependencies_list
@@ -133,6 +153,8 @@ def main():
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
       ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+  if isinstance(tf_py_test_dependencies, bytes):
+    tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   tf_py_test_dependencies_list = [
       x.split()[0] for x in tf_py_test_dependencies.strip().split("\n")
@@ -141,10 +163,12 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py"]
+  ignore_extensions = [
+      "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
+  ]
 
-  ignored_files = 0
-  blacklisted_files = len(BLACKLIST)
+  ignored_files_count = 0
+  blacklisted_dependencies_count = len(DEPENDENCY_BLACKLIST)
   # Compare dependencies
   for dependency in tf_py_test_dependencies_list:
     if dependency and dependency.startswith("//tensorflow"):
@@ -152,16 +176,16 @@ def main():
       # Ignore extensions
       if any(dependency.endswith(ext) for ext in ignore_extensions):
         ignore = True
-        ignored_files += 1
+        ignored_files_count += 1
 
-      # Check if the dependency is in the pip package, the blacklist, or
-      # should be ignored because of its file extension
+      # Check if the dependency is in the pip package, the dependency blacklist,
+      # or should be ignored because of its file extension.
       if not (ignore or dependency in pip_package_dependencies_list or
-              dependency in BLACKLIST):
+              dependency in DEPENDENCY_BLACKLIST):
         missing_dependencies.append(dependency)
 
-  print("Ignored files: %d" % ignored_files)
-  print("Blacklisted files: %d" % blacklisted_files)
+  print("Ignored files count: %d" % ignored_files_count)
+  print("Blacklisted dependencies count: %d" % blacklisted_dependencies_count)
   if missing_dependencies:
     print("Missing the following dependencies from pip_packages:")
     for missing_dependency in missing_dependencies:

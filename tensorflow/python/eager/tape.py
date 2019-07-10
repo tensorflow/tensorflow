@@ -21,6 +21,15 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# There is a circular dependency between this, ops.py, and
+# distribution_strategy_context.
+# TODO(b/117329403): Remove this circular dependency.
+distribution_strategy_context = LazyLoader(
+    "distribution_strategy_context", globals(),
+    "tensorflow.python.distribute."
+    "distribution_strategy_context")
 
 
 class Tape(object):
@@ -52,26 +61,70 @@ def watch(tape, tensor):
 
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
-  pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, variable)  # pylint: disable=protected-access
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
+    variables = [strategy.extended.value_container(variable)]
+  else:
+    variables = strategy.experimental_local_results(variable)
+  for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
 
 
 def variable_accessed(variable):
-  """Notifies all tapes in the stack that a variable has been accessed."""
-  pywrap_tensorflow.TFE_Py_TapeVariableAccessed(variable)
+  """Notifies all tapes in the stack that a variable has been accessed.
+
+  Args:
+    variable: variable to be watched.
+  """
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
+    variables = [strategy.extended.value_container(variable)]
+  else:
+    variables = strategy.experimental_local_results(variable)
+  for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
+
+
+def variables_accessed(variables):
+  """Notifies all tapes in the stack that variables have been accessed.
+
+  Only trainable variables are marked as accessed.
+
+  Args:
+    variables: iterable of variables to mark as accessed.
+  """
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  accessed = []
+  if context:
+    accessed = [strategy.extended.value_container(variable)
+                for variable in variables if variable.trainable]
+  else:
+    for variable in variables:
+      if variable.trainable:
+        accessed.extend(strategy.experimental_local_results(variable))
+
+  for var in accessed:
+    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
 
 def pop_tape(tape):
-  """Pops the top tape in the stack, if any."""
+  """Pops the given tape in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
+  is_stopped = pywrap_tensorflow.TFE_Py_TapeSetIsStopped()
   try:
-    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
-    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record(tensors):

@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #define EIGEN_USE_GPU
 
@@ -154,6 +155,7 @@ struct Add9Functor<GPUDevice, T> {
   template struct functor::Add9Functor<GPUDevice, type>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_FUNCTORS);
+TF_CALL_int64(REGISTER_FUNCTORS);
 TF_CALL_complex64(REGISTER_FUNCTORS);
 TF_CALL_complex128(REGISTER_FUNCTORS);
 
@@ -161,4 +163,4 @@ TF_CALL_complex128(REGISTER_FUNCTORS);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

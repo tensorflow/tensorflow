@@ -196,7 +196,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),
@@ -218,6 +218,64 @@ ENTRY DotOperationFusion_TransposeFusion {
       "%dot = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %arg0, f32[256,1024]{1,0} "
       "%arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0} has wrong "
       "rhs_contracting_dimensions (got {0} want {1})");
+}
+
+TEST(HloMatchersTest, ComparisonMatcher) {
+  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
+  auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
+  auto eq = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kEq);
+  auto ne = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kNe);
+  auto add =
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0.get(), p1.get());
+  auto le = HloInstruction::CreateCompare(shape, p0.get(), add.get(),
+                                          ComparisonDirection::kLe);
+
+  EXPECT_THAT(eq.get(), op::Compare());
+  EXPECT_THAT(eq.get(), op::Eq());
+  EXPECT_THAT(ne.get(), op::Compare());
+  EXPECT_THAT(ne.get(), op::Ne());
+  EXPECT_THAT(le.get(),
+              op::Compare(op::Parameter(0),
+                          op::Add(op::Parameter(0), op::Parameter(1))));
+  EXPECT_THAT(le.get(), op::Le(op::Parameter(0),
+                               op::Add(op::Parameter(0), op::Parameter(1))));
+
+  EXPECT_THAT(Explain(eq.get(), op::Add()), Eq(""));
+  EXPECT_THAT(Explain(eq.get(), op::Ne()),
+              Eq("has wrong comparison direction (got EQ, want NE)"));
+}
+
+TEST(HloMatchersTest, AsyncCopyMatcher) {
+  Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
+      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, /*memory_space=*/1);
+  Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
+      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, /*memory_space=*/2);
+
+  auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
+  auto copy_start = HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape(
+          {shape_memspace2, ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, p0.get());
+  auto copy_done = HloInstruction::CreateUnary(
+      shape_memspace2, HloOpcode::kCopyDone, copy_start.get());
+
+  EXPECT_THAT(copy_done.get(), op::AsyncCopy(2, 1, op::Parameter(0)));
+
+  EXPECT_THAT(Explain(copy_start.get(), op::AsyncCopy(2, 1, op::Parameter(0))),
+              Eq(""));
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(3, 1, op::Parameter(0))),
+              "%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
+              "%copy-start) "
+              "copies to memory space 2, expected 3");
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(2, 3, op::Parameter(0))),
+              "%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
+              "%copy-start) "
+              "is in the memory space 1, expected 3");
 }
 
 }  // namespace

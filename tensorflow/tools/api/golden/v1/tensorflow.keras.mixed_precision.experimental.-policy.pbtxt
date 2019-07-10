@@ -1,0 +1,21 @@
+path: "tensorflow.keras.mixed_precision.experimental.Policy"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.policy.Policy\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "default_variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "should_cast_variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+}

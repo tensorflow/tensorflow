@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -35,7 +35,7 @@ __global__ void MaxPoolGradBackwardNoMaskNCDHW(
     const int stride_p, const int stride_h, const int stride_w, const int pad_p,
     const int pad_t, const int pad_l, const dtype* top_diff,
     dtype* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -85,7 +85,7 @@ __global__ void MaxPoolGradBackwardNoMaskNDHWC(
     const int stride_p, const int stride_h, const int stride_w, const int pad_p,
     const int pad_t, const int pad_l, const dtype* top_diff,
     dtype* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int n = index;
     int c = n % channels;
@@ -142,21 +142,21 @@ bool MaxPool3dGradBackward<T>::operator()(
     const T* top_diff, T* bottom_diff, const Eigen::GpuDevice& d) {
   int num_kernels =
       batch * channels * pooled_plane * pooled_height * pooled_width;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
   if (data_format == FORMAT_NHWC) {
-    MaxPoolGradBackwardNoMaskNDHWC<<<config.block_count,
-                                     config.thread_per_block, 0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_plane, pooled_height,
-        pooled_width, channels, plane, height, width, kernel_p, kernel_h,
-        kernel_w, stride_p, stride_h, stride_w, pad_p, pad_t, pad_l, top_diff,
-        bottom_diff);
+    TF_CHECK_OK(GpuLaunchKernel(
+        MaxPoolGradBackwardNoMaskNDHWC<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), num_kernels, bottom_data,
+        output_data, pooled_plane, pooled_height, pooled_width, channels, plane,
+        height, width, kernel_p, kernel_h, kernel_w, stride_p, stride_h,
+        stride_w, pad_p, pad_t, pad_l, top_diff, bottom_diff));
   } else {
-    MaxPoolGradBackwardNoMaskNCDHW<<<config.block_count,
-                                     config.thread_per_block, 0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_plane, pooled_height,
-        pooled_width, channels, plane, height, width, kernel_p, kernel_h,
-        kernel_w, stride_p, stride_h, stride_w, pad_p, pad_t, pad_l, top_diff,
-        bottom_diff);
+    TF_CHECK_OK(GpuLaunchKernel(
+        MaxPoolGradBackwardNoMaskNCDHW<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), num_kernels, bottom_data,
+        output_data, pooled_plane, pooled_height, pooled_width, channels, plane,
+        height, width, kernel_p, kernel_h, kernel_w, stride_p, stride_h,
+        stride_w, pad_p, pad_t, pad_l, top_diff, bottom_diff));
   }
   return d.ok();
 }
@@ -169,4 +169,4 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

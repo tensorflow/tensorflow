@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for working with string Tensors.
-
-See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
-"""
+"""Operations for working with string Tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
 
@@ -40,12 +38,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_string_ops import *
 from tensorflow.python.util import compat as util_compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=g-bad-import-order
 # pylint: enable=wildcard-import
 
 
 # pylint: disable=redefined-builtin
+@tf_export("strings.regex_full_match")
+@dispatch.add_dispatch_support
 def regex_full_match(input, pattern, name=None):
   r"""Match elements of `input` with regex `pattern`.
 
@@ -73,15 +74,16 @@ def regex_full_match(input, pattern, name=None):
 
 regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
-# Expose regex_full_match in strings namespace
-tf_export("strings.regex_full_match")(regex_full_match)
 
-
-def regex_replace(source, pattern, rewrite, replace_global=True):
-  r"""Replace elements of `source` matching regex `pattern` with `rewrite`.
+@tf_export(
+    "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
+@deprecation.deprecated_endpoints("regex_replace")
+@dispatch.add_dispatch_support
+def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
+  r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
   Args:
-    source: string `Tensor`, the source strings to process.
+    input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
       see more details at https://github.com/google/re2/wiki/Syntax
     rewrite: string or scalar string `Tensor`, value to use in match
@@ -89,9 +91,10 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
       text matching corresponding parenthesized group.
     replace_global: `bool`, if `True` replace all non-overlapping matches,
       else replace only the first match.
+    name: A name for the operation (optional).
 
   Returns:
-    string `Tensor` of the same shape as `source` with specified replacements.
+    string `Tensor` of the same shape as `input` with specified replacements.
   """
   if (isinstance(pattern, util_compat.bytes_or_text_types) and
       isinstance(rewrite, util_compat.bytes_or_text_types)):
@@ -99,11 +102,13 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
     # use a version which performs the expensive regex compilation once at
     # creation time.
     return gen_string_ops.static_regex_replace(
-        input=source, pattern=pattern,
-        rewrite=rewrite, replace_global=replace_global)
+        input=input, pattern=pattern,
+        rewrite=rewrite, replace_global=replace_global,
+        name=name)
   return gen_string_ops.regex_replace(
-      input=source, pattern=pattern,
-      rewrite=rewrite, replace_global=replace_global)
+      input=input, pattern=pattern,
+      rewrite=rewrite, replace_global=replace_global,
+      name=name)
 
 
 @tf_export("strings.format")
@@ -118,7 +123,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor = tf.range(10)
         formatted = tf.strings.format("tensor: {}, suffix", tensor)
@@ -130,7 +135,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
     Formatting a multi-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor_one = tf.reshape(tf.range(100), [10, 10])
         tensor_two = tf.range(10)
@@ -187,15 +192,16 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
                                       name=name)
 
 
-@tf_export("string_split")
-def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
+def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
   containing the split tokens. Empty tokens are ignored.
 
-  If `delimiter` is an empty string, each element of the `source` is split
+  If `sep` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
   multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
   treated as a set of delimiters with each considered a potential split point.
@@ -214,9 +220,10 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
 
   Args:
     source: `1-D` string `Tensor`, the strings to split.
-    delimiter: `0-D` string `Tensor`, the delimiter character, the string should
-      be length 0 or 1.
+    sep: `0-D` string `Tensor`, the delimiter character, the string should
+      be length 0 or 1. Default is ' '.
     skip_empty: A `bool`. If `True`, skip the empty strings from the result.
+    delimiter: deprecated alias for `sep`.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -226,6 +233,11 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
   """
+  delimiter = deprecation.deprecated_argument_lookup(
+      "sep", sep, "delimiter", delimiter)
+
+  if delimiter is None:
+    delimiter = " "
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -237,7 +249,8 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-@tf_export("strings.split")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
 
@@ -260,7 +273,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
   sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
   string, consecutive whitespace are regarded as a single separator, and the
-  result will contain no empty strings at the startor end if the string has
+  result will contain no empty strings at the start or end if the string has
   leading or trailing whitespace.
 
   Note that the above mentioned behavior matches python's str.split.
@@ -310,12 +323,16 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("reduce_join")
-def reduce_join(inputs, axis=None,
+@tf_export(v1=["strings.reduce_join", "reduce_join"])
+@deprecation.deprecated_endpoints("reduce_join")
+def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
                 separator="",
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keepdims=None):
+  keep_dims = deprecation.deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
   inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
       inputs_t, axis, reduction_indices)
@@ -327,18 +344,62 @@ def reduce_join(inputs, axis=None,
       name=name)
 
 
+@tf_export("strings.reduce_join", v1=[])
+def reduce_join_v2(  # pylint: disable=missing-docstring
+    inputs,
+    axis=None,
+    keepdims=False,
+    separator="",
+    name=None):
+  return reduce_join(
+      inputs, axis, keep_dims=keepdims, separator=separator, name=name)
+
+
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
     gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
+                                                  "tf.strings.reduce_join(")
 
 
 # This wrapper provides backwards compatibility for code that predates the
 # unit argument and that passed 'name' as a positional argument.
-@tf_export("strings.length")
+@tf_export(v1=["strings.length"])
+@dispatch.add_dispatch_support
 def string_length(input, name=None, unit="BYTE"):
   return gen_string_ops.string_length(input, unit=unit, name=name)
 
 
+@tf_export("strings.length", v1=[])
+@dispatch.add_dispatch_support
+def string_length_v2(input, unit="BYTE", name=None):
+  return string_length(input, name, unit)
+
+
 string_length.__doc__ = gen_string_ops.string_length.__doc__
+
+
+@tf_export(v1=["substr"])
+@deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
+def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
+  return substr(input, pos, len, name=name, unit=unit)
+
+substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export(v1=["strings.substr"])
+@dispatch.add_dispatch_support
+def substr(input, pos, len, name=None, unit="BYTE"):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+substr.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export("strings.substr", v1=[])
+@dispatch.add_dispatch_support
+def substr_v2(input, pos, len, unit="BYTE", name=None):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+substr_v2.__doc__ = gen_string_ops.substr.__doc__
 
 
 ops.NotDifferentiable("RegexReplace")
@@ -351,3 +412,75 @@ ops.NotDifferentiable("StringSplit")
 ops.NotDifferentiable("AsString")
 ops.NotDifferentiable("EncodeBase64")
 ops.NotDifferentiable("DecodeBase64")
+
+
+@tf_export("strings.to_number", v1=[])
+@dispatch.add_dispatch_support
+def string_to_number(input, out_type=dtypes.float32, name=None):
+  r"""Converts each string in the input Tensor to the specified numeric type.
+
+  (Note that int32 overflow results in an error while float overflow
+  results in a rounded value.)
+
+  Args:
+    input: A `Tensor` of type `string`.
+    out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
+      tf.int64`. Defaults to `tf.float32`.
+      The numeric type to interpret each string in `string_tensor` as.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `out_type`.
+  """
+  return gen_parsing_ops.string_to_number(input, out_type, name)
+
+
+@tf_export(v1=["strings.to_number", "string_to_number"])
+def string_to_number_v1(
+    string_tensor=None,
+    out_type=dtypes.float32,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_parsing_ops.string_to_number(string_tensor, out_type, name)
+
+string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
+
+
+@tf_export("strings.to_hash_bucket", v1=[])
+@dispatch.add_dispatch_support
+def string_to_hash_bucket(input, num_buckets, name=None):
+  # pylint: disable=line-too-long
+  r"""Converts each string in the input Tensor to its hash mod by a number of buckets.
+
+  The hash function is deterministic on the content of the string within the
+  process.
+
+  Note that the hash function may change from time to time.
+  This functionality will be deprecated and it's recommended to use
+  `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
+
+  Args:
+    input: A `Tensor` of type `string`.
+    num_buckets: An `int` that is `>= 1`. The number of buckets.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int64`.
+  """
+  # pylint: enable=line-too-long
+  return gen_string_ops.string_to_hash_bucket(input, num_buckets, name)
+
+
+@tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+def string_to_hash_bucket_v1(
+    string_tensor=None,
+    num_buckets=None,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
+
+string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__

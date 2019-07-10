@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "maximum"
-    deprecated: true
   }
 }

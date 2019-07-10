@@ -22,6 +22,7 @@ import six
 
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import errors_impl
@@ -164,8 +165,15 @@ class Evaluator(object):
         self.__call__(example, *args, **kwargs)
       return self.all_metric_results(summary_logdir)
     # Graph construction
-    call_op = self.__call__(dataset.make_one_shot_iterator().get_next(), *args,
-                            **kwargs)
+    next_value = dataset_ops.make_one_shot_iterator(dataset).get_next()
+    # Function inlining destroys strict inputs semantics (function body might
+    # start execution before all inputs are ready). When iterator is exhausted
+    # and throws out of range error, function body might be partially executed.
+    # To prevent this we add an explicit control dependency from the 'get_next'.
+    with ops.control_dependencies([next_value]):
+      has_next_value = control_flow_ops.no_op(name="iterator_has_next")
+    with ops.control_dependencies([has_next_value]):
+      call_op = self.__call__(next_value, *args, **kwargs)
     init_op = self.init_variables()
     results_op = self.all_metric_results(summary_logdir)
     return (init_op, call_op, results_op)

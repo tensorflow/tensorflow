@@ -96,6 +96,7 @@ class RevNet(tf.keras.Model):
   def call(self, inputs, training=True):
     """Forward pass."""
 
+    saved_hidden = None
     if training:
       saved_hidden = [inputs]
 

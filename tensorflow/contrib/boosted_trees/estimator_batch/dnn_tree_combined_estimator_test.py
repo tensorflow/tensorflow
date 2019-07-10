@@ -18,13 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
 from tensorflow.contrib.boosted_trees.estimator_batch import dnn_tree_combined_estimator as estimator
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.estimator import exporter
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.export import export
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,6 +37,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import checkpoint_utils
+
 
 def _train_input_fn():
   features = {
@@ -99,35 +104,6 @@ class DNNBoostedTreeCombinedTest(test_util.TensorFlowTestCase):
         dnn_steps_to_train=10,
         dnn_input_layer_to_tree=False,
         tree_feature_columns=[feature_column.real_valued_column("x")])
-
-    classifier.fit(input_fn=_train_input_fn, steps=15)
-    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
-
-  def testFitAndEvaluateDontThrowExceptionWithCore(self):
-    learner_config = learner_pb2.LearnerConfig()
-    learner_config.num_classes = 2
-    learner_config.constraints.max_tree_depth = 1
-    model_dir = tempfile.mkdtemp()
-    config = run_config.RunConfig()
-
-    # Use core head
-    head_fn = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
-
-    classifier = estimator.DNNBoostedTreeCombinedEstimator(
-        head=head_fn,
-        dnn_hidden_units=[1],
-        # Use core feature columns
-        dnn_feature_columns=[core_feature_column.numeric_column("x")],
-        tree_learner_config=learner_config,
-        num_trees=1,
-        tree_examples_per_layer=3,
-        model_dir=model_dir,
-        config=config,
-        dnn_steps_to_train=10,
-        dnn_input_layer_to_tree=True,
-        tree_feature_columns=[],
-        use_core_versions=True)
 
     classifier.fit(input_fn=_train_input_fn, steps=15)
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)
@@ -223,6 +199,51 @@ class CoreDNNBoostedTreeCombinedTest(test_util.TensorFlowTestCase):
     self.assertLess(0.5, res["auc"])
     est.predict(input_fn=_eval_input_fn)
 
+  def testTrainEvaluateWithDnnForInputAndTreeForPredict(self):
+    head_fn = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 3
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    est = estimator.CoreDNNBoostedTreeCombinedEstimator(
+        head=head_fn,
+        dnn_hidden_units=[1],
+        dnn_feature_columns=[core_feature_column.numeric_column("x")],
+        tree_learner_config=learner_config,
+        num_trees=1,
+        tree_examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        dnn_steps_to_train=10,
+        dnn_input_layer_to_tree=True,
+        predict_with_tree_only=True,
+        dnn_to_tree_distillation_param=(0.5, None),
+        tree_feature_columns=[])
+
+    # Train for a few steps.
+    est.train(input_fn=_train_input_fn, steps=1000)
+    res = est.evaluate(input_fn=_eval_input_fn, steps=1)
+    self.assertLess(0.5, res["auc"])
+    est.predict(input_fn=_eval_input_fn)
+    serving_input_fn = (
+        export.build_parsing_serving_input_receiver_fn(
+            feature_spec={"x": parsing_ops.FixedLenFeature(
+                [1], dtype=dtypes.float32)}))
+    base_exporter = exporter.FinalExporter(
+        name="Servo",
+        serving_input_receiver_fn=serving_input_fn,
+        assets_extra=None)
+    export_path = os.path.join(model_dir, "export")
+    base_exporter.export(
+        est,
+        export_path=export_path,
+        checkpoint_path=None,
+        eval_result={},
+        is_the_final_export=True)
 
 if __name__ == "__main__":
   googletest.main()

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -40,7 +41,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeBool) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* bool_node = AddScalarConstNode<bool>(true, &graph);
-  EXPECT_TRUE(ContainsGraphNodeWithName(bool_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(bool_node->name(), *graph.graph()));
   EXPECT_EQ(bool_node->attr().at("value").tensor().bool_val(0), true);
 }
 
@@ -48,8 +49,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeDouble) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* double_node = AddScalarConstNode<double>(3.14, &graph);
-  EXPECT_TRUE(
-      ContainsGraphNodeWithName(double_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(double_node->name(), *graph.graph()));
   EXPECT_FLOAT_EQ(double_node->attr().at("value").tensor().double_val(0), 3.14);
 }
 
@@ -57,7 +57,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeFloat) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* float_node = AddScalarConstNode<float>(3.14, &graph);
-  EXPECT_TRUE(ContainsGraphNodeWithName(float_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(float_node->name(), *graph.graph()));
   EXPECT_FLOAT_EQ(float_node->attr().at("value").tensor().float_val(0), 3.14);
 }
 
@@ -65,7 +65,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* int_node = AddScalarConstNode<int>(42, &graph);
-  EXPECT_TRUE(ContainsGraphNodeWithName(int_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(int_node->name(), *graph.graph()));
   EXPECT_EQ(int_node->attr().at("value").tensor().int_val(0), 42);
 }
 
@@ -73,7 +73,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* int64_node = AddScalarConstNode<int64>(42, &graph);
-  EXPECT_TRUE(ContainsGraphNodeWithName(int64_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(int64_node->name(), *graph.graph()));
   EXPECT_EQ(int64_node->attr().at("value").tensor().int64_val(0), 42);
 }
 
@@ -81,8 +81,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeString) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
   NodeDef* string_node = AddScalarConstNode<StringPiece>("hello", &graph);
-  EXPECT_TRUE(
-      ContainsGraphNodeWithName(string_node->name(), *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName(string_node->name(), *graph.graph()));
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");
 }
 
@@ -105,13 +104,13 @@ TEST(GraphUtilsTest, Compare) {
 TEST(GraphUtilsTest, ContainsGraphNodeWithName) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(!ContainsGraphNodeWithName("A", *graph.GetGraph()));
+  EXPECT_TRUE(!ContainsGraphNodeWithName("A", *graph.graph()));
 
   AddNode("A", "OpA", {}, {}, &graph);
-  EXPECT_TRUE(ContainsGraphNodeWithName("A", *graph.GetGraph()));
+  EXPECT_TRUE(ContainsGraphNodeWithName("A", *graph.graph()));
 
-  graph.DeleteNodes({"A"});
-  EXPECT_TRUE(!ContainsGraphNodeWithName("A", *graph.GetGraph()));
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
+  EXPECT_TRUE(!ContainsGraphNodeWithName("A", *graph.graph()));
 }
 
 TEST(GraphUtilsTest, ContainsGraphFunctionWithName) {
@@ -127,25 +126,25 @@ TEST(GraphUtilsTest, ContainsGraphFunctionWithName) {
 TEST(GraphUtilsTest, ContainsNodeWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_TRUE(!ContainsNodeWithOp("OpA", *graph.GetGraph()));
+  EXPECT_TRUE(!ContainsNodeWithOp("OpA", *graph.graph()));
 
   AddNode("A", "OpA", {}, {}, &graph);
-  EXPECT_TRUE(ContainsNodeWithOp("OpA", *graph.GetGraph()));
+  EXPECT_TRUE(ContainsNodeWithOp("OpA", *graph.graph()));
 
-  graph.DeleteNodes({"A"});
-  EXPECT_TRUE(!ContainsNodeWithOp("OpA", *graph.GetGraph()));
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
+  EXPECT_TRUE(!ContainsNodeWithOp("OpA", *graph.graph()));
 }
 
 TEST(GraphUtilsTest, FindGraphNodeWithName) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_EQ(FindGraphNodeWithName("A", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithName("A", *graph.graph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
-  EXPECT_NE(FindGraphNodeWithName("A", *graph.GetGraph()), -1);
+  EXPECT_NE(FindGraphNodeWithName("A", *graph.graph()), -1);
 
-  graph.DeleteNodes({"A"});
-  EXPECT_EQ(FindGraphNodeWithName("A", *graph.GetGraph()), -1);
+  EXPECT_TRUE(graph.DeleteNodes({"A"}).ok());
+  EXPECT_EQ(FindGraphNodeWithName("A", *graph.graph()), -1);
 }
 
 TEST(GraphUtilsTest, FindGraphFunctionWithName) {
@@ -161,35 +160,35 @@ TEST(GraphUtilsTest, FindGraphFunctionWithName) {
 TEST(GraphUtilsTest, FindGraphNodeWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.graph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
   AddNode("B", "OpB", {"A"}, {}, &graph);
-  AddNode("A2", "OpA", {"B"}, {}, &graph);
-  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), 0);
+  AddNode("A2", "OpA", {"A"}, {}, &graph);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.graph()), 0);
 
-  graph.DeleteNodes({"B"});
-  EXPECT_EQ(FindGraphNodeWithOp("OpB", *graph.GetGraph()), -1);
-  EXPECT_EQ(FindGraphNodeWithName("A2", *graph.GetGraph()), 1);
+  EXPECT_TRUE(graph.DeleteNodes({"B"}).ok());
+  EXPECT_EQ(FindGraphNodeWithOp("OpB", *graph.graph()), -1);
+  EXPECT_EQ(FindGraphNodeWithName("A2", *graph.graph()), 1);
 }
 
 TEST(GraphUtilsTest, FindAllGraphNodesWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.graph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
   AddNode("B", "OpB", {"A"}, {}, &graph);
   AddNode("A2", "OpA", {"B"}, {}, &graph);
   std::vector<int> result_indices =
-      FindAllGraphNodesWithOp("OpA", *graph.GetGraph());
+      FindAllGraphNodesWithOp("OpA", *graph.graph());
   EXPECT_EQ(result_indices.size(), 2);
   EXPECT_EQ(result_indices.at(0), 0);
   EXPECT_EQ(result_indices.at(1), 2);
 
-  graph.DeleteNodes({"A2"});
+  EXPECT_TRUE(graph.DeleteNodes({"A2"}).ok());
   std::vector<int> result_indices_new =
-      FindAllGraphNodesWithOp("OpA", *graph.GetGraph());
+      FindAllGraphNodesWithOp("OpA", *graph.graph());
   EXPECT_EQ(result_indices_new.size(), 1);
   EXPECT_EQ(result_indices_new.at(0), 0);
 }
@@ -202,7 +201,7 @@ TEST(GraphUtilsTest, SetUniqueGraphNodeName) {
   NodeDef* node2 = AddNode("", "A", {}, {}, &graph);
   EXPECT_NE(node1->name(), node2->name());
 
-  graph.DeleteNodes({node1->name()});
+  EXPECT_TRUE(graph.DeleteNodes({node1->name()}).ok());
   NodeDef* node3 = AddNode("", "A", {}, {}, &graph);
   EXPECT_NE(node2->name(), node3->name());
 }
@@ -227,6 +226,90 @@ TEST(GraphUtilsTest, GetInputNode) {
 
   EXPECT_EQ(GetInputNode(*node2, graph), node1);
   EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
+}
+
+TEST(GraphUtilsTest, GetIthInputNode) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node1 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node2 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node3 = AddNode("", "A", {node1->name(), node2->name()}, {}, &graph);
+
+  EXPECT_EQ(GetInputNode(*node3, graph), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 1), node2);
+  EXPECT_EQ(GetInputNode(*node3, graph, 0), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 2), nullptr);
+  EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
+}
+
+TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
+  Graph g(OpRegistry::Global());
+
+  Node *const_0, *const_1, *const_2;
+
+  // Arbitrary const
+  Tensor tensor(DT_INT32, {});
+  tensor.scalar<int32>()() = 5;
+
+  for (auto node : {&const_0, &const_1}) {
+    TF_EXPECT_OK(NodeBuilder("Const", "Const")
+                     .Attr("value", tensor)
+                     .Attr("dtype", DT_INT32)
+                     .Finalize(&g, node));
+  }
+  // Make sure generated name doesn't clash with existing name either
+  TF_EXPECT_OK(NodeBuilder("Const_1", "Const")
+                   .Attr("value", tensor)
+                   .Attr("dtype", DT_INT32)
+                   .Finalize(&g, &const_2));
+
+  TF_EXPECT_OK(EnsureNodeNamesUnique(&g));
+  EXPECT_NE(const_0->name(), const_1->name());
+  EXPECT_NE(const_1->name(), const_2->name());
+  EXPECT_NE(const_0->name(), const_2->name());
+}
+
+TEST(GraphUtilsTest, TestGetFetchNode) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  NodeDef* node3 = AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+  item.fetch.push_back(node3->name());
+
+  NodeDef* sink_node;
+  TF_EXPECT_OK(GetFetchNode(graph, item, &sink_node));
+  EXPECT_EQ(sink_node->name(), node3->name());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeMultipleFetches) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  NodeDef* node3 = AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+  item.fetch.push_back(node2->name());
+  item.fetch.push_back(node3->name());
+
+  NodeDef* sink_node;
+  Status s = GetFetchNode(graph, item, &sink_node);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+
+  NodeDef* sink_node;
+  Status s = GetFetchNode(graph, item, &sink_node);
+  EXPECT_FALSE(s.ok());
 }
 
 }  // namespace

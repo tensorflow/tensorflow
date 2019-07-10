@@ -33,6 +33,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import special_math
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Laplace")
+@tf_export(v1=["distributions.Laplace"])
 class Laplace(distribution.Distribution):
   """The Laplace distribution with location `loc` and `scale` parameters.
 
@@ -71,6 +72,14 @@ class Laplace(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -211,6 +220,11 @@ class Laplace(distribution.Distribution):
 class LaplaceWithSoftplusScale(Laplace):
   """Laplace with softplus applied to `scale`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Laplace(loc, tf.nn.softplus(scale)) "
+      "instead.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,

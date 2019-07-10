@@ -1,4 +1,17 @@
 op {
   graph_op_name: "FloorMod"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.floormod"
+  }
+  endpoint {
+    name: "floormod"
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "math.mod"
+  }
+  endpoint {
+    name: "mod"
+    deprecation_version: 2
+  }
 }

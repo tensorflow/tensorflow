@@ -22,16 +22,20 @@ import os
 import shutil
 
 from tensorflow.contrib.data.python.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 prefix_path = "tensorflow/core/lib"
 
 
-class LMDBDatasetTest(test.TestCase):
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
+class LMDBDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(LMDBDatasetTest, self).setUp()
@@ -47,7 +51,7 @@ class LMDBDatasetTest(test.TestCase):
     num_repeats = 2
 
     dataset = readers.LMDBDataset(filenames).repeat(num_repeats)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

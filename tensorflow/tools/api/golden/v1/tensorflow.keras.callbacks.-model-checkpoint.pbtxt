@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'filepath\', \'monitor\', \'verbose\', \'save_best_only\', \'save_weights_only\', \'mode\', \'period\'], varargs=None, keywords=None, defaults=[\'val_loss\', \'0\', \'False\', \'False\', \'auto\', \'1\'], "
+    argspec: "args=[\'self\', \'filepath\', \'monitor\', \'verbose\', \'save_best_only\', \'save_weights_only\', \'mode\', \'save_freq\'], varargs=None, keywords=kwargs, defaults=[\'val_loss\', \'0\', \'False\', \'False\', \'auto\', \'epoch\'], "
   }
   member_method {
     name: "on_batch_begin"
@@ -22,6 +22,46 @@ tf_class {
   member_method {
     name: "on_epoch_end"
     argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_predict_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_test_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "on_train_begin"

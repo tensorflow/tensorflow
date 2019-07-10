@@ -27,6 +27,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "tensorflow/stream_executor/allocator_stats.h"
 #include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_options.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 #include "tensorflow/stream_executor/launch_dim.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/module_spec.h"
@@ -195,8 +196,8 @@ class StreamExecutorInterface {
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
-  virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
-                                  uint64 size) = 0;
+  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
+                             uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -238,9 +239,9 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
                                     const DeviceMemoryBase &gpu_src,
                                     uint64 size) = 0;
-  virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
+  virtual bool HostCallback(Stream *stream, std::function<void()> callback);
   virtual bool HostCallback(Stream *stream,
-                            std::function<port::Status()> callback);
+                            std::function<port::Status()> callback) = 0;
   virtual port::Status AllocateEvent(Event *event) = 0;
   virtual port::Status DeallocateEvent(Event *event) = 0;
   virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;
@@ -254,6 +255,10 @@ class StreamExecutorInterface {
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
   virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status GetStatus(Stream *stream) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "GetStatus is not supported on this executor.");
+  }
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
@@ -283,7 +288,8 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual DeviceDescription *PopulateDeviceDescription() const = 0;
+  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription() const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has
@@ -364,22 +370,19 @@ class StreamExecutorInterface {
   // as a platform.
   virtual void *GpuContextHack() { return nullptr; }
 
+  // Return allocator statistics.
+  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
+    return absl::nullopt;
+  }
+
+  // Clears the compilation cache from volatile memory. Returns OK if no
+  // compilation cache exists or if clearing the compilation cache is
+  // unsupported. Caches in non-volatile storage are unaffected.
+  virtual port::Status FlushCompilationCache() { return port::Status::OK(); }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
-
-using StreamExecutorFactory =
-    std::function<StreamExecutorInterface *(const PluginConfig &)>;
-using EventFactory = std::function<EventInterface *(StreamExecutor *)>;
-using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
-using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
-using KernelFactory = std::function<KernelInterface*()>;
-
-StreamExecutorFactory* MakeCUDAExecutorImplementation();
-
-StreamExecutorFactory* MakeOpenCLExecutorImplementation();
-
-extern StreamExecutorFactory MakeHostExecutorImplementation;
 
 
 }  // namespace internal

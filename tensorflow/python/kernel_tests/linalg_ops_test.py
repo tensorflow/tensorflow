@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -49,10 +53,11 @@ class CholeskySolveTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
-        with self.test_session(use_gpu=True):
+        with self.session(use_gpu=True):
           # Create 2 x n x n matrix
           array = np.array(
               [_RandomPDMatrix(n, self.rng),
@@ -70,28 +75,29 @@ class LogdetTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
         matrix = _RandomPDMatrix(n, self.rng, np_dtype)
         _, logdet_np = np.linalg.slogdet(matrix)
-        with self.test_session(use_gpu=True):
+        with self.session(use_gpu=True):
           # Create 2 x n x n matrix
           # matrix = np.array(
           #     [_RandomPDMatrix(n, self.rng, np_dtype),
           #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
           logdet_tf = linalg.logdet(matrix)
-          self.assertAllClose(logdet_np, logdet_tf.eval(), atol=atol)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
     for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                            (np.complex64, 0.05), (np.complex128, 1e-5)]:
       matrix = (np.eye(20) * 1e-6).astype(np_dtype)
       _, logdet_np = np.linalg.slogdet(matrix)
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         logdet_tf = linalg.logdet(matrix)
-        self.assertAllClose(logdet_np, logdet_tf.eval(), atol=atol)
+        self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
 
 class SlogdetTest(test.TestCase):
@@ -99,26 +105,29 @@ class SlogdetTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
+  @test_util.run_deprecated_v1
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
         matrix = _RandomPDMatrix(n, self.rng, np_dtype)
         sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-        with self.test_session(use_gpu=True):
+        with self.session(use_gpu=True):
           sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
-          self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
-          self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+          self.assertAllClose(
+              log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
+          self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
     for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                            (np.complex64, 0.05), (np.complex128, 1e-5)]:
       matrix = (np.eye(20) * 1e-6).astype(np_dtype)
       sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
-        self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
-        self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+        self.assertAllClose(
+            log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
+        self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
 
 
 class AdjointTest(test.TestCase):
@@ -128,66 +137,131 @@ class AdjointTest(test.TestCase):
       matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
                                                        6 + 6j]]).astype(dtype)
       expected_transposed = np.conj(matrix_np.T)
-      with self.cached_session():
+      with self.session():
         matrix = ops.convert_to_tensor(matrix_np)
         transposed = linalg.adjoint(matrix)
         self.assertEqual((3, 2), transposed.get_shape())
-        self.assertAllEqual(expected_transposed, transposed.eval())
+        self.assertAllEqual(expected_transposed, self.evaluate(transposed))
 
 
-class EyeTest(test.TestCase):
-  pass  # Will be filled in below
+class EyeTest(parameterized.TestCase, test.TestCase):
 
+  def testShapeInferenceNoBatch(self):
+    self.assertEqual((2, 2), linalg_ops.eye(num_rows=2).shape)
+    self.assertEqual((2, 3), linalg_ops.eye(num_rows=2, num_columns=3).shape)
 
-def _GetEyeTest(num_rows, num_columns, batch_shape, dtype):
+  def testShapeInferenceStaticBatch(self):
+    batch_shape = (2, 3)
+    self.assertEqual(
+        (2, 3, 2, 2),
+        linalg_ops.eye(num_rows=2, batch_shape=batch_shape).shape)
+    self.assertEqual(
+        (2, 3, 2, 3),
+        linalg_ops.eye(
+            num_rows=2, num_columns=3, batch_shape=batch_shape).shape)
 
-  def Test(self):
+  @parameterized.named_parameters(
+      ("DynamicRow",
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: None),
+      ("DynamicRowStaticColumn",
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: 3),
+      ("StaticRowDynamicColumn",
+       lambda: 2,
+       lambda: array_ops.placeholder_with_default(3, shape=None)),
+      ("DynamicRowDynamicColumn",
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: array_ops.placeholder_with_default(3, shape=None)))
+  def testShapeInferenceStaticBatchWith(self, num_rows_fn, num_columns_fn):
+    num_rows = num_rows_fn()
+    num_columns = num_columns_fn()
+    batch_shape = (2, 3)
+    identity_matrix = linalg_ops.eye(
+        num_rows=num_rows,
+        num_columns=num_columns,
+        batch_shape=batch_shape)
+    self.assertEqual(4, identity_matrix.shape.ndims)
+    self.assertEqual((2, 3), identity_matrix.shape[:2])
+    if num_rows is not None and not isinstance(num_rows, ops.Tensor):
+      self.assertEqual(2, identity_matrix.shape[-2])
+
+    if num_columns is not None and not isinstance(num_columns, ops.Tensor):
+      self.assertEqual(3, identity_matrix.shape[-1])
+
+  @parameterized.parameters(
+      itertools.product(
+          # num_rows
+          [0, 1, 2, 5],
+          # num_columns
+          [None, 0, 1, 2, 5],
+          # batch_shape
+          [None, [], [2], [2, 3]],
+          # dtype
+          [
+              dtypes.int32,
+              dtypes.int64,
+              dtypes.float32,
+              dtypes.float64,
+              dtypes.complex64,
+              dtypes.complex128
+          ])
+      )
+  def test_eye_no_placeholder(self, num_rows, num_columns, batch_shape, dtype):
     eye_np = np.eye(num_rows, M=num_columns, dtype=dtype.as_numpy_dtype)
     if batch_shape is not None:
       eye_np = np.tile(eye_np, batch_shape + [1, 1])
-    for use_placeholder in False, True:
-      if use_placeholder and (num_columns is None or batch_shape is None):
-        return
-      with self.test_session(use_gpu=True) as sess:
-        if use_placeholder:
-          num_rows_placeholder = array_ops.placeholder(
-              dtypes.int32, name="num_rows")
-          num_columns_placeholder = array_ops.placeholder(
-              dtypes.int32, name="num_columns")
-          batch_shape_placeholder = array_ops.placeholder(
-              dtypes.int32, name="batch_shape")
-          eye = linalg_ops.eye(
-              num_rows_placeholder,
-              num_columns=num_columns_placeholder,
-              batch_shape=batch_shape_placeholder,
-              dtype=dtype)
-          eye_tf = sess.run(
-              eye,
-              feed_dict={
-                  num_rows_placeholder: num_rows,
-                  num_columns_placeholder: num_columns,
-                  batch_shape_placeholder: batch_shape
-              })
-        else:
-          eye_tf = linalg_ops.eye(
-              num_rows,
-              num_columns=num_columns,
-              batch_shape=batch_shape,
-              dtype=dtype).eval()
-        self.assertAllEqual(eye_np, eye_tf)
+    eye_tf = self.evaluate(linalg_ops.eye(
+        num_rows,
+        num_columns=num_columns,
+        batch_shape=batch_shape,
+        dtype=dtype))
+    self.assertAllEqual(eye_np, eye_tf)
 
-  return Test
+  @parameterized.parameters(
+      itertools.product(
+          # num_rows
+          [0, 1, 2, 5],
+          # num_columns
+          [0, 1, 2, 5],
+          # batch_shape
+          [[], [2], [2, 3]],
+          # dtype
+          [
+              dtypes.int32,
+              dtypes.int64,
+              dtypes.float32,
+              dtypes.float64,
+              dtypes.complex64,
+              dtypes.complex128
+          ])
+      )
+  @test_util.run_deprecated_v1
+  def test_eye_with_placeholder(
+      self, num_rows, num_columns, batch_shape, dtype):
+    eye_np = np.eye(num_rows, M=num_columns, dtype=dtype.as_numpy_dtype)
+    eye_np = np.tile(eye_np, batch_shape + [1, 1])
+    num_rows_placeholder = array_ops.placeholder(
+        dtypes.int32, name="num_rows")
+    num_columns_placeholder = array_ops.placeholder(
+        dtypes.int32, name="num_columns")
+    batch_shape_placeholder = array_ops.placeholder(
+        dtypes.int32, name="batch_shape")
+    eye = linalg_ops.eye(
+        num_rows_placeholder,
+        num_columns=num_columns_placeholder,
+        batch_shape=batch_shape_placeholder,
+        dtype=dtype)
+    with self.session(use_gpu=True) as sess:
+      eye_tf = sess.run(
+          eye,
+          feed_dict={
+              num_rows_placeholder: num_rows,
+              num_columns_placeholder: num_columns,
+              batch_shape_placeholder: batch_shape
+          })
+    self.assertAllEqual(eye_np, eye_tf)
 
 
 if __name__ == "__main__":
-  for _num_rows in 0, 1, 2, 5:
-    for _num_columns in None, 0, 1, 2, 5:
-      for _batch_shape in None, [], [2], [2, 3]:
-        for _dtype in (dtypes.int32, dtypes.int64, dtypes.float32,
-                       dtypes.float64, dtypes.complex64, dtypes.complex128):
-          name = "dtype_%s_num_rows_%s_num_column_%s_batch_shape_%s_" % (
-              _dtype.name, _num_rows, _num_columns, _batch_shape)
-          _AddTest(EyeTest, "EyeTest", name,
-                   _GetEyeTest(_num_rows, _num_columns, _batch_shape, _dtype))
-
   test.main()

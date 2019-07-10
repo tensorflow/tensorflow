@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -37,6 +38,33 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
+
+// An HLO module derived class which verifies itself on destruction. This class
+// is intended to be used in unit tests. Any verification errors are raised via
+// ADD_FAILURE.
+class VerifiedHloModule : public HloModule {
+ public:
+  VerifiedHloModule(const string& name, const HloModuleConfig& config,
+                    bool verifier_layout_sensitive,
+                    bool allow_mixed_precision_in_hlo_verifier,
+                    std::function<int64(const Shape&)> shape_size_function)
+      : HloModule(name, config),
+        verifier_(
+            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
+            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
+
+  ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
+
+  // Verifies the module using HloVerifier and returns the status.
+  Status Verify();
+
+  // Verifies the module and flags any error with ADD_FAILURE. 'message' is
+  // included in the failure message.
+  void VerifyOrAddFailure(const string& message);
+
+ private:
+  HloVerifier verifier_;
+};
 
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
@@ -72,7 +100,23 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName());
+  //
+  // This returns a vanilla HloModule that doesn't run the HLO verifier on
+  // destruction.
+  ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
+  std::unique_ptr<HloModule> CreateNewUnverifiedModule(
+      const string& name = TestName());
+
+  // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
+  // HLO verifier on destruction.
+  std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
+      const string& name = TestName());
+
+  // Parses the given string and returns module as a VerifiedHloModule.
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text);
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config);
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -88,14 +132,18 @@ class HloTestBase : public ::testing::Test {
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
   HloTestBase(bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true);
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true);
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
 
   ~HloTestBase() override {}
 
@@ -125,6 +173,21 @@ class HloTestBase : public ::testing::Test {
 
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                              absl::Span<Literal* const> arguments);
+
+  // Executes the given module on multiple replicas.
+  //
+  // use_threads indicates whether this replicated computation will be executed
+  // with a thread-per-replica, vs using an implicitly async call such as
+  // Executable::ExecuteOnStreams.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas, bool use_threads, bool run_hlo_passes = false);
+
+  // Same as above, but uses specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas, DeviceAssignment* device_assignment,
+      bool run_hlo_passes, bool use_threads);
 
   // Executes the given hlo module on two backends and compares results.
   //
@@ -174,8 +237,14 @@ class HloTestBase : public ::testing::Test {
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
-  ::testing::AssertionResult Run(const absl::string_view hlo_string)
-      TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const absl::string_view hlo_string,
+                                 bool run_hlo_passes = true,
+                                 ExecutionProfile* profile = nullptr,
+                                 string backend_config = "") TF_MUST_USE_RESULT;
+  ::testing::AssertionResult RunMultipleTimes(
+      const absl::string_view hlo_string, bool run_hlo_passes,
+      std::vector<ExecutionProfile>* profiles,
+      string backend_config = "") TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -243,6 +312,8 @@ class HloTestBase : public ::testing::Test {
   HloRunner test_runner_;
   HloRunner reference_runner_;
 
+  bool verifier_layout_sensitive_;
+  bool allow_mixed_precision_in_hlo_verifier_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};

@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "logical_or"
-    deprecated: true
   }
 }

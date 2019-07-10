@@ -29,8 +29,8 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.ops.signal import fft_ops
 
 __all__ = [
     "auto_correlation",
@@ -157,11 +157,11 @@ def auto_correlation(
                                        dtype.real_dtype.as_numpy_dtype(0.))
 
     # Autocorrelation is IFFT of power-spectral density (up to some scaling).
-    fft_x_rotated_pad = spectral_ops.fft(x_rotated_pad)
+    fft_x_rotated_pad = fft_ops.fft(x_rotated_pad)
     spectral_density = fft_x_rotated_pad * math_ops.conj(fft_x_rotated_pad)
     # shifted_product is R[m] from above detailed explanation.
     # It is the inner product sum_n X[n] * Conj(X[n - m]).
-    shifted_product = spectral_ops.ifft(spectral_density)
+    shifted_product = fft_ops.ifft(spectral_density)
 
     # Cast back to real-valued if x was real to begin with.
     shifted_product = math_ops.cast(shifted_product, dtype)
@@ -300,18 +300,18 @@ def percentile(x,
       raise ValueError("Argument 'interpolation' must be in %s.  Found %s" %
                        (allowed_interpolations, interpolation))
 
-  with ops.name_scope(name, [x, q]):
+  with ops.name_scope(name, values=[x, q]):
     x = ops.convert_to_tensor(x, name="x")
     # Double is needed here and below, else we get the wrong index if the array
     # is huge along axis.
-    q = math_ops.to_double(q, name="q")
+    q = math_ops.cast(q, dtypes.float64, name="q")
     _get_static_ndims(q, expect_ndims=0)
 
     if validate_args:
       q = control_flow_ops.with_dependencies([
           check_ops.assert_rank(q, 0),
-          check_ops.assert_greater_equal(q, math_ops.to_double(0.)),
-          check_ops.assert_less_equal(q, math_ops.to_double(100.))
+          check_ops.assert_greater_equal(q, math_ops.cast(0., dtypes.float64)),
+          check_ops.assert_less_equal(q, math_ops.cast(100., dtypes.float64))
       ], q)
 
     if axis is None:
@@ -336,7 +336,7 @@ def percentile(x,
       y = _move_dims_to_flat_end(x, axis, x_ndims)
 
     frac_at_q_or_above = 1. - q / 100.
-    d = math_ops.to_double(array_ops.shape(y)[-1])
+    d = math_ops.cast(array_ops.shape(y)[-1], dtypes.float64)
 
     if interpolation == "lower":
       index = math_ops.ceil((d - 1) * frac_at_q_or_above)
@@ -349,7 +349,7 @@ def percentile(x,
     # let's use max/min to avoid out of bounds errors.
     d = array_ops.shape(y)[-1]
     # d - 1 will be distinct from d in int32.
-    index = clip_ops.clip_by_value(math_ops.to_int32(index), 0, d - 1)
+    index = clip_ops.clip_by_value(math_ops.cast(index, dtypes.int32), 0, d - 1)
 
     # Sort everything, not just the top 'k' entries, which allows multiple calls
     # to sort only once (under the hood) and use CSE.

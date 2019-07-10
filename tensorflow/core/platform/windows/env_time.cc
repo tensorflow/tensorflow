@@ -42,7 +42,7 @@ class WindowsEnvTime : public EnvTime {
     }
   }
 
-  uint64 NowNanos() {
+  uint64 NowNanos() const override {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {
       // GetSystemTimePreciseAsFileTime function is only available in latest
       // versions of Windows, so we need to check for its existence here.

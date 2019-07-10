@@ -1,15 +1,16 @@
 # Description:
 # TensorBoard module containing volatile or experimental code.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 # For platform specific build config
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_proto_library(
     name = "protos_all",
@@ -50,6 +51,7 @@ py_test(
     name = "projector_api_test",
     size = "small",
     srcs = ["plugins/projector/projector_api_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":projector",

@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -23,20 +26,23 @@ XlaOp TopK(XlaOp input, int64 k) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions_size() - 1;
-    int last_dim_size = input_shape.dimensions(last_dim);
 
-    XlaOp iota_s32 = Iota(builder, S32, last_dim_size);
+    Shape iota_shape =
+        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     auto input_dims = input_shape.dimensions();
-    std::vector<int64> broadcast_dims(input_dims.begin(), input_dims.end() - 1);
-    XlaOp broadcast_s32 = Broadcast(iota_s32, broadcast_dims);
-    XlaOp sort_result = Sort(Neg(input), broadcast_s32);
+    XlaOp sort_result =
+        Sort({input, iota_s32},
+             CreateScalarGtComputation({input_shape.element_type(), S32},
+                                       iota_s32.builder()),
+             last_dim, /*is_stable=*/true);
     std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
     std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;
     std::vector<int64> strides(input_shape.dimensions_size(), 1);
 
-    XlaOp values = Neg(Slice(GetTupleElement(sort_result, 0), start_indices,
-                             limit_indices, strides));
+    XlaOp values = Slice(GetTupleElement(sort_result, 0), start_indices,
+                         limit_indices, strides);
     XlaOp indices = Slice(GetTupleElement(sort_result, 1), start_indices,
                           limit_indices, strides);
     return Tuple(builder, {values, indices});

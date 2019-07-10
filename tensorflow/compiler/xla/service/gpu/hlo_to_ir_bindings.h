@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -61,7 +62,7 @@ class HloToIrBindings {
 
   // Returns whether `hlo` is bound to an LLVM IR value.
   bool BoundToIrValue(const HloInstruction& hlo) const {
-    return base_ptrs_.count(&hlo);
+    return base_ptrs_.contains(&hlo);
   }
 
   llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
@@ -110,7 +111,8 @@ class HloToIrBindings {
   // For an instruction that generates multiple outputs, the root will be a
   // tuple shape. The IrArray for each element output is stored in the subnode
   // in the ShapeTree.
-  std::unordered_map<const HloInstruction*, ShapeTree<llvm::Value*>> base_ptrs_;
+  absl::flat_hash_map<const HloInstruction*, ShapeTree<llvm::Value*>>
+      base_ptrs_;
 
   // The address of the memory block that contains all temporary buffers.
   llvm::Value* temp_buffer_base_ = nullptr;

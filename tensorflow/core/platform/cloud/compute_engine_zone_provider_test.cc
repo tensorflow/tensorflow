@@ -34,8 +34,8 @@ TEST_F(ComputeEngineZoneProviderTest, GetZone) {
 
   auto httpRequestFactory = std::make_shared<FakeHttpRequestFactory>(&requests);
 
-  auto metadata_client =
-      std::make_shared<ComputeEngineMetadataClient>(httpRequestFactory, 0);
+  auto metadata_client = std::make_shared<ComputeEngineMetadataClient>(
+      httpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
 
   ComputeEngineZoneProvider provider(metadata_client);
 
@@ -55,8 +55,8 @@ TEST_F(ComputeEngineZoneProviderTest, InvalidZoneString) {
 
   auto httpRequestFactory = std::make_shared<FakeHttpRequestFactory>(&requests);
 
-  auto metadata_client =
-      std::make_shared<ComputeEngineMetadataClient>(httpRequestFactory, 0);
+  auto metadata_client = std::make_shared<ComputeEngineMetadataClient>(
+      httpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
 
   ComputeEngineZoneProvider provider(metadata_client);
 
