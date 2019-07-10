@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -478,61 +477,6 @@ def _GatherGrad(op, grad):
   return [ops.IndexedSlices(values, indices, params_shape), None]
 
 
-def _GetBatchIndices(params_shape, indices, batch_dims):
-  """Addds the batch offsets to the given indices and returns the results."""
-  batch_indices = indices
-  indices_ndims = indices.shape.ndims
-  indices_dtype = indices.dtype.base_dtype
-  casted_params_shape = math_ops.cast(params_shape, indices_dtype)
-  accum_dim_value = array_ops.ones((), dtype=indices_dtype)
-  for dim in range(batch_dims, 0, -1):
-    dim_value = casted_params_shape[dim - 1]
-    accum_dim_value *= casted_params_shape[dim]
-    start = array_ops.zeros((), dtype=indices_dtype)
-    step = array_ops.ones((), dtype=indices_dtype)
-    dim_indices = math_ops.range(start, dim_value, step)
-    dim_indices *= accum_dim_value
-    dim_shape = array_ops.stack(
-        [1] * (dim - 1) + [dim_value] + [1] * (indices_ndims - dim), axis=0)
-    batch_indices += array_ops.reshape(dim_indices, dim_shape)
-
-  return batch_indices
-
-
-def _BatchGatherGrad(
-    params_shape, values, indices, batch_dims, gather_dim_size):
-  """Returns the gradient of GatherV2 with batch dimensions."""
-
-  # Axis is the first non-batch dimension.
-  indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
-  if batch_dims:
-    values_shape = array_ops.shape(values)
-    # Add the batch offsets to indices and flatten the batch dimensions.
-    outer_shape = values_shape[:batch_dims]
-    inner_shape = values_shape[batch_dims:][1:]
-    batch_size = gen_math_ops.prod(outer_shape, [0], False)
-    flat_values_shape = array_ops.concat([[-1], inner_shape], 0)
-    gather_dim_size *= batch_size
-
-    indices = _GetBatchIndices(params_shape, indices, batch_dims)
-
-    with warnings.catch_warnings():
-      warnings.filterwarnings(
-          "ignore",
-          message="Converting sparse IndexedSlices to a dense Tensor.*")
-      values = array_ops.reshape(values, flat_values_shape)
-
-  indices = array_ops.reshape(indices, indices_size)
-  params_grad = math_ops.unsorted_segment_sum(values, indices, gather_dim_size)
-
-  if batch_dims:
-    # Put back the batch dimensions.
-    params_grad = array_ops.reshape(
-        params_grad, array_ops.concat([outer_shape, flat_values_shape], 0))
-
-  return params_grad
-
-
 @ops.RegisterGradient("GatherV2")
 def _GatherV2Grad(op, grad):
   """Gradient for GatherV2 op."""
@@ -551,10 +495,6 @@ def _GatherV2Grad(op, grad):
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
   axis = op.inputs[2]
   axis_static = tensor_util.constant_value(axis)
-  batch_dims = int(op.get_attr("batch_dims"))
-
-  if batch_dims < 0:
-    batch_dims += indices.shape.ndims
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
@@ -569,45 +509,44 @@ def _GatherV2Grad(op, grad):
           message="Converting sparse IndexedSlices to a dense Tensor.*")
       values = array_ops.reshape(grad, values_shape)
     indices = array_ops.reshape(indices, indices_size)
-    params_grad = ops.IndexedSlices(values, indices, params_shape)
-  else:
-    # Handle axis by transposing the axis dimension to be the first non-batch
-    # dimension, compute the gradiend and transpose the result back.
-    outer_shape = params_shape[:axis]
-    inner_shape = params_shape[axis:][1:]
-    values_shape = array_ops.concat([outer_shape, [-1], inner_shape], 0)
+    return [ops.IndexedSlices(values, indices, params_shape), None, None]
 
-    values_dims = array_ops.size(values_shape)
-    axis_dims = array_ops.size(outer_shape)
+  outer_shape = params_shape[:axis]
+  outer_dims = array_ops.size(outer_shape)
+  inner_shape = params_shape[axis:][1:]
+  inner_dims = array_ops.size(inner_shape)
 
-    outer_batches_indices = math_ops.range(batch_dims)
-    batch_axis_indices = math_ops.range(batch_dims, axis_dims)
-    inner_axes_indices = math_ops.range(axis_dims + 1, values_dims)
+  outer_axes_indices = math_ops.range(outer_dims)
+  inner_axes_indices = math_ops.range(outer_dims + 1,
+                                      outer_dims + 1 + inner_dims)
 
-    with warnings.catch_warnings():
-      warnings.filterwarnings(
-          "ignore",
-          message="Converting sparse IndexedSlices to a dense Tensor.*")
-      values = array_ops.reshape(grad, values_shape)
+  values_shape = array_ops.concat([outer_shape, indices_size, inner_shape], 0)
+  with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message="Converting sparse IndexedSlices to a dense Tensor.*")
+    values = array_ops.reshape(grad, values_shape)
+  indices = array_ops.reshape(indices, indices_size)
 
-    # Move values[axis] up to values[batch_dims]
-    transpose_dims = array_ops.concat(
-        [outer_batches_indices, [axis_dims], batch_axis_indices,
-         inner_axes_indices],
-        0)
-    values_transpose = array_ops.transpose(values, transpose_dims)
+  # We need to sum up every slice `values[..., i, ....]` corresponding to
+  # `params[..., indices[i], ...]`. Since `unsorted_segment_sum` does not
+  # support an axis parameter, we transpose the gather dimension to the front,
+  # then use `unsorted_segment_sum` to build a
+  # [gather_axis, outer_axes, inner_axes] tensor with all the gradients
+  # affecting each index in `gather_axis` summed up.
+  transpose_dims = array_ops.concat(
+      [[outer_dims], outer_axes_indices, inner_axes_indices], 0)
+  values_transpose = array_ops.transpose(values, transpose_dims)
+  num_segments = params_shape[axis]
 
-    params_grad = _BatchGatherGrad(params_shape, values_transpose, indices,
-                                   batch_dims, params_shape[axis])
+  params_grad = math_ops.unsorted_segment_sum(values_transpose, indices,
+                                              num_segments)
 
-    # Inverts the above transpose by moving dimension batch_dims back to its
-    # original position.
-    invert_transpose_dims = array_ops.concat(
-        [outer_batches_indices, batch_axis_indices + 1, [batch_dims],
-         inner_axes_indices],
-        0)
-    params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
-
+  # Inverts the above transpose by moving dimension 0 back to its original
+  # position.
+  invert_transpose_dims = array_ops.concat(
+      [outer_axes_indices + 1, [0], inner_axes_indices], 0)
+  params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
   return [params_grad, None, None]
 
 

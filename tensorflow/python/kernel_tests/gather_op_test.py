@@ -21,7 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import backprop
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -339,27 +339,15 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   ])
   @test_util.run_in_graph_and_eager_modes
   def testBatchDims(self, params, indices, batch_dims, expected=None,
-                    axis=None, expected_gradient_shape=None):
+                    axis=None):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
 
-    # Test the gradients shape.
-    if context.executing_eagerly():
-      with backprop.GradientTape() as tape:
-        zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
-        tape.watch(zeros)
-        values = zeros * 2 + zeros
-        result = array_ops.gather(
-            values, indices, axis=axis, batch_dims=batch_dims)
-      gradients = tape.gradient(result, zeros)
-    else:
-      zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
-      values = zeros * 2 + zeros
+    with compat.forward_compatibility_horizon(2019, 6, 11):
       result = array_ops.gather(
-          values, indices, axis=axis, batch_dims=batch_dims)
-      gradients = gradients_impl.gradients(result, [zeros])[0]
+          params, indices, axis=axis, batch_dims=batch_dims)
 
-    self.assertAllEqual(array_ops.shape(params), array_ops.shape(gradients))
+    self.assertAllEqual(expected, result)
 
   @parameterized.parameters([
       dict(
@@ -452,6 +440,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     indices = indices.tolist()
 
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
+    with compat.forward_compatibility_horizon(2019, 6, 11):
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
