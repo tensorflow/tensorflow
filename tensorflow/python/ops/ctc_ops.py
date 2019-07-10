@@ -42,6 +42,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+import os
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
@@ -155,6 +156,24 @@ def ctc_loss(labels,
   Raises:
     TypeError: if labels is not a `SparseTensor`.
   """
+  return _ctc_loss_impl(labels, inputs, sequence_length,
+                        preprocess_collapse_repeated, ctc_merge_repeated,
+                        ignore_longer_outputs_than_inputs, time_major, logits,
+                        use_cudnn=False)
+
+def _ctc_loss_impl(labels,
+                   inputs=None,
+                   sequence_length=None,
+                   preprocess_collapse_repeated=False,
+                   ctc_merge_repeated=True,
+                   ignore_longer_outputs_than_inputs=False,
+                   time_major=True,
+                   logits=None,
+                   use_cudnn=False):
+  # Helper function of ctc_loss with one additional param:
+  # use_cudnn: A bool to enable cuDNN CTC loss operation. If true, the blank
+  #   index has to be 0.
+
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
@@ -166,7 +185,14 @@ def ctc_loss(labels,
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
-  loss, _ = gen_ctc_ops.ctc_loss(
+  # gen_ctc_ops.ctc_loss_v2 differs from gen_ctc_ops.ctc_loss. v2 assumes the
+  # blank index to be 0, but v1 views it as the last index.
+  if use_cudnn:
+    ctc_loss_func = gen_ctc_ops.ctc_loss_v2
+  else:
+    ctc_loss_func = gen_ctc_ops.ctc_loss
+
+  loss, _ = ctc_loss_func(
       inputs,
       labels.indices,
       labels.values,
@@ -177,19 +203,8 @@ def ctc_loss(labels,
 
   return loss
 
-
 # pylint: disable=unused-argument
-@ops.RegisterGradient("CTCLoss")
-def _CTCLossGrad(op, grad_loss, _):
-  """The derivative provided by CTC Loss.
-
-  Args:
-     op: the CTCLoss op.
-     grad_loss: The backprop for cost.
-
-  Returns:
-     The CTC Loss gradient.
-  """
+def _CTCLossGradImpl(op, grad_loss, _):
   # Outputs are: loss, grad
   #
   # Currently there is no way to take the second derivative of this op
@@ -205,7 +220,34 @@ def _CTCLossGrad(op, grad_loss, _):
   # labels_indices, labels_values and sequence_length
   return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
+# pylint: disable=unused-argument
+@ops.RegisterGradient("CTCLoss")
+def _CTCLossGrad(op, grad_loss, _):
+  """The derivative provided by CTC Loss.
 
+  Args:
+     op: the CTCLoss op.
+     grad_loss: The backprop for cost.
+
+  Returns:
+     The CTC Loss gradient.
+  """
+  return _CTCLossGradImpl(op, grad_loss, _)
+  
+# pylint: disable=unused-argument
+@ops.RegisterGradient("CTCLossV2")
+def _CTCLossGrad(op, grad_loss, _):
+  """The derivative provided by CTC Loss V2.
+
+  Args:
+     op: the CTCLossV2 op.
+     grad_loss: The backprop for cost.
+
+  Returns:
+     The CTC Loss V2 gradient.
+  """
+  return _CTCLossGradImpl(op, grad_loss, _)
+  
 @tf_export("nn.ctc_greedy_decoder")
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
@@ -654,26 +696,36 @@ def ctc_loss_v2(labels,
       raise ValueError(
           "blank_index must be given when using SparseTensor labels.")
 
+    _ctc_use_cudnn = os.environ.get("TF_CUDNN_CTC_LOSS", "0")
+    if _ctc_use_cudnn == "1":
+        use_cudnn = True
+    else:
+        use_cudnn = False
+
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
 
-    if blank_index != _get_dim(logits, 2) - 1:
-      logits = array_ops.concat([
-          logits[:, :, :blank_index],
-          logits[:, :, blank_index + 1:],
-          logits[:, :, blank_index:blank_index + 1],
-      ],
-                                axis=2)
+    part_before = logits[:, :, :blank_index]
+    part_after = logits[:, :, blank_index + 1:]
+    part_blank = logits[:, :, blank_index:blank_index + 1]
+    if use_cudnn:
+      logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
+      labels = sparse_tensor.SparseTensor(
+          labels.indices,
+          array_ops.where(labels.values < blank_index, labels.values + 1,
+                          labels.values), labels.dense_shape)
+    else:
+      logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
       labels = sparse_tensor.SparseTensor(
           labels.indices,
           array_ops.where(labels.values < blank_index, labels.values,
                           labels.values - 1), labels.dense_shape)
-
-    return ctc_loss(
+    return _ctc_loss_impl(
         labels=labels,
         inputs=logits,
         sequence_length=logit_length,
-        time_major=logits_time_major)
+        time_major=logits_time_major,
+        use_cudnn=use_cudnn)
 
   if blank_index is None:
     blank_index = 0

@@ -399,6 +399,11 @@ class StreamExecutor {
       float dropout, uint64 seed, ScratchAllocator *state_allocator,
       bool use_padded_io);
 
+  // Create an CTC loss descriptor. The caller retains the ownership of the
+  // descriptor.
+  port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
+  createCtcLossDescriptor(dnn::DataType data_type);
+
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>

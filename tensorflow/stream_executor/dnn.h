@@ -190,6 +190,15 @@ class RnnDescriptor {
   virtual ParamsRegions ParamsBiasRegions() const { return ParamsRegions(); }
 };
 
+// Specifies the CTC Loss computation.
+//
+// The user is responsible for releasing this descriptor when it is no longer
+// in use. The destructor releases the underlying descriptors.
+class CtcLossDescriptor {
+ public:
+  virtual ~CtcLossDescriptor() {}
+};
+
 // Specifies the sequence in a RNN model.
 //
 // The user is responsible for releasing this descriptor when it is no longer
@@ -2133,6 +2142,16 @@ class DnnSupport {
                         "createRnnDescriptor is unimplemented");
   }
 
+  // Create an CTC Loss descriptor.
+  //
+  // Arguments:
+  //  data_type: an enum to specify the data types used in this model.
+  virtual port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
+  createCtcLossDescriptor(dnn::DataType data_type) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createCtcLossDescriptor is unimplemented");
+  }
+
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   //
@@ -2380,6 +2399,40 @@ class DnnSupport {
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueue a CTC Loss operation onto the stream.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  probs_desc: specifies the shape and the data layout of the input tensor.
+  //  probs_data: the device memory region that contains the input tensor.
+  //  labels_data: the device memory region that contains the labels_value
+  //    tensor.
+  //  labels_lengths_data: the device memory region that contains the
+  //    labels_lengths tensor
+  //  input_lengths_data: the device memory region that contains the seq_lengths
+  //    tensor
+  //  costs_data: the device memory region that contains the costs tensor.
+  //  grads_desc: specifies the shape and the data layout of the grads tensor.
+  //  grads_data: the device memory region that contains the grads tensor.
+  //  ctc_loss_desc: a CTCLoss descriptor created by createCTCLossDescriptor.
+  //  workspace_allocator: a memory allocator that creates the temporary
+  //    workspace memory used by this operation. The caller is responsible for
+  //    keeping the memory alive long enough for this operation, and recylces
+  //    afterwards.
+  virtual bool DoCtcLoss(Stream* stream,
+                         const dnn::RnnStateTensorDescriptor &probs_desc,
+                         const DeviceMemory<float> &probs_data,
+                         const absl::Span<const int32> &labels_data,
+                         const absl::Span<const int32> &labels_lengths_data,
+                         const absl::Span<const int32> &input_lengths_data,
+                         DeviceMemory<float> *costs_data,
+                         const dnn::RnnStateTensorDescriptor &grads_desc,
+                         DeviceMemory<float> *grads_data,
+                         const dnn::CtcLossDescriptor &ctc_loss_desc,
+                         ScratchAllocator *workspace_allocator) {
     return false;
   }
 

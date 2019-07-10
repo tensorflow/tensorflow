@@ -33,6 +33,7 @@ class GpuExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
+class CudnnCtcLossDescriptor;
 
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
@@ -53,6 +54,9 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
       float dropout, uint64 seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
+
+  port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
+  createCtcLossDescriptor(dnn::DataType data_type) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
@@ -562,6 +566,18 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
+  bool DoCtcLoss(
+      Stream* stream, const dnn::RnnStateTensorDescriptor &probs_desc,
+      const DeviceMemory<float> &probs_data,
+      const absl::Span<const int32> &labels_data,
+      const absl::Span<const int32> &labels_lengths_data,
+      const absl::Span<const int32> &input_lengths_data,
+      DeviceMemory<float> *costs_data,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      DeviceMemory<float> *grads_data,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      ScratchAllocator *workspace_allocator);
+
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
                          const DeviceMemoryBase& input_data,
@@ -672,6 +688,18 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
+
+  port::Status DoCtcLossImpl(
+      Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
+      const DeviceMemory<float>& probs_data,
+      const absl::Span<const int32>& labels_data,
+      const absl::Span<const int32>& labels_lengths_data,
+      const absl::Span<const int32>& input_lengths_data,
+      DeviceMemory<float>* costs_data,
+      const CudnnRnnStateTensorDescriptor& grads_desc,
+      DeviceMemory<float>* grads_data,
+      const CudnnCtcLossDescriptor& ctc_loss_desc,
+      ScratchAllocator* workspace_allocator);
 
  private:
   port::Status DoPrepareForConvolution(
