@@ -75,7 +75,7 @@ class EagerExecutor {
 
   // Schedules `node` for execution.
   // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(std::unique_ptr<EagerNode> node);
+  Status Add(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.
   Status WaitForAllPendingNodes();

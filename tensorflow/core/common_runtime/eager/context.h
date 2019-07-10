@@ -181,8 +181,8 @@ class EagerContext : public core::RefCounted {
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  void ExecutorAdd(std::unique_ptr<EagerNode> node) {
-    executor_.Add(std::move(node));
+  Status ExecutorAdd(std::unique_ptr<EagerNode> node) {
+    return executor_.Add(std::move(node));
   }
 
   Status AddFunctionDef(const FunctionDef& fdef);

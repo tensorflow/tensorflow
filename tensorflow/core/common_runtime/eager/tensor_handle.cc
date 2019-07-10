@@ -365,6 +365,12 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetTensor is only called on non-ready handles.";
 
+  VLOG(3) << "SetTensor on TensorHandle: " << this;
+
+  if (tensor.dtype() == DT_RESOURCE) {
+    auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
+    handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
+  }
   tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
   is_poisoned_ = Status::OK();
   is_ready_notification_.Notify();

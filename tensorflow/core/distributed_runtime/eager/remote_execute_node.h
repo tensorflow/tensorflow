@@ -26,13 +26,13 @@ namespace eager {
 
 // RemoteExecuteNode is an implementation of EagerNode which enqueues
 // an operation via RPC in a remote EagerService.
-class RemoteExecuteNode : public tensorflow::EagerNode {
+class RemoteExecuteNode : public EagerNode {
  public:
   RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request,
                     EagerClient* eager_client,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     TensorHandle** retvals, int num_retvals)
-      : tensorflow::EagerNode(),
+      : EagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client),
         inputs_(inputs) {
@@ -45,7 +45,7 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
 
     // This is required to ensure that the tensor handles stay alive across the
     // execution.
-    for (auto* handle : inputs_) {
+    for (auto handle : inputs_) {
       handle->Ref();
     }
   }
@@ -75,7 +75,7 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
       retvals_[i]->Unref();
     }
 
-    for (auto* handle : inputs_) {
+    for (auto handle : inputs_) {
       handle->Unref();
     }
 
@@ -83,12 +83,12 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
   }
 
   void Abort(Status status) override {
-    for (int i = 0; i < retvals_.size(); i++) {
-      retvals_[i]->Poison(status);
-      retvals_[i]->Unref();
+    for (auto handle : retvals_) {
+      handle->Poison(status);
+      handle->Unref();
     }
 
-    for (auto* handle : inputs_) {
+    for (auto handle : inputs_) {
       handle->Unref();
     }
   }

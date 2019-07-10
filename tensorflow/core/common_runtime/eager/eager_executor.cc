@@ -32,12 +32,12 @@ void EagerExecutor::EnableAsync() {
   }
 }
 
-void EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
+Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
   tensorflow::mutex_lock l(node_queue_mutex_);
   DCHECK(thread_) << "EnableAsync should have been called before Add";
   if (!status_.ok()) {
     // node will be automatically deleted
-    return;
+    return status_;
   }
 
   node_queue_.push(std::move(node));
@@ -47,6 +47,8 @@ void EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
   if (node_queue_.size() == 1) {
     nodes_pending_.notify_all();
   }
+
+  return Status::OK();
 }
 
 tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {

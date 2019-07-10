@@ -43,18 +43,13 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   handle_to_decref->set_op_id(op_id);
   handle_to_decref->set_output_num(output_num);
 
-  if (ctx->Async()) {
-    ctx->ExecutorAdd(absl::make_unique<eager::DestroyTensorHandleNode>(
-        std::move(request), eager_client));
-  } else {
-    eager::EnqueueRequest* actual_request = request.release();
-    eager::EnqueueResponse* response = new eager::EnqueueResponse;
-    eager_client->EnqueueAsync(
-        actual_request, response,
-        [actual_request, response](const tensorflow::Status& s) {
-          delete actual_request;
-          delete response;
-        });
+  std::unique_ptr<EagerNode> node(
+      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
+                                                        eager_client));
+  Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to destroy remote tensor handles: "
+               << s.error_message();
   }
 }
 
