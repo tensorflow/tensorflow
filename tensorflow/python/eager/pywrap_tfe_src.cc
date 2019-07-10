@@ -1367,14 +1367,57 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   return tape_set.get();
 }
 
-tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>*
-GetAccumulatorSet() {
-  thread_local std::unique_ptr<
-      tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>>
-      accumulator_set{nullptr};
+// A linked hash set, where iteration is in insertion order.
+//
+// Nested accumulators rely on op recording happening in insertion order, so an
+// unordered data structure like CompactPointerSet is not suitable. Outer
+// accumulators need to observe operations first so they know to watch the inner
+// accumulator's jvp computation.
+//
+// Not thread safe.
+class AccumulatorSet {
+ public:
+  void insert(TFE_Py_ForwardAccumulator* element) {
+    if (map_.find(element) != map_.end()) {
+      return;
+    }
+    ListType::iterator it = ordered_.insert(ordered_.end(), element);
+    map_.insert(std::make_pair(element, it));
+  }
+
+  void erase(TFE_Py_ForwardAccumulator* element) {
+    MapType::iterator existing = map_.find(element);
+    if (existing == map_.end()) {
+      return;
+    }
+    ListType::iterator list_position = existing->second;
+    map_.erase(existing);
+    ordered_.erase(list_position);
+  }
+
+  bool empty() const { return ordered_.empty(); }
+
+ private:
+  typedef std::list<TFE_Py_ForwardAccumulator*> ListType;
+  typedef tensorflow::gtl::FlatMap<TFE_Py_ForwardAccumulator*,
+                                   ListType::iterator>
+      MapType;
+
+ public:
+  typedef ListType::const_iterator const_iterator;
+  const_iterator begin() const { return ordered_.begin(); }
+
+  const_iterator end() const { return ordered_.end(); }
+
+ private:
+  MapType map_;
+  ListType ordered_;
+};
+
+AccumulatorSet* GetAccumulatorSet() {
+  thread_local std::unique_ptr<AccumulatorSet> accumulator_set{nullptr};
   if (accumulator_set == nullptr) {
-    accumulator_set.reset(
-        new tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>);
+    accumulator_set.reset(new AccumulatorSet);
   }
   return accumulator_set.get();
 }
@@ -1385,12 +1428,10 @@ inline bool HasTape() { return !GetTapeSet()->empty() || HasAccumulator(); }
 
 // A safe copy of a set, used for tapes and accumulators. The copy is not
 // affected by other python threads changing the set of active tapes.
-template <typename MemberType>
+template <typename ContainerType>
 class SafeSetCopy {
  public:
-  explicit SafeSetCopy(
-      const tensorflow::gtl::CompactPointerSet<MemberType*>& to_copy)
-      : set_copy_(to_copy) {
+  explicit SafeSetCopy(const ContainerType& to_copy) : set_copy_(to_copy) {
     for (auto* member : set_copy_) {
       Py_INCREF(member);
     }
@@ -1402,31 +1443,29 @@ class SafeSetCopy {
     }
   }
 
-  typename tensorflow::gtl::CompactPointerSet<MemberType*>::const_iterator
-  begin() const {
+  typename ContainerType::const_iterator begin() const {
     return set_copy_.begin();
   }
 
-  typename tensorflow::gtl::CompactPointerSet<MemberType*>::const_iterator end()
-      const {
-    return set_copy_.end();
-  }
+  typename ContainerType::const_iterator end() const { return set_copy_.end(); }
 
   bool empty() const { return set_copy_.empty(); }
 
  private:
-  tensorflow::gtl::CompactPointerSet<MemberType*> set_copy_;
+  ContainerType set_copy_;
 };
 
-class SafeTapeSet : public SafeSetCopy<TFE_Py_Tape> {
+class SafeTapeSet
+    : public SafeSetCopy<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>> {
  public:
-  SafeTapeSet() : SafeSetCopy<TFE_Py_Tape>(*GetTapeSet()) {}
+  SafeTapeSet()
+      : SafeSetCopy<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>(
+            *GetTapeSet()) {}
 };
 
-class SafeAccumulatorSet : public SafeSetCopy<TFE_Py_ForwardAccumulator> {
+class SafeAccumulatorSet : public SafeSetCopy<AccumulatorSet> {
  public:
-  SafeAccumulatorSet()
-      : SafeSetCopy<TFE_Py_ForwardAccumulator>(*GetAccumulatorSet()) {}
+  SafeAccumulatorSet() : SafeSetCopy<AccumulatorSet>(*GetAccumulatorSet()) {}
 };
 
 bool* ThreadTapeIsStopped() {
