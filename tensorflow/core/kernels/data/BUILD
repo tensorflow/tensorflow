@@ -1063,12 +1063,31 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cache_dataset_ops",
     srcs = ["cache_dataset_ops.cc"],
+    hdrs = ["cache_dataset_ops.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_cc_test(
+    name = "cache_dataset_ops_test",
+    srcs = ["cache_dataset_ops_test.cc"],
+    deps = [
+        ":cache_dataset_ops",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ptr_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
