@@ -34,7 +34,7 @@ using namespace linalg::intrinsics;
 
 TEST_FUNC(linalg_ops) {
   MLIRContext context;
-  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(&context));
   auto indexType = mlir::IndexType::get(&context);
   mlir::FuncOp f = makeFunction(*module, "linalg_ops",
                                 {indexType, indexType, indexType}, {});
@@ -73,7 +73,7 @@ TEST_FUNC(linalg_ops) {
 
 TEST_FUNC(linalg_ops_folded_slices) {
   MLIRContext context;
-  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(&context));
   auto indexType = mlir::IndexType::get(&context);
   mlir::FuncOp f = makeFunction(*module, "linalg_ops_folded_slices",
                                 {indexType, indexType, indexType}, {});

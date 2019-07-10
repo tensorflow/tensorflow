@@ -42,7 +42,7 @@ using namespace mlir;
 
 // TODO(herhut) Factor out into an include file and proper library.
 extern int run(int argc, char **argv,
-               llvm::function_ref<LogicalResult(Module)>);
+               llvm::function_ref<LogicalResult(ModuleOp)>);
 
 inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
                             CUresult error, FuncOp &function) {
@@ -126,7 +126,7 @@ public:
 };
 } // end anonymous namespace
 
-static LogicalResult runMLIRPasses(Module m) {
+static LogicalResult runMLIRPasses(ModuleOp m) {
   // As we gradually lower, the IR is inconsistent between passes. So do not
   // verify inbetween.
   PassManager pm(/*verifyPasses=*/false);

@@ -28,7 +28,6 @@ class Any;
 namespace mlir {
 class FunctionPassBase;
 class ModuleOp;
-using Module = ModuleOp;
 class ModulePassBase;
 class Pass;
 class PassInstrumentation;
@@ -61,7 +60,7 @@ public:
 
   /// Run the passes within this manager on the provided module.
   LLVM_NODISCARD
-  LogicalResult run(Module module);
+  LogicalResult run(ModuleOp module);
 
   /// Disable support for multi-threading within the pass manager.
   void disableMultithreading(bool disable = true);

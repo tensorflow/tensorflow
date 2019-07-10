@@ -147,7 +147,7 @@ struct PythonFunction {
 struct PythonMLIRModule {
   PythonMLIRModule()
       : mlirContext(),
-        module(mlir::Module::create(mlir::UnknownLoc::get(&mlirContext))),
+        module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
         moduleManager(*module) {}
 
   PythonType makeScalarType(const std::string &mlirElemType,
@@ -756,7 +756,8 @@ PYBIND11_MODULE(pybind, m) {
   py::class_<PythonMLIRModule>(
       m, "MLIRModule",
       "An MLIRModule is the abstraction that owns the allocations to support "
-      "compilation of a single mlir::Module into an ExecutionEngine backed by "
+      "compilation of a single mlir::ModuleOp into an ExecutionEngine backed "
+      "by "
       "the LLVM ORC JIT. A typical flow consists in creating an MLIRModule, "
       "adding functions, compiling the module to obtain an ExecutionEngine on "
       "which named functions may be called. For now the only means to retrieve "
@@ -773,13 +774,13 @@ PYBIND11_MODULE(pybind, m) {
           "Creates an mlir::IntegerAttr of the given type with the given value "
           "in the context associated with this MLIR module.")
       .def("declare_function", &PythonMLIRModule::declareFunction,
-           "Declares a new mlir::FuncOp in the current mlir::Module.  The "
+           "Declares a new mlir::FuncOp in the current mlir::ModuleOp.  The "
            "function arguments can have attributes.  The function has no "
            "definition and can be linked to an external library.")
       .def("make_function", &PythonMLIRModule::makeFunction,
-           "Defines a new mlir::FuncOp in the current mlir::Module.")
+           "Defines a new mlir::FuncOp in the current mlir::ModuleOp.")
       .def("function_context", &PythonMLIRModule::makeFunctionContext,
-           "Defines a new mlir::FuncOp in the mlir::Module and creates the "
+           "Defines a new mlir::FuncOp in the mlir::ModuleOp and creates the "
            "function context for building the body of the function.")
       .def("get_function", &PythonMLIRModule::getNamedFunction,
            "Looks up the function with the given name in the module.")
@@ -806,7 +807,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("make_index_type", &PythonMLIRModule::makeIndexType,
            "Returns an mlir::IndexType")
       .def("compile", &PythonMLIRModule::compile,
-           "Compiles the mlir::Module to LLVMIR a creates new opaque "
+           "Compiles the mlir::ModuleOp to LLVMIR a creates new opaque "
            "ExecutionEngine backed by the ORC JIT.")
       .def("get_ir", &PythonMLIRModule::getIR,
            "Returns a dump of the MLIR representation of the module. This is "

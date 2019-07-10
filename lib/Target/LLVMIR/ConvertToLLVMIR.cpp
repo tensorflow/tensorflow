@@ -31,12 +31,12 @@
 
 using namespace mlir;
 
-std::unique_ptr<llvm::Module> mlir::translateModuleToLLVMIR(Module m) {
+std::unique_ptr<llvm::Module> mlir::translateModuleToLLVMIR(ModuleOp m) {
   return LLVM::ModuleTranslation::translateModule<>(m);
 }
 
 static TranslateFromMLIRRegistration registration(
-    "mlir-to-llvmir", [](Module module, llvm::StringRef outputFilename) {
+    "mlir-to-llvmir", [](ModuleOp module, llvm::StringRef outputFilename) {
       if (!module)
         return failure();
 

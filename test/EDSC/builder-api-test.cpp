@@ -557,7 +557,7 @@ TEST_FUNC(vectorize_2d) {
       makeFunction("vectorize_2d", {}, {memrefType, memrefType, memrefType});
 
   mlir::FuncOp f = owningF;
-  mlir::OwningModuleRef module = Module::create(&globalContext());
+  mlir::OwningModuleRef module = ModuleOp::create(&globalContext());
   module->push_back(f);
 
   OpBuilder builder(f.getBody());

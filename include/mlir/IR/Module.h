@@ -198,10 +198,6 @@ private:
   ModuleOp module;
 };
 
-/// Temporary forward declaration of ModuleOp as Module to support the legacy
-/// naming.
-using Module = ModuleOp;
-
 } // end namespace mlir
 
 namespace llvm {

@@ -152,7 +152,7 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
 // - canonicalization
 // - affine to standard lowering
 // - standard to llvm lowering
-static LogicalResult convertAffineStandardToLLVMIR(Module module) {
+static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
   PassManager manager;
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
@@ -162,7 +162,7 @@ static LogicalResult convertAffineStandardToLLVMIR(Module module) {
 }
 
 static Error compileAndExecuteFunctionWithMemRefs(
-    Module module, StringRef entryPoint,
+    ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
   FuncOp mainFunction = module.getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction.getBlocks().empty()) {
@@ -205,7 +205,7 @@ static Error compileAndExecuteFunctionWithMemRefs(
 }
 
 static Error compileAndExecuteSingleFloatReturnFunction(
-    Module module, StringRef entryPoint,
+    ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
   FuncOp mainFunction = module.getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction.isExternal()) {
@@ -255,7 +255,7 @@ static Error compileAndExecuteSingleFloatReturnFunction(
 // The latter is applied after parsing the input into MLIR IR and before passing
 // the MLIR module to the ExecutionEngine.
 int run(int argc, char **argv,
-        llvm::function_ref<LogicalResult(mlir::Module)> mlirTransformer) {
+        llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 

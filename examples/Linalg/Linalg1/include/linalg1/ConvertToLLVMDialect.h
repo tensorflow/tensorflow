@@ -28,7 +28,6 @@ class ConversionPattern;
 class DialectConversion;
 class MLIRContext;
 class ModuleOp;
-using Module = ModuleOp;
 class RewritePattern;
 class Type;
 using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
@@ -52,7 +51,7 @@ void populateLinalg1ToLLVMConversionPatterns(
 /// Convert the Linalg dialect types and RangeOp, ViewOp and SliceOp operations
 /// to the LLVM IR dialect types and operations in the given `module`.  This is
 /// the main entry point to the conversion.
-void convertToLLVM(mlir::Module module);
+void convertToLLVM(mlir::ModuleOp module);
 } // end namespace linalg
 
 #endif // LINALG1_CONVERTTOLLVMDIALECT_H_

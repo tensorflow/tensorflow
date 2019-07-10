@@ -71,7 +71,7 @@ public:
   mlir::OwningModuleRef mlirGen(ModuleAST &moduleAST) {
     // We create an empty MLIR module and codegen functions one at a time and
     // add them to the module.
-    theModule = mlir::Module::create(mlir::UnknownLoc::get(&context));
+    theModule = mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
     for (FunctionAST &F : moduleAST) {
       auto func = mlirGen(F);

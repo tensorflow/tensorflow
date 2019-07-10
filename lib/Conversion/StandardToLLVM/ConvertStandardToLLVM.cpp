@@ -937,7 +937,7 @@ static void ensureDistinctSuccessors(Block &bb) {
   }
 }
 
-void mlir::LLVM::ensureDistinctSuccessors(Module m) {
+void mlir::LLVM::ensureDistinctSuccessors(ModuleOp m) {
   for (auto f : m.getOps<FuncOp>()) {
     for (auto &bb : f.getBlocks()) {
       ::ensureDistinctSuccessors(bb);
@@ -1029,7 +1029,7 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
     if (!typeConverterMaker || !patternListFiller)
       return signalPassFailure();
 
-    Module m = getModule();
+    ModuleOp m = getModule();
     LLVM::ensureDistinctSuccessors(m);
 
     std::unique_ptr<LLVMTypeConverter> typeConverter =

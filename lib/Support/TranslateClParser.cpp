@@ -38,7 +38,7 @@ using namespace mlir;
 // Storage for the translation function wrappers that survive the parser.
 static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
 
-static LogicalResult printMLIROutput(Module module,
+static LogicalResult printMLIROutput(ModuleOp module,
                                      llvm::StringRef outputFilename) {
   if (failed(verify(module)))
     return failure();

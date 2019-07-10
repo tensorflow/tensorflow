@@ -149,7 +149,7 @@ struct MyFunctionAnalysis {
 /// An interesting module analysis.
 struct MyModuleAnalysis {
   // Compute this analysis with the provided module.
-  MyModuleAnalysis(Module module);
+  MyModuleAnalysis(ModuleOp module);
 };
 
 void MyFunctionPass::runOnFunction() {

@@ -67,10 +67,10 @@ public:
 
   /// Public API: convert the AST for a Toy module (source file) to an MLIR
   /// Module.
-  mlir::Module mlirGen(ModuleAST &moduleAST) {
+  mlir::ModuleOp mlirGen(ModuleAST &moduleAST) {
     // We create an empty MLIR module and codegen functions one at a time and
     // add them to the module.
-    theModule = mlir::Module::create(mlir::UnknownLoc::get(&context));
+    theModule = mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
     for (FunctionAST &F : moduleAST) {
       auto func = mlirGen(F);
@@ -97,7 +97,7 @@ private:
   mlir::MLIRContext &context;
 
   /// A "module" matches a source file: it contains a list of functions.
-  mlir::Module theModule;
+  mlir::ModuleOp theModule;
 
   /// The builder is a helper class to create IR inside a function. It is
   /// re-initialized every time we enter a function and kept around as a

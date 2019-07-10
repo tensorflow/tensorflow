@@ -37,7 +37,6 @@ class Module;
 namespace mlir {
 
 class ModuleOp;
-using Module = ModuleOp;
 
 namespace impl {
 class OrcJIT;
@@ -63,7 +62,8 @@ public:
   /// If `sharedLibPaths` are provided, the underlying JIT-compilation will open
   /// and link the shared libraries for symbol resolution.
   static llvm::Expected<std::unique_ptr<ExecutionEngine>>
-  create(Module m, std::function<llvm::Error(llvm::Module *)> transformer = {},
+  create(ModuleOp m,
+         std::function<llvm::Error(llvm::Module *)> transformer = {},
          ArrayRef<StringRef> sharedLibPaths = {});
 
   /// Looks up a packed-argument function with the given name and returns a

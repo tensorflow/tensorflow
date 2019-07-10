@@ -79,7 +79,7 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
   return parser.ParseModule();
 }
 
-mlir::LogicalResult optimize(mlir::Module module) {
+mlir::LogicalResult optimize(mlir::ModuleOp module) {
   mlir::PassManager pm;
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createShapeInferencePass());

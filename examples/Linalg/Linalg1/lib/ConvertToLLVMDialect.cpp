@@ -406,7 +406,7 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 };
 } // end anonymous namespace
 
-void linalg::convertToLLVM(mlir::Module module) {
+void linalg::convertToLLVM(mlir::ModuleOp module) {
   // Remove affine constructs if any by using an existing pass.
   PassManager pm;
   pm.addPass(createLowerAffinePass());

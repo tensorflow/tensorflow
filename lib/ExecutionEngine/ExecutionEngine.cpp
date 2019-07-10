@@ -322,7 +322,7 @@ void packFunctionArguments(llvm::Module *module) {
 ExecutionEngine::~ExecutionEngine() = default;
 
 Expected<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::create(Module m,
+ExecutionEngine::create(ModuleOp m,
                         std::function<llvm::Error(llvm::Module *)> transformer,
                         ArrayRef<StringRef> sharedLibPaths) {
   auto engine = llvm::make_unique<ExecutionEngine>();

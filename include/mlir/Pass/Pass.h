@@ -138,7 +138,8 @@ private:
 /// Pass to transform a module. Derived passes should not inherit from this
 /// class directly, and instead should use the CRTP ModulePass class.
 class ModulePassBase : public Pass {
-  using PassStateT = detail::PassExecutionState<Module, ModuleAnalysisManager>;
+  using PassStateT =
+      detail::PassExecutionState<ModuleOp, ModuleAnalysisManager>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -152,7 +153,7 @@ protected:
   virtual void runOnModule() = 0;
 
   /// Return the current module being transformed.
-  Module getModule() { return getPassState().irAndPassFailed.getPointer(); }
+  ModuleOp getModule() { return getPassState().irAndPassFailed.getPointer(); }
 
   /// Return the MLIR context for the current module being transformed.
   MLIRContext &getContext() { return *getModule().getContext(); }
@@ -171,7 +172,7 @@ protected:
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(Module module, ModuleAnalysisManager &mam);
+  LogicalResult run(ModuleOp module, ModuleAnalysisManager &mam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -268,7 +269,7 @@ struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
 /// Derived module passes are expected to provide the following:
 ///   - A 'void runOnModule()' method.
 template <typename T>
-struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
+struct ModulePass : public detail::PassModel<ModuleOp, T, ModulePassBase> {
   /// Returns the analysis for a child function.
   template <typename AnalysisT> AnalysisT &getFunctionAnalysis(FuncOp f) {
     return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(

@@ -36,7 +36,6 @@ namespace mlir {
 class Attribute;
 class Location;
 class ModuleOp;
-using Module = ModuleOp;
 class Operation;
 
 namespace LLVM {
@@ -49,7 +48,7 @@ namespace LLVM {
 class ModuleTranslation {
 public:
   template <typename T = ModuleTranslation>
-  static std::unique_ptr<llvm::Module> translateModule(Module m) {
+  static std::unique_ptr<llvm::Module> translateModule(ModuleOp m) {
     auto llvmModule = prepareLLVMModule(m);
 
     T translator(m);
@@ -64,14 +63,13 @@ protected:
   // Translate the given MLIR module expressed in MLIR LLVM IR dialect into an
   // LLVM IR module.  The MLIR LLVM IR dialect holds a pointer to an
   // LLVMContext, the LLVM IR module will be created in that context.
-  explicit ModuleTranslation(Module module) : mlirModule(module) {}
+  explicit ModuleTranslation(ModuleOp module) : mlirModule(module) {}
   virtual ~ModuleTranslation() {}
 
   virtual bool convertOperation(Operation &op, llvm::IRBuilder<> &builder);
-  static std::unique_ptr<llvm::Module> prepareLLVMModule(Module m);
+  static std::unique_ptr<llvm::Module> prepareLLVMModule(ModuleOp m);
 
 private:
-
   bool convertFunctions();
   bool convertOneFunction(FuncOp func);
   void connectPHINodes(FuncOp func);
@@ -84,7 +82,7 @@ private:
                                   Location loc);
 
   // Original and translated module.
-  Module mlirModule;
+  ModuleOp mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
 
 protected:

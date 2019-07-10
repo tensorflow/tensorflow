@@ -26,7 +26,7 @@
 #include "mlir/Support/Functional.h"
 using namespace mlir;
 
-Builder::Builder(Module module) : context(module.getContext()) {}
+Builder::Builder(ModuleOp module) : context(module.getContext()) {}
 
 Identifier Builder::getIdentifier(StringRef str) {
   return Identifier::get(str, context);

@@ -58,7 +58,7 @@ inline mlir::MemRefType floatMemRefType(mlir::MLIRContext *context,
 }
 
 /// A basic function builder
-inline mlir::FuncOp makeFunction(mlir::Module module, llvm::StringRef name,
+inline mlir::FuncOp makeFunction(mlir::ModuleOp module, llvm::StringRef name,
                                  llvm::ArrayRef<mlir::Type> types,
                                  llvm::ArrayRef<mlir::Type> resultTypes) {
   auto *context = module.getContext();

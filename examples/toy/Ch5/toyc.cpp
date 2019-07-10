@@ -102,7 +102,7 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
   return parser.ParseModule();
 }
 
-mlir::LogicalResult optimize(mlir::Module module) {
+mlir::LogicalResult optimize(mlir::ModuleOp module) {
   mlir::PassManager pm;
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createShapeInferencePass());
@@ -115,7 +115,7 @@ mlir::LogicalResult optimize(mlir::Module module) {
   return pm.run(module);
 }
 
-mlir::LogicalResult lowerDialect(mlir::Module module, bool OnlyLinalg) {
+mlir::LogicalResult lowerDialect(mlir::ModuleOp module, bool OnlyLinalg) {
   mlir::PassManager pm;
   pm.addPass(createEarlyLoweringPass());
   pm.addPass(mlir::createCanonicalizerPass());

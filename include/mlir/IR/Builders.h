@@ -26,7 +26,6 @@ namespace mlir {
 class AffineExpr;
 class BlockAndValueMapping;
 class ModuleOp;
-using Module = ModuleOp;
 class UnknownLoc;
 class FileLineColLoc;
 class Type;
@@ -58,7 +57,7 @@ class UnitAttr;
 class Builder {
 public:
   explicit Builder(MLIRContext *context) : context(context) {}
-  explicit Builder(Module module);
+  explicit Builder(ModuleOp module);
 
   MLIRContext *getContext() const { return context; }
 

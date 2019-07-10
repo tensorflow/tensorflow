@@ -150,7 +150,7 @@ private:
 // The types in comments give the actual types expected/returned but the API
 // uses void pointers. This is fine as they have the same linkage in C.
 void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
-  Module module = getModule();
+  ModuleOp module = getModule();
   Builder builder(module);
   if (!module.getNamedFunction(cuModuleLoadName)) {
     module.push_back(

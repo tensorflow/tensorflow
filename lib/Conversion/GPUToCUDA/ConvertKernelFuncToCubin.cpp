@@ -139,7 +139,7 @@ LogicalResult
 GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   Builder builder(function.getContext());
 
-  OwningModuleRef module = Module::create(function.getLoc());
+  OwningModuleRef module = ModuleOp::create(function.getLoc());
 
   // TODO(herhut): Also handle called functions.
   module->push_back(function.clone());

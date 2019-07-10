@@ -34,7 +34,7 @@ using namespace mlir;
 
 // Adds a one-block function named as `spirv_module` to `module` and returns the
 // block. The created block will be terminated by `std.return`.
-Block *createOneBlockFunction(Builder builder, Module module) {
+Block *createOneBlockFunction(Builder builder, ModuleOp module) {
   auto fnType = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
   auto fn = FuncOp::create(builder.getUnknownLoc(), "spirv_module", fnType);
   module.push_back(fn);
@@ -80,7 +80,7 @@ OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
   // converted SPIR-V ModuleOp inside a MLIR module. This should be changed to
   // return the SPIR-V ModuleOp directly after module and function are migrated
   // to be general ops.
-  OwningModuleRef module(Module::create(
+  OwningModuleRef module(ModuleOp::create(
       FileLineColLoc::get(inputFilename, /*line=*/0, /*column=*/0, context)));
   Block *block = createOneBlockFunction(builder, module.get());
   block->push_front(spirvModule->getOperation());

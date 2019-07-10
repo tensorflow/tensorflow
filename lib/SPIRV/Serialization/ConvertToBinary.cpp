@@ -31,7 +31,7 @@
 
 using namespace mlir;
 
-LogicalResult serializeModule(Module module, StringRef outputFilename) {
+LogicalResult serializeModule(ModuleOp module, StringRef outputFilename) {
   if (!module)
     return failure();
 
@@ -73,6 +73,6 @@ LogicalResult serializeModule(Module module, StringRef outputFilename) {
 
 static TranslateFromMLIRRegistration
     registration("serialize-spirv",
-                 [](Module module, StringRef outputFilename) {
+                 [](ModuleOp module, StringRef outputFilename) {
                    return serializeModule(module, outputFilename);
                  });

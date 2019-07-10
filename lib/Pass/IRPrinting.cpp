@@ -80,8 +80,8 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
   }
 
   // Print the given module.
-  assert(llvm::any_isa<Module>(ir) && "unexpected IR unit");
-  llvm::any_cast<Module>(ir).print(out);
+  assert(llvm::any_isa<ModuleOp>(ir) && "unexpected IR unit");
+  llvm::any_cast<ModuleOp>(ir).print(out);
 }
 
 /// Instrumentation hooks.

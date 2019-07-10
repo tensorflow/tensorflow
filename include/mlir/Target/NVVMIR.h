@@ -31,14 +31,13 @@ class Module;
 
 namespace mlir {
 class ModuleOp;
-using Module = ModuleOp;
 
 /// Convert the given MLIR module into NVVM IR. This conversion requires the
 /// registration of the LLVM IR dialect and will extract the LLVM context
 /// from the registered LLVM IR dialect.  In case of error, report it
 /// to the error handler registered with the MLIR context, if any (obtained from
 /// the MLIR module), and return `nullptr`.
-std::unique_ptr<llvm::Module> translateModuleToNVVMIR(Module m);
+std::unique_ptr<llvm::Module> translateModuleToNVVMIR(ModuleOp m);
 
 } // namespace mlir
 

@@ -404,7 +404,7 @@ bool ModuleTranslation::convertFunctions() {
   return false;
 }
 
-std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(Module m) {
+std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(ModuleOp m) {
   auto *dialect = m.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
 

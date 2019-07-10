@@ -37,7 +37,7 @@ using namespace linalg;
 using namespace linalg::common;
 using namespace linalg::intrinsics;
 
-FuncOp makeFunctionWithAMatmulOp(Module module, StringRef name) {
+FuncOp makeFunctionWithAMatmulOp(ModuleOp module, StringRef name) {
   MLIRContext *context = module.getContext();
   auto dynamic2DMemRefType = floatMemRefType<2>(context);
   mlir::FuncOp f = linalg::common::makeFunction(
@@ -109,7 +109,7 @@ TEST_FUNC(execution) {
   // linalg.matmul operation and lower it all the way down to the LLVM IR
   // dialect through partial conversions.
   MLIRContext context;
-  OwningModuleRef module = Module::create(UnknownLoc::get(&context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(&context));
   mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_as_loops");
   lowerToLoops(f);
   convertLinalg3ToLLVM(*module);
