@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -49,7 +50,7 @@ Status EagerKernelExecute(EagerContext* ctx,
                           NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
-                          TensorHandle** retvals, int num_retvals);
+                          absl::Span<TensorHandle*> retvals);
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for

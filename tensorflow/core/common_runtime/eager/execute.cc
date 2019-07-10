@@ -632,13 +632,13 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     ctx->AddKernelToCache(cache_key, kernel.get());
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
-  const int output_dtypes_size = static_cast<int>(output_dtypes.size());
-  if (output_dtypes_size > *num_retvals) {
-    return errors::InvalidArgument("Expecting ", output_dtypes.size(),
+  const size_t num_outputs = static_cast<int>(output_dtypes.size());
+  if (num_outputs > *num_retvals) {
+    return errors::InvalidArgument("Expecting ", num_outputs,
                                    " outputs, but *num_retvals is ",
                                    *num_retvals);
   }
-  *num_retvals = output_dtypes_size;
+  *num_retvals = num_outputs;
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(
       ctx, op, kernel,
       ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr));
@@ -663,7 +663,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     // TODO(apassos) track referenced tensors
   }
 
-  for (int i = 0; i < *num_retvals; ++i) {
+  for (int i = 0; i < num_outputs; ++i) {
     TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
         /* d= */ kernel->OutputDevice(i),
         /* op_device= */ kernel->device(),
@@ -671,16 +671,19 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new ExecuteNode(
-      ctx, op->Inputs(), std::move(kernel), maybe_stats.release(),
-      maybe_step_stats, graph_collector, output_dtypes, retvals, *num_retvals));
+  std::unique_ptr<EagerNode> node(
+      new ExecuteNode(ctx, op->Inputs(), std::move(kernel),
+                      maybe_stats.release(), maybe_step_stats, graph_collector,
+                      output_dtypes, {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
   // performance.
   Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  // Since the operation failed, we need to Unref any outputs that were
+  // allocated.
   if (!s.ok()) {
-    for (int i = 0; i < *num_retvals; ++i) {
+    for (int i = 0; i < num_outputs; ++i) {
       retvals[i]->Unref();
     }
   }
@@ -743,21 +746,6 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                                               tensor.dtype(), recv_device,
                                               nullptr, ctx, result);
   }
-
-  return status;
-}
-
-Status EnqueueAndWait(eager::EagerClient* eager_client,
-                      const std::unique_ptr<eager::EnqueueRequest>& request,
-                      eager::EnqueueResponse* response) {
-  Notification n;
-  Status status;
-  eager_client->EnqueueAsync(request.get(), response,
-                             [&n, &status](const Status& s) {
-                               status = s;
-                               n.Notify();
-                             });
-  n.WaitForNotification();
 
   return status;
 }
@@ -834,12 +822,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   DataTypeVector output_dtypes;
   TF_RETURN_IF_ERROR(GetOutputDTypes(op, &output_dtypes));
 
-  const int output_dtypes_size = static_cast<int>(output_dtypes.size());
-  if (output_dtypes_size != *num_retvals) {
+  const size_t num_outputs = static_cast<int>(output_dtypes.size());
+  if (num_outputs != *num_retvals) {
     return errors::InvalidArgument(
         "num_retvals does not match expected output dtypes");
   }
-  *num_retvals = output_dtypes_size;
+  *num_retvals = num_outputs;
 
   tensorflow::Device* op_device = op->Device();
 
@@ -848,7 +836,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           << " (is async?: " << is_async << ").";
 
   const tensorflow::uint64 id = remote_op->id();
-  for (int i = 0; i < *num_retvals; ++i) {
+  for (int i = 0; i < num_outputs; ++i) {
     // TODO(nareshmodi): Change the callback to instead add the decref to a
     // list of pending decrefs that we can send as a batch with the next
     // execute.
@@ -861,16 +849,18 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // to copy this tensor to this process, the remote end will know the
     // correct device of this handle.
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-        id, i, eager_client, context_id, output_dtypes[i], op_device,
-        output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx,
+        id, i, eager_client, context_id, output_dtypes[i], op_device, ctx,
         &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), eager_client, op->Inputs(), retvals, *num_retvals));
+  std::unique_ptr<EagerNode> node(
+      new eager::RemoteExecuteNode(std::move(request), op_device, eager_client,
+                                   op->Inputs(), {retvals, num_outputs}));
   Status s = is_async ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  // Since the operation failed, we need to Unref any outputs that were
+  // allocated.
   if (!s.ok()) {
-    for (int i = 0; i < *num_retvals; ++i) {
+    for (int i = 0; i < num_outputs; ++i) {
       retvals[i]->Unref();
     }
   }
@@ -1037,7 +1027,7 @@ Status EagerKernelExecute(EagerContext* ctx,
                           NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
-                          TensorHandle** retvals, int num_retvals) {
+                          absl::Span<TensorHandle*> retvals) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
@@ -1140,8 +1130,8 @@ Status EagerKernelExecute(EagerContext* ctx,
       }
     }
   }
-  DCHECK_EQ(num_retvals, outputs.size());
-  for (int i = 0; i < num_retvals; ++i) {
+  DCHECK_EQ(retvals.size(), outputs.size());
+  for (int i = 0; i < retvals.size(); ++i) {
     DCHECK_EQ(kernel->device(), retvals[i]->op_device());
     DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
 
@@ -1163,6 +1153,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
   // make sure that `h` is ready before the copy is actually done.
   std::unique_ptr<EagerNode> node(new CopyToDeviceNode(h, *result, dstd, ctx));
   Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  // Since the operation failed, we need to Unref any outputs that were
+  // allocated.
   if (!s.ok()) {
     (*result)->Unref();
   }
@@ -1243,13 +1235,13 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
 
     PrepareRemoteOp(remote_op, &op);
 
-      std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-          std::move(request), eager_client, op.Inputs(), nullptr, 0));
-      if (ctx->Async()) {
-        TF_RETURN_IF_ERROR(ctx->ExecutorAdd(std::move(node)));
-      } else {
-        TF_RETURN_IF_ERROR(node->Run());
-      }
+    std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
+        std::move(request), nullptr, eager_client, op.Inputs(), {nullptr, 0}));
+    if (ctx->Async()) {
+      TF_RETURN_IF_ERROR(ctx->ExecutorAdd(std::move(node)));
+    } else {
+      TF_RETURN_IF_ERROR(node->Run());
+    }
   }
 
   return Status::OK();
@@ -1310,30 +1302,24 @@ Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
     PrepareRemoteOp(remote_op, &op);
 
     const uint64 id = remote_op->id();
-    if (ctx->Async()) {
+    auto tensor_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
+        id, 0, eager_client, context_id, ctx);
+    if (mirror_dst != nullptr) {
+      TF_RETURN_IF_ERROR(mirror_dst->AddUnshapedRemoteMirror(
+          std::move(tensor_handle_data), device));
+      mirror_dst->Ref();
+      *result = mirror_dst;
+    } else {
       TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-          id, 0, eager_client, context_id, dtype, device,
-          dtype == DT_RESOURCE ? device : nullptr, ctx, result));
+          std::move(tensor_handle_data), dtype, device, ctx, result));
+    }
 
-      std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-          std::move(request), eager_client, op.Inputs(), result, 1));
+    std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
+        std::move(request), device, eager_client, op.Inputs(), {result, 1}));
+    if (ctx->Async()) {
       TF_RETURN_IF_ERROR(ctx->ExecutorAdd(std::move(node)));
     } else {
-      TF_RETURN_IF_ERROR(EnqueueAndWait(eager_client, request, &response));
-
-      auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-          id, 0, response.queue_response(0).shape(0), eager_client, context_id,
-          ctx);
-      if (mirror_dst != nullptr) {
-        TF_RETURN_IF_ERROR(
-            mirror_dst->AddRemoteMirror(std::move(tensor_handle_data), device));
-        mirror_dst->Ref();
-        *result = mirror_dst;
-      } else {
-        TF_RETURN_IF_ERROR(TensorHandle::CreateRemoteHandle(
-            std::move(tensor_handle_data), dtype, device,
-            dtype == DT_RESOURCE ? device : nullptr, ctx, result));
-      }
+      TF_RETURN_IF_ERROR(node->Run());
     }
   }
 

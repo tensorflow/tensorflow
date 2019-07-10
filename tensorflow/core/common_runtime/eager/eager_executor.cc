@@ -33,22 +33,31 @@ void EagerExecutor::EnableAsync() {
 }
 
 Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  DCHECK(thread_) << "EnableAsync should have been called before Add";
-  if (!status_.ok()) {
-    // node will be automatically deleted
-    return status_;
+  Status status;
+
+  // If we are unable to add the node to the queue, we must call Abort. However,
+  // we want to do that outside of the scope of the lock since the Abort may
+  // try to call EagerExecutor::Add()
+  {
+    tensorflow::mutex_lock l(node_queue_mutex_);
+    DCHECK(thread_) << "EnableAsync should have been called before Add";
+    status = status_;
+    if (status.ok()) {
+      node_queue_.push(std::move(node));
+
+      // If there were no previous nodes pending, wake the run thread to start
+      // processing requests again.
+      if (node_queue_.size() == 1) {
+        nodes_pending_.notify_all();
+      }
+
+      return Status::OK();
+    }
   }
 
-  node_queue_.push(std::move(node));
-
-  // If there were no previous nodes pending, wake the run thread to start
-  // processing requests again.
-  if (node_queue_.size() == 1) {
-    nodes_pending_.notify_all();
-  }
-
-  return Status::OK();
+  // Node needs to be aborted since it was not added to the queue
+  node->Abort(status);
+  return status;
 }
 
 tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {

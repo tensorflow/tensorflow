@@ -42,6 +42,10 @@ namespace tensorflow {
 class EagerNode {
  public:
   EagerNode() {}
+  // Nodes should not do any work in their destructor. This is because if the
+  // node is being destructed by the EagerExecutor, then the node queue lock may
+  // be held. Instead opt for calling clean-up code as part of Run() or Abort(),
+  // since one of those are guaranteed to be run.
   virtual ~EagerNode() {}
 
   // Runs the computation corresponding to this node and blocks till the
@@ -74,7 +78,6 @@ class EagerExecutor {
   void EnableAsync();
 
   // Schedules `node` for execution.
-  // Note that Add must be called in monotonically increasing order of node->id.
   Status Add(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.

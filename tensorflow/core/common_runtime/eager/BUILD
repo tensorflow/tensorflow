@@ -248,6 +248,7 @@ cc_library(
         ":kernel_and_device",
         ":tensor_handle",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [

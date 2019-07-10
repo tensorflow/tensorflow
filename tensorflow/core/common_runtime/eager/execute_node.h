@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -36,8 +37,8 @@ class ExecuteNode : public EagerNode {
               core::RefCountPtr<KernelAndDevice> kernel,
               NodeExecStats* maybe_stats, StepStats* maybe_step_stats,
               GraphCollector* graph_collector,
-              const DataTypeVector& output_dtypes, TensorHandle** retvals,
-              int num_retvals)
+              const DataTypeVector& output_dtypes,
+              absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -47,9 +48,9 @@ class ExecuteNode : public EagerNode {
         graph_collector_(graph_collector) {
     // Copy the output handles, since the container for them might get
     // destroyed.
-    for (int i = 0; i < num_retvals; i++) {
-      retvals_.push_back(retvals[i]);
-      retvals_[i]->Ref();
+    for (auto handle : retvals) {
+      handle->Ref();
+      retvals_.push_back(handle);
     }
 
     // This is required to ensure that the tensor handles stay alive across the
@@ -62,7 +63,7 @@ class ExecuteNode : public EagerNode {
   Status Run() override {
     const Status status = EagerKernelExecute(
         ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
-        graph_collector_, retvals_.begin(), retvals_.size());
+        graph_collector_, absl::MakeSpan(retvals_));
     if (!status.ok()) {
       Abort(status);
       return status;

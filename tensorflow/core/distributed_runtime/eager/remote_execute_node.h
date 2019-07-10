@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
@@ -28,19 +29,20 @@ namespace eager {
 // an operation via RPC in a remote EagerService.
 class RemoteExecuteNode : public EagerNode {
  public:
-  RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request,
+  RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
                     EagerClient* eager_client,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
-                    TensorHandle** retvals, int num_retvals)
+                    absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         request_(std::move(request)),
+        device_(device),
         eager_client_(eager_client),
         inputs_(inputs) {
     // Copy the output handles, since the container for them might get
     // destroyed.
-    for (int i = 0; i < num_retvals; i++) {
-      retvals_.push_back(retvals[i]);
-      retvals_[i]->Ref();
+    for (auto handle : retvals) {
+      handle->Ref();
+      retvals_.push_back(handle);
     }
 
     // This is required to ensure that the tensor handles stay alive across the
@@ -67,8 +69,8 @@ class RemoteExecuteNode : public EagerNode {
     }
 
     for (int i = 0; i < retvals_.size(); i++) {
-      Status s =
-          retvals_[i]->SetRemoteShape(response.queue_response(0).shape(i));
+      Status s = retvals_[i]->SetRemoteShape(
+          response.queue_response(0).shape(i), device_);
       if (!s.ok()) {
         retvals_[i]->Poison(s);
       }
@@ -95,6 +97,7 @@ class RemoteExecuteNode : public EagerNode {
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
+  Device* device_;             // Not owned
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
