@@ -625,7 +625,7 @@ def make_zip_of_tests(options,
             report["tf_log"] += traceback.format_exc()
             return None, report
 
-        sess = tf.Session()
+        sess = tf.compat.v1.Session()
         try:
           baseline_inputs, baseline_outputs = (make_test_inputs(
               param_dict_real, sess, inputs, outputs))
