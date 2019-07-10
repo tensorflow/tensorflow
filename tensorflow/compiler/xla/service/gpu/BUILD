@@ -595,9 +595,13 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_algorithm_picker",
-    srcs = ["cudnn_conv_algorithm_picker.cc"],
-    hdrs = ["cudnn_conv_algorithm_picker.h"],
+    name = "gpu_conv_algorithm_picker",
+    srcs = []
+    + if_rocm_is_configured(["miopen_conv_algorithm_picker.cc",])
+    + if_cuda_is_configured(["cudnn_conv_algorithm_picker.cc",]),
+    hdrs = []
+    + if_rocm_is_configured(["miopen_conv_algorithm_picker.h",])
+    + if_cuda_is_configured(["cudnn_conv_algorithm_picker.h",]),
     deps = [
         ":backend_configs",
         ":buffer_comparator",
@@ -619,39 +623,16 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "miopen_conv_algorithm_picker",
-    srcs = ["miopen_conv_algorithm_picker.cc"],
-    hdrs = ["miopen_conv_algorithm_picker.h"],
-    deps = [
-        ":backend_configs",
-        ":buffer_comparator",
-        ":cudnn_conv_runner",
-        ":gpu_executable",
-        ":ir_emission_utils",
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
+    ]) + if_rocm_is_configured([
         ":scratch_allocator",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ]),
 )
 
 cc_library(
@@ -1037,6 +1018,7 @@ cc_library(
         ":cudnn_conv_rewriter",
         ":fusion_merger",
         ":gpu_constants",
+        ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
@@ -1111,7 +1093,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ] + if_cuda_is_configured([
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_fused_conv_rewriter",
         ":cusolver_rewriter",
@@ -1120,11 +1101,11 @@ cc_library(
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
-    ]) + if_rocm_is_configured([
-        ":miopen_conv_algorithm_picker",
+    ])
+    + if_rocm_is_configured([
         "//tensorflow/core:rocm_rocdl_path",
     ]),
-    alwayslink = True,
+    alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
