@@ -134,7 +134,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
-             context_.fwd_primitives_args.size());
+              context_.fwd_primitives_args.size());
     for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
       context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
                                             context_.fwd_primitives_args.at(i));
@@ -166,7 +166,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
-             context_.fwd_primitives_args.size());
+              context_.fwd_primitives_args.size());
     for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
       context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
                                             context_.fwd_primitives_args.at(i));
@@ -387,13 +387,15 @@ class MklConvFwdPrimitive : public MklPrimitive {
           {{MKLDNN_ARG_SRC, *context_.src_mem},
            {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
            {MKLDNN_ARG_BIAS, *context_.bias_mem},
-           {MKLDNN_ARG_DST, *context_.dst_mem}});
+           { MKLDNN_ARG_DST,
+             *context_.dst_mem }});
     } else {
       context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
       context_.fwd_primitives_args.push_back(
           {{MKLDNN_ARG_SRC, *context_.src_mem},
            {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
-           {MKLDNN_ARG_DST, *context_.dst_mem}});
+           { MKLDNN_ARG_DST,
+             *context_.dst_mem }});
     }
     context_.fwd_primitives.push_back(*context_.conv_fwd);
     return;
@@ -804,7 +806,7 @@ class MklConvOp : public OpKernel {
                                        cpu_engine_);
           } else {
             filter.CheckReorderToOpMem(
-               conv_fwd_pd->weights_desc(),
+                conv_fwd_pd->weights_desc(),
                 filter.GetTensorBuffer(filter_out_tensor), cpu_engine_);
           }
           filter_data =
@@ -1181,13 +1183,15 @@ class MklConvOp : public OpKernel {
       net_args.push_back({{MKLDNN_ARG_SRC, src->GetOpMem()},
                           {MKLDNN_ARG_WEIGHTS, filter->GetOpMem()},
                           {MKLDNN_ARG_BIAS, bias->GetOpMem()},
-                          {MKLDNN_ARG_DST, output->GetOpMem()}});
+                          { MKLDNN_ARG_DST,
+                            output->GetOpMem() }});
     } else {
       DCHECK(!fuse_biasadd_);
       net.push_back(convolution_forward(conv_prim_desc));
       net_args.push_back({{MKLDNN_ARG_SRC, src->GetOpMem()},
                           {MKLDNN_ARG_WEIGHTS, filter->GetOpMem()},
-                          {MKLDNN_ARG_DST, output->GetOpMem()}});
+                          { MKLDNN_ARG_DST,
+                            output->GetOpMem() }});
     }
     stream cpu_stream(cpu_engine_);
 
@@ -1707,7 +1711,8 @@ class MklQuantizedConv2DOp
           scaled_bias_->get_desc(), bias_attr);
       net.push_back(mkldnn::reorder(reorder_desc));
       net_args.push_back({{MKLDNN_ARG_FROM, *input_bias_},
-                          {MKLDNN_ARG_TO, *scaled_bias_}});
+                          { MKLDNN_ARG_TO,
+                            *scaled_bias_ }});
 
       DCHECK_EQ(net.size(), net_args.size());
 
@@ -1929,7 +1934,8 @@ class MklQuantizedConv2DSumReluOp
 
     net.push_back(mkldnn::reorder(reorder_desc));
     net_args.push_back({{MKLDNN_ARG_FROM, *summand_},
-                        {MKLDNN_ARG_TO, *dst_}});
+                        { MKLDNN_ARG_TO,
+                          *dst_ }});
     DCHECK_EQ(net.size(), net_args.size());
 
     stream cpu_stream(this->cpu_engine_);
