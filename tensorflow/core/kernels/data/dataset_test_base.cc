@@ -22,85 +22,60 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-constexpr char kNewLine[] = "\n";
-
-string CompressionName(CompressionType compression_type) {
+string ToString(CompressionType compression_type) {
   switch (compression_type) {
-    case ZLIB:
+    case CompressionType::ZLIB:
       return "ZLIB";
-    case GZIP:
+    case CompressionType::GZIP:
       return "GZIP";
-    case RAW:
+    case CompressionType::RAW:
       return "RAW";
-    case UNCOMPRESSED:
+    case CompressionType::UNCOMPRESSED:
       return "";
-    default:
-      LOG(WARNING) << "Undefined compression type: " << compression_type;
-      return "UNDEFINED";
   }
+  return "UNDEFINED";
 }
 
 io::ZlibCompressionOptions GetZlibCompressionOptions(
     CompressionType compression_type) {
   switch (compression_type) {
-    case ZLIB:
+    case CompressionType::ZLIB:
       return io::ZlibCompressionOptions::DEFAULT();
-    case GZIP:
+    case CompressionType::GZIP:
       return io::ZlibCompressionOptions::GZIP();
-    case RAW:
+    case CompressionType::RAW:
       return io::ZlibCompressionOptions::RAW();
     default:
-      LOG(WARNING) << "Undefined zlib compression type: " << compression_type;
-      return io::ZlibCompressionOptions::DEFAULT();
+      LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
+                   << ToString(compression_type);
   }
+  return io::ZlibCompressionOptions::DEFAULT();
 }
 
-Status CreateFile(const string& filename, const std::vector<string>& text,
-                  int input_buffer_size, int output_buffer_size,
-                  const CompressionType& compression_type) {
+Status WriteDataToFile(const string& filename, const char* data,
+                       int input_buffer_size, int output_buffer_size,
+                       const CompressionType& compression_type) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
   TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
-  if (compression_type == UNCOMPRESSED) {
-    for (const string& line : text) {
-      TF_RETURN_IF_ERROR(file_writer->Append(line));
-      TF_RETURN_IF_ERROR(file_writer->Append(kNewLine));
-    }
-  } else if (compression_type == ZLIB || compression_type == GZIP) {
+  if (compression_type == CompressionType::UNCOMPRESSED) {
+    TF_RETURN_IF_ERROR(file_writer->Append(data));
+  } else if (compression_type == CompressionType::ZLIB ||
+             compression_type == CompressionType::GZIP) {
     auto zlib_compression_options = GetZlibCompressionOptions(compression_type);
     io::ZlibOutputBuffer out(file_writer.get(), input_buffer_size,
                              output_buffer_size, zlib_compression_options);
     TF_RETURN_IF_ERROR(out.Init());
-    for (const string& line : text) {
-      TF_RETURN_IF_ERROR(out.Append(line));
-      TF_RETURN_IF_ERROR(out.Append(kNewLine));
-    }
+    TF_RETURN_IF_ERROR(out.Append(data));
     TF_RETURN_IF_ERROR(out.Close());
   } else {
     return tensorflow::errors::InvalidArgument("Unsupported compression_type: ",
-                                               compression_type);
+                                               ToString(compression_type));
   }
 
   TF_RETURN_IF_ERROR(file_writer->Flush());
   TF_RETURN_IF_ERROR(file_writer->Close());
 
-  return Status::OK();
-}
-
-Status CreateMultiTextFiles(const std::vector<string>& filenames,
-                            const std::vector<string>& multi_texts,
-                            int input_buffer_size, int output_buffer_size,
-                            const CompressionType& compression_type) {
-  int lines_per_file = multi_texts.size() / filenames.size();
-  auto first = multi_texts.begin();
-  for (int i = 0; i < filenames.size(); ++i) {
-    auto last =
-        i == filenames.size() - 1 ? multi_texts.end() : first + lines_per_file;
-    std::vector<string> text(first, last);
-    TF_RETURN_IF_ERROR(CreateFile(filenames[i], text, input_buffer_size,
-                                  output_buffer_size, compression_type));
-    first += lines_per_file;
-  }
   return Status::OK();
 }
 

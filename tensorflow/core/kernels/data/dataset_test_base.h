@@ -45,36 +45,23 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-enum CompressionType : int { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
 
-// Gets the compression name.
-string CompressionName(CompressionType compression_type);
+// Returns a string representation for the given compression type.
+string ToString(CompressionType compression_type);
 
 // Gets the specified zlib compression options according to the compression
-// type. Note that `CompressionType : UNCOMPRESSED` is not supported because
-// `ZlibCompressionOptions` does not have the option for uncompressed data.
+// type. Note that `CompressionType::UNCOMPRESSED` is not supported because
+// `ZlibCompressionOptions` does not have an option.
 io::ZlibCompressionOptions GetZlibCompressionOptions(
     CompressionType compression_type);
 
-// Saves the input text into the file with the specified compression.
-Status CreateFile(const string& filename, const std::vector<string>& text,
-                  int input_buffer_size, int output_buffer_size,
-                  const CompressionType& compression_type);
-
-// Saves the input texts into multiple text files with the specified
-// compression.
-Status CreateMultiTextFiles(const std::vector<string>& filenames,
-                            const std::vector<string>& multi_texts,
-                            int input_buffer_size, int output_buffer_size,
-                            const CompressionType& compression_type);
-
-// Saves the input contents into multiple fixed length record files with the
-// specified compression.
-Status CreateMultiFixedLengthRecordFiles(
-    const std::vector<string>& filenames, const string& header,
-    const string& footer, const std::vector<string>& contents,
-    int input_buffer_size, int output_buffer_size,
-    const CompressionType& compression_type);
+// Writes the input data into the file with the specified compression.
+// `input_buffer_size` is the size of z_stream.next_in buffer;
+// `output_buffer_size` is the size of z_stream.next_out buffer.
+Status WriteDataToFile(const string& filename, const char* data,
+                       int input_buffer_size, int output_buffer_size,
+                       const CompressionType& compression_type);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {

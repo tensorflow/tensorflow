@@ -47,6 +47,7 @@ class TextLineDatasetOpTest : public DatasetOpsTestBase {
 
 struct TestCase {
   std::vector<string> filenames;
+  std::vector<string> texts;
   CompressionType compression_type;
   int64 buffer_size;
   std::vector<Tensor> expected_outputs;
@@ -71,7 +72,10 @@ TestCase TestCase1() {
   return {
       /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
                      absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
-      /*compression_type*/ ZLIB,
+      /*texts*/
+      {absl::StrCat("hello world\n", "11223334455\n"),
+       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+      /*compression_type*/ CompressionType::ZLIB,
       /*buffer_size*/ 10,
       /*expected_outputs*/
       {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
@@ -91,40 +95,55 @@ TestCase TestCase1() {
 
 // Test case 2: multiple text files with GZIP compression.
 TestCase TestCase2() {
-  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
-                         absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
-          /*compression_type*/ GZIP,
-          /*buffer_size*/ 10,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"hello world"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"11223334455"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"abcd, EFgH"})},
-          /*expected_output_dtypes*/ {DT_STRING},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+  return {
+      /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
+                     absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
+      /*texts*/
+      {absl::StrCat("hello world\n", "11223334455\n"),
+       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+      /*compression_type*/ CompressionType::GZIP,
+      /*buffer_size*/ 10,
+      /*expected_outputs*/
+      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"hello world"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"11223334455"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"abcd, EFgH"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"           "}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
+      /*expected_output_dtypes*/ {DT_STRING},
+      /*expected_output_shapes*/ {PartialTensorShape({})},
+      /*expected_cardinality*/ kUnknownCardinality,
+      /*breakpoints*/ {0, 2, 6}};
 }
 
-// Test case 3: a single text file without compression.
+// Test case 3: multiple text files without compression.
 TestCase TestCase3() {
-  return {/*filenames*/ {
-              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED")},
-          /*compression_type*/ UNCOMPRESSED,
-          /*buffer_size*/ 10,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"hello world"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"11223334455"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                    {"abcd, EFgH"})},
-          /*expected_output_dtypes*/ {DT_STRING},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+  return {
+      /*filenames*/ {
+          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
+          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
+      /*texts*/
+      {absl::StrCat("hello world\n", "11223334455\n"),
+       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+      /*compression_type*/ CompressionType::UNCOMPRESSED,
+      /*buffer_size*/ 10,
+      /*expected_outputs*/
+      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"hello world"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"11223334455"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"abcd, EFgH"}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
+                                                {"           "}),
+       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
+      /*expected_output_dtypes*/ {DT_STRING},
+      /*expected_output_shapes*/ {PartialTensorShape({})},
+      /*expected_cardinality*/ kUnknownCardinality,
+      /*breakpoints*/ {0, 2, 6}};
 }
 
 class ParameterizedTextLineDatasetOpTest
@@ -138,9 +157,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, GetNext) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -149,7 +172,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, GetNext) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -191,9 +214,13 @@ TEST_F(TextLineDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -202,7 +229,7 @@ TEST_F(TextLineDatasetOpTest, DatasetNodeName) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -227,9 +254,13 @@ TEST_F(TextLineDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -238,7 +269,7 @@ TEST_F(TextLineDatasetOpTest, DatasetTypeString) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -264,9 +295,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -275,7 +310,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputDtypes) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -301,9 +336,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -312,7 +351,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputShapes) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -338,9 +377,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -349,7 +392,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -374,9 +417,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -385,7 +432,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetSave) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -416,9 +463,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -427,7 +478,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -461,9 +512,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -472,7 +527,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputShapes) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -506,9 +561,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -517,7 +576,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputPrefix) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
@@ -552,9 +611,13 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::vector<string> multi_texts = ToStringVector(test_case.expected_outputs);
-  TF_ASSERT_OK(CreateMultiTextFiles(
-      test_case.filenames, multi_texts, test_case.buffer_size,
-      test_case.buffer_size, test_case.compression_type));
+  EXPECT_EQ(test_case.filenames.size(), test_case.texts.size());
+  for (int i = 0; i < test_case.filenames.size(); ++i) {
+    TF_ASSERT_OK(WriteDataToFile(test_case.filenames[i],
+                                 test_case.texts[i].data(),
+                                 test_case.buffer_size, test_case.buffer_size,
+                                 test_case.compression_type));
+  }
 
   std::unique_ptr<OpKernel> text_line_dataset_kernel;
   TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
@@ -563,7 +626,7 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Roundtrip) {
   Tensor filenames =
       CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
   Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {CompressionName(test_case.compression_type)});
+      TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
