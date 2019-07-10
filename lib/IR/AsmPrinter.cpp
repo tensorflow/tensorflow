@@ -1622,7 +1622,7 @@ void ModulePrinter::print(ModuleOp module) {
   auto *moduleBody = module.getBody();
   for (auto &op : llvm::make_range(moduleBody->begin(), --moduleBody->end())) {
     opPrinter.print(&op);
-    os << '\n';
+    os << "\n\n";
   }
 }
 

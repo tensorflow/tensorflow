@@ -236,12 +236,9 @@ void FuncOp::print(OpAsmPrinter *p) {
   }
 
   // Print the body if this is not an external function.
-  if (!isExternal()) {
+  if (!isExternal())
     p->printRegion(getBody(), /*printEntryBlockArgs=*/false,
                    /*printBlockTerminators=*/true);
-    *p << '\n';
-  }
-  *p << '\n';
 }
 
 LogicalResult FuncOp::verify() {
