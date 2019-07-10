@@ -26,6 +26,7 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -218,6 +219,14 @@ string NcclManager::GenerateCommunicatorKey() {
   return string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
 }
 
+void NcclManager::CreateStream(se::StreamExecutor* executor) {
+  if (device_to_stream_.count(executor) == 0) {
+    auto item = device_to_stream_.emplace(executor, new se::Stream(executor));
+    item.first->second->Init();
+    VLOG(2) << "Created nccl stream";
+  }
+}
+
 Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
                                     NcclManager::Communicator** communicator) {
   // Sort by executor to make ordering of executors deterministic.
@@ -310,8 +319,16 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
-      nccl_stream->stream.reset(new se::Stream(executor));
-      nccl_stream->stream->Init();
+      if (device_to_stream_.count(executor) == 1) {
+        nccl_stream->stream.reset(device_to_stream_[executor]);
+        device_to_stream_.erase(executor);
+        VLOG(2) << "Using previously created nccl stream";
+      }
+      else {
+        nccl_stream->stream.reset(new se::Stream(executor));
+        nccl_stream->stream->Init();
+        VLOG(2) << "No previous nccl stream available, creating new";
+      }
 
       streams.emplace_back(nccl_stream);
       used_streams.insert(nccl_stream);

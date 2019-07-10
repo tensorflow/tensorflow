@@ -174,6 +174,8 @@ class NcclManager {
   // function.
   void SignalMultiNodeReady(const string& collective_key);
 
+  void CreateStream(se::StreamExecutor*);
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
@@ -226,6 +228,9 @@ class NcclManager {
   // include the same device.
   absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
       device_to_comm_streams_ GUARDED_BY(mu_);
+
+  std::map<se::StreamExecutor*, se::Stream*>
+      device_to_stream_;
 
   std::vector<std::unique_ptr<Communicator>> communicators_;
 
