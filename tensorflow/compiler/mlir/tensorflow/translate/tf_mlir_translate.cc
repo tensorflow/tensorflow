@@ -119,7 +119,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
               break;
             default:
               inst.emitWarning()
-                  << "Skipping splat converstion for "
+                  << "Skipping splat conversion for "
                   << "an unsupported attribute type " << element_type;
               continue;
           }
