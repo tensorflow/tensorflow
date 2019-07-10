@@ -76,7 +76,7 @@ TestCase TestCase1() {
   return {
       /*input_tensors*/ {DatasetOpsTestBase::CreateTensor<int64>(
           TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-      /*file_name*/ "cache_data",
+      /*file_name*/ absl::StrCat(testing::TmpDir(), "/cache_data"),
       /*expected_outputs*/
       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {0, 1, 2}),
        DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {3, 4, 5}),
@@ -91,7 +91,7 @@ TestCase TestCase1() {
 TestCase TestCase2() {
   return {/*input_tensors*/ {
               DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
-          /*file_name*/ "empty_cache_data",
+          /*file_name*/ absl::StrCat(testing::TmpDir(), "/empty_cache_data"),
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
