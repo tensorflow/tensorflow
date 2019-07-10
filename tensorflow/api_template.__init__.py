@@ -56,6 +56,10 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
+
+# Import compat before trying to import summary from tensorboard, so that
+# reexport_tf_summary can get compat from sys.modules
+_current_module.compat.v2.compat.v1 = _current_module.compat.v1
 try:
   from tensorboard.summary._tf import summary
   _current_module.__path__ = (
@@ -150,6 +154,4 @@ if hasattr(_current_module, 'keras'):
   setattr(_current_module, "metrics", metrics)
   setattr(_current_module, "optimizers", optimizers)
   setattr(_current_module, "initializers", initializers)
-
-_current_module.compat.v2.compat.v1 = _current_module.compat.v1
 # pylint: enable=undefined-variable
