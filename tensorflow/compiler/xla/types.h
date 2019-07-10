@@ -46,10 +46,9 @@ using complex128 = std::complex<double>;
 using ::Eigen::half;
 
 namespace gpu {
-// GpuVersion is used to abstract GPU hardware version.
-// On CUDA platform, it comprises CUDA compute capability which comprises a pair
-// of integers denoting major verison and minor version.
-// On ROCm platform, it comprises AMD GCN ISA version which is an integer.
+// GpuVersion is used to abstract Gpu hardware version. On Cuda platform,
+// it comprises a pair of integers denoting major and minor version.
+// On ROCm platform, it comprises one integer for AMD GCN ISA version.
 using GpuVersion = absl::variant<std::pair<int, int>, int>;
 }  // namespace gpu
 }  // namespace xla
