@@ -576,10 +576,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
