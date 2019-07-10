@@ -6,6 +6,10 @@
 * TF-ROCm integrates the ROCm RCCL library as the collective communication routines for mGPU computation
 * TF-ROCm enables the XLA backend starting 1.14.0 release, currently, it's functionality-complete, performance optimization in progress. 
 
+## Known issues
+
+* we recommend to disable MIOpen 2.0 ASM kernels for GFX803 GPUs using the environment variable: `export MIOPEN_DEBUG_GCN_ASM_KERNELS=0`
+
 ## Major Features and Improvements
 
 * This is the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
