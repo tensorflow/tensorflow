@@ -133,7 +133,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #ifdef ENABLE_MKLDNN_V1
-    CHECK_EQ(context_.fwd_primitives.size(),
+    DCHECK_EQ(context_.fwd_primitives.size(),
              context_.fwd_primitives_args.size());
     for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
       context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
@@ -165,7 +165,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #ifdef ENABLE_MKLDNN_V1
-    CHECK_EQ(context_.fwd_primitives.size(),
+    DCHECK_EQ(context_.fwd_primitives.size(),
              context_.fwd_primitives_args.size());
     for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
       context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
@@ -680,7 +680,7 @@ class MklConvOp : public OpKernel {
 #ifdef ENABLE_MKLDNN_V1
       auto mkl_fmt_tag = MklTensorFormatToMklDnnDataFormat(tf_fmt);
       // NOTE: `mkl_fmt_tag` will be `format_tag::undef` for ReLU
-      CHECK_NE(mkl_fmt_tag, memory::format_tag::undef);
+      DCHECK_NE(mkl_fmt_tag, memory::format_tag::undef);
 #endif
 
       // If input is in MKL layout, then simply grab the layout; otherwise,
@@ -1191,7 +1191,7 @@ class MklConvOp : public OpKernel {
     }
     stream cpu_stream(cpu_engine_);
 
-    CHECK_EQ(net.size(), net_args.size());
+    DCHECK_EQ(net.size(), net_args.size());
     for (size_t i = 0; i < net.size(); ++i) {
       net.at(i).execute(cpu_stream, net_args.at(i));
     }
@@ -1709,7 +1709,7 @@ class MklQuantizedConv2DOp
       net_args.push_back({{MKLDNN_ARG_FROM, *input_bias_},
                           {MKLDNN_ARG_TO, *scaled_bias_}});
 
-      CHECK_EQ(net.size(), net_args.size());
+      DCHECK_EQ(net.size(), net_args.size());
 
       stream cpu_stream(this->cpu_engine_);
       for (size_t i = 0; i < net.size(); ++i) {
@@ -1930,7 +1930,7 @@ class MklQuantizedConv2DSumReluOp
     net.push_back(mkldnn::reorder(reorder_desc));
     net_args.push_back({{MKLDNN_ARG_FROM, *summand_},
                         {MKLDNN_ARG_TO, *dst_}});
-    CHECK_EQ(net.size(), net_args.size());
+    DCHECK_EQ(net.size(), net_args.size());
 
     stream cpu_stream(this->cpu_engine_);
     for (size_t i = 0; i < net.size(); ++i) {
