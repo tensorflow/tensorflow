@@ -340,7 +340,7 @@ PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
 
 /// Create an analysis slice for the given child function.
 FunctionAnalysisManager ModuleAnalysisManager::slice(FuncOp func) {
-  assert(func.getModule() == moduleAnalyses.getIRUnit() &&
+  assert(func.getOperation()->getParentOp() == moduleAnalyses.getIRUnit() &&
          "function has a different parent module");
   auto it = functionAnalyses.find(func);
   if (it == functionAnalyses.end()) {

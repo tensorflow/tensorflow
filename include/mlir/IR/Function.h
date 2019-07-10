@@ -27,8 +27,6 @@
 #include "llvm/ADT/SmallString.h"
 
 namespace mlir {
-class ModuleOp;
-
 //===--------------------------------------------------------------------===//
 // Function Operation.
 //===--------------------------------------------------------------------===//
@@ -59,9 +57,6 @@ public:
   static void build(Builder *builder, OperationState *result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs,
                     ArrayRef<NamedAttributeList> argAttrs);
-
-  /// Get the parent module.
-  ModuleOp getModule();
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser *parser, OperationState *result);

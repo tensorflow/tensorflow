@@ -441,14 +441,14 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
             createIndexConstant(rewriter, op->getLoc(), elementSize)});
 
     // Insert the `malloc` declaration if it is not already present.
-    FuncOp mallocFunc =
-        op->getParentOfType<FuncOp>().getModule().getNamedFunction("malloc");
+    auto module = op->getParentOfType<ModuleOp>();
+    FuncOp mallocFunc = module.getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType =
           rewriter.getFunctionType(getIndexType(), getVoidPtrType());
       mallocFunc =
           FuncOp::create(rewriter.getUnknownLoc(), "malloc", mallocType);
-      op->getParentOfType<FuncOp>().getModule().push_back(mallocFunc);
+      module.push_back(mallocFunc);
     }
 
     // Allocate the underlying buffer and store a pointer to it in the MemRef
@@ -503,12 +503,11 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
     OperandAdaptor<DeallocOp> transformed(operands);
 
     // Insert the `free` declaration if it is not already present.
-    FuncOp freeFunc =
-        op->getParentOfType<FuncOp>().getModule().getNamedFunction("free");
+    FuncOp freeFunc = op->getParentOfType<ModuleOp>().getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(getVoidPtrType(), {});
       freeFunc = FuncOp::create(rewriter.getUnknownLoc(), "free", freeType);
-      op->getParentOfType<FuncOp>().getModule().push_back(freeFunc);
+      op->getParentOfType<ModuleOp>().push_back(freeFunc);
     }
 
     auto type = transformed.memref()->getType().cast<LLVM::LLVMType>();

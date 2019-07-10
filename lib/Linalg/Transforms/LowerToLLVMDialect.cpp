@@ -575,7 +575,7 @@ public:
 // types and returns pointers to the output types.
 static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
   auto implFnName = (libFn.getName().str() + "_impl");
-  auto module = libFn.getModule();
+  auto module = libFn.getParentOfType<ModuleOp>();
   if (auto f = module.getNamedFunction(implFnName)) {
     return f;
   }

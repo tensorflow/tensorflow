@@ -73,12 +73,6 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
       result->addAttribute(getArgAttrName(i, argAttrName), argDict);
 }
 
-/// Get the parent module.
-ModuleOp FuncOp::getModule() {
-  auto *parent = getOperation()->getContainingRegion();
-  return parent ? parent->getParentOfType<ModuleOp>() : nullptr;
-}
-
 /// Parsing/Printing methods.
 static ParseResult
 parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,

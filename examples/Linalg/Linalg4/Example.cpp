@@ -69,7 +69,7 @@ TEST_FUNC(matmul_tiled_loops) {
   lowerToTiledLoops(f, {8, 9});
   PassManager pm;
   pm.addPass(createLowerLinalgLoadStorePass());
-  if (succeeded(pm.run(f.getModule())))
+  if (succeeded(pm.run(f.getParentOfType<mlir::ModuleOp>())))
     cleanupAndPrintFunction(f);
 
   // clang-format off

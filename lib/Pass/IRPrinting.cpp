@@ -66,7 +66,7 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
 
     // Print the function name and a newline before the Module.
     out << " (function: " << function.getName() << ")\n";
-    function.getModule().print(out);
+    function.getParentOfType<ModuleOp>().print(out);
     return;
   }
 

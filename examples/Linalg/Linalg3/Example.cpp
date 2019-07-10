@@ -173,7 +173,7 @@ TEST_FUNC(matmul_as_matvec_as_affine) {
   lowerToLoops(f);
   PassManager pm;
   pm.addPass(createLowerLinalgLoadStorePass());
-  if (succeeded(pm.run(f.getModule())))
+  if (succeeded(pm.run(f.getParentOfType<mlir::ModuleOp>())))
     cleanupAndPrintFunction(f);
 
   // clang-format off

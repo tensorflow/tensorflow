@@ -93,8 +93,8 @@ inline void cleanupAndPrintFunction(mlir::FuncOp f) {
     }
   };
   auto pm = cleanupPassManager();
-  check(mlir::verify(f.getModule()));
-  check(pm->run(f.getModule()));
+  check(mlir::verify(f.getParentOfType<mlir::ModuleOp>()));
+  check(pm->run(f.getParentOfType<mlir::ModuleOp>()));
   if (printToOuts)
     f.print(llvm::outs());
 }
