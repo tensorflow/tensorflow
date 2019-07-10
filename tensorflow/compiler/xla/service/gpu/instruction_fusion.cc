@@ -28,19 +28,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
-  if (constant->opcode() != HloOpcode::kConstant ||
-      !ShapeUtil::IsScalar(constant->shape())) {
-    return false;
-  }
-  auto type = constant->shape().element_type();
-  return type == F16 || type == F32 || type == F64;
-}
-
-}  // namespace
-
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
   // We say that floating-point division is cheap on the GPU.
