@@ -61,11 +61,20 @@ Status CreateFile(const string& filename, const std::vector<string>& text,
                   int input_buffer_size, int output_buffer_size,
                   const CompressionType& compression_type);
 
-// Saves the input texts into multiple files with the specified compression.
+// Saves the input texts into multiple text files with the specified
+// compression.
 Status CreateMultiTextFiles(const std::vector<string>& filenames,
                             const std::vector<string>& multi_texts,
                             int input_buffer_size, int output_buffer_size,
                             const CompressionType& compression_type);
+
+// Saves the input contents into multiple fixed length record files with the
+// specified compression.
+Status CreateMultiFixedLengthRecordFiles(
+    const std::vector<string>& filenames, const string& header,
+    const string& footer, const std::vector<string>& contents,
+    int input_buffer_size, int output_buffer_size,
+    const CompressionType& compression_type);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
