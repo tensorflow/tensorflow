@@ -2344,6 +2344,20 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         elems_seen_per_dim[0] = shape.dimensions(0);
         lexer_.Lex();
+        // Fill data with deterministic (garbage) values. Use static to avoid
+        // creating identical constants which could potentially got CSE'ed
+        // away. This is a best-effort approach to make sure replaying a HLO
+        // gives us same optimized HLO graph.
+        static uint32 data = 0;
+        uint32* raw_data = static_cast<uint32*>(literal->untyped_data());
+        for (int64 i = 0; i < literal->size_bytes() / 4; ++i) {
+          raw_data[i] = data++;
+        }
+        uint8* raw_data_int8 = static_cast<uint8*>(literal->untyped_data());
+        static uint8 data_int8 = 0;
+        for (int64 i = 0; i < literal->size_bytes() % 4; ++i) {
+          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++;
+        }
         break;
       }
       case TokKind::kComma:
