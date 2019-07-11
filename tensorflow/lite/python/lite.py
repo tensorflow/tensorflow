@@ -402,7 +402,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
                        "under development.")
 
     frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-        self._funcs[0])
+        self._funcs[0], lower_control_flow=False)
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
@@ -809,7 +809,7 @@ class TFLiteConverter(TFLiteConverterBase):
       concrete_func = function.get_concrete_function()
 
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-          concrete_func)
+          concrete_func, lower_control_flow=False)
       _set_tensor_shapes(frozen_func.inputs, input_shapes)
       return cls(
           frozen_func.graph.as_graph_def(),

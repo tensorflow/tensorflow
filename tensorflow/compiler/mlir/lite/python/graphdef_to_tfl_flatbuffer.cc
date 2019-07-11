@@ -43,6 +43,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT64;
     case toco::IODataType::STRING:
       return DT_STRING;
+    case toco::IODataType::BOOL:
+      return DT_BOOL;
     default:
       return DT_INVALID;
   }
