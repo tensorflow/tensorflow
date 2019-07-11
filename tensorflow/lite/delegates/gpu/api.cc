@@ -62,11 +62,9 @@ ObjectType GetType(const TensorObject& object) {
   return absl::visit(ObjectTypeGetter{}, object);
 }
 
-bool IsValid(const TensorObject& object) {
-  return absl::visit(ObjectValidityChecker{DataType::UNKNOWN}, object);
-}
+bool IsValid(const TensorObjectDef& def) { return IsValid(def.object_def); }
 
-bool IsCompatible(const TensorObjectDef& def, const TensorObject& object) {
+bool IsValid(const TensorObjectDef& def, const TensorObject& object) {
   return GetType(object) == def.object_def.object_type &&
          absl::visit(ObjectValidityChecker{def.object_def.data_type}, object);
 }
