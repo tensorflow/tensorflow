@@ -30,6 +30,10 @@ os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 PIP_PACKAGE_QUERY_EXPRESSION = (
     "deps(//tensorflow/tools/pip_package:build_pip_package)")
 
+RELEASE_PATCH_FLAGS = (
+  " --incompatible_package_name_is_a_function=false"
+  " --incompatible_remove_native_http_archive=false")
+
 
 def GetBuild(dir_base):
   """Get the list of BUILD file all targets recursively startind at dir_base."""
@@ -127,7 +131,7 @@ def main():
 
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
+      ["bazel", "cquery", RELEASE_PATCH_FLAGS, PIP_PACKAGE_QUERY_EXPRESSION])
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   pip_package_dependencies_list = [
       x.split()[0] for x in pip_package_dependencies_list
@@ -137,7 +141,7 @@ def main():
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+      ["bazel", "cquery", RELEASE_PATCH_FLAGS, PY_TEST_QUERY_EXPRESSION])
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   tf_py_test_dependencies_list = [
       x.split()[0] for x in tf_py_test_dependencies.strip().split("\n")
@@ -174,7 +178,8 @@ def main():
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, %s), %s)" %
                     (" + ".join(PYTHON_TARGETS), missing_dependency))
-      affected_tests = subprocess.check_output(["bazel", "cquery", rdep_query])
+      affected_tests = subprocess.check_output(
+          ["bazel", "cquery", RELEASE_PATCH_FLAGS, rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 

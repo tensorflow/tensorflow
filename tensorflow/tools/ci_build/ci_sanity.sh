@@ -22,6 +22,8 @@
 #  --incremental  Performs checks incrementally, by using the files changed in
 #                 the latest commit
 
+set -ex
+
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
@@ -442,6 +444,8 @@ do_bazel_nobuild() {
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/examples/android/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BAZEL_FLAGS="${BAZEL_FLAGS} --incompatible_package_name_is_a_function=false"
+  BAZEL_FLAGS="${BAZEL_FLAGS} --incompatible_remove_native_http_archive=false"
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
