@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_VARIABLE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_GL_VARIABLE_H_
 
 #include <array>
 #include <cstdint>
@@ -27,7 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-struct UniformParameter {
+struct Variable {
   using ValueType = absl::variant<int32_t, int2, int4, uint32_t, uint4, float,
                                   float2, float4, std::vector<int2>>;
 
@@ -39,4 +39,4 @@ struct UniformParameter {
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_VARIABLE_H_

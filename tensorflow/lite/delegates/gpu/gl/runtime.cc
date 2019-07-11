@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -187,7 +188,7 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
 }
 
 Status Runtime::AddProgram(const GlShader& shader,
-                           const std::vector<UniformParameter>& parameters,
+                           const std::vector<Variable>& parameters,
                            const std::vector<Object>& objects,
                            const uint3& num_workgroups) {
   GlProgram program;
