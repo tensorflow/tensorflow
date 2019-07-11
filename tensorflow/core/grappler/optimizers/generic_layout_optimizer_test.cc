@@ -472,7 +472,6 @@ TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
 
-  LOG(INFO) << graph_view.graph()->DebugString();
   auto* input_node = graph_view.GetNode("input");
   ASSERT_NE(input_node, nullptr);
 
