@@ -2689,7 +2689,8 @@ def repeat_elements(x, rep, axis):
       ```python
         >>> b = tf.constant([1, 2, 3])
         >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
-        <tf.Tensor: id=70, shape=(6,), dtype=int32, numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
+        <tf.Tensor: id=70, shape=(6,), dtype=int32,
+            numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
       ```
   """
   x_shape = x.shape.as_list()
@@ -2788,7 +2789,8 @@ def arange(start, stop=None, step=1, dtype='int32'):
   Example:
       ```python
         >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
-        <tf.Tensor: id=96, shape=(7,), dtype=float32, numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
+        <tf.Tensor: id=96, shape=(7,), dtype=float32,
+            numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
 
       ```
 
@@ -2837,7 +2839,8 @@ def flatten(x):
         array([[1, 2],
                [3, 4]], dtype=int32)>
         >>> tf.keras.backend.flatten(b)
-        <tf.Tensor: id=105, shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4], dtype=int32)>
+        <tf.Tensor: id=105, shape=(4,), dtype=int32,
+            numpy=array([1, 2, 3, 4], dtype=int32)>
       ```
   """
   return array_ops.reshape(x, [-1])
