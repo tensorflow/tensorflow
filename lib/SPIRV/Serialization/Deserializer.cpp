@@ -67,7 +67,7 @@ private:
   LogicalResult processHeader();
 
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
-  LogicalResult processInstruction(uint32_t opcode,
+  LogicalResult processInstruction(spirv::Opcode opcode,
                                    ArrayRef<uint32_t> operands);
 
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
@@ -123,7 +123,8 @@ LogicalResult Deserializer::deserialize() {
                        "insufficient words for the last instruction");
 
     auto operands = binary.slice(curOffset + 1, wordCount - 1);
-    if (failed(processInstruction(opcode, operands)))
+    if (failed(
+            processInstruction(static_cast<spirv::Opcode>(opcode), operands)))
       return failure();
 
     curOffset = nextOffset;
@@ -146,15 +147,16 @@ LogicalResult Deserializer::processHeader() {
   return success();
 }
 
-LogicalResult Deserializer::processInstruction(uint32_t opcode,
+LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands) {
   switch (opcode) {
-  case spirv::kOpMemoryModelOpcode:
+  case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
   default:
     break;
   }
-  return emitError(unknownLoc, "NYI: opcode ") << opcode;
+  return emitError(unknownLoc, "NYI: opcode ")
+         << spirv::stringifyOpcode(opcode);
 }
 
 LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {

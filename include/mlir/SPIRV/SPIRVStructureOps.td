@@ -88,6 +88,14 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   let regions = (region SizedRegion<1>:$body);
 
   let builders = [OpBuilder<"Builder *, OperationState *state">];
+
+  let hasOpcode = 0;
+
+  let extraClassDeclaration = [{
+    Block& getBlock() {
+      return this->getOperation()->getRegion(0).front();
+    }
+  }];
 }
 
 def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator, ModuleOnly]> {
@@ -108,6 +116,8 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator, ModuleOnly]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
@@ -152,6 +162,8 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   let results = (outs
     SPV_Type:$constant
   );
+
+  let hasOpcode = 0;
 }
 
 #endif // SPIRV_STRUCTURE_OPS

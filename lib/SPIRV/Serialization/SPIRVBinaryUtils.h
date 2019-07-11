@@ -22,6 +22,8 @@
 #ifndef MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
 #define MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
 
+#include "mlir/SPIRV/SPIRVOps.h"
+
 #include <cstdint>
 
 namespace mlir {
@@ -33,8 +35,7 @@ constexpr unsigned kHeaderWordCount = 5;
 /// SPIR-V magic number
 constexpr uint32_t kMagicNumber = 0x07230203;
 
-/// Opcode for SPIR-V OpMemoryModel
-constexpr uint32_t kOpMemoryModelOpcode = 14;
+#include "mlir/SPIRV/SPIRVSerialization.inc"
 
 } // end namespace spirv
 } // end namespace mlir

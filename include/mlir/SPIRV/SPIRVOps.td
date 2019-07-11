@@ -88,8 +88,6 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
   );
 
   let results = (outs SPV_EntryPoint:$id);
-
-  let opcode = 15;
 }
 
 def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
@@ -130,8 +128,6 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
   );
 
   let verifier = [{ return success(); }];
-
-  let opcode = 16;
 }
 
 def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
@@ -159,8 +155,6 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
 
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
-
-  let opcode = 133;
 }
 
 def SPV_LoadOp : SPV_Op<"Load"> {
@@ -207,8 +201,6 @@ def SPV_LoadOp : SPV_Op<"Load"> {
   let results = (outs
     SPV_Type:$value
   );
-
-  let opcode = 61;
 }
 
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
@@ -226,8 +218,6 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyReturn(*this); }];
-
-  let opcode = 253;
 }
 
 def SPV_StoreOp : SPV_Op<"Store"> {
@@ -267,8 +257,6 @@ def SPV_StoreOp : SPV_Op<"Store"> {
     OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
     OptionalAttr<APIntAttr>:$alignment
   );
-
-  let opcode = 62;
 }
 
 def SPV_VariableOp : SPV_Op<"Variable"> {
@@ -320,8 +308,6 @@ def SPV_VariableOp : SPV_Op<"Variable"> {
   let results = (outs
     SPV_AnyPtr:$pointer
   );
-
-  let opcode = 59;
 }
 
 #endif // SPIRV_OPS

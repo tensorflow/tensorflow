@@ -25,6 +25,7 @@
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TableGen/Error.h"
@@ -41,18 +42,21 @@ using mlir::tblgen::Operator;
 // Writes the following function to `os`:
 //   inline uint32_t getOpcode(<op-class-name>) { return <opcode>; }
 static void emitGetOpcodeFunction(const llvm::Record &record,
-                                  const Operator &op, raw_ostream &os) {
-  if (llvm::isa<llvm::UnsetInit>(record.getValueInit("opcode")))
-    return;
-
-  os << formatv("inline uint32_t getOpcode({0}) {{ return {1}u; }\n",
-                op.getQualCppClassName(), record.getValueAsInt("opcode"));
+                                  Operator const &op, raw_ostream &os) {
+  if (record.getValueAsInt("hasOpcode")) {
+    os << formatv("template <> constexpr inline uint32_t getOpcode<{0}>()",
+                  op.getQualCppClassName())
+       << " {\n  return static_cast<uint32_t>("
+       << formatv("Opcode::Op{0});\n}\n", record.getValueAsString("opName"));
+  }
 }
 
 static bool emitSerializationUtils(const RecordKeeper &recordKeeper,
                                    raw_ostream &os) {
   llvm::emitSourceFileHeader("SPIR-V Serialization Utilities", os);
 
+  /// Define the function to get the opcode
+  os << "template <typename OpClass> inline constexpr uint32_t getOpcode();\n";
   auto defs = recordKeeper.getAllDerivedDefinitions("SPV_Op");
   for (const auto *def : defs) {
     Operator op(def);

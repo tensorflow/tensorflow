@@ -59,6 +59,45 @@ def SPV_Dialect : Dialect {
 }
 
 //===----------------------------------------------------------------------===//
+// SPIR-V opcode specification
+//===----------------------------------------------------------------------===//
+
+class SPV_OpCode<string name, int val> {
+  // Name used as reference to retrieve the opcode
+  string opname = name;
+
+  // Opcode associated with the name
+  int opcode = val;
+}
+
+// Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
+
+def SPV_OC_OpMemoryModel   : I32EnumAttrCase<"OpMemoryModel", 14>;
+def SPV_OC_OpEntryPoint    : I32EnumAttrCase<"OpEntryPoint", 15>;
+def SPV_OC_OpExecutionMode : I32EnumAttrCase<"OpExecutionMode", 16>;
+def SPV_OC_OpTypeVoid      : I32EnumAttrCase<"OpTypeVoid", 19>;
+def SPV_OC_OpTypeFunction  : I32EnumAttrCase<"OpTypeFunction", 33>;
+def SPV_OC_OpVariable      : I32EnumAttrCase<"OpVariable", 59>;
+def SPV_OC_OpLoad          : I32EnumAttrCase<"OpLoad", 61>;
+def SPV_OC_OpStore         : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpFMul          : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpReturn        : I32EnumAttrCase<"OpReturn", 253>;
+
+def SPV_OpcodeAttr :
+    I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
+      SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
+      SPV_OC_OpTypeVoid, SPV_OC_OpTypeFunction, SPV_OC_OpVariable, SPV_OC_OpLoad,
+      SPV_OC_OpStore, SPV_OC_OpFMul, SPV_OC_OpReturn
+      ]> {
+    let returnType = "::mlir::spirv::Opcode";
+    let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
+    let cppNamespace = "::mlir::spirv";
+}
+
+// End opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
+
+
+//===----------------------------------------------------------------------===//
 // SPIR-V type definitions
 //===----------------------------------------------------------------------===//
 
@@ -438,11 +477,8 @@ def ModuleOnly :
 // Base class for all SPIR-V ops.
 class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<SPV_Dialect, mnemonic, traits> {
-  // Opcode for the binary format.
-  // See https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html for
-  // the opcode for each operation. Ops that cannot be directly serialized will
-  // leave this field as unset.
-  int opcode = ?;
+
+  string spirvOpName = "Op" # mnemonic;
 
   // For each SPIR-V op, the following static functions need to be defined
   // in SPVOps.cpp:
@@ -454,6 +490,14 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(*this, p); }];
   let verifier = [{ return ::verify(*this); }];
+
+  // By default the opcode to use for (de)serialization is obtained
+  // automatically from the SPIR-V spec. It assume the SPIR-V op being defined
+  // is ('Op' # mnemonic). The opcode value can be obtained by calling
+  // getOpcode<OpClass>().  If invoking this method is invalid or custom
+  // processing is needed for the op, set hasOpcode = 0 and specialize the
+  // getOpcode method.
+  int hasOpcode = 1;
 }
 
 #endif // SPIRV_BASE

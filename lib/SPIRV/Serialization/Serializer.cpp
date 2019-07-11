@@ -29,12 +29,22 @@
 
 using namespace mlir;
 
-static inline uint32_t getPrefixedOpcode(uint32_t wordCount, uint32_t opcode) {
+static inline uint32_t getPrefixedOpcode(uint32_t wordCount,
+                                         spirv::Opcode opcode) {
   assert(((wordCount >> 16) == 0) && "word count out of range!");
-  return (wordCount << 16) | opcode;
+  return (wordCount << 16) | static_cast<uint32_t>(opcode);
+}
+
+static inline void buildInstruction(spirv::Opcode op,
+                                    ArrayRef<uint32_t> operands,
+                                    SmallVectorImpl<uint32_t> &binary) {
+  uint32_t wordCount = 1 + operands.size();
+  binary.push_back(getPrefixedOpcode(wordCount, op));
+  binary.append(operands.begin(), operands.end());
 }
 
 namespace {
+
 /// A SPIR-V module serializer.
 ///
 /// A SPIR-V binary module is a single linear stream of instructions; each
@@ -70,7 +80,7 @@ private:
   spirv::ModuleOp module;
 
   /// The next available result <id>.
-  uint32_t nextID = 0;
+  uint32_t nextID = 1;
 
   // The following are for different SPIR-V instruction sections. They follow
   // the logical layout of a SPIR-V module.
@@ -87,10 +97,6 @@ private:
   SmallVector<uint32_t, 0> functions;
 };
 } // namespace
-
-namespace {
-#include "mlir/SPIRV/SPIRVSerialization.inc"
-}
 
 LogicalResult Serializer::serialize() {
   if (failed(module.verify()))
@@ -160,11 +166,7 @@ void Serializer::processMemoryModel() {
   uint32_t mm = module.getAttrOfType<IntegerAttr>("memory_model").getInt();
   uint32_t am = module.getAttrOfType<IntegerAttr>("addressing_model").getInt();
 
-  constexpr uint32_t kNumWords = 3;
-
-  memoryModel.reserve(kNumWords);
-  memoryModel.assign(
-      {getPrefixedOpcode(kNumWords, spirv::kOpMemoryModelOpcode), am, mm});
+  buildInstruction(spirv::Opcode::OpMemoryModel, {am, mm}, memoryModel);
 }
 
 LogicalResult spirv::serialize(spirv::ModuleOp module,

@@ -22,7 +22,7 @@
 #ifndef MLIR_SPIRV_SPIRVTYPES_H_
 #define MLIR_SPIRV_SPIRVTYPES_H_
 
-#include "mlir/IR/TypeSupport.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
