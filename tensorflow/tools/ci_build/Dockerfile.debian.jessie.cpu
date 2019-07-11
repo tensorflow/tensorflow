@@ -9,7 +9,7 @@ RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian jessie-bac
     tee -a /etc/apt/sources.list
 # Workaround bug in Jessie backport repository deb packages
 # http://serverfault.com/questions/830636/cannot-install-openjdk-8-jre-headless-on-debian-jessie
-RUN apt-get update && \
+RUN apt-get -o Acquire::Check-Valid-Until=false update && \
     apt-get install -y --no-install-recommends -t jessie-backports \
         openjdk-8-jre-headless ca-certificates-java && \
     apt-get clean && \
