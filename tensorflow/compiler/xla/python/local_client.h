@@ -50,11 +50,6 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
 // can perform computation and transfers.
 class Device {
  public:
-  // If use_multiple_streams is true, we allocate separate streams for compute
-  // and transfers. If it is false, we share a single stream for compute and
-  // transfers. The CPU device does not support multiple streams, and this is
-  // a workaround until it does.
-  //
   // If synchronous_deallocation is true, the host must not free buffers until
   // compute/transfers that use those buffers have completed. For example, this
   // typically is the case for the "platform" where compute/transfers are
@@ -62,12 +57,10 @@ class Device {
   //
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
-  Device(se::StreamExecutor* executor, bool use_multiple_streams,
-         bool synchronous_deallocation, bool asynchronous,
-         bool allow_event_reuse);
+  Device(se::StreamExecutor* executor, bool synchronous_deallocation,
+         bool asynchronous, bool allow_event_reuse);
   virtual ~Device();
 
-  bool use_multiple_streams() const { return use_multiple_streams_; }
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
   bool asynchronous() const { return asynchronous_; }
 
@@ -142,15 +135,14 @@ class Device {
  private:
   Status SynchronizeAllActivity();
 
-  bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;
 
   EventPool event_pool_;
-  std::shared_ptr<se::Stream> compute_stream_;
-  std::shared_ptr<se::Stream> host_to_device_stream_;
-  std::shared_ptr<se::Stream> device_to_host_stream_;
-  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_;
+  std::unique_ptr<se::Stream> compute_stream_;
+  std::unique_ptr<se::Stream> host_to_device_stream_;
+  std::unique_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
 
   // Number of device-to-device streams to create in the multistream case.
   static constexpr int kNumDeviceToDeviceStreams = 4;
@@ -161,7 +153,7 @@ class Device {
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful
   // work.
-  std::shared_ptr<se::Stream> callback_stream_;
+  std::unique_ptr<se::Stream> callback_stream_;
 
   std::unique_ptr<WorkerThread> worker_thread_;
 };
