@@ -391,7 +391,7 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   StatusOr<std::unique_ptr<HloModule>> module =
-      ParseHloString(contents, config);
+      ParseAndReturnUnverifiedModule(contents, config);
   if (module.ok()) {
     *snapshot.mutable_hlo()->mutable_hlo_module() =
         module.ValueOrDie()->ToProto();

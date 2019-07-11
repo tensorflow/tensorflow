@@ -158,6 +158,16 @@ py_library(
 )
 
 py_library(
+    name = "casting_utils",
+    srcs = ["engine/casting_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+    ],
+)
+
+py_library(
     name = "engine",
     srcs = [
         "engine/__init__.py",
@@ -248,6 +258,7 @@ py_library(
     deps = [
         ":backend",
         ":base_layer_utils",
+        ":casting_utils",
         ":constraints",
         ":engine_utils",
         ":regularizers",
@@ -1478,7 +1489,7 @@ tf_py_test(
 
 tf_py_test(
     name = "feature_columns_integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/feature_columns_integration_test.py"],
     additional_deps = [
         ":keras",
@@ -1487,7 +1498,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
     ],
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+    ],
 )
 
 tf_py_test(

@@ -238,6 +238,13 @@ static void AllocateFlags() {
           "allow operations to produce infinites.  Ignored when "
           "xla_cpu_enable_fast_math is false."),
       tensorflow::Flag(
+          "xla_cpu_fast_math_honor_division",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_division),
+          flag_values->xla_cpu_fast_math_honor_division(),
+          "When xla_cpu_enable_fast_math is true then this controls whether "
+          "we forbid to use multiplication by the reciprocal instead of "
+          "division. Ignored when xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
           flag_values->xla_gpu_enable_fast_min_max(),

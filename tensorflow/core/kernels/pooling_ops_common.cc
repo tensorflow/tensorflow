@@ -278,7 +278,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
                     .ok();
 #endif 
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolForward launch failed"));
+              errors::Internal("dnn PoolForward launch failed"));
 #if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
@@ -447,12 +447,8 @@ void DnnPoolingGradOp<T>::Compute(
                              output_backprop_data, &input_backprop_data)
           .ok();
 #endif 
-
-
-
-
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+              errors::Internal("dnn PoolBackward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.

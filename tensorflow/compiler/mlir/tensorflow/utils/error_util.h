@@ -37,7 +37,7 @@ using tensorflow::Status;
 // constructed from the diagnostics collected.
 class StatusScopedDiagnosticHandler : public ScopedDiagnosticHandler {
  public:
-  // Construct a diagnostic handler in a context. If propagate is true, then
+  // Constructs a diagnostic handler in a context. If propagate is true, then
   // diagnostics reported are also propagated back to the original diagnostic
   // handler.
   explicit StatusScopedDiagnosticHandler(MLIRContext* context,

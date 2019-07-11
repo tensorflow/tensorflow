@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/platform/stream_executor.h"

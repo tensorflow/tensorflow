@@ -18,6 +18,7 @@ limitations under the License.
 
 namespace mlir {
 class FunctionPassBase;
+class ModulePassBase;
 
 namespace TFL {
 
@@ -32,7 +33,7 @@ FunctionPassBase *CreatePrepareTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
-FunctionPassBase *CreateLowerStaticTensorListPass();
+ModulePassBase *CreateLowerStaticTensorListPass();
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 FunctionPassBase *CreateQuantizePass();

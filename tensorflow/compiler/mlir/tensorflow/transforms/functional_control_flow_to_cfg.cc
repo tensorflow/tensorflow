@@ -25,39 +25,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
-using ::mlir::Block;
-using ::mlir::BranchOp;
-using ::mlir::CallOp;
-using ::mlir::CondBranchOp;
-using ::mlir::ExtractElementOp;
-using ::mlir::Function;
-using ::mlir::FunctionPass;
-using ::mlir::FunctionPassBase;
-using ::mlir::FunctionType;
-using ::mlir::Location;
-using ::mlir::OpBuilder;
-using ::mlir::Operation;
-using ::mlir::OpOperand;
-using ::mlir::PassRegistration;
-using ::mlir::TensorCastOp;
-using ::mlir::TensorType;
-using ::mlir::Type;
-using ::mlir::Value;
-
-namespace TF = ::mlir::TF;
+namespace mlir {
+namespace TF {
 
 namespace {
+
 struct FunctionalControlFlowToCFG
     : public FunctionPass<FunctionalControlFlowToCFG> {
   void runOnFunction() override;
 };
-}  // end anonymous namespace
 
-FunctionPassBase* mlir::createTFFunctionalControlFlowToCFG() {
-  return new FunctionalControlFlowToCFG();
-}
-
-// Lower a general tensor argument that is used as a condition to a functional
+// Lowers a general tensor argument that is used as a condition to a functional
 // control flow op into an i1 value.  This needs to implement the general
 // TensorFlow semantics, which are:
 //
@@ -82,17 +60,17 @@ static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
   return scalar.getResult();
 }
 
-/// Call the function `fn` with arguments provided by the given function and
-/// return the CallOp. Arguments are cast to the required type before calling
-/// the function.
-///
-/// Requires the function to provide arguments for each of the `fn` operands
-/// that is compatible for tensor cast.
-///
+// Calls the function `fn` with arguments provided by the given function and
+// return the CallOp. Arguments are cast to the required type before calling
+// the function.
+//
+// Requires the function to provide arguments for each of the `fn` operands
+// that is compatible for tensor cast.
+//
 static Operation* CallFn(Location loc,
-                         const std::function<Value*(int)>& get_arg,
-                         Function* fn, OpBuilder* builder) {
-  FunctionType fn_type = fn->getType();
+                         const std::function<Value*(int)>& get_arg, Function fn,
+                         OpBuilder* builder) {
+  FunctionType fn_type = fn.getType();
   llvm::SmallVector<Value*, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
@@ -106,11 +84,11 @@ static Operation* CallFn(Location loc,
   return builder->create<CallOp>(loc, fn, operands).getOperation();
 }
 
-/// Prepare for jump to the given block by introducing necessary tensor_cast
-/// operations and returning Values of types required by the block.
-///
-/// Requires the function to provide values for each of the block arguments and
-/// they should be pair-wise compatible for tensor cast.
+// Prepares for jump to the given block by introducing necessary tensor_cast
+// operations and returning Values of types required by the block.
+//
+// Requires the function to provide values for each of the block arguments and
+// they should be pair-wise compatible for tensor cast.
 static llvm::SmallVector<Value*, 4> PrepareValsForJump(
     Location loc, const std::function<Value*(int)>& get_val, Block* block,
     OpBuilder* builder) {
@@ -127,18 +105,19 @@ static llvm::SmallVector<Value*, 4> PrepareValsForJump(
   return result;
 }
 
-/// Jump to the given block with arguments provided by the function. Arguments
-/// are cast to the required type before the jump.
-///
-/// Requires the function to provide values for each of the block arguments and
-/// they should be pair-wise compatible for tensor cast.
+// Jumps to the given block with arguments provided by the function. Arguments
+// are cast to the required type before the jump.
+//
+// Requires the function to provide values for each of the block arguments and
+// they should be pair-wise compatible for tensor cast.
 static void JumpToBlock(Location loc, const std::function<Value*(int)>& get_arg,
                         Block* block, OpBuilder* builder) {
   auto operands = PrepareValsForJump(loc, get_arg, block, builder);
   builder->create<BranchOp>(loc, block, operands);
 }
 
-// Replace all uses of the operation results in this block with block arguments.
+// Replaces all uses of the operation results in this block with block
+// arguments.
 //
 // Requires that the block has same number of arguments as number of results of
 // the operation and either they have same types or are more generic types and
@@ -156,13 +135,13 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
   }
 }
 
-// Given a functional IfOp, transform the enclosing code to eliminate it
+// Given a functional IfOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to evaluate the condition
 // as a bool, plus some branches.
 //
 // This returns true on failure.
 //
-static bool LowerIfOp(TF::IfOp op) {
+static bool LowerIfOp(IfOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
 
@@ -172,9 +151,9 @@ static bool LowerIfOp(TF::IfOp op) {
   Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
   if (!cond_i1) return true;
 
-  auto* module = op_inst->getFunction()->getModule();
-  auto* then_fn = module->getNamedFunction(op.getThen());
-  auto* else_fn = module->getNamedFunction(op.getElse());
+  auto module = op_inst->getFunction().getModule();
+  auto then_fn = module.getNamedFunction(op.getThen());
+  auto else_fn = module.getNamedFunction(op.getElse());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -217,21 +196,21 @@ static bool LowerIfOp(TF::IfOp op) {
   return false;
 }
 
-// Given a functional WhileOp, transform the enclosing code to eliminate it
+// Given a functional WhileOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to execute the loop body
 // repeatedly while the loop condition is true.
 //
 // This returns true on failure.
 //
-static bool LowerWhileOp(TF::WhileOp op) {
+static bool LowerWhileOp(WhileOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
 
   OpBuilder builder(op_inst);
 
-  auto* module = op_inst->getFunction()->getModule();
-  auto* cond_fn = module->getNamedFunction(op.getCond());
-  auto* body_fn = module->getNamedFunction(op.getBody());
+  auto module = op_inst->getFunction().getModule();
+  auto cond_fn = module.getNamedFunction(op.getCond());
+  auto body_fn = module.getNamedFunction(op.getBody());
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two
@@ -259,13 +238,13 @@ static bool LowerWhileOp(TF::WhileOp op) {
 
   // Set argument types for the cond_block to be same as the types of the
   // condition function and argument types for the other two blocks to be same
-  // as the input types of the body function.  Note that it is always possible
+  // as the input types of the body function. Note that it is always possible
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
-  for (Type type : cond_fn->getType().getInputs()) {
+  for (Type type : cond_fn.getType().getInputs()) {
     cond_block->addArgument(type);
   }
-  for (Type type : body_fn->getType().getInputs()) {
+  for (Type type : body_fn.getType().getInputs()) {
     body_block->addArgument(type);
     orig_block_tail->addArgument(type);
   }
@@ -320,11 +299,11 @@ void FunctionalControlFlowToCFG::runOnFunction() {
       // subsequent blocks.
       //
       // TODO: Use PatternRewriter to eliminate these function control flow ops.
-      if (TF::IfOp if_op = llvm::dyn_cast<TF::IfOp>(op)) {
+      if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
         if (LowerIfOp(if_op)) return signalPassFailure();
         break;
       }
-      if (TF::WhileOp while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
+      if (WhileOp while_op = llvm::dyn_cast<WhileOp>(op)) {
         if (LowerWhileOp(while_op)) return signalPassFailure();
         break;
       }
@@ -332,7 +311,16 @@ void FunctionalControlFlowToCFG::runOnFunction() {
   }
 }
 
+}  // namespace
+
+FunctionPassBase* CreateTFFunctionalControlFlowToCFG() {
+  return new FunctionalControlFlowToCFG();
+}
+
 static PassRegistration<FunctionalControlFlowToCFG> pass(
     "tf-functional-control-flow-to-cfg",
     "Transform functional control flow Ops to MLIR Control Form Graph "
     "(CFG) form");
+
+}  // namespace TF
+}  // namespace mlir

@@ -241,7 +241,7 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
       DataType::DT_INT32, TensorShape({max_nms_mask_size}), &d_nms_mask));
   // reset data sensitive tensors
   auto device = context->eigen_gpu_device();
-  auto config = GetCudaLaunchConfig(d_nms_mask.NumElements(), device);
+  auto config = GetGpuLaunchConfig(d_nms_mask.NumElements(), device);
   TF_CHECK_OK(GpuLaunchKernel(SetZero<int>, config.block_count,
                               config.thread_per_block, 0, device.stream(),
                               config.virtual_thread_count,
@@ -425,7 +425,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                    &d_sorted_boxes));
 
     // this will return sorted scores and their indices
-    auto config = GetCudaLaunchConfig(num_boxes, device);
+    auto config = GetGpuLaunchConfig(num_boxes, device);
     // initialize box and score indices
     TF_CHECK_OK(GpuLaunchKernel(Iota<int>, config.block_count,
                                 config.thread_per_block, 0, device.stream(),
@@ -472,7 +472,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                    context->allocate_output(0, TensorShape({num_outputs}),
                                             &output_indices));
     if (num_outputs == 0) return;
-    config = GetCudaLaunchConfig(num_outputs, device);
+    config = GetGpuLaunchConfig(num_outputs, device);
     TF_CHECK_OK(GpuLaunchKernel(
         IndexMultiSelect<int, int>, config.block_count, config.thread_per_block,
         0, device.stream(), config.virtual_thread_count,

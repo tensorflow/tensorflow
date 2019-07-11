@@ -173,7 +173,7 @@ func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
 // tf.Reshape with -1 in the shape can't infer the dimension.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<[101, -1]> : tensor<2xi32>
-  // expected-error @+1 {{one componet of shape is -1 but couldn't infer the dimension}}
+  // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }

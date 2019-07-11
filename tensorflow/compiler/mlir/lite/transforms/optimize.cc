@@ -119,7 +119,7 @@ struct FuseFullyConnectedAndAdd : public RewritePattern {
 
 void Optimize::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
   // Add the generated patterns to the list.
   TFL::populateWithGenerated(&getContext(), &patterns);
   patterns.push_back(

@@ -691,15 +691,12 @@ xla_test(
     ],
 )
 
-xla_test(
-    name = "exhaustive_op_test",
-    srcs = ["exhaustive_op_test.cc"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
+cc_library(
+    name = "exhaustive_op_test_utils",
+    testonly = True,
+    srcs = ["exhaustive_op_test_utils.cc"],
+    hdrs = [
+        "exhaustive_op_test_utils.h",
     ],
     deps = [
         ":client_library_test_base",
@@ -710,6 +707,21 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test",
+    srcs = ["exhaustive_unary_test.cc"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
     ],
 )
 

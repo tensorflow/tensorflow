@@ -194,6 +194,7 @@ def build_toco_convert_protos(input_tensors,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
+                              quantize_to_float16=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
                               target_ops=None,
@@ -247,6 +248,8 @@ def build_toco_convert_protos(input_tensors,
       of the converted float model. Model size will be reduced and there will be
       latency improvements (at the cost of accuracy).
       (default False)
+    quantize_to_float16: Boolean indicating whether to convert float buffers
+        to float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
@@ -285,6 +288,7 @@ def build_toco_convert_protos(input_tensors,
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
   toco.post_training_quantize = post_training_quantize
+  toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]

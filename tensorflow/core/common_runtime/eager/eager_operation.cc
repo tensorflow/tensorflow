@@ -15,14 +15,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 namespace tensorflow {
-tensorflow::Status EagerOperation::SetDevice(const char* device) {
-  auto status = Status::OK();
-  tensorflow::Device* d = nullptr;
+
+tensorflow::Status EagerOperation::SetDeviceName(const char* device) {
   if (device != nullptr && strlen(device) > 0) {
-    status.Update(ctx_->FindDeviceByName(device, &d));
+    if (!DeviceNameUtils::ParseFullName(device, &device_name_)) {
+      return errors::InvalidArgument("Malformed device specification '", device,
+                                     "' in eager op: ", DebugString());
+    }
   }
-  device_ = d;
-  return status;
+  return Status::OK();
 }
 
 void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
@@ -47,6 +48,8 @@ string EagerOperation::DebugString() const {
   VLOG(1) << "EagerOperation::DebugString() over " << this;
 
   strings::StrAppend(&out, "Name: ", name_, "\n");
+  strings::StrAppend(&out, "Device Name: [",
+                     DeviceNameUtils::ParsedNameToString(device_name_), "]\n");
   strings::StrAppend(
       &out, "Device: ", Device() ? Device()->DebugString() : "[]", "\n");
   for (const auto& input : inputs_) {

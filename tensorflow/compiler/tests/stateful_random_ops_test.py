@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -27,7 +29,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -37,33 +38,33 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def xla_device_name():
+def xla_device():
   devices = device_lib.list_local_devices()
   def find_type(device_type):
     for d in devices:
       if d.device_type == device_type:
-        return d.name
+        return d
     return None
-  name = find_type("TPU") or find_type("XLA_GPU") or find_type("XLA_CPU")
-  if name is None:
+  d = find_type("TPU") or find_type("XLA_GPU") or find_type("XLA_CPU")
+  if d is None:
     raise ValueError(
         "Can't find any XLA device. Available devices:\n%s" % devices)
-  return str(name)
+  return d
+
+
+def xla_device_name():
+  return str(xla_device().name)
 
 
 ALGS = [random.RNG_ALG_PHILOX, random.RNG_ALG_THREEFRY]
 INTS = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
+FLOATS = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
 
 
-# TODO(wangpeng): use parametrized tests to test both ThreeFry and Philox
 class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateful random-number generator operators."""
 
-  _ints = INTS
-  _floats = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
-
   @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
   def testSimple(self, alg):
     """A simple test."""
     with ops.device(xla_device_name()):
@@ -73,7 +74,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen.uniform_full_int(shape=(3,))
 
   @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
   def testDefun(self, alg):
     """Test for defun."""
     with ops.device(xla_device_name()):
@@ -106,7 +106,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     got = g.uniform_full_int(shape=(ctr_len // 2,), dtype=dtypes.uint64)
     self.assertAllEqual(uint32s_to_uint64s(expect), got)
 
-  @test_util.run_v2_only
   def testThreefry2x32(self):
     """Tests ThreeFry2x32 conforms to known results.
     """
@@ -130,7 +129,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           [0x243f6a88, 0x85a308d3], [0x13198a2e, 0x03707344],
           [0xc4923a9c, 0x483df7a0])
 
-  @test_util.run_v2_only
   def testPhilox4x32(self):
     """Tests Philox4x32 conforms to known results.
     """
@@ -155,7 +153,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           [0xa4093822, 0x299f31d0],
           [0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1])
 
-  @test_util.run_v2_only
   def testNewStateThreeFry(self):
     """Tests that the new state is correct (for ThreeFry).
     """
@@ -171,7 +168,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
       self.assertAllEqual([counter+size, key], gen.state.read_value())
 
-  @test_util.run_v2_only
   def testNewStatePhilox(self):
     """Tests that the new state is correct (for Philox).
     """
@@ -204,7 +200,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           gen.state.read_value())
 
   @parameterized.parameters(INTS)
-  @test_util.run_v2_only
   def testXLAEqualsCPU(self, dtype):
     """Tests that XLA and CPU kernels generate the same integers."""
     seed = 1234
@@ -225,105 +220,101 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     y = rng(dtype).numpy()
     self.assertFalse(np.array_equal(x, y))
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testUniformIsNotConstant(self, alg):
+  def check_dtype(self, dtype):
+    device = xla_device()
+    if device.device_type == "TPU" and dtype == dtypes.float64:
+      self.skipTest("TPU doesn't support float64.")
+
+  @parameterized.parameters(list(itertools.product(ALGS, INTS + FLOATS)))
+  def testUniformIsNotConstant(self, alg, dtype):
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
       gen = random.Generator.from_seed(seed=1234, alg=alg)
       def rng(dtype):
         maxval = dtype.max
-        # Workaround for b/125364959
-        if dtype == dtypes.uint64:
-          maxval = 10000000
         return gen.uniform(shape=[2], dtype=dtype, maxval=maxval)
 
-      for dtype in self._ints + self._floats:
-        self._testRngIsNotConstant(rng, dtype)
+      self._testRngIsNotConstant(rng, dtype)
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testNormalIsNotConstant(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, FLOATS)))
+  def testNormalIsNotConstant(self, alg, dtype):
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
       gen = random.Generator.from_seed(seed=1234, alg=alg)
       def rng(dtype):
         return gen.normal(shape=[2], dtype=dtype)
 
-      for dtype in self._floats:
-        self._testRngIsNotConstant(rng, dtype)
+      self._testRngIsNotConstant(rng, dtype)
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testUniformIsInRange(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, INTS + FLOATS)))
+  def testUniformIsInRange(self, alg, dtype):
+    self.check_dtype(dtype)
     minval = 2
     maxval = 33
     size = 1000
     with ops.device(xla_device_name()):
-      for dtype in self._ints + self._floats:
-        gen = random.Generator.from_seed(seed=1234, alg=alg)
-        x = gen.uniform(
-            shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
-        self.assertTrue(np.all(x >= minval))
-        self.assertTrue(np.all(x <= maxval))
+      gen = random.Generator.from_seed(seed=1234, alg=alg)
+      x = gen.uniform(
+          shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
+      self.assertTrue(np.all(x >= minval))
+      self.assertTrue(np.all(x <= maxval))
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testNormalIsFinite(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, FLOATS)))
+  def testNormalIsFinite(self, alg, dtype):
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
       gen = random.Generator.from_seed(seed=1234, alg=alg)
-      for dtype in self._floats:
-        x = gen.normal(shape=[10000], dtype=dtype).numpy()
-        self.assertTrue(np.all(np.isfinite(x)))
+      x = gen.normal(shape=[10000], dtype=dtype).numpy()
+      self.assertTrue(np.all(np.isfinite(x)))
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testDistributionOfUniform(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, INTS + FLOATS)))
+  def testDistributionOfUniform(self, alg, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
       n = 1000
       seed = 12
-      for dtype in self._ints + self._floats:
-        gen = random.Generator.from_seed(seed=seed, alg=alg)
-        maxval = 1
-        if dtype.is_integer:
-          maxval = 100
-        x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
-        if maxval > 1:
-          # Normalize y to range [0, 1).
-          x = x.astype(float) / maxval
-        # Tests that the values are distributed amongst 10 bins with equal
-        # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
-        # p=0.05. This test is probabilistic and would be flaky if the random
-        # seed were not fixed.
-        val = random_test_util.chi_squared(x, 10)
-        self.assertLess(val, 16.92)
+      gen = random.Generator.from_seed(seed=seed, alg=alg)
+      maxval = 1
+      if dtype.is_integer:
+        maxval = 100
+      x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
+      if maxval > 1:
+        # Normalize y to range [0, 1).
+        x = x.astype(float) / maxval
+      # Tests that the values are distributed amongst 10 bins with equal
+      # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
+      # p=0.05. This test is probabilistic and would be flaky if the random
+      # seed were not fixed.
+      val = random_test_util.chi_squared(x, 10)
+      self.assertLess(val, 16.92)
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testDistributionOfNormal(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, FLOATS)))
+  def testDistributionOfNormal(self, alg, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
       n = 1000
-      for dtype in self._floats:
-        gen = random.Generator.from_seed(seed=1234, alg=alg)
-        x = gen.normal(shape=[n], dtype=dtype).numpy()
-        # The constant 2.492 is the 5% critical value for the Anderson-Darling
-        # test where the mean and variance are known. This test is probabilistic
-        # so to avoid flakiness the seed is fixed.
-        self.assertLess(
-            random_test_util.anderson_darling(x.astype(float)), 2.492)
+      gen = random.Generator.from_seed(seed=1234, alg=alg)
+      x = gen.normal(shape=[n], dtype=dtype).numpy()
+      # The constant 2.492 is the 5% critical value for the Anderson-Darling
+      # test where the mean and variance are known. This test is probabilistic
+      # so to avoid flakiness the seed is fixed.
+      self.assertLess(
+          random_test_util.anderson_darling(x.astype(float)), 2.492)
 
-  @parameterized.parameters(ALGS)
-  @test_util.run_v2_only
-  def testTruncatedNormal(self, alg):
+  @parameterized.parameters(list(itertools.product(ALGS, FLOATS)))
+  def testTruncatedNormal(self, alg, dtype):
+    self.check_dtype(dtype)
     with ops.device(xla_device_name()):
-      for dtype in self._floats:
-        gen = random.Generator.from_seed(seed=123, alg=alg)
-        n = 10000000
-        y = gen.truncated_normal(shape=[n], dtype=dtype).numpy()
-        random_test_util.test_truncated_normal(
-            self.assertEqual, self.assertAllClose, dtype, n, y)
+      gen = random.Generator.from_seed(seed=123, alg=alg)
+      n = 100000
+      y = gen.truncated_normal(shape=[n], dtype=dtype).numpy()
+      random_test_util.test_truncated_normal(
+          self.assertEqual, self.assertAllClose, n, y,
+          mean_atol=2e-3, median_atol=4e-3,
+          variance_rtol=1e-2 if dtype == dtypes.bfloat16 else 5e-3)
 
-  @test_util.run_v2_only
   def testErrors(self):
     """Tests that proper errors are raised.
     """
@@ -371,4 +362,5 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

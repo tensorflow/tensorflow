@@ -578,7 +578,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // forbids that.
         const auto status = metal_delegate->Prepare(context, params);
         if (status.ok()) return metal_delegate;
-        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s", status.message().data());
+        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
+                             status.error_message().c_str());
         return nullptr;
       },
       // .free
@@ -591,7 +592,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetMetalDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
-        context->ReportError(context, "TfLiteMetalDelegate Invoke: %s", status.message().data());
+        context->ReportError(context, "TfLiteMetalDelegate Invoke: %s",
+                             status.error_message().c_str());
         return kTfLiteError;
       },
       nullptr,                // .profiling_string

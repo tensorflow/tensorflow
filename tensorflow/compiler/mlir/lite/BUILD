@@ -7,13 +7,14 @@ load(
 package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
-        "//visibility:public",
+        ":friends",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
@@ -232,6 +233,7 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )

@@ -3678,6 +3678,19 @@ def extract_glimpse(
 
   Returns:
     A `Tensor` of type `float32`.
+
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
+    CHANNELS = 1
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
+      offsets=[[1, 1]], centered=False, normalized=False)
+     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,
@@ -3744,6 +3757,19 @@ def extract_glimpse_v2(
 
   Returns:
     A `Tensor` of type `float32`.
+
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
+    CHANNELS = 1
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
+      offsets=[[1, 1]], centered=False, normalized=False)
+     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,

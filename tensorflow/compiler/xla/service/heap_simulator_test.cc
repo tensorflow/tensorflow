@@ -224,7 +224,7 @@ const char kShare[] = "Share";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const BufferValue*>>;
+using CallSequence = std::vector<std::pair<string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm {
@@ -232,7 +232,7 @@ class HeapCallRecorder : public HeapAlgorithm {
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
 
-  void Alloc(const BufferValue* buffer, int64 size) override {
+  void Alloc(const HloValue* buffer, int64 size) override {
     calls_->emplace_back(kAlloc, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
@@ -241,7 +241,7 @@ class HeapCallRecorder : public HeapAlgorithm {
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
 
-  void ShareWith(const BufferValue* buffer, const BufferValue* shared,
+  void ShareWith(const HloValue* buffer, const HloValue* shared,
                  int64 size) override {
     calls_->emplace_back(kShare, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
@@ -250,7 +250,7 @@ class HeapCallRecorder : public HeapAlgorithm {
     const int64 offset = result_.chunk_map[shared].offset;
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
-  void Free(const BufferValue* buffer, int64 size) override {
+  void Free(const HloValue* buffer, int64 size) override {
     calls_->emplace_back(kFree, buffer);
   }
   Result Finish() override {
@@ -283,10 +283,8 @@ class HeapSimulatorTracker {
     // by buffer id, for determinism in the tests.
     auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
-    BufferValueFlatSet must_alias_buffer_value_set;
 
     HeapSimulator::Options options;
-    options.must_alias_sets = {must_alias_buffer_value_set};
     result_ =
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
@@ -331,14 +329,14 @@ class HeapSimulatorTracker {
   HloModule* module() { return module_.get(); }
 
   // Returns the buffer defined at the given instruction and index.
-  const BufferValue* BufferAt(const HloInstruction* instruction,
-                              const ShapeIndex& index) const {
+  const HloValue* BufferAt(const HloInstruction* instruction,
+                           const ShapeIndex& index) const {
     return &alias_analysis_->dataflow_analysis().GetUniqueValueAt(instruction,
                                                                   index);
   }
 
   int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
-    const BufferValue* buffer = BufferAt(instruction, index);
+    const HloValue* buffer = BufferAt(instruction, index);
     return result_.chunk_map.at(buffer).offset;
   }
 
@@ -779,20 +777,20 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   }
   ~HeapAlgorithmTestBase() override {}
 
-  const BufferValue* buffer_a_;
-  const BufferValue* buffer_b_;
-  const BufferValue* buffer_c_;
-  const BufferValue* buffer_d_;
-  const BufferValue* buffer_e_;
-  const BufferValue* buffer_f_;
-  const BufferValue* buffer_g_;
-  const BufferValue* buffer_h_;
-  const BufferValue* buffer_i_;
+  const HloValue* buffer_a_;
+  const HloValue* buffer_b_;
+  const HloValue* buffer_c_;
+  const HloValue* buffer_d_;
+  const HloValue* buffer_e_;
+  const HloValue* buffer_f_;
+  const HloValue* buffer_g_;
+  const HloValue* buffer_h_;
+  const HloValue* buffer_i_;
 
  private:
-  // Create a dummy BufferValue to pass to the heap algorithm.
-  const BufferValue* DummyBufferValue() {
-    const BufferValue::Id id = buffers_.size();
+  // Create a dummy HloValue to pass to the heap algorithm.
+  const HloValue* DummyBufferValue() {
+    const HloValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     buffers_.emplace_back(
@@ -801,7 +799,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   }
 
   HloComputation::Builder builder_;
-  std::vector<std::unique_ptr<BufferValue>> buffers_;
+  std::vector<std::unique_ptr<HloValue>> buffers_;
 };
 
 class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};

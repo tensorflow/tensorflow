@@ -276,8 +276,7 @@ class CloneDatasetTest(test.TestCase):
   def _assert_datasets_equal(self, ds1, ds2):
     # First lets assert the structure is the same.
     self.assertTrue(
-        structure.are_compatible(ds1._element_structure,
-                                 ds2._element_structure))
+        structure.are_compatible(ds1.element_spec, ds2.element_spec))
 
     # Now create iterators on both and assert they produce the same values.
     it1 = dataset_ops.make_initializable_iterator(ds1)

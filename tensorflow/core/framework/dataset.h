@@ -883,6 +883,35 @@ class DatasetIterator : public DatasetBaseIterator {
   const DatasetType* const typed_dataset_;  // Not owned.
 };
 
+template <typename T>
+Status ParseScalarArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name, T* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a scalar");
+  }
+  *output = argument_t->scalar<T>()();
+  return Status::OK();
+}
+
+template <typename T>
+Status ParseVectorArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name,
+                           std::vector<T>* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a vector");
+  }
+  int size = argument_t->vec<T>().size();
+  output->reserve(size);
+  for (int i = 0; i < size; ++i) {
+    output->push_back(argument_t->vec<T>()(i));
+  }
+  return Status::OK();
+}
+
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
@@ -894,35 +923,6 @@ class DatasetOpKernel : public OpKernel {
   // Subclasses should implement this method. It will be called during Compute
   // execution.
   virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
-
-  template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a scalar");
-    }
-    *output = argument_t->scalar<T>()();
-    return Status::OK();
-  }
-
-  template <typename T>
-  Status ParseVectorArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name,
-                             std::vector<T>* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a vector");
-    }
-    int size = argument_t->vec<T>().size();
-    output->reserve(size);
-    for (int i = 0; i < size; ++i) {
-      output->push_back(argument_t->vec<T>()(i));
-    }
-    return Status::OK();
-  }
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

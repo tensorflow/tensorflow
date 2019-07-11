@@ -807,6 +807,48 @@ class TestWholeModelSaving(test.TestCase):
     self.assertRegexpMatches(
         h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_functional_model_with_custom_loss_and_metric(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    def _make_model():
+      inputs = keras.Input(shape=(4,))
+      x = keras.layers.Dense(8, activation='relu')(inputs)
+      y = keras.layers.Dense(3, activation='softmax')(x)
+      custom_loss = keras.layers.Lambda(lambda x: keras.backend.sum(x * x))(x)
+      # Connect the loss to the network.
+      outputs = keras.layers.Lambda(lambda x: x[0])((y, custom_loss))
+      model = keras.Model(inputs=inputs, outputs=outputs)
+      model.add_loss(custom_loss)
+      model.add_metric(custom_loss, aggregation='mean', name='custom_loss')
+      return model
+
+    model = _make_model()
+    model.compile(
+        loss=keras.losses.SparseCategoricalCrossentropy(),
+        optimizer=optimizers.gradient_descent_v2.SGD(),
+        metrics=[keras.metrics.SparseCategoricalCrossentropy()])
+    x = np.random.normal(size=(32, 4))
+    y = np.random.randint(0, 3, size=32)
+    model.train_on_batch(x, y)
+    evaluation_results = model.evaluate(x, y)
+    # Save and reload model.
+    model_path = os.path.join(self.get_temp_dir(), 'model.h5')
+    model.save(model_path)
+    del model  # Prevent misuse.
+    loaded_model = keras.models.load_model(model_path)
+    os.remove(model_path)
+    # Assert all evaluation results are the same.
+    self.assertAllClose(evaluation_results, loaded_model.evaluate(x, y), 1e-9)
+    # Check correctness of the loss calculation.
+    self.assertAllGreater(evaluation_results, 0.)
+    evaluation_results = dict(
+        zip(loaded_model.metrics_names, evaluation_results))
+    self.assertNear(
+        evaluation_results['sparse_categorical_crossentropy'] +
+        evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+
 
 class SubclassedModel(training.Model):
 

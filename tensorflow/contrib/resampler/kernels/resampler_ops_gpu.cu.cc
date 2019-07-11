@@ -268,10 +268,10 @@ struct ResamplerGrad2DFunctor<GPUDevice, T> {
         batch_size * num_sampling_points * data_channels;
     config = ::tensorflow::GetGpuLaunchConfig(resampler_output_size, d);
     TF_CHECK_OK(GpuLaunchKernel(ResamplerGrad2DKernel<T>, config.block_count,
-                                 config.thread_per_block, 0, d.stream(), data,
-                                 warp, grad_output, grad_data, grad_warp,
-                                 batch_size, data_height, data_width,
-                                 data_channels, num_sampling_points));
+                                config.thread_per_block, 0, d.stream(), data,
+                                warp, grad_output, grad_data, grad_warp,
+                                batch_size, data_height, data_width,
+                                data_channels, num_sampling_points));
   }
 };
 

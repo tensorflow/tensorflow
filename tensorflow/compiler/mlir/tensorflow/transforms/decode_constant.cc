@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
 namespace mlir {
 namespace TF {
@@ -31,7 +31,7 @@ namespace {
 // its value into a readable one. Otherwise, does nothing. This function returns
 // false if the given `op` is a tf.Constant op and we cannot decode its value.
 bool DecodeOpaqueValueInConstantOp(Operation *op) {
-  auto tfOp = dyn_cast<TF::ConstOp>(op);
+  auto tfOp = dyn_cast<ConstOp>(op);
   if (!tfOp) return true;
 
   auto opaque_attr = tfOp.value().dyn_cast<OpaqueElementsAttr>();
@@ -62,12 +62,12 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
   }
 };
 
-}  // anonymous namespace
+}  // namespace
 
 FunctionPassBase *CreateDecodeConstantPass() { return new DecodeConstant(); }
 
+static PassRegistration<DecodeConstant> pass(
+    "tf-decode-constant", "Decode opaque constant into human-readable ones");
+
 }  // namespace TF
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::TF::DecodeConstant> pass(
-    "tf-decode-constant", "Decode opaque constant into human-readable ones");

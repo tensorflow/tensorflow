@@ -342,12 +342,13 @@ class InputReplicationMode(enum.Enum):
 class InputContext(object):
   """A class wrapping information needed by an input function.
 
-  This is a context class that is passed to the user's input fn and contains
-  information about the compute replicas and input pipelines. The number of
-  compute replicas (in sync training) helps compute per input pipeline batch
-  size from the desired global batch size. Input pipeline information can be
-  used to return a different subset of the input in each input pipeline (for
-  e.g. shard the input pipeline, use a different input source etc).
+  This is a context class that is passed to the user's input function and
+  contains information about the compute replicas and input pipelines. The
+  number of compute replicas (in sync training) helps compute the local batch
+  size from the desired global batch size for each replica. The input pipeline
+  information can be used to return a different subset of the input in each
+  replica (for e.g. shard the input pipeline, use a different input
+  source etc).
   """
 
   def __init__(self,
@@ -568,11 +569,21 @@ class Strategy(object):
           input_fn, replication_mode=replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a `tf.data.Dataset` for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
+
+    Note that you will likely need to use `experimental_distribute_dataset`
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
 
     Args:
       numpy_input: A nest of NumPy input arrays that will be distributed evenly
@@ -594,6 +605,28 @@ class Strategy(object):
 
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
+
+    The returned distributed dataset can be iterated over similar to how
+    regular datasets can.
+    NOTE: Currently, the user cannot add any more transformations to a
+    distributed dataset.
+
+    The following is an example:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
 
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
@@ -617,23 +650,6 @@ class Strategy(object):
     Within each host, we will also split the data among all the worker devices
     (if more than one a present), and this will happen even if multi-worker
     sharding is disabled using the method above.
-
-    The following is an example:
-
-    ```python
-    strategy = tf.distribute.MirroredStrategy()
-
-    # Create a dataset
-    dataset = dataset_ops.Dataset.TFRecordDataset([
-      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
-
-    # Distribute that dataset
-    dist_dataset = strategy.experimental_distribute_dataset(dataset)
-    # Iterate over the distributed dataset
-    for x in dist_dataset:
-      # process dataset elements
-      strategy.experimental_run_v2(train_step, args=(x,))
-    ```
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -698,7 +714,7 @@ class Strategy(object):
                        "only supported when eager execution is enabled.")
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
-    """Runs ops in `fn` on each replica, with the given arguments.
+    """Run `fn` on each replica, with the given arguments.
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
@@ -998,11 +1014,22 @@ class StrategyV1(Strategy):
         input_fn, replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input, session=None):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a tf.data.Dataset for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
+
+    Note that you will likely need to use
+    tf.distribute.Strategy.experimental_distribute_dataset
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
 
     Args:
       numpy_input: A nest of NumPy input arrays that will be distributed evenly
@@ -1801,8 +1828,9 @@ class StrategyExtendedV1(StrategyExtendedV2):
 class ReplicaContext(object):
   """`tf.distribute.Strategy` API when in a replica context.
 
-  To be used inside your replicated step function, such as in a
-  `tf.distribute.Strategy.experimental_run_v2` call.
+  You can use `tf.distribute.get_replica_context` to get an instance of
+  `ReplicaContext`. This should be inside your replicated step function, such
+  as in a `tf.distribute.Strategy.experimental_run_v2` call.
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
@@ -1834,8 +1862,8 @@ class ReplicaContext(object):
     """Merge args across replicas and run `merge_fn` in a cross-replica context.
 
     This allows communication and coordination when there are multiple calls
-    to a model function triggered by a call to
-    `strategy.experimental_run_v2(model_fn, ...)`.
+    to the step_fn triggered by a call to
+    `strategy.experimental_run_v2(step_fn, ...)`.
 
     See `tf.distribute.Strategy.experimental_run_v2` for an
     explanation.
@@ -1849,7 +1877,7 @@ class ReplicaContext(object):
     ```
 
     Args:
-      merge_fn: function that joins arguments from threads that are given as
+      merge_fn: Function that joins arguments from threads that are given as
         PerReplica. It accepts `tf.distribute.Strategy` object as
         the first argument.
       args: List or tuple with positional per-thread arguments for `merge_fn`.
@@ -1880,7 +1908,12 @@ class ReplicaContext(object):
 
   @property
   def replica_id_in_sync_group(self):
-    """Which replica is being defined, from 0 to `num_replicas_in_sync - 1`."""
+    """Returns the id of the replica being defined.
+
+    This identifies the replica that is part of a sync group. Currently we
+    assume that all sync groups contain the same number of replicas. The value
+    of the replica id can range from 0 to `num_replica_in_sync` - 1.
+    """
     require_replica_context(self)
     return self._replica_id_in_sync_group
 
@@ -1896,7 +1929,7 @@ class ReplicaContext(object):
     return (device_util.current(),)
 
   def all_reduce(self, reduce_op, value):
-    """All-reduces the given `Tensor` nest across replicas.
+    """All-reduces the given `value Tensor` nest across replicas.
 
     If `all_reduce` is called in any replica, it must be called in all replicas.
     The nested structure and `Tensor` shapes must be identical in all replicas.
@@ -1904,7 +1937,7 @@ class ReplicaContext(object):
     IMPORTANT: The ordering of communications must be identical in all replicas.
 
     Example with two replicas:
-      Replica 0 `value`: {'a': 1, 'b': [40,  1]}
+      Replica 0 `value`: {'a': 1, 'b': [40, 1]}
       Replica 1 `value`: {'a': 3, 'b': [ 2, 98]}
 
       If `reduce_op` == `SUM`:
@@ -1915,8 +1948,8 @@ class ReplicaContext(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value: The nested structure of `Tensor`s to all-reduced.
-        The structure must be compatible with `tf.nest`.
+      value: The nested structure of `Tensor`s to all-reduce. The structure must
+        be compatible with `tf.nest`.
 
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
@@ -1952,7 +1985,8 @@ class ReplicaContext(object):
 
 def _batch_reduce_destination(x):
   """Returns the destinations for batch all-reduce."""
-  if isinstance(x, ops.Tensor):  # One device strategies.
+  if isinstance(x, ops.Tensor):
+    # If this is a one device strategy.
     return x.device
   else:
     return x

@@ -137,7 +137,7 @@ namespace {
 /// Perform the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
 
   // Add the generated patterns to the list.
   XLA::populateWithGenerated(func.getContext(), &patterns);

@@ -816,6 +816,7 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
@@ -1030,6 +1031,7 @@ cc_library(
         ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
+        ":gpu_scatter_expander",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -1409,6 +1411,18 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpu_scatter_expander",
+    srcs = ["gpu_scatter_expander.cc"],
+    hdrs = ["gpu_scatter_expander.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:scatter_expander",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

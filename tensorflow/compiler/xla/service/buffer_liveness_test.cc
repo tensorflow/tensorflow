@@ -216,8 +216,9 @@ ENTRY %EmbeddedComputationParameters (param0: f32[42], param1: f32[42]) -> (f32[
 }
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
   auto liveness =
       BufferLiveness::Run(
           module.get(),
@@ -257,8 +258,9 @@ ENTRY InterferenceWithOuterRoot {
 
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
   auto liveness =
       BufferLiveness::Run(
           module.get(),

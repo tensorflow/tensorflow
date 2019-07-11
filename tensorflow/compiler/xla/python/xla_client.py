@@ -112,6 +112,7 @@ class LocalBackend(Backend):
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
+    options.debug_options.xla_cpu_fast_math_honor_division = True
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
@@ -1563,6 +1564,7 @@ _OTHER_OPS = [
     'Dot',
     'Gather',
     'GetTupleElement',
+    'ReducePrecision',
     'Rev',
     'Select',
     'SliceInDim',

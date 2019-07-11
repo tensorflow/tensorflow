@@ -94,7 +94,8 @@ def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
 //===----------------------------------------------------------------------===//
 
 // TODO(riverriddle) Formalize a policy on converting opaque attributes.
-def : Pat<(TF_ConstOp ElementsAttr:$value), (XLA_ConstOp $value)>;
+def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (XLA_ConstOp $value),
+          [(AnyStaticShapeTensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.

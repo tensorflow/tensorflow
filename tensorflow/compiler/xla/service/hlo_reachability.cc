@@ -60,6 +60,15 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
   }
 }
 
+void HloReachabilityMap::Replace(const HloInstruction* original,
+                                 const HloInstruction* replacement) {
+  if (GetKey(original) == GetKey(replacement)) {
+    return;
+  }
+  indices_[GetKey(replacement)] = GetIndex(original);
+  indices_.erase(GetKey(original));
+}
+
 void HloReachabilityMap::SetReachable(const HloInstruction* a,
                                       const HloInstruction* b) {
   GetBitVector(b).Set(GetIndex(a));
