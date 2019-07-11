@@ -108,7 +108,8 @@ public:
 
   Region &getBody() { return getOperation()->getRegion(0); }
 
-  void eraseBody() { getBody().getBlocks().clear(); }
+  /// Delete all blocks from this function.
+  void eraseBody();
 
   /// This is the list of blocks in the function.
   using RegionType = Region::RegionType;

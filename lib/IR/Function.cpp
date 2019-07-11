@@ -315,6 +315,14 @@ void FuncOp::cloneInto(FuncOp dest, BlockAndValueMapping &mapper) {
   getBody().cloneInto(&dest.getBody(), mapper);
 }
 
+/// Delete all blocks from this function.
+void FuncOp::eraseBody() {
+  // First, drop all references in the blocks because they may point to values
+  // defined in the dominating blocks.
+  getBody().dropAllReferences();
+  getBody().getBlocks().clear();
+}
+
 /// Create a deep copy of this function and all of its blocks, remapping
 /// any operands that use values outside of the function using the map that is
 /// provided (leaving them alone if no entry is present). Replaces references

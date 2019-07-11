@@ -116,6 +116,11 @@ public:
   /// the operation with an offending use.
   bool isIsolatedFromAbove(llvm::Optional<Location> noteLoc = llvm::None);
 
+  /// Drop all operand uses from operations within this region, which is
+  /// an essential step in breaking cyclic dependences between references when
+  /// they are to be deleted.
+  void dropAllReferences();
+
   /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.
   void walk(llvm::function_ref<void(Operation *)> callback);

@@ -448,8 +448,7 @@ void Operation::dropAllReferences() {
     op.drop();
 
   for (auto &region : getRegions())
-    for (Block &block : region)
-      block.dropAllReferences();
+    region.dropAllReferences();
 
   for (auto &dest : getBlockOperands())
     dest.drop();

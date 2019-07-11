@@ -25,8 +25,7 @@ Region::Region(Operation *container) : container(container) {}
 Region::~Region() {
   // Operations may have cyclic references, which need to be dropped before we
   // can start deleting them.
-  for (auto &bb : *this)
-    bb.dropAllReferences();
+  dropAllReferences();
 }
 
 /// Return the context this region is inserted in. The region must have a valid
@@ -108,6 +107,11 @@ void Region::cloneInto(Region *dest, Region::iterator destPos,
 
   for (iterator it(mapper.lookup(&front())); it != destPos; ++it)
     it->walk(remapOperands);
+}
+
+void Region::dropAllReferences() {
+  for (Block &b : *this)
+    b.dropAllReferences();
 }
 
 /// Check if there are any values used by operations in `region` defined
