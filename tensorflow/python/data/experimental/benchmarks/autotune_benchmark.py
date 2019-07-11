@@ -189,14 +189,14 @@ class AutotuneBenchmark(test.Benchmark):
     with session.Session() as sess:
       for _ in range(5):
         sess.run(get_next)
-      for _ in range(1000):
+      for _ in range(10000):
         start = time.time()
         sess.run(get_next)
         end = time.time()
         deltas.append(end - start)
 
     self.report_benchmark(
-        iters=1000,
+        iters=10000,
         wall_time=np.median(deltas),
         name="map_and_interleave" + ("_autotune" if autotune else ""))
     return np.median(deltas)
