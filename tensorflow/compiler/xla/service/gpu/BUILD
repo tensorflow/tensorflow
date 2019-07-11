@@ -1019,6 +1019,8 @@ cc_library(
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
     deps = [
+        ":cudnn_batchnorm_rewriter",
+        ":fusion_merger",
         ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",

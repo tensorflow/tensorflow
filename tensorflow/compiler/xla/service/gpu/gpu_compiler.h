@@ -58,7 +58,15 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  virtual Status OptimizeHloModule(
+  Status OptimizeHloModule(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator);
+
+  virtual Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 

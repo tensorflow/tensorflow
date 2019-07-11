@@ -43,7 +43,11 @@ class AMDGPUCompiler : public GpuCompiler {
   AMDGPUCompiler(se::Platform::Id platform_id);
   ~AMDGPUCompiler() override {}
 
-  Status OptimizeHloModule(
+  Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) override;
+
+  Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 

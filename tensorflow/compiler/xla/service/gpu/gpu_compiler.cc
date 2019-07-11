@@ -42,6 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -128,6 +130,173 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
+}
+
+// Runs optimization passes on the given HLO module.
+Status GpuCompiler::OptimizeHloModule(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+  {
+    HloPassPipeline pipeline("optimization");
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                              /*allow_mixed_precision=*/false);
+
+    // Expand random number generation.
+    pipeline.AddPass<RngExpander>();
+
+    // Remove zero-sized HLO from the input so that other passes don't have to
+    // handle it.
+    pipeline.AddPass<ZeroSizedHloElimination>();
+
+    pipeline.AddPass<DynamicIndexSplitter>();
+    pipeline.AddPass<GpuHloSupportChecker>();
+    ReducePrecisionInsertion::AddPasses(
+        &pipeline, hlo_module->config().debug_options(),
+        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
+
+    // TODO(b/64094172): make Call work on GPU instead of inlining.
+    pipeline.AddPass<CallInliner>();
+    auto cost_model = [](HloInstruction* conv) {
+      // We need a cost model for GPUs. Currently, do nothing.
+      return false;
+    };
+    pipeline.AddPass<DotDecomposer>();
+    pipeline.AddPass<ConvolutionGroupConverter>(
+        cost_model,
+        /*convert_batch_groups_only=*/true);
+    // Expand the sort op to support stable sorting if required.
+    pipeline.AddPass<StableSortExpander>();
+    // Convert BF16 operations to F32 operations so that the GPU backend can
+    // support BF16 operations without directly implementing a BF16 lowering for
+    // most ops.
+    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+
+    {
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
+
+      // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
+      // where possible.  Not every batchnorm op can be implemented as a call to
+      // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
+      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        pass.AddPass<CudnnBatchNormRewriter>();
+      }
+      pass.AddPass<BatchNormExpander>(
+          /*rewrite_training_op=*/true,
+          /*rewrite_inference_op=*/true,
+          /*rewrite_grad_op=*/true);
+
+      pipeline.AddPass<HloGetDimensionSizeRewriter>();
+
+      // BatchNormExpander can create zero-sized ops, so zero-sized HLO
+      // elimination has to come after that pass.
+      pipeline.AddPass<ZeroSizedHloElimination>();
+
+      AlgebraicSimplifierOptions options;
+      pass.AddPass<AlgebraicSimplifier>(options);
+      pass.AddPass<SortSimplifier>();
+      pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopConstantSinking>();
+      pass.AddPass<WhileLoopSimplifier>();
+
+      // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+      // pass.AddPass<SliceSinker>();
+
+      pass.AddPass<HloDCE>();
+      pass.AddPass<ReshapeMover>();
+      pass.AddPass<HloConstantFolding>();
+      pass.AddPass<ConditionalSimplifier>();
+    }
+
+    pipeline.AddPass<TransposeFolding>(
+        [](const HloInstruction& dot,
+           const TransposeFolding::OperandIndices& candidate_operands) {
+          return IsMatrixMultiplication(dot)
+                     ? candidate_operands
+                     : TransposeFolding::OperandIndices{};
+        },
+        TransposeFolding::NeverFoldTranspose);
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+    pipeline.AddPass<HloDCE>();
+
+    // Run WhileLoopTripCountAnnotator at the end of the simplification
+    // pipeline, before layout assignment and fusion.  This pass does some
+    // pattern-matching on while bodies/conditions, and this is where the HLO is
+    // "nicest".
+    //
+    // It's important that we don't make semantic changes (e.g. unrolling) to
+    // any `while` loops after this point, because otherwise the trip-count
+    // annotations added by this pass may not be correct after the
+    // modifications.
+    pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  // Run target-specific HLO optimization passes for convolution
+  // canonicalization.
+  TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
+      hlo_module, stream_exec, device_allocator));
+
+  {
+    // Run layout assignment in a separate pipeline from
+    // "post-layout-assignment" because we want everything after layout
+    // assignment to have a layout-sensitive invariant-checker, but
+    // HloPassPipeline also runs its invariant checker before any passes are
+    // run, meaning, the pipeline that contains layout assignment cannot contain
+    // a layout-sensitive verifier!
+    HloPassPipeline pipeline("layout assignment");
+    pipeline.AddPass<GpuLayoutAssignment>(
+        hlo_module->mutable_entry_computation_layout(),
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  // Run target-specific HLO optimization passes after layout assignment.
+  TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(hlo_module, stream_exec,
+                                                     device_allocator));
+
+  {
+    HloPassFix<HloPassPipeline> fusion("fusion");
+    // We try to split variadic ops with many parameters into several such ops
+    // to avoid exceeding the parameter space.
+    fusion.AddPass<VariadicOpSplitter>();
+    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+     * fixing the ticket. */
+    fusion.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
+    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
+    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
+    fusion.AddPass<FusionMerger>();
+    fusion.AddPass<GpuMultiOutputFusion>();
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
+    fusion.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    HloPassPipeline reduce_pipeline("reduce-precision");
+    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+     * fixing the ticket. */
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(
+        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
+    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
+    TF_RETURN_IF_ERROR(reduce_result.status());
+
+    if (reduce_result.ValueOrDie()) {
+      // Do another fusion pass, with the expectation that we may be able to
+      // fuse the new ReducePrecision operations.
+      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+    }
+  }
+
+  return Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.

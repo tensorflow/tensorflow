@@ -45,7 +45,11 @@ class NVPTXCompiler : public GpuCompiler {
   NVPTXCompiler(se::Platform::Id platform_id);
   ~NVPTXCompiler() override {}
 
-  Status OptimizeHloModule(
+  Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) override;
+
+  Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
