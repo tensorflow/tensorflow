@@ -224,9 +224,27 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
   return LiteralToPython(std::make_shared<Literal>(std::move(literal)));
 }
 
-static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
-    const PythonBufferTree& tree, int device_ordinal,
-    std::shared_ptr<PyLocalClient> client, Device* device) {
+/* static */
+StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
+    const py::object& argument, std::shared_ptr<PyLocalClient> client,
+    int device_ordinal) {
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPython");
+  TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
+
+  client->py_ref_manager().CollectGarbage();
+
+  // Take a reference to the buffer to ensure that the inputs in host memory
+  // remain live until the transfer is complete.
+  auto py_buffer_ref =
+      client->py_ref_manager().ManageReferences(absl::MakeSpan(tree.arrays));
+  tree.arrays.clear();
+
+  // We are done manipulating Python objects; release the GIL.
+  py::gil_scoped_release gil_release;
+  VLOG(1) << "PyLocalBuffer::FromPython: shape: " << tree.shape.ToString()
+          << " device ordinal: " << device_ordinal;
+
+  Device* device = &client->device(device_ordinal);
   se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
@@ -269,38 +287,10 @@ static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
   if (device->synchronous_deallocation()) {
     device->ThenRelease(device->host_to_device_stream(), device_buffer);
   }
-  return absl::make_unique<PyLocalBuffer>(shape, std::move(device_buffer),
-                                          std::move(client));
-}
-
-/* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
-    const py::object& argument, std::shared_ptr<PyLocalClient> client,
-    int device_ordinal) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPython");
-  TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
-
-  client->py_ref_manager().CollectGarbage();
-
-  // Take a reference to the buffer to ensure that the inputs in host memory
-  // remain live until the transfer is complete.
-  auto py_buffer_ref =
-      client->py_ref_manager().ManageReferences(absl::MakeSpan(tree.arrays));
-  tree.arrays.clear();
-
-  // We are done manipulating Python objects; release the GIL.
-  py::gil_scoped_release gil_release;
-  VLOG(1) << "PyLocalBuffer::FromPython: shape: " << tree.shape.ToString()
-          << " device ordinal: " << device_ordinal;
-
-  Device* device = &client->device(device_ordinal);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalBuffer> buffer,
-                      TransferHostToDeviceAsync(tree, device_ordinal,
-                                                std::move(client), device));
-
   device->ThenRelease(device->host_to_device_stream(),
                       std::move(py_buffer_ref));
-  return buffer;
+  return absl::make_unique<PyLocalBuffer>(shape, std::move(device_buffer),
+                                          std::move(client));
 }
 
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
