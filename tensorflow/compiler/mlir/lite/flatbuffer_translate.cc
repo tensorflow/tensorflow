@@ -451,10 +451,16 @@ std::string Translator::GetName(Operation* inst) {
 }
 
 std::string Translator::UniqueName(llvm::StringRef prefix) {
+  // Keep incrementing the counter until we find a unique name.
   std::string name = prefix;
-  auto& val = name_to_count_[name];
-  if (val) name = (prefix + llvm::Twine(val)).str();
-  ++val;
+  int64_t& prefix_count = name_to_count_[name];
+  int64_t val = prefix_count;
+  while (val != 0) {
+    name = (prefix + llvm::Twine(prefix_count)).str();
+    ++prefix_count;
+    val = name_to_count_[name];
+  }
+  name_to_count_[name] = 1;
   return name;
 }
 
@@ -796,8 +802,10 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       fn.emitWarning() << "invalid entry function specification";
       return;
     }
-    for (auto it : llvm::enumerate(fn.getArguments()))
+    for (auto it : llvm::enumerate(fn.getArguments())) {
       op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
+      ++name_to_count_[input_names[it.index()].str()];
+    }
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
@@ -815,12 +823,14 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       // ensure the name that will be assigned to the buffer is the same, or
       // insert an op so that we can have a buffer named such. This cannot
       // currently happen due to pseudo_input nodes.
-      if (auto op = it.value()->getDefiningOp())
+      if (auto op = it.value()->getDefiningOp()) {
         op_to_name_[op] = output_names[it.index()];
-      else
+        name_to_count_[output_names[it.index()].str()] = 1;
+      } else {
         fn.emitWarning() << "output is not due to an op and '"
                          << output_names[it.index()]
                          << "' may not be a named output";
+      }
     }
   }
 }
