@@ -63,12 +63,19 @@ public:
   Optional<spirv::ModuleOp> collect();
 
 private:
+  /// Get type for a given result <id>
+  Type getType(uint32_t id) { return typeMap.lookup(id); }
+
   /// Processes SPIR-V module header.
   LogicalResult processHeader();
 
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   LogicalResult processInstruction(spirv::Opcode opcode,
                                    ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V type instruction with given 'opcode' and 'operands'
+  LogicalResult processType(spirv::Opcode opcode, ArrayRef<uint32_t> operands);
+  LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
 
@@ -92,6 +99,9 @@ private:
   Optional<spirv::ModuleOp> module;
 
   OpBuilder opBuilder;
+
+  // result <id> to type mapping
+  DenseMap<uint32_t, Type> typeMap;
 };
 } // namespace
 
@@ -147,11 +157,62 @@ LogicalResult Deserializer::processHeader() {
   return success();
 }
 
+LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
+  assert(!operands.empty() && "No operands for processing function type");
+  if (operands.size() == 1) {
+    return emitError(unknownLoc, "missing return type for OpTypeFunction");
+  }
+  auto returnType = getType(operands[1]);
+  if (!returnType) {
+    return emitError(unknownLoc, "unknown return type in OpTypeFunction");
+  }
+  SmallVector<Type, 1> argTypes;
+  for (size_t i = 2, e = operands.size(); i < e; ++i) {
+    auto ty = getType(operands[i]);
+    if (!ty) {
+      return emitError(unknownLoc, "unknown argument type in OpTypeFunction");
+    }
+    argTypes.push_back(ty);
+  }
+  typeMap[operands[0]] = FunctionType::get(argTypes, {returnType}, context);
+  return success();
+}
+
+LogicalResult Deserializer::processType(spirv::Opcode opcode,
+                                        ArrayRef<uint32_t> operands) {
+  if (operands.empty()) {
+    return emitError(unknownLoc, "type instruction with opcode ")
+           << spirv::stringifyOpcode(opcode) << " needs at least one <id>";
+  }
+  /// TODO: Types might be forward declared in some instructions and need to be
+  /// handled appropriately.
+  if (typeMap.count(operands[0])) {
+    return emitError(unknownLoc, "duplicate definition for result <id> ")
+           << operands[0];
+  }
+  switch (opcode) {
+  case spirv::Opcode::OpTypeVoid:
+    if (operands.size() != 1) {
+      return emitError(unknownLoc, "OpTypeVoid must have no parameters");
+    }
+    typeMap[operands[0]] = NoneType::get(context);
+    break;
+  case spirv::Opcode::OpTypeFunction:
+    return processFunctionType(operands);
+  default:
+    return emitError(unknownLoc, "unhandled type instruction");
+  }
+  return success();
+}
+
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands) {
   switch (opcode) {
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
+  case spirv::Opcode::OpTypeVoid:
+  case spirv::Opcode::OpTypeFunction:
+    return processType(opcode, operands);
   default:
     break;
   }

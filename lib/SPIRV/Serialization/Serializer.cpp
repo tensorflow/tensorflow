@@ -71,9 +71,28 @@ public:
 
 private:
   /// Creates SPIR-V module header in the given `header`.
-  void processHeader(SmallVectorImpl<uint32_t> &header);
+  LogicalResult processHeader();
 
-  void processMemoryModel();
+  LogicalResult processMemoryModel();
+
+  // Method to dispatch type serialization
+  LogicalResult processType(Location loc, Type type, uint32_t &typeID);
+
+  // Methods to serialize individual types
+  LogicalResult processBasicType(Location loc, Type type,
+                                 spirv::Opcode &typeEnum,
+                                 SmallVectorImpl<uint32_t> &operands);
+  LogicalResult processFunctionType(Location loc, FunctionType type,
+                                    spirv::Opcode &typeEnum,
+                                    SmallVectorImpl<uint32_t> &operands);
+
+  // Main method to dispatch operation serialization
+  LogicalResult processOperation(Operation *op, uint32_t &opID);
+
+  // Methods to serialize individual operation types
+  LogicalResult processFuncOp(FuncOp op, uint32_t &funcID);
+
+  uint32_t getNextID() { return nextID++; }
 
 private:
   /// The SPIR-V module to be serialized.
@@ -85,6 +104,7 @@ private:
   // The following are for different SPIR-V instruction sections. They follow
   // the logical layout of a SPIR-V module.
 
+  SmallVector<uint32_t, spirv::kHeaderWordCount> header;
   SmallVector<uint32_t, 4> capabilities;
   SmallVector<uint32_t, 0> extensions;
   SmallVector<uint32_t, 0> extendedSets;
@@ -94,7 +114,11 @@ private:
   // TODO(antiagainst): debug instructions
   SmallVector<uint32_t, 0> decorations;
   SmallVector<uint32_t, 0> typesGlobalValues;
-  SmallVector<uint32_t, 0> functions;
+  SmallVector<uint32_t, 0> functionDecls;
+  SmallVector<uint32_t, 0> functionDefns;
+
+  // Map from type used in SPIR-V module to their IDs
+  DenseMap<Type, uint32_t> typeIDMap;
 };
 } // namespace
 
@@ -105,22 +129,31 @@ LogicalResult Serializer::serialize() {
   // TODO(antiagainst): handle the other sections
   processMemoryModel();
 
+  // Iterate over the module body to serialze it. Assumptions are that there is
+  // only one basic block in the moduleOp
+  for (auto &op : module.getBlock()) {
+    uint32_t opID = 0;
+    if (failed(processOperation(&op, opID))) {
+      return failure();
+    }
+  }
   return success();
 }
 
 void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
   // The number of words in the SPIR-V module header
 
-  auto moduleSize = spirv::kHeaderWordCount + capabilities.size() +
-                    extensions.size() + extendedSets.size() +
-                    memoryModel.size() + entryPoints.size() +
-                    executionModes.size() + decorations.size() +
-                    typesGlobalValues.size() + functions.size();
+  auto moduleSize = header.size() + capabilities.size() + extensions.size() +
+                    extendedSets.size() + memoryModel.size() +
+                    entryPoints.size() + executionModes.size() +
+                    decorations.size() + typesGlobalValues.size() +
+                    functionDecls.size() + functionDefns.size();
 
   binary.clear();
   binary.reserve(moduleSize);
 
-  processHeader(binary);
+  processHeader();
+  binary.append(header.begin(), header.end());
   binary.append(capabilities.begin(), capabilities.end());
   binary.append(extensions.begin(), extensions.end());
   binary.append(extendedSets.begin(), extendedSets.end());
@@ -129,10 +162,11 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
   binary.append(executionModes.begin(), executionModes.end());
   binary.append(decorations.begin(), decorations.end());
   binary.append(typesGlobalValues.begin(), typesGlobalValues.end());
-  binary.append(functions.begin(), functions.end());
+  binary.append(functionDecls.begin(), functionDecls.end());
+  binary.append(functionDefns.begin(), functionDefns.end());
 }
 
-void Serializer::processHeader(SmallVectorImpl<uint32_t> &header) {
+LogicalResult Serializer::processHeader() {
   // The serializer tool ID registered to the Khronos Group
   constexpr uint32_t kGeneratorNumber = 22;
   // The major and minor version number for the generated SPIR-V binary.
@@ -160,13 +194,92 @@ void Serializer::processHeader(SmallVectorImpl<uint32_t> &header) {
   header.push_back(kGeneratorNumber);
   header.push_back(nextID); // ID bound
   header.push_back(0);      // Schema (reserved word)
+  return success();
 }
 
-void Serializer::processMemoryModel() {
+LogicalResult Serializer::processMemoryModel() {
   uint32_t mm = module.getAttrOfType<IntegerAttr>("memory_model").getInt();
   uint32_t am = module.getAttrOfType<IntegerAttr>("addressing_model").getInt();
 
   buildInstruction(spirv::Opcode::OpMemoryModel, {am, mm}, memoryModel);
+  return success();
+}
+
+LogicalResult Serializer::processType(Location loc, Type type,
+                                      uint32_t &typeID) {
+  auto it = typeIDMap.find(type);
+  if (it != typeIDMap.end()) {
+    typeID = it->second;
+    return success();
+  }
+  typeID = getNextID();
+  SmallVector<uint32_t, 4> operands;
+  operands.push_back(typeID);
+  auto typeEnum = spirv::Opcode::OpTypeVoid;
+  if ((type.isa<FunctionType>() &&
+       succeeded(processFunctionType(loc, type.cast<FunctionType>(), typeEnum,
+                                     operands))) ||
+      succeeded(processBasicType(loc, type, typeEnum, operands))) {
+    buildInstruction(typeEnum, operands, typesGlobalValues);
+    typeIDMap[type] = typeID;
+    return success();
+  }
+  return failure();
+}
+
+LogicalResult
+Serializer::processBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
+                             SmallVectorImpl<uint32_t> &operands) {
+  if (type.isa<NoneType>()) {
+    typeEnum = spirv::Opcode::OpTypeVoid;
+    return success();
+  }
+  /// TODO(ravishankarm) : Handle other types
+  return emitError(loc, "unhandled type in serialization : ") << type;
+}
+
+LogicalResult
+Serializer::processFunctionType(Location loc, FunctionType type,
+                                spirv::Opcode &typeEnum,
+                                SmallVectorImpl<uint32_t> &operands) {
+  typeEnum = spirv::Opcode::OpTypeFunction;
+  assert(type.getNumResults() <= 1 &&
+         "Serialization supports only a single return value");
+  uint32_t resultID = 0;
+  if (failed(processType(loc,
+                         type.getNumResults() == 1
+                             ? type.getResult(0)
+                             : mlir::NoneType::get(module.getContext()),
+                         resultID))) {
+    return failure();
+  }
+  operands.push_back(resultID);
+  for (auto &res : type.getInputs()) {
+    uint32_t argTypeID = 0;
+    if (failed(processType(loc, res, argTypeID))) {
+      return failure();
+    }
+    operands.push_back(argTypeID);
+  }
+  return success();
+}
+
+LogicalResult Serializer::processOperation(Operation *op, uint32_t &opID) {
+  opID = getNextID();
+  if ((isa<FuncOp>(op) && succeeded(processFuncOp(cast<FuncOp>(op), opID))) ||
+      isa<spirv::ModuleEndOp>(op)) {
+    return success();
+  }
+  /// TODO(ravishankarm) : Handle other ops
+  return op->emitError("unhandled operation serialization");
+}
+
+LogicalResult Serializer::processFuncOp(FuncOp op, uint32_t &funcID) {
+  uint32_t typeID = 0;
+  // Generate type of the function
+  processType(op.getLoc(), op.getType(), typeID);
+  // TODO(ravishankarm) : Process Function body
+  return success();
 }
 
 LogicalResult spirv::serialize(spirv::ModuleOp module,
