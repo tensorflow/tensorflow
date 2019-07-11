@@ -107,13 +107,16 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
     Eigen::Tensor<Eigen::DenseIndex, 1>::Dimensions reshape_dims{{ 1 }};
     Eigen::array<Eigen::DenseIndex, 1> broadcast_dims{{ batch_size }};
 #else
+#if !defined(INTEL_MKL) || !defined(ENABLE_MKL)
     Eigen::IndexList<Eigen::type2index<1> > reshape_dims;
+#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)
     Eigen::IndexList<Eigen::DenseIndex> broadcast_dims;
     broadcast_dims.set(0, batch_size);
-#endif
+#endif  // !defined(EIGEN_HAS_INDEX_LIST)
     generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
         slice_size, Tindices, Tparams, Tout, &error_loc);
 
+// TODO(b/137289929): Parallelize this with ParallelFor and remove OpenMP call.
 #if defined(INTEL_MKL) && defined(ENABLE_MKL)
 // Eigen implementation below is not highly performant. gather_nd_generator
 // does not seem to be called in parallel, leading to very poor performance.
