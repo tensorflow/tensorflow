@@ -167,6 +167,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_STRING;
     case mlir::TF::TensorFlowTypes::COMPLEX64:
       return tflite::TensorType_COMPLEX64;
+    case mlir::TF::TensorFlowTypes::UINT8:
+      return tflite::TensorType_UINT8;
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {
