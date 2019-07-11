@@ -83,9 +83,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -95,7 +93,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -109,95 +106,6 @@ limitations under the License.
 namespace xla {
 
 namespace py = pybind11;
-
-// Registers a 'fn_capsule' as a CPU custom call target.
-// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
-// "xla._CPU_CUSTOM_CALL_TARGET".
-Status RegisterCpuCustomCallTarget(const std::string& fn_name,
-                                   py::capsule capsule) {
-  static const char* const kName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName) {
-    return InvalidArgument(
-        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
-        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
-  }
-  CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), "Host");
-  return Status::OK();
-}
-
-Device::Device(se::StreamExecutor* executor, bool synchronous_deallocation,
-               bool asynchronous, bool allow_event_reuse)
-    : synchronous_deallocation_(synchronous_deallocation),
-      event_pool_(allow_event_reuse),
-      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
-  compute_stream_ = absl::make_unique<se::Stream>(executor);
-  host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
-  device_to_host_stream_ = absl::make_unique<se::Stream>(executor);
-  callback_stream_ = absl::make_unique<se::Stream>(executor);
-  compute_stream_->Init();
-  host_to_device_stream_->Init();
-  device_to_host_stream_->Init();
-  callback_stream_->Init();
-  device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
-  for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
-    auto stream = absl::make_unique<se::Stream>(executor);
-    stream->Init();
-    device_to_device_streams_.push_back(std::move(stream));
-  }
-  execute_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                    "py_xla_execute");
-  callback_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                     "py_xla_callback");
-}
-
-Device::~Device() {
-  Status status = SynchronizeAllActivity();
-  if (!status.ok()) {
-    LOG(ERROR) << "Error when closing device: " << status;
-  }
-}
-
-Status Device::SynchronizeAllActivity() {
-  Status status;
-  // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
-  // suffice. However on the Host platform SynchronizeAllActivity is a dummy
-  // implementation that doesn't actually block. To make sure activity has
-  // stopped, also block on the compute stream. If SynchronizeAllActivity is
-  // fixed, we could remove the BlockHostUntilDone call.
-  status.Update(compute_stream_->BlockHostUntilDone());
-  bool ok = compute_stream_->parent()->SynchronizeAllActivity();
-  if (!ok) {
-    status.Update(Unknown("SynchronizeAllActivity failed."));
-  }
-  return status;
-}
-
-Status Device::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
-                                        se::Stream* dst_stream,
-                                        se::DeviceMemoryBase src_buffer,
-                                        se::DeviceMemoryBase dst_buffer) {
-  // The default implementation simply calls ThenMemcpyD2D, and assumes that
-  // the buffer addresses identify the devices. This does not work
-  // on all platforms; this method is virtual so it can be overridden.
-  src_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return Status::OK();
-}
-
-void Device::ThenExecuteOnCallbackThread(se::Stream* stream,
-                                         std::function<void()> callback) const {
-  stream->ThenDoHostCallback([this, callback]() mutable {
-    callback_thread_->Schedule(std::move(callback));
-  });
-}
-
-se::Stream* Device::GetDeviceToDeviceStream() {
-  absl::MutexLock lock(&mu_);
-  int i = next_device_to_device_stream_;
-  next_device_to_device_stream_ =
-      (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
-  return device_to_device_streams_.at(i).get();
-}
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
     se::Platform* platform, LocalClient* client, double memory_fraction,

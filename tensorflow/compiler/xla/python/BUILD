@@ -171,6 +171,23 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "device",
+    srcs = ["device.cc"],
+    hdrs = ["device.h"],
+    deps = [
+        ":event_pool",
+        ":semaphore",
+        ":worker_thread",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "local_client",
     srcs = [
         "local_client.cc",
@@ -187,11 +204,9 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":event_pool",
-        ":semaphore",
+        ":device",
         ":shared_device_buffer",
         ":types",
-        ":worker_thread",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -205,7 +220,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:bfc_allocator",
@@ -239,11 +253,11 @@ tf_pybind_extension(
         ":local_client",
         ":shared_device_buffer",
         ":types",
-        ":worker_thread",
         ":xrt",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -266,6 +280,7 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
