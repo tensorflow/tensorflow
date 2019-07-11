@@ -35,6 +35,7 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 py_library(
@@ -59,6 +60,7 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 py_binary(
@@ -99,6 +101,7 @@ tf_py_test(
         ":freeze",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 py_binary(
@@ -124,6 +127,7 @@ tf_py_test(
         ":wav_to_features",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 py_binary(
@@ -149,6 +153,7 @@ tf_py_test(
         ":generate_streaming_test_wav",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 tf_cc_binary(
@@ -185,6 +190,7 @@ tf_py_test(
         ":label_wav",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_oss"],
 )
 
 cc_library(
@@ -211,6 +217,7 @@ tf_cc_test(
     srcs = [
         "recognize_commands_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":recognize_commands",
         "//tensorflow/core:lib",
@@ -245,6 +252,7 @@ tf_cc_test(
     srcs = [
         "accuracy_utils_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":accuracy_utils",
         "//tensorflow/core:lib",
