@@ -1165,8 +1165,7 @@ def internal_convert_to_tensor(value,
       try:
         ret = conversion_func(
             value, dtype=preferred_dtype, name=name, as_ref=as_ref)
-      except (TypeError, ValueError, errors.UnimplementedError,
-              errors.InvalidArgumentError):
+      except (TypeError, ValueError):
         # Could not coerce the conversion to use the preferred dtype.
         ret = None
 
