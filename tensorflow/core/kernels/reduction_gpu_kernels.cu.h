@@ -489,12 +489,12 @@ __device__ __inline__ T ComputeSum(IN_T in_, const int plane,
   return sum;
 }
 
-template <int unroll, typename T, typename Op>
+template <int unroll, typename IN_T, typename Op>
 __global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
                                            int temp_out_offset,
-                                           T in, int num_planes,
+                                           IN_T in, int num_planes,
                                            int num_rows, int num_cols, Op op) {
-  typedef typename std::iterator_traits<T>::value_type value_type;
+  typedef typename std::iterator_traits<IN_T>::value_type value_type;
 
   value_type* t = (value_type*)temp;
   value_type* out_ = t + temp_out_offset;
@@ -509,7 +509,7 @@ __global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
   value_type sum;
   if (temp_in_offset == -1) {
     auto in_ = in;
-    sum = ComputeSum<unroll, value_type, T, Op>(
+    sum = ComputeSum<unroll, value_type, IN_T, Op>(
               in_, plane, num_out_rows, num_rows, num_cols, col, op);
   } else {
     auto in_ = t + temp_in_offset;
@@ -884,21 +884,19 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   int threads_per_block = 128;
 
   int n_group_in = extent_y;
-  int n_group_out;
   int n_size  = extent_z;
-  const int unroll = 8;
+  constexpr int unroll = 8;
 
   // Calculate and allocate temporary space
   std::size_t temp_storage_bytes = 0;
-  // A plane's size is n_group_in * n_size. We make sure no single plane is
-  // cross more than one thread block, meaning a thread block will handle
-  // one whole plane or multiple planes in the second stage. Also, It may handle
-  // a partial plane when n_size is too large and the while-loop will stop at
+  // A plane's size is n_group_in * n_size. We make sure no single plane crosses 
+  // more than one thread block, meaning a thread block will handle one whole
+  // plane or multiple planes in the second stage. Also, It may handle a partial
+  // plane when n_size is too large and the while-loop will stop at
   // n_group_in = 1, where we directly copy the temp to output in the next
   // stage.
   while (n_group_in >= 2 && n_group_in * n_size > threads_per_block) {
-    // 8 is the loop unrolling factor
-    n_group_out = std::max(1, n_group_in / (2 * unroll));
+    int n_group_out = std::max(1, n_group_in / (2 * unroll));
     temp_storage_bytes += n_group_out * n_size;
     n_group_in = n_group_out;
   }
@@ -915,11 +913,9 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   int temp_out_offset = 0;
   int num_blocks;
   while (n_group_in >= 2 && n_group_in * n_size > threads_per_block) {
-    // 8 is the loop unrolling factor
-    n_group_out = std::max(1, n_group_in / (2 * unroll));
-    num_blocks = (extent_x * n_group_out * n_size + threads_per_block - 1) /
-                 threads_per_block;
-
+    int n_group_out = std::max(1, n_group_in / (2 * unroll));
+    num_blocks = Eigen::divup(extent_x * n_group_out * n_size,
+                              threads_per_block);
     ColumnReduceInToTempKernel<unroll, IN_T, Op><<<
         num_blocks, threads_per_block, 0, cu_stream>>>(
             (void*)(temp_storage.flat<int8_t>().data()), temp_in_offset,
@@ -932,9 +928,9 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   if (n_group_in * n_size <= threads_per_block) {
     num_blocks = extent_x;
-  } else { // n_group_in will be 1 here
-    num_blocks = 
-      (extent_x * n_size + threads_per_block - 1) / threads_per_block;
+  } else {
+    DCHECK_EQ(1, n_group_in);
+    num_blocks = Eigen::divup(extent_x * n_size, threads_per_block);
   }
 
   ColumnReduceTempToOutKernel<<<num_blocks, threads_per_block,
