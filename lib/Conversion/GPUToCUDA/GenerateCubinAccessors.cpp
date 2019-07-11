@@ -94,7 +94,7 @@ private:
     auto memory =
         ob.create<LLVM::CallOp>(
               loc, ArrayRef<Type>{LLVM::LLVMType::getInt8PtrTy(llvmDialect)},
-              builder.getFunctionAttr(getMallocHelper(loc, builder)),
+              builder.getSymbolRefAttr(getMallocHelper(loc, builder)),
               ArrayRef<Value *>{sizeConstant})
             .getResult(0);
     for (auto byte : llvm::enumerate(blob.getValue().bytes())) {
@@ -111,7 +111,7 @@ private:
     }
     ob.create<LLVM::ReturnOp>(loc, ArrayRef<Value *>{memory});
     // Store the name of the getter on the function for easier lookup.
-    orig.setAttr(kCubinGetterAnnotation, builder.getFunctionAttr(result));
+    orig.setAttr(kCubinGetterAnnotation, builder.getSymbolRefAttr(result));
     return result;
   }
 

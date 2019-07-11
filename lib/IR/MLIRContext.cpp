@@ -82,7 +82,7 @@ namespace {
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseElementsAttr,
-                  DictionaryAttr, FloatAttr, FunctionAttr, IntegerAttr,
+                  DictionaryAttr, FloatAttr, SymbolRefAttr, IntegerAttr,
                   IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
                   SparseElementsAttr, StringAttr, TypeAttr, UnitAttr>();
     addAttributes<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, UnknownLoc>();

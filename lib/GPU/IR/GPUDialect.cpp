@@ -21,6 +21,7 @@
 
 #include "mlir/GPU/GPUDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -386,7 +387,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
   result->addOperands(kernelOperands);
   result->addAttribute(getKernelAttrName(),
-                       builder->getFunctionAttr(kernelFunc));
+                       builder->getSymbolRefAttr(kernelFunc));
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
@@ -398,7 +399,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 StringRef LaunchFuncOp::kernel() {
-  return getAttrOfType<FunctionAttr>(getKernelAttrName()).getValue();
+  return getAttrOfType<SymbolRefAttr>(getKernelAttrName()).getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
@@ -421,7 +422,7 @@ LogicalResult LaunchFuncOp::verify() {
   auto kernelAttr = this->getAttr(getKernelAttrName());
   if (!kernelAttr) {
     return emitOpError("attribute 'kernel' must be specified");
-  } else if (!kernelAttr.isa<FunctionAttr>()) {
+  } else if (!kernelAttr.isa<SymbolRefAttr>()) {
     return emitOpError("attribute 'kernel' must be a function");
   }
 

@@ -30,7 +30,7 @@ spv.module "Logical" "VulkanKHR" {
    func @do_nothing() -> () {
      spv.Return
    }
-   // expected-error @+1 {{custom op 'spv.EntryPoint' expected function attribute}}
+   // expected-error @+1 {{custom op 'spv.EntryPoint' expected symbol reference attribute}}
    %4 = spv.EntryPoint "GLCompute" "do_nothing"
 }
 

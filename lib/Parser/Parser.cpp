@@ -931,7 +931,7 @@ ParseResult Parser::parseXInDimensionList() {
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | `{` (attribute-entry (`,` attribute-entry)*)? `}`
-///                    | function-id `:` function-type
+///                    | symbol-ref-id
 ///                    | `dense` `<` attribute-value `>` `:`
 ///                      (tensor-type | vector-type)
 ///                    | `sparse` `<` attribute-value `,` attribute-value `>`
@@ -1010,13 +1010,6 @@ Attribute Parser::parseAttribute(Type type) {
             nullptr);
   }
 
-  // Parse a function attribute.
-  case Token::at_identifier: {
-    auto nameStr = getTokenSpelling();
-    consumeToken(Token::at_identifier);
-    return builder.getFunctionAttr(nameStr.drop_front());
-  }
-
   // Parse a location attribute.
   case Token::kw_loc: {
     LocationAttr attr;
@@ -1041,6 +1034,13 @@ Attribute Parser::parseAttribute(Type type) {
 
     return type ? StringAttr::get(val, type)
                 : StringAttr::get(val, getContext());
+  }
+
+  // Parse a symbol reference attribute.
+  case Token::at_identifier: {
+    auto nameStr = getTokenSpelling();
+    consumeToken(Token::at_identifier);
+    return builder.getSymbolRefAttr(nameStr.drop_front());
   }
 
   // Parse a 'unit' attribute.

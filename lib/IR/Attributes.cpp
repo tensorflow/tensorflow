@@ -246,15 +246,15 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 }
 
 //===----------------------------------------------------------------------===//
-// FunctionAttr
+// SymbolRefAttr
 //===----------------------------------------------------------------------===//
 
-FunctionAttr FunctionAttr::get(StringRef value, MLIRContext *ctx) {
-  return Base::get(ctx, StandardAttributes::Function, value,
+SymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value,
                    NoneType::get(ctx));
 }
 
-StringRef FunctionAttr::getValue() const { return getImpl()->value; }
+StringRef SymbolRefAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr

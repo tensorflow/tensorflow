@@ -175,11 +175,14 @@ IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
 
 TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
 
-FunctionAttr Builder::getFunctionAttr(FuncOp value) {
-  return getFunctionAttr(value.getName());
+SymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
+  auto symName =
+      value->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+  assert(symName && "value does not have a valid symbol name");
+  return getSymbolRefAttr(symName.getValue());
 }
-FunctionAttr Builder::getFunctionAttr(StringRef value) {
-  return FunctionAttr::get(value, getContext());
+SymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
+  return SymbolRefAttr::get(value, getContext());
 }
 
 ElementsAttr Builder::getDenseElementsAttr(ShapedType type,

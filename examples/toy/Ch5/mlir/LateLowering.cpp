@@ -160,10 +160,10 @@ public:
       // clang-format off
       LoopBuilder(&i, zero, M, 1)([&]{
         llvmCall(retTy,
-                 rewriter.getFunctionAttr(printfFunc),
+                 rewriter.getSymbolRefAttr(printfFunc),
                  {fmtCst, iOp(i)});
       });
-      llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol});
+      llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc), {fmtEol});
       // clang-format on
     } else {
       IndexHandle N(vOp.ub(1));
@@ -171,10 +171,10 @@ public:
       LoopBuilder(&i, zero, M, 1)([&]{
         LoopBuilder(&j, zero, N, 1)([&]{
           llvmCall(retTy,
-                   rewriter.getFunctionAttr(printfFunc),
+                   rewriter.getSymbolRefAttr(printfFunc),
                    {fmtCst, iOp(i, j)});
         });
-        llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol});
+        llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc), {fmtEol});
       });
       // clang-format on
     }

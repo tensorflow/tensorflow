@@ -141,11 +141,11 @@ enum Kind {
   Bool,
   Dictionary,
   Float,
-  Function,
   Integer,
   IntegerSet,
   Opaque,
   String,
+  SymbolRef,
   Type,
   Unit,
 
@@ -306,25 +306,6 @@ public:
                                Type type, const APFloat &value);
 };
 
-/// A function attribute represents a reference to a function object.
-class FunctionAttr
-    : public Attribute::AttrBase<FunctionAttr, Attribute,
-                                 detail::StringAttributeStorage> {
-public:
-  using Base::Base;
-  using ValueType = StringRef;
-
-  static FunctionAttr get(StringRef value, MLIRContext *ctx);
-
-  /// Returns the name of the held function reference.
-  StringRef getValue() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Function;
-  }
-};
-
 class IntegerAttr
     : public Attribute::AttrBase<IntegerAttr, Attribute,
                                  detail::IntegerAttributeStorage> {
@@ -414,6 +395,26 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::String;
+  }
+};
+
+/// A symbol reference attribute represents a symbolic reference to another
+/// operation.
+class SymbolRefAttr
+    : public Attribute::AttrBase<SymbolRefAttr, Attribute,
+                                 detail::StringAttributeStorage> {
+public:
+  using Base::Base;
+  using ValueType = StringRef;
+
+  static SymbolRefAttr get(StringRef value, MLIRContext *ctx);
+
+  /// Returns the name of the held symbol reference.
+  StringRef getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::SymbolRef;
   }
 };
 

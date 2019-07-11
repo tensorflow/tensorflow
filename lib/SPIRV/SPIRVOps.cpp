@@ -22,6 +22,7 @@
 #include "mlir/SPIRV/SPIRVOps.h"
 
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/SPIRV/SPIRVTypes.h"
@@ -280,8 +281,8 @@ static ParseResult parseEntryPointOp(OpAsmParser *parser,
       parser->resolveOperands(identifiers, idTypes, loc, state->operands)) {
     return failure();
   }
-  if (!fn.isa<FunctionAttr>()) {
-    return parser->emitError(loc, "expected function attribute");
+  if (!fn.isa<SymbolRefAttr>()) {
+    return parser->emitError(loc, "expected symbol reference attribute");
   }
   state->addTypes(
       spirv::EntryPointType::get(parser->getBuilder().getContext()));

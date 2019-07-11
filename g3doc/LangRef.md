@@ -177,7 +177,7 @@ bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
 suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
 
-function-id ::= `@` bare-id
+symbol-ref-id ::= `@` bare-id
 ssa-id ::= `%` suffix-id
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 
@@ -690,8 +690,8 @@ attribute-value ::= affine-map-attribute
                   | integer-attribute
                   | integer-set-attribute
                   | float-attribute
-                  | function-attribute
                   | string-attribute
+                  | symbol-ref-attribute
                   | type-attribute
                   | unit-attribute
 ```
@@ -847,17 +847,6 @@ float-attribute ::= float-literal (`:` float-type)?
 A float attribute is a literal attribute that represents a floating point value
 of the specified [float type](#floating-point-types).
 
-#### Function Attribute
-
-Syntax:
-
-``` {.ebnf}
-function-attribute ::= function-id
-```
-
-A function attribute is a literal attribute that represents a named reference to
-the given function.
-
 #### String Attribute
 
 Syntax:
@@ -867,6 +856,17 @@ string-attribute ::= string-literal (`:` type)?
 ```
 
 A string attribute is an attribute that represents a string literal value.
+
+#### Symbol Reference Attribute
+
+Syntax:
+
+``` {.ebnf}
+symbol-ref-attribute ::= symbol-ref-id
+```
+
+A symbol reference attribute is a literal attribute that represents a named
+reference to a given operation.
 
 #### Type Attribute
 
@@ -924,7 +924,8 @@ referenced by name via a string attribute):
 ``` {.ebnf}
 function ::= `func` function-signature function-attributes? function-body?
 
-function-signature ::= function-id `(` argument-list `)` (`->` function-result-type)?
+function-signature ::= symbol-ref-id `(` argument-list `)`
+                       (`->` function-result-type)?
 argument-list ::= named-argument (`,` named-argument)* | /*empty*/
 argument-list ::= type attribute-dict? (`,` type attribute-dict?)* | /*empty*/
 named-argument ::= ssa-id `:` type attribute-dict?
@@ -1277,7 +1278,7 @@ single function to return.
 Syntax:
 
 ``` {.ebnf}
-operation ::= `call` function-id `(` ssa-use-list? `)` `:` function-type
+operation ::= `call` symbol-ref-id `(` ssa-use-list? `)` `:` function-type
 ```
 
 The `call` operation represents a direct call to a function. The operands and

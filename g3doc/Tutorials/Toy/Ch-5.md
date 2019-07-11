@@ -167,10 +167,10 @@ in this chapter for lowering `toy.print`:
     LoopBuilder(&i, zero, M, 1)({
       LoopBuilder(&j, zero, N, 1)({
         llvmCall(retTy,
-                 rewriter.getFunctionAttr(printfFunc),
+                 rewriter.getSymbolRefAttr(printfFunc),
                  {fmtCst, iOp(i, j)})
       }),
-      llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol})
+      llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc), {fmtEol})
     });
 ```
 

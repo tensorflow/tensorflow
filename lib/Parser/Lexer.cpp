@@ -215,7 +215,7 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
 
 /// Lex an '@foo' identifier.
 ///
-///   function-id ::= `@` bare-id
+///   symbol-ref-id ::= `@` bare-id
 ///
 Token Lexer::lexAtIdentifier(const char *tokStart) {
   // These always start with a letter or underscore.

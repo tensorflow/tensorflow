@@ -204,7 +204,7 @@ public:
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *allocated =
-        call(voidPtrTy, rewriter.getFunctionAttr(mallocFunc), allocSize)
+        call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
             .getOperation()
             ->getResult(0);
     allocated = bitcast(elementPtrType, allocated);
@@ -248,7 +248,7 @@ public:
     edsc::ScopedContext context(rewriter, op->getLoc());
     Value *casted = bitcast(voidPtrTy, extractvalue(elementPtrTy, operands[0],
                                                     positionAttr(rewriter, 0)));
-    call(ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
+    call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -650,7 +650,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
     implFnArgs.push_back(alloca);
     llvm_store(arg, alloca);
   }
-  call(ArrayRef<Type>(), builder.getFunctionAttr(implFn), implFnArgs);
+  call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
   llvm_return{ArrayRef<Value *>()};
 }
 
@@ -694,7 +694,7 @@ public:
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
     static_cast<LinalgTypeConverter &>(lowering).addLibraryFnDeclaration(f);
 
-    auto fAttr = rewriter.getFunctionAttr(f);
+    auto fAttr = rewriter.getSymbolRefAttr(f);
     auto named = rewriter.getNamedAttr("callee", fAttr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
                                               ArrayRef<NamedAttribute>{named});

@@ -199,7 +199,7 @@ def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
-                  Arguments<(ins OptionalAttr<FunctionAttr>:$callee,
+                  Arguments<(ins OptionalAttr<SymbolRefAttr>:$callee,
                              // TODO(b/133216756): fix test failure and
                              // change to LLVM_Type
                              Variadic<AnyType>)>,

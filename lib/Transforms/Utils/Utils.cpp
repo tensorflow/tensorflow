@@ -28,6 +28,7 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/MathExtras.h"

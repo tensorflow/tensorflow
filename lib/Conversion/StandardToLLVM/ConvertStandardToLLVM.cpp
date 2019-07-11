@@ -456,7 +456,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     Value *allocated =
         rewriter
             .create<LLVM::CallOp>(op->getLoc(), getVoidPtrType(),
-                                  rewriter.getFunctionAttr(mallocFunc),
+                                  rewriter.getSymbolRefAttr(mallocFunc),
                                   cumulativeSize)
             .getResult(0);
     auto structElementType = lowering.convertType(elementType);
@@ -520,7 +520,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
     Value *casted = rewriter.create<LLVM::BitcastOp>(
         op->getLoc(), getVoidPtrType(), bufferPtr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
+        op, ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
     return matchSuccess();
   }
 };

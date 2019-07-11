@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/FoldUtils.h"

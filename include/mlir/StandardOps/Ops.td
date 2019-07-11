@@ -210,20 +210,20 @@ def CallOp : Std_Op<"call"> {
       %2 = call @my_add(%0, %1) : (f32, f32) -> f32
   }];
 
-  let arguments = (ins FunctionAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, FuncOp callee,"
     "ArrayRef<Value *> operands = {}", [{
       result->addOperands(operands);
-      result->addAttribute("callee", builder->getFunctionAttr(callee));
+      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
       result->addTypes(callee.getType().getResults());
   }]>, OpBuilder<
     "Builder *builder, OperationState *result, StringRef callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
       result->addOperands(operands);
-      result->addAttribute("callee", builder->getFunctionAttr(callee));
+      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
       result->addTypes(results);
   }]>];
 

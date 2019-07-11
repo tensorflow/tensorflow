@@ -154,8 +154,8 @@ ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
   auto &builder = parser->getBuilder();
 
-  // Parse the name as a function attribute.
-  FunctionAttr nameAttr;
+  // Parse the name as a symbol reference attribute.
+  SymbolRefAttr nameAttr;
   if (parser->parseAttribute(nameAttr, SymbolTable::getSymbolAttrName(),
                              result->attributes))
     return failure();

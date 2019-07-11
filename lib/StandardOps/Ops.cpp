@@ -20,6 +20,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
@@ -401,7 +402,7 @@ void BranchOp::eraseOperand(unsigned index) {
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
-  FunctionAttr calleeAttr;
+  SymbolRefAttr calleeAttr;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
   auto calleeLoc = parser->getNameLoc();
@@ -428,9 +429,9 @@ static void print(OpAsmPrinter *p, CallOp op) {
 
 static LogicalResult verify(CallOp op) {
   // Check that the callee attribute was specified.
-  auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
+  auto fnAttr = op.getAttrOfType<SymbolRefAttr>("callee");
   if (!fnAttr)
-    return op.emitOpError("requires a 'callee' function attribute");
+    return op.emitOpError("requires a 'callee' symbol reference attribute");
   auto fn =
       op.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(fnAttr.getValue());
   if (!fn)
@@ -474,7 +475,7 @@ struct SimplifyIndirectCallWithKnownCallee
   PatternMatchResult matchAndRewrite(CallIndirectOp indirectCall,
                                      PatternRewriter &rewriter) const override {
     // Check that the callee is a constant callee.
-    FunctionAttr calledFn;
+    SymbolRefAttr calledFn;
     if (!matchPattern(indirectCall.getCallee(), m_Constant(&calledFn)))
       return matchFailure();
 
@@ -1029,8 +1030,8 @@ static void print(OpAsmPrinter *p, ConstantOp &op) {
     *p << ' ';
   p->printAttribute(op.getValue());
 
-  // If the value is a function, print a trailing type.
-  if (op.getValue().isa<FunctionAttr>()) {
+  // If the value is a symbol reference, print a trailing type.
+  if (op.getValue().isa<SymbolRefAttr>()) {
     *p << " : ";
     p->printType(op.getType());
   }
@@ -1043,9 +1044,9 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
       parser->parseAttribute(valueAttr, "value", result->attributes))
     return failure();
 
-  // If the attribute is a function, then we expect a trailing type.
+  // If the attribute is a symbol reference, then we expect a trailing type.
   Type type;
-  if (!valueAttr.isa<FunctionAttr>())
+  if (!valueAttr.isa<SymbolRefAttr>())
     type = valueAttr.getType();
   else if (parser->parseColonType(type))
     return failure();
@@ -1093,7 +1094,7 @@ static LogicalResult verify(ConstantOp &op) {
   }
 
   if (type.isa<FunctionType>()) {
-    auto fnAttr = value.dyn_cast<FunctionAttr>();
+    auto fnAttr = value.dyn_cast<SymbolRefAttr>();
     if (!fnAttr)
       return op.emitOpError("requires 'value' to be a function reference");
 
@@ -1125,8 +1126,8 @@ OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
 /// Returns true if a constant operation can be built with the given value and
 /// result type.
 bool ConstantOp::isBuildableWith(Attribute value, Type type) {
-  // FunctionAttr can only be used with a function type.
-  if (value.isa<FunctionAttr>())
+  // SymbolRefAttr can only be used with a function type.
+  if (value.isa<SymbolRefAttr>())
     return type.isa<FunctionType>();
   // Otherwise, the attribute must have the same type as 'type'.
   if (value.getType() != type)

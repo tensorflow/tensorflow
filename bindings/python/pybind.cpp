@@ -655,7 +655,7 @@ PYBIND11_MODULE(pybind, m) {
   });
   m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
     auto function = FuncOp::getFromOpaquePointer(func.function);
-    auto attr = FunctionAttr::get(function.getName(), function.getContext());
+    auto attr = SymbolRefAttr::get(function.getName(), function.getContext());
     return ValueHandle::create<ConstantOp>(function.getType(), attr);
   });
   m.def("appendTo", [](const PythonBlockHandle &handle) {

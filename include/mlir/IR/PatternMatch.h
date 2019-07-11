@@ -22,6 +22,7 @@
 
 namespace mlir {
 
+class FuncOp;
 class PatternRewriter;
 
 //===----------------------------------------------------------------------===//

@@ -83,7 +83,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
 
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
-    FunctionAttr:$fn,
+    SymbolRefAttr:$fn,
     Variadic<SPV_AnyPtr>:$interface
   );
 

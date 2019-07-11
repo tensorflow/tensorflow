@@ -335,7 +335,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   SmallVector<OpAsmParser::OperandType, 8> operands;
   Type type;
-  FunctionAttr funcAttr;
+  SymbolRefAttr funcAttr;
   llvm::SMLoc trailingTypeLoc;
 
   // Parse an operand list that will, in practice, contain 0 or 1 operand.  In

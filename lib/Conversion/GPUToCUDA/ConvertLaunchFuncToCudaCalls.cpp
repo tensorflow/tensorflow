@@ -324,7 +324,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // TODO(herhut): This should rather be a static global once supported.
   auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
   auto cubinGetter =
-      kernelFunction.getAttrOfType<FunctionAttr>(kCubinGetterAnnotation);
+      kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {
     kernelFunction.emitError("Missing ")
         << kCubinGetterAnnotation << " attribute.";
@@ -337,7 +337,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   auto cuModule = allocatePointer(builder, loc);
   FuncOp cuModuleLoad = getModule().lookupSymbol<FuncOp>(cuModuleLoadName);
   builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{getCUResultType()},
-                               builder.getFunctionAttr(cuModuleLoad),
+                               builder.getSymbolRefAttr(cuModuleLoad),
                                ArrayRef<Value *>{cuModule, data.getResult(0)});
   // Get the function from the module. The name corresponds to the name of
   // the kernel function.
@@ -349,14 +349,14 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
       getModule().lookupSymbol<FuncOp>(cuModuleGetFunctionName);
   builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getCUResultType()},
-      builder.getFunctionAttr(cuModuleGetFunction),
+      builder.getSymbolRefAttr(cuModuleGetFunction),
       ArrayRef<Value *>{cuFunction, cuOwningModuleRef, kernelName});
   // Grab the global stream needed for execution.
   FuncOp cuGetStreamHelper =
       getModule().lookupSymbol<FuncOp>(cuGetStreamHelperName);
   auto cuStream = builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getPointerType()},
-      builder.getFunctionAttr(cuGetStreamHelper), ArrayRef<Value *>{});
+      builder.getSymbolRefAttr(cuGetStreamHelper), ArrayRef<Value *>{});
   // Invoke the function with required arguments.
   auto cuLaunchKernel = getModule().lookupSymbol<FuncOp>(cuLaunchKernelName);
   auto cuFunctionRef =
@@ -366,7 +366,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
       builder.create<LLVM::IntToPtrOp>(loc, getPointerPointerType(), zero);
   builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getCUResultType()},
-      builder.getFunctionAttr(cuLaunchKernel),
+      builder.getSymbolRefAttr(cuLaunchKernel),
       ArrayRef<Value *>{cuFunctionRef, launchOp.getOperand(0),
                         launchOp.getOperand(1), launchOp.getOperand(2),
                         launchOp.getOperand(3), launchOp.getOperand(4),
@@ -377,7 +377,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // Sync on the stream to make it synchronous.
   auto cuStreamSync = getModule().lookupSymbol<FuncOp>(cuStreamSynchronizeName);
   builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{getCUResultType()},
-                               builder.getFunctionAttr(cuStreamSync),
+                               builder.getSymbolRefAttr(cuStreamSync),
                                ArrayRef<Value *>(cuStream.getResult(0)));
   launchOp.erase();
 }

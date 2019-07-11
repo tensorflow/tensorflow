@@ -670,10 +670,9 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::Type:
     printType(attr.cast<TypeAttr>().getValue());
     break;
-  case StandardAttributes::Function: {
-    os << '@' << attr.cast<FunctionAttr>().getValue();
+  case StandardAttributes::SymbolRef:
+    os << '@' << attr.cast<SymbolRefAttr>().getValue();
     break;
-  }
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";

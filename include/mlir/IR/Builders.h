@@ -18,7 +18,6 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
-#include "mlir/IR/Function.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
@@ -44,7 +43,7 @@ class FloatAttr;
 class StringAttr;
 class TypeAttr;
 class ArrayAttr;
-class FunctionAttr;
+class SymbolRefAttr;
 class ElementsAttr;
 class DenseElementsAttr;
 class DenseIntElementsAttr;
@@ -111,8 +110,8 @@ public:
   AffineMapAttr getAffineMapAttr(AffineMap map);
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);
   TypeAttr getTypeAttr(Type type);
-  FunctionAttr getFunctionAttr(FuncOp value);
-  FunctionAttr getFunctionAttr(StringRef value);
+  SymbolRefAttr getSymbolRefAttr(Operation *value);
+  SymbolRefAttr getSymbolRefAttr(StringRef value);
   ElementsAttr getDenseElementsAttr(ShapedType type,
                                     ArrayRef<Attribute> values);
   ElementsAttr getDenseIntElementsAttr(ShapedType type,

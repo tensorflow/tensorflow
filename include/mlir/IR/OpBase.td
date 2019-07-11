@@ -831,12 +831,12 @@ def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
 }
 
-// Attributes containing functions.
-def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
-                        "function attribute"> {
-  let storageType = [{ FunctionAttr }];
+// Attributes containing symbol references.
+def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
+                        "symbol reference attribute"> {
+  let storageType = [{ SymbolRefAttr }];
   let returnType = [{ StringRef }];
-  let constBuilderCall = "$_builder.getFunctionAttr($0)";
+  let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
 }
 
 //===----------------------------------------------------------------------===//
