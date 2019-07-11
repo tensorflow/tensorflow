@@ -18,14 +18,32 @@ limitations under the License.
 // Asynchronous execution:
 // -----------------------
 //
-// If 'asynchronous' is set when constructing the client, computations and
-// host-to-device transfers do not block the host waiting for the operation to
-// complete but instead return control to the host immediately. This allows
-// Python logic to overlap with device-side computation.
+// Computations and host-to-device transfers do not need to block the host
+// waiting for the operation to complete but instead return control to the host
+// immediately. This allows Python logic to overlap with device-side
+// computation.
 //
 // For a good user experience, we must be careful only to enqueue operations
 // that are unlikely to fail; as a rule error checking must be done eagerly
 // before returning control to the client.
+//
+// The degree to which the client can enqueue operations ahead of the client
+// is limited by a semaphore. There are at two modes: asynchronous, where we
+// allow the client to enqueue up to 32 executions ahead of the device, and
+// synchronous, where we limit the client to having one enqueued operation at
+// a time. The value of 32 is arbitrary.
+//
+// Even in asynchronous mode, it is important that we do not permit
+// unbounded queue-ahead. Firstly it is problematic when the user does something
+// like the following in Python:
+// %timeit run_computation()
+// To the timeit logic, op() appears to be extremely cheap since it is deferring
+// all of its real work and not blocking, and so the %timeit will run op() many
+// (e.g., 10000) times to get better timing resolution, even though in reality
+// it may be expensive. Secondly, on CPU the allocator is synchronized with the
+// head of the compute stream, and we allocate buffers for all of the enqueued
+// programs without any reuse (unlike GPU). This means that the memory usage
+// is proportional to the queue size.
 //
 // Multi-stream execution:
 // -----------------------
@@ -111,8 +129,8 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
 Device::Device(se::StreamExecutor* executor, bool synchronous_deallocation,
                bool asynchronous, bool allow_event_reuse)
     : synchronous_deallocation_(synchronous_deallocation),
-      asynchronous_(asynchronous),
-      event_pool_(allow_event_reuse) {
+      event_pool_(allow_event_reuse),
+      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
   compute_stream_ = absl::make_unique<se::Stream>(executor);
   host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
   device_to_host_stream_ = absl::make_unique<se::Stream>(executor);
@@ -127,8 +145,10 @@ Device::Device(se::StreamExecutor* executor, bool synchronous_deallocation,
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
-  worker_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                   "py_xla_execute");
+  execute_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
+                                                    "py_xla_execute");
+  callback_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
+                                                     "py_xla_callback");
 }
 
 Device::~Device() {
@@ -164,10 +184,11 @@ Status Device::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
   return Status::OK();
 }
 
-void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
-                                       std::function<void()> callback) const {
-  stream->ThenDoHostCallback(
-      [this, callback]() { worker_thread_->Schedule(std::move(callback)); });
+void Device::ThenExecuteOnCallbackThread(se::Stream* stream,
+                                         std::function<void()> callback) const {
+  stream->ThenDoHostCallback([this, callback]() mutable {
+    callback_thread_->Schedule(std::move(callback));
+  });
 }
 
 se::Stream* Device::GetDeviceToDeviceStream() {
@@ -255,15 +276,14 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
         executor, synchronous_deallocation, asynchronous,
         /*allow_event_reuse=*/gpu_platform));
   }
-  return std::make_shared<PyLocalClient>(platform_name, client,
-                                         std::move(devices),
-                                         std::move(allocator), asynchronous);
+  return std::make_shared<PyLocalClient>(
+      platform_name, client, std::move(devices), std::move(allocator));
 }
 
 PyLocalClient::PyLocalClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<Device>> devices,
-    std::unique_ptr<se::DeviceMemoryAllocator> allocator, bool asynchronous)
+    std::unique_ptr<se::DeviceMemoryAllocator> allocator)
     : platform_name_(std::move(platform_name)),
       client_(client),
       devices_(std::move(devices)),
@@ -686,21 +706,21 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
             << " buffer: " << argument_buffers.back().ToString();
   }
 
-  Device& device = client_->device(device_ordinal);
-  // The choice of where we wait in "synchronous" mode is arbitrary; the reason
-  // for the wait is pacing to avoid problems such as memory fragmentation, not
-  // for correctness.
-  if (!device.asynchronous()) {
-    TF_RETURN_IF_ERROR(device.compute_stream()->BlockHostUntilDone());
-  }
+  Device* device = &client_->device(device_ordinal);
+  // The choice of where we wait is arbitrary; the reason for the wait is pacing
+  // to avoid problems such as memory fragmentation and running ahead too far,
+  // not for correctness. Placing it before the executable launch allows the
+  // inputs for the next executable to be fetched even if the launch is delayed.
+  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+      device->compute_semaphore().ScopedAcquire(1));
 
   for (BufferDefinitionEvent* event : events) {
-    event->WaitForEventOnStream(device.compute_stream());
+    event->WaitForEventOnStream(device->compute_stream());
   }
 
   ExecutableRunOptions options;
-  options.set_stream(device.compute_stream());
-  options.set_host_to_device_stream(device.host_to_device_stream());
+  options.set_stream(device->compute_stream());
+  options.set_host_to_device_stream(device->host_to_device_stream());
   options.set_allocator(client_->allocator());
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
@@ -718,22 +738,24 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   }
 
   auto definition_event = std::make_shared<BufferDefinitionEvent>();
-  TF_ASSIGN_OR_RETURN(
-      EventPool::Handle event,
-      device.event_pool().ThenAllocateAndRecordEvent(device.compute_stream()));
+  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
+                      device->event_pool().ThenAllocateAndRecordEvent(
+                          device->compute_stream()));
   definition_event->SetDefinitionEvent(std::move(event),
-                                       device.compute_stream());
+                                       device->compute_stream());
 
   Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
   std::shared_ptr<SharedDeviceBuffer> out_buffer =
       SharedDeviceBuffer::FromScopedShapedBuffer(
           std::move(result_buffer.ValueOrDie()), definition_event);
 
-  if (device.synchronous_deallocation()) {
+  if (device->synchronous_deallocation()) {
     device_buffers.push_back(out_buffer);
-    device.ThenRelease(device.compute_stream(), std::move(device_buffers));
+    device->ThenRelease(device->compute_stream(), std::move(device_buffers));
   }
-  device.ThenRelease(device.compute_stream(), executable_);
+
+  device->ThenRelease(device->compute_stream(),
+                      std::make_pair(executable_, compute_reservation));
   return absl::make_unique<PyLocalBuffer>(on_host_shape, std::move(out_buffer),
                                           client_);
 }
@@ -782,7 +804,7 @@ PyLocalExecutable::ExecutePerReplica(
     for (int replica = 0; replica < num_replicas(); ++replica) {
       const int device_ordinal = device_assignment_(replica, 0);
       const Device& device = client_->device(device_ordinal);
-      device.worker_thread()->Schedule([&, replica] {
+      device.execute_thread()->Schedule([&, replica] {
         results[replica] =
             ExecuteHelper(argument_handles[replica], replica, run_id);
 

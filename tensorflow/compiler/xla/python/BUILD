@@ -119,6 +119,29 @@ cc_library(
 )
 
 cc_library(
+    name = "semaphore",
+    srcs = ["semaphore.cc"],
+    hdrs = ["semaphore.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "semaphore_test",
+    srcs = ["semaphore_test.cc"],
+    deps = [
+        ":semaphore",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "shared_device_buffer",
     srcs = ["shared_device_buffer.cc"],
     hdrs = ["shared_device_buffer.h"],
@@ -165,6 +188,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":event_pool",
+        ":semaphore",
         ":shared_device_buffer",
         ":types",
         ":worker_thread",

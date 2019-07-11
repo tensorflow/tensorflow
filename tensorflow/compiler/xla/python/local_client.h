@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/semaphore.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -62,7 +63,6 @@ class Device {
   virtual ~Device();
 
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
-  bool asynchronous() const { return asynchronous_; }
 
   EventPool& event_pool() { return event_pool_; }
 
@@ -84,15 +84,14 @@ class Device {
                                           se::DeviceMemoryBase src_buffer,
                                           se::DeviceMemoryBase dst_buffer);
 
-  // A worker thread, used for replicated computation launches and callbacks.
-  WorkerThread* worker_thread() const { return worker_thread_.get(); }
+  WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
-  // Enqueues a host callback on 'stream', to be executed by worker_thread_.
+  // Enqueues a host callback on 'stream', to be executed by callback_thread_.
   // ThenDoHostCallback is often constrained in what it can do, in particular,
   // on GPU the callback runs on a thread belonging to the GPU runtime and
   // cannot perform GPU operations itself.
-  void ThenExecuteOnWorkerThread(se::Stream* stream,
-                                 std::function<void()> callback) const;
+  void ThenExecuteOnCallbackThread(se::Stream* stream,
+                                   std::function<void()> callback) const;
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -106,17 +105,23 @@ class Device {
     if (callback_stream_.get() != stream) {
       callback_stream_->ThenWaitFor(stream);
     }
-    ThenExecuteOnWorkerThread(callback_stream_.get(),
-                              [object]() { /* releases object */ });
+    ThenExecuteOnCallbackThread(callback_stream_.get(),
+                                [object]() { /* releases object */ });
   }
+
+  Semaphore& compute_semaphore() { return compute_semaphore_; }
 
  private:
   Status SynchronizeAllActivity();
 
   bool synchronous_deallocation_;
-  bool asynchronous_;
 
   EventPool event_pool_;
+
+  // Semaphore used to limit how many programs can be enqueued on the compute
+  // stream by the host ahead of the device.
+  Semaphore compute_semaphore_;
+
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::unique_ptr<se::Stream> device_to_host_stream_;
@@ -133,7 +138,14 @@ class Device {
   // work.
   std::unique_ptr<se::Stream> callback_stream_;
 
-  std::unique_ptr<WorkerThread> worker_thread_;
+  // A worker thread, used for replicated computation launches.
+  std::unique_ptr<WorkerThread> execute_thread_;
+
+  // A worker thread, used for callbacks. It is necessary that this be a
+  // different thread to the execute thread because we acquire the compute
+  // semaphore during calls to Execute but release it from a callback and if
+  // they are the same thread we might deadlock.
+  std::unique_ptr<WorkerThread> callback_thread_;
 };
 
 struct AllocatorConfig {
@@ -168,8 +180,7 @@ class PyLocalClient {
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
                          std::vector<std::unique_ptr<Device>> devices,
-                         std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-                         bool asynchronous);
+                         std::unique_ptr<se::DeviceMemoryAllocator> allocator);
   virtual ~PyLocalClient() = default;
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
