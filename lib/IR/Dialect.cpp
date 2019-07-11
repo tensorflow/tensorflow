@@ -69,17 +69,12 @@ Dialect::Dialect(StringRef name, MLIRContext *context)
 
 Dialect::~Dialect() {}
 
-/// Verify an attribute from this dialect on the given function. Returns
-/// failure if the verification failed, success otherwise.
-LogicalResult Dialect::verifyFunctionAttribute(FuncOp, NamedAttribute) {
-  return success();
-}
-
 /// Verify an attribute from this dialect on the argument at 'argIndex' for
-/// the given function. Returns failure if the verification failed, success
-/// otherwise.
-LogicalResult Dialect::verifyFunctionArgAttribute(FuncOp, unsigned argIndex,
-                                                  NamedAttribute) {
+/// the region at 'regionIndex' on the given operation. Returns failure if
+/// the verification failed, success otherwise. This hook may optionally be
+/// invoked from any operation containing a region.
+LogicalResult Dialect::verifyRegionArgAttribute(Operation *, unsigned, unsigned,
+                                                NamedAttribute) {
   return success();
 }
 

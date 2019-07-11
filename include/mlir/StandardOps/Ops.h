@@ -32,6 +32,7 @@
 namespace mlir {
 class AffineMap;
 class Builder;
+class FuncOp;
 class OpBuilder;
 
 class StandardOpsDialect : public Dialect {

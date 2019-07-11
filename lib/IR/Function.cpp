@@ -243,6 +243,7 @@ void FuncOp::print(OpAsmPrinter *p) {
 
 LogicalResult FuncOp::verify() {
   auto fnInputTypes = getType().getInputs();
+  auto *ctx = getContext();
 
   /// Verify that all of the argument attributes are dialect attributes.
   for (unsigned i = 0, e = fnInputTypes.size(); i != e; ++i) {
@@ -250,9 +251,9 @@ LogicalResult FuncOp::verify() {
       if (!attr.first.strref().contains('.'))
         return emitOpError("arguments may only have dialect attributes");
       auto dialectNamePair = attr.first.strref().split('.');
-      if (auto *dialect =
-              getContext()->getRegisteredDialect(dialectNamePair.first)) {
-        if (failed(dialect->verifyFunctionArgAttribute(*this, i, attr)))
+      if (auto *dialect = ctx->getRegisteredDialect(dialectNamePair.first)) {
+        if (failed(dialect->verifyRegionArgAttribute(*this, /*regionIndex=*/0,
+                                                     /*argIndex=*/i, attr)))
           return failure();
       }
     }

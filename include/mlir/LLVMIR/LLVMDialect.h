@@ -151,10 +151,11 @@ public:
   /// Print a type registered to this dialect.
   void printType(Type type, raw_ostream &os) const override;
 
-  /// Verify a function argument attribute registered to this dialect.
+  /// Verify a region argument attribute registered to this dialect.
   /// Returns failure if the verification failed, success otherwise.
-  LogicalResult verifyFunctionArgAttribute(FuncOp func, unsigned argIdx,
-                                           NamedAttribute argAttr) override;
+  LogicalResult verifyRegionArgAttribute(Operation *op, unsigned regionIdx,
+                                         unsigned argIdx,
+                                         NamedAttribute argAttr) override;
 
 private:
   friend LLVMType;

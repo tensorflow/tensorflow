@@ -27,6 +27,8 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
+class FuncOp;
+
 namespace gpu {
 
 /// The dialect containing GPU kernel launching operations and related

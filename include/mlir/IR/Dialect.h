@@ -25,7 +25,6 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
-class FuncOp;
 class OpBuilder;
 class Type;
 
@@ -144,15 +143,14 @@ public:
   // Verification Hooks
   //===--------------------------------------------------------------------===//
 
-  /// Verify an attribute from this dialect on the given function. Returns
-  /// failure if the verification failed, success otherwise.
-  virtual LogicalResult verifyFunctionAttribute(FuncOp, NamedAttribute);
-
   /// Verify an attribute from this dialect on the argument at 'argIndex' for
-  /// the given function. Returns failure if the verification failed, success
-  /// otherwise.
-  virtual LogicalResult verifyFunctionArgAttribute(FuncOp, unsigned argIndex,
-                                                   NamedAttribute);
+  /// the region at 'regionIndex' on the given operation. Returns failure if
+  /// the verification failed, success otherwise. This hook may optionally be
+  /// invoked from any operation containing a region.
+  virtual LogicalResult verifyRegionArgAttribute(Operation *,
+                                                 unsigned regionIndex,
+                                                 unsigned argIndex,
+                                                 NamedAttribute);
 
   /// Verify an attribute from this dialect on the given operation. Returns
   /// failure if the verification failed, success otherwise.
