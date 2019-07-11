@@ -543,7 +543,8 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
           shared_object.object = shared_ref;
           if (shared_object.object_type == ObjectType::BUFFER) {
             // Make a buffer linear.
-            shared_object.size = NumElements(object.size);
+            shared_object.size =
+                static_cast<uint32_t>(NumElements(object.size));
           }
           shared_objects->push_back(std::move(shared_object));
           is_used_shared_object.push_back(false);
@@ -552,8 +553,8 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
           Object& shared_object = (*shared_objects)[shared_ref];
           switch (object.object_type) {
             case ObjectType::BUFFER:
-              shared_object.size = std::max(NumElements(object.size),
-                                            NumElements(shared_object.size));
+              shared_object.size = std::max<uint32_t>(
+                  NumElements(object.size), NumElements(shared_object.size));
               break;
             case ObjectType::TEXTURE: {
               if (!FitSize(object.size, shared_object.size,
