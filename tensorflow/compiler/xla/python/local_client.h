@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 
@@ -61,12 +63,16 @@ class Device {
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
   Device(se::StreamExecutor* executor, bool use_multiple_streams,
-         bool synchronous_deallocation, bool asynchronous);
+         bool synchronous_deallocation, bool asynchronous,
+         bool allow_event_reuse);
   virtual ~Device();
 
   bool use_multiple_streams() const { return use_multiple_streams_; }
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
   bool asynchronous() const { return asynchronous_; }
+
+  EventPool& event_pool() { return event_pool_; }
+
   se::Stream* compute_stream() const { return compute_stream_.get(); }
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
@@ -139,6 +145,8 @@ class Device {
   bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;
+
+  EventPool event_pool_;
   std::shared_ptr<se::Stream> compute_stream_;
   std::shared_ptr<se::Stream> host_to_device_stream_;
   std::shared_ptr<se::Stream> device_to_host_stream_;

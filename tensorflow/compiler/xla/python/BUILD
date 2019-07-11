@@ -105,10 +105,25 @@ cc_library(
 )
 
 cc_library(
+    name = "event_pool",
+    srcs = ["event_pool.cc"],
+    hdrs = ["event_pool.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:stream_executor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "shared_device_buffer",
     srcs = ["shared_device_buffer.cc"],
     hdrs = ["shared_device_buffer.h"],
     deps = [
+        ":event_pool",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
@@ -149,6 +164,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":event_pool",
         ":shared_device_buffer",
         ":types",
         ":worker_thread",
