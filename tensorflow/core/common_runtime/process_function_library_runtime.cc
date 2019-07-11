@@ -566,13 +566,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   VLOG(1) << "Instantiating MultiDevice function \"" << function_name
           << "\" on default device \"" << options.target << "\"";
   if (VLOG_IS_ON(3)) {
+    int index = 0;
     VLOG(3) << "Requested input devices:";
     for (const string& device : options.input_devices) {
-      VLOG(3) << "    " << device;
+      VLOG(3) << "    " << device << " for input at index " << index++;
     }
+    index = 0;
     VLOG(3) << "Requested output devices:";
     for (const string& device : options.output_devices) {
-      VLOG(3) << "    " << device;
+      VLOG(3) << "    " << device << " for output at index " << index++;
     }
   }
 
