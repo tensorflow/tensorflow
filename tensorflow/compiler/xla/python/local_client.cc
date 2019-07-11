@@ -339,8 +339,7 @@ static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
       SharedDeviceBuffer::FromScopedShapedBuffer(std::move(buffer),
                                                  definition_event);
   if (device->synchronous_deallocation()) {
-    device->ThenReleaseOnWorkerThread(device->host_to_device_stream(),
-                                      device_buffer);
+    device->ThenRelease(device->host_to_device_stream(), device_buffer);
   }
   return absl::make_unique<PyLocalBuffer>(shape, std::move(device_buffer),
                                           std::move(client));
@@ -359,6 +358,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
   // remain live until the transfer is complete.
   auto py_buffer_ref =
       client->py_ref_manager().ManageReferences(absl::MakeSpan(tree.arrays));
+  tree.arrays.clear();
 
   // We are done manipulating Python objects; release the GIL.
   py::gil_scoped_release gil_release;
@@ -424,8 +424,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
                                        device.host_to_device_stream());
 
   if (device.synchronous_deallocation()) {
-    device.ThenReleaseOnWorkerThread(device.host_to_device_stream(),
-                                     std::move(tuple_buffer));
+    device.ThenRelease(device.host_to_device_stream(), std::move(tuple_buffer));
   }
   return buffer;
 }
@@ -732,10 +731,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
 
   if (device.synchronous_deallocation()) {
     device_buffers.push_back(out_buffer);
-    device.ThenReleaseOnWorkerThread(device.compute_stream(),
-                                     std::move(device_buffers));
+    device.ThenRelease(device.compute_stream(), std::move(device_buffers));
   }
-  device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
+  device.ThenRelease(device.compute_stream(), executable_);
   return absl::make_unique<PyLocalBuffer>(on_host_shape, std::move(out_buffer),
                                           client_);
 }

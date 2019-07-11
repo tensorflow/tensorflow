@@ -94,42 +94,20 @@ class Device {
   void ThenExecuteOnWorkerThread(se::Stream* stream,
                                  std::function<void()> callback) const;
 
-  // Helper for releasing values from a callback at the tail of a stream.
-  // This is only permitted if object's destructor will not free any device
-  // objects, since the callback may be called from a device thread pool on
-  // GPU.
+  // Helpers for releasing values on a worker thread at the tail of a stream on
+  // a worker thread. Copies `object`, and destroys the copy when the tail of
+  // the stream is reached. The destruction happens either in the caller's
+  // thread or on the worker thread (depending on thread schedules), not a
+  // device callback, so it is safe if the destructor frees device resource
+  // (e.g., GPU objects).
+  // TODO(phawkins): use move-capture when we can use C++14 features.
   template <typename T>
   void ThenRelease(se::Stream* stream, T object) const {
     if (callback_stream_.get() != stream) {
       callback_stream_->ThenWaitFor(stream);
     }
-    callback_stream_->ThenDoHostCallback(
-        std::bind([](T& object) { /* releases object */ }, std::move(object)));
-  }
-
-  // Helpers for releasing values on a worker thread at the tail of a stream on
-  // a worker thread.
-  template <typename T>
-  void ThenReleaseOnWorkerThread(se::Stream* stream,
-                                 std::shared_ptr<T> object) const {
-    // We use a non-smart pointer here because we want to ensure that the worker
-    // thread is the only callee of the shared_ptr destructor, and if we passed
-    // object by lambda capture we have a race where the worker thread might
-    // run and release its reference first.
-    auto* ref = new std::shared_ptr<T>(std::move(object));
-    if (callback_stream_.get() != stream) {
-      callback_stream_->ThenWaitFor(stream);
-    }
-    ThenExecuteOnWorkerThread(callback_stream_.get(), [ref]() { delete ref; });
-  }
-  template <typename T>
-  void ThenReleaseOnWorkerThread(se::Stream* stream,
-                                 std::vector<std::shared_ptr<T>> object) const {
-    auto* ref = new std::vector<std::shared_ptr<T>>(std::move(object));
-    if (callback_stream_.get() != stream) {
-      callback_stream_->ThenWaitFor(stream);
-    }
-    ThenExecuteOnWorkerThread(callback_stream_.get(), [ref]() { delete ref; });
+    ThenExecuteOnWorkerThread(callback_stream_.get(),
+                              [object]() { /* releases object */ });
   }
 
  private:
