@@ -43,8 +43,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using GpuVersion = absl::variant<std::pair<int, int>, int>;
-
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.

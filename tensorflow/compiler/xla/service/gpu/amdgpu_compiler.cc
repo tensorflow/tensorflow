@@ -218,8 +218,9 @@ AMDGPUCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
   std::vector<uint8> hsaco;
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::InvokeBackend - CompileToHsaco");
-    TF_ASSIGN_OR_RETURN(hsaco, amdgpu::CompileToHsaco(llvm_module, absl::get<int>(gpu_version),
-                                              module->config(), rocdl_dir_));
+    TF_ASSIGN_OR_RETURN(hsaco,
+                        amdgpu::CompileToHsaco(llvm_module, gpu_version,
+                                               module->config(), rocdl_dir_));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
