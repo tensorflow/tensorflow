@@ -1,0 +1,167 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "predicate"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "Case"
+  op: "Case"
+  input: "predicate"
+  attr {
+    key: "Tin"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "branches"
+    value {
+      list {
+        func {
+          name: "foo"
+        }
+        func {
+          name: "bar"
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "bar"
+      output_arg {
+        name: "bar"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "const_2"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+              dim {
+                size: 10
+              }
+            }
+            float_val: 2
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "const_2"
+      }
+    }
+    ret {
+      key: "bar"
+      value: "const_2:output:0"
+    }
+  }
+  function {
+    signature {
+      name: "foo"
+      output_arg {
+        name: "foo"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "const_1"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+              dim {
+                size: 10
+              }
+            }
+            float_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "const_1"
+      }
+    }
+    ret {
+      key: "foo"
+      value: "const_1:output:0"
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# CHECK:       func @main() {
+# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "predicate", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
+# CHECK-NEXT:    %1:2 = "_tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo0, @bar0], device = "", name = "Case", output_shapes = []} : (tensor<i32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:    return
+# CHECK-NEXT:  }
+# CHECK:  func @foo0() -> tensor<10xf32> {
+# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "const_1", value = dense<1.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control)
+# CHECK-NEXT:    return %0#0 : tensor<10xf32>
+# CHECK-NEXT:  }
+# CHECK:  func @bar0() -> tensor<10xf32> {
+# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "const_2", value = dense<2.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control)
+# CHECK-NEXT:    return %0#0 : tensor<10xf32>
+# CHECK-NEXT:  }

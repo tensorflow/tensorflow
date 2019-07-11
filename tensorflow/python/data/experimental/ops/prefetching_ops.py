@@ -146,8 +146,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
             dataset_ops.get_legacy_output_types(self),
             dataset_ops.get_legacy_output_shapes(self),
             dataset_ops.get_legacy_output_classes(self))
-      return structure.to_tensor_list(self._element_structure,
-                                      iterator.get_next())
+      return structure.to_tensor_list(self.element_spec, iterator.get_next())
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
@@ -251,7 +250,7 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
     return [self._map_func]
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return self._map_func.output_structure
 
   def _transformation_name(self):

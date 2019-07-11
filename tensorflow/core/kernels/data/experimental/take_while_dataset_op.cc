@@ -198,8 +198,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
 };
 
+REGISTER_KERNEL_BUILDER(Name("TakeWhileDataset").Device(DEVICE_CPU),
+                        TakeWhileDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),
                         TakeWhileDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("TakeWhileDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalTakeWhileDataset");
 
 }  // namespace

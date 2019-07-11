@@ -591,7 +591,7 @@ class _BigtableKeyDataset(dataset_ops.DatasetSource):
     self._table = table
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return structure.TensorStructure(dtypes.string, [])
 
 
@@ -652,7 +652,7 @@ class _BigtableLookupDataset(dataset_ops.DatasetSource):
     super(_BigtableLookupDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return tuple([structure.TensorStructure(dtypes.string, [])] *
                  self._num_outputs)
 
@@ -681,7 +681,7 @@ class _BigtableScanDataset(dataset_ops.DatasetSource):
     super(_BigtableScanDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return tuple([structure.TensorStructure(dtypes.string, [])] *
                  self._num_outputs)
 
@@ -703,6 +703,6 @@ class _BigtableSampleKeyPairsDataset(dataset_ops.DatasetSource):
     super(_BigtableSampleKeyPairsDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return (structure.TensorStructure(dtypes.string, []),
             structure.TensorStructure(dtypes.string, []))

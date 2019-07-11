@@ -145,6 +145,7 @@ cc_library(
         ":topk_accuracy_eval_stage",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
     ],
@@ -175,6 +176,34 @@ cc_test(
         ":inference_profiler_stage",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "object_detection_average_precision_stage",
+    srcs = ["object_detection_average_precision_stage.cc"],
+    hdrs = ["object_detection_average_precision_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "//tensorflow/lite/tools/evaluation/stages/utils:image_metrics",
+    ],
+)
+
+cc_test(
+    name = "object_detection_average_precision_stage_test",
+    srcs = ["object_detection_average_precision_stage_test.cc"],
+    linkopts = common_linkopts,
+    linkstatic = 1,
+    deps = [
+        ":object_detection_average_precision_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",

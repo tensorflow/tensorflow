@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,7 +49,22 @@ class TestEagerServiceImpl : public EagerServiceImpl {
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
 
-    return context->GetTensorHandle(remote_handle, handle);
+    return context->Context()->RemoteMgr()->GetTensorHandle(remote_handle,
+                                                            handle);
+  }
+};
+
+class DummyEagerClientCache : public EagerClientCache {
+  Status GetClient(const string& target, EagerClient** client) override {
+    return errors::Unimplemented("");
+  }
+};
+
+class FakeCache : public TestWorkerCache {
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    eager_client_cache->reset(new DummyEagerClientCache);
+    return Status::OK();
   }
 };
 
@@ -57,10 +74,10 @@ class EagerServiceImplTest : public ::testing::Test {
       : rendezvous_mgr_(&worker_env_),
         session_mgr_(new SessionMgr(
             &worker_env_, "/job:localhost/replica:0/task:0/device:CPU:0",
-            std::unique_ptr<WorkerCacheInterface>(),
+            std::unique_ptr<WorkerCacheInterface>(new FakeCache),
             [](const ServerDef& server_def,
                WorkerCacheInterface** worker_cache) {
-              *worker_cache = nullptr;
+              *worker_cache = new FakeCache;
               return Status::OK();
             })) {
     worker_env_.env = Env::Default();
@@ -153,15 +170,16 @@ tensorflow::FunctionDef MatMulFunction() {
 TEST_F(EagerServiceImplTest, BasicTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
+  uint64 context_id = random::New64();
+
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
   CreateContextResponse response;
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-  uint64 context_id = response.context_id();
 
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
@@ -202,7 +220,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
   tensorflow::TensorHandle* tensor_handle;
   TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-      response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
+      context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
 
   // This should be OK to do since we've placed all computation on the CPU
   // device.
@@ -229,15 +247,15 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 TEST_F(EagerServiceImplTest, BasicFunctionTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
+  uint64 context_id = random::New64();
+
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
   CreateContextResponse response;
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
-
-  uint64 context_id = response.context_id();
 
   RegisterFunctionRequest register_function_request;
   register_function_request.set_context_id(context_id);
@@ -273,7 +291,7 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
   const tensorflow::Tensor* t = nullptr;
   tensorflow::TensorHandle* tensor_handle;
   TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-      response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
+      context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
   auto actual = t->flat<float>();
@@ -296,15 +314,16 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
 TEST_F(EagerServiceImplTest, SendTensorTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
+  uint64 context_id = random::New64();
+
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
   CreateContextResponse response;
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-  uint64 context_id = response.context_id();
 
   SendTensorRequest send_tensor_request;
   send_tensor_request.set_context_id(context_id);
@@ -339,7 +358,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   const tensorflow::Tensor* t = nullptr;
   tensorflow::TensorHandle* tensor_handle;
   TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-      response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
+      context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
   Device* device = tensor_handle->device();
@@ -364,10 +383,11 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
 TEST_F(EagerServiceImplTest, KeepAliveTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
+  uint64 context_id = random::New64();
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
   request.set_keep_alive_secs(3);
   CreateContextResponse response;
 
@@ -379,7 +399,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   KeepAliveRequest keep_alive_request;
   KeepAliveResponse keep_alive_response;
 
-  keep_alive_request.set_context_id(response.context_id());
+  keep_alive_request.set_context_id(context_id);
 
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
@@ -388,15 +408,16 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 
+  uint64 new_context_id = random::New64();
   // Create a new context.
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(new_context_id);
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
   // The context should not be GC'd.
   worker_env_.env->SleepForMicroseconds(1 *
                                         tensorflow::EnvTime::kSecondsToMicros);
 
-  keep_alive_request.set_context_id(response.context_id());
+  keep_alive_request.set_context_id(new_context_id);
 
   TF_ASSERT_OK(
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response));

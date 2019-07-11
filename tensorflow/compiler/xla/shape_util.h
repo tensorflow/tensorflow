@@ -751,7 +751,7 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);

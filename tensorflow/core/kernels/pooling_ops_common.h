@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -269,11 +269,12 @@ class MaxPoolingOp : public OpKernel {
 template <typename Device>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C;
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
+#if GOOGLE_CUDA
     bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
         reinterpret_cast<const int32*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
@@ -286,9 +287,14 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
       context->SetStatus(errors::Internal(
           "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
     }
+#else
+    // ROCm TODO: add support __vmaxs4 on ROCm
+    context->SetStatus(errors::Internal(
+        "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+#endif  // GOOGLE_CUDA
   }
 };
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class MaxPoolingV2Op : public OpKernel {
@@ -405,7 +411,7 @@ class MaxPoolingV2Op : public OpKernel {
     // Spatial MaxPooling implementation.
     //
     // TODO(vrv): Remove this once we no longer need it.
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, GPUDevice>::value) {
       Eigen::PaddingType pt = BrainPadding2EigenPadding(padding);
       if (std::is_same<T, qint8>::value) {

@@ -315,6 +315,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       subgraph->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
+          FlatBufferIntArrayToVector(op->intermediates()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
           op->custom_options()->size(), nullptr, registration);
     } else {
@@ -322,9 +323,11 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      subgraph->AddNodeWithParameters(FlatBufferIntArrayToVector(op->inputs()),
-                                      FlatBufferIntArrayToVector(op->outputs()),
-                                      nullptr, 0, builtin_data, registration);
+      subgraph->AddNodeWithParameters(
+          FlatBufferIntArrayToVector(op->inputs()),
+          FlatBufferIntArrayToVector(op->outputs()),
+          FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
+          builtin_data, registration);
     }
   }
 

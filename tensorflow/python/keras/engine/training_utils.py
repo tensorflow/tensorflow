@@ -154,7 +154,7 @@ class ConcatAggregator(Aggregator):
       self.results = np.concatenate(self.results, axis=0)
 
     if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+      self.results = self.results._numpy()  # pylint: disable=protected-access
 
 
 _COPY_THREADS = 4
@@ -1751,6 +1751,64 @@ def should_run_validation(validation_freq, epoch):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
+
+
+def split_training_and_validation_data(x, y, sample_weights, validation_split):
+  """Split input data into train/eval section based on validation_split."""
+  if has_symbolic_tensors(x):
+    raise ValueError('If your data is in the form of symbolic tensors, '
+                     'you cannot use `validation_split`.')
+  if hasattr(x[0], 'shape'):
+    split_at = int(x[0].shape[0] * (1. - validation_split))
+  else:
+    split_at = int(len(x[0]) * (1. - validation_split))
+  x, val_x = (generic_utils.slice_arrays(x, 0, split_at),
+              generic_utils.slice_arrays(x, split_at))
+  y, val_y = (generic_utils.slice_arrays(y, 0, split_at),
+              generic_utils.slice_arrays(y, split_at))
+  if sample_weights:
+    sample_weights, val_sample_weights = (
+        generic_utils.slice_arrays(sample_weights, 0, split_at),
+        generic_utils.slice_arrays(sample_weights, split_at),
+    )
+  else:
+    val_sample_weights = None
+  return x, y, sample_weights, val_x, val_y, val_sample_weights
+
+
+def unpack_validation_data(validation_data):
+  """Unpack validation data based input type.
+
+  The validation data is not touched if its dataset or dataset iterator.
+  For other type of input (Numpy or tensor), it will be unpacked into tuple of
+  3 which is x, y and sample weights.
+
+  Args:
+    validation_data: dataset, dataset iterator, or numpy, tensor tuple.
+
+  Returns:
+    tuple of 3, (x, y, sample_weights) for numpy and tensor input.
+  """
+  if (isinstance(validation_data, (iterator_ops.Iterator,
+                                   iterator_ops.IteratorV2,
+                                   dataset_ops.DatasetV2))):
+    val_x = validation_data
+    val_y = None
+    val_sample_weight = None
+  elif len(validation_data) == 2:
+    val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+    val_sample_weight = None
+  elif len(validation_data) == 3:
+    val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+  else:
+    raise ValueError(
+        'When passing a `validation_data` argument, '
+        'it must contain either 2 items (x_val, y_val), '
+        'or 3 items (x_val, y_val, val_sample_weights), '
+        'or alternatively it could be a dataset or a '
+        'dataset or a dataset iterator. '
+        'However we received `validation_data=%s`' % validation_data)
+  return val_x, val_y, val_sample_weight
 
 
 class TrainingLoop(object):

@@ -128,7 +128,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         tf_shared_lock l(mu_);
         buffer_limit = auto_tuner_.buffer_limit();
       }
-      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit, "#");
+      string prefetch_with_slack_trace = "";
+      if (dataset()->slack_period_ > 0) {
+        int64 slack_us = slack_us_;
+        prefetch_with_slack_trace = strings::StrCat(",slack=", slack_us);
+      }
+      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit,
+                             prefetch_with_slack_trace, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {

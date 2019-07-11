@@ -482,8 +482,7 @@ void BenchmarkTfLiteModel::Init() {
     }
   }
 
-  // Don't allocate tensors if we have delegates.
-  if (delegates_.empty() && interpreter->AllocateTensors() != kTfLiteOk) {
+  if (interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
   }
 

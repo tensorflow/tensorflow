@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 
-#include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,7 +29,7 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
                                int output_num) {
   auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
 
-  if (!ctx->HasActiveRemoteContext(context_id)) {
+  if (ctx->GetContextId() != context_id) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
     // nothing we can do.
@@ -43,19 +43,13 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   handle_to_decref->set_op_id(op_id);
   handle_to_decref->set_output_num(output_num);
 
-  if (ctx->Async()) {
-    tensorflow::uint64 id = ctx->NextId();
-    ctx->ExecutorAdd(absl::make_unique<eager::RemoteExecuteNode>(
-        id, std::move(request), eager_client));
-  } else {
-    eager::EnqueueRequest* actual_request = request.release();
-    eager::EnqueueResponse* response = new eager::EnqueueResponse;
-    eager_client->EnqueueAsync(
-        actual_request, response,
-        [actual_request, response](const tensorflow::Status& s) {
-          delete actual_request;
-          delete response;
-        });
+  std::unique_ptr<EagerNode> node(
+      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
+                                                        eager_client));
+  Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  if (!s.ok()) {
+    LOG(ERROR) << "Unable to destroy remote tensor handles: "
+               << s.error_message();
   }
 }
 
@@ -143,6 +137,8 @@ UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
     DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
                               output_num_);
+  } else {
+    ctx_->Unref();
   }
 }
 

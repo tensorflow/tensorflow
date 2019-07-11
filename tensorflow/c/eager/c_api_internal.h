@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -90,15 +91,6 @@ struct TFE_TensorHandle {
       return nullptr;
     }
     return new TFE_TensorHandle(handle);
-  }
-  static tensorflow::Status CreateLocalHandle(const class tensorflow::Tensor& t,
-                                              tensorflow::Device* d,
-                                              TFE_TensorHandle** h) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(
-        tensorflow::TensorHandle::CreateLocalHandle(t, d, nullptr, &handle));
-    *h = new TFE_TensorHandle(handle);
-    return tensorflow::Status::OK();
   }
 
   tensorflow::TensorHandle* handle;
@@ -293,6 +285,10 @@ struct TFE_TraceContext {
       input.first->Unref();
     }
   }
+};
+
+struct TFE_CancellationManager {
+  tensorflow::CancellationManager cancellation_manager;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

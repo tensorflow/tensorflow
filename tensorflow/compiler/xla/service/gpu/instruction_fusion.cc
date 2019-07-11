@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -27,30 +28,29 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
-  if (constant->opcode() != HloOpcode::kConstant ||
-      !ShapeUtil::IsScalar(constant->shape())) {
-    return false;
-  }
-  auto type = constant->shape().element_type();
-  return type == F16 || type == F32 || type == F64;
-}
-
-}  // namespace
-
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  switch (instruction.opcode()) {
-    // We say that floating-point division is cheap on the GPU.
-    case HloOpcode::kDivide:
-      return !ShapeUtil::ElementIsFloating(instruction.shape()) &&
-             InstructionFusion::IsExpensive(instruction);
-
-    default:
-      return InstructionFusion::IsExpensive(instruction);
+  // We say that floating-point division is cheap on the GPU.
+  if (instruction.opcode() == HloOpcode::kDivide &&
+      ShapeUtil::ElementIsFloating(instruction.shape())) {
+    return false;
   }
+  // LLVM optimizes the integer division/remainder by a
+  // constant scalar to a few fast operations.
+  if ((instruction.opcode() == HloOpcode::kDivide ||
+       instruction.opcode() == HloOpcode::kRemainder) &&
+      ShapeUtil::ElementIsIntegral(instruction.shape())) {
+    auto* operand1 = instruction.operand(1);
+    if (hlo_query::IsScalarConstant(operand1)) {
+      return false;
+    }
+    // Broadcasted scalar is also being optimized.
+    if (operand1->opcode() == HloOpcode::kBroadcast &&
+        hlo_query::IsScalarConstant(operand1->operand(0))) {
+      return false;
+    }
+  }
+  return InstructionFusion::IsExpensive(instruction);
 }
 
 bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
@@ -83,10 +83,6 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
   auto producer = consumer->operand(operand_index);
 
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
-    return false;
-  }
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {
     return false;
@@ -105,19 +101,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
-      consumer->opcode() == HloOpcode::kScatter) {
-    return HloInstruction::FusionKind::kInput;
-  }
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
-    return HloInstruction::FusionKind::kOutput;
-  }
-  if (HloOpcode::kFusion == consumer->opcode()) {
-    return consumer->fusion_kind();
-  }
-  return InstructionFusion::ChooseKind(producer, consumer);
+  return ChooseFusionKind(*producer, *consumer);
 }
 
 }  // namespace gpu

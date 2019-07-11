@@ -26,11 +26,16 @@ namespace toco {
 // parameters (see relevant .protos for more information). Returns a string
 // representing the contents of the converted model. When extended_return
 // flag is set to true returns a dictionary that contains string representation
-// of the converted model and some statitics like arithmetic ops count.
+// of the converted model and some statistics like arithmetic ops count.
+// `debug_info_str` contains the `GraphDebugInfo` proto. When
+// `enable_mlir_converter` is True, the MLIR converter is used instead of the
+// TOCO converter.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                         PyObject* toco_flags_proto_txt_raw,
                         PyObject* input_contents_txt_raw,
-                        bool extended_return = false);
+                        bool extended_return = false,
+                        PyObject* debug_info_txt_raw = nullptr,
+                        bool enable_mlir_converter = false);
 
 // Returns a list of names of all ops potentially supported by tflite.
 PyObject* TocoGetPotentiallySupportedOps();

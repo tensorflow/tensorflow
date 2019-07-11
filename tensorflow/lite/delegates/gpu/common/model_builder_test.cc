@@ -31,6 +31,7 @@ namespace {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank0) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(1);
   tflite_tensor.dims->data[0] = 4;
@@ -45,6 +46,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank0) {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank1) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteInt32;
   tflite_tensor.dims = TfLiteIntArrayCreate(2);
   tflite_tensor.dims->data[0] = 4;
@@ -60,6 +62,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank1) {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank2) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteInt64;
   tflite_tensor.dims = TfLiteIntArrayCreate(3);
   tflite_tensor.dims->data[0] = 4;
@@ -76,6 +79,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank2) {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank3) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteUInt8;
   tflite_tensor.dims = TfLiteIntArrayCreate(4);
   tflite_tensor.dims->data[0] = 4;
@@ -93,6 +97,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank3) {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankLT0) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(0);
   TensorRef<BHWC> tensor_ref;
@@ -105,6 +110,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankLT0) {
 
 TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankGT3) {
   TfLiteTensor tflite_tensor;
+  tflite_tensor.name = "tensor_name";
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(5);
   TensorRef<BHWC> tensor_ref;

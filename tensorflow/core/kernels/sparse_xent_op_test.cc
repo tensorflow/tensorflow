@@ -49,7 +49,7 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_SparseXentDev(8, 1000000, gpu);
 
 BM_SparseXentDev(16, 10000, gpu);
@@ -63,7 +63,7 @@ BM_SparseXentDev(32, 100000, gpu);
 BM_SparseXentDev(64, 10000, gpu);
 BM_SparseXentDev(64, 30000, gpu);
 BM_SparseXentDev(64, 100000, gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CPU
 BM_SparseXentDev(8, 1000000, cpu);

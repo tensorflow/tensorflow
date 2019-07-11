@@ -48,15 +48,48 @@ _GENERATED_FILE_HEADER = """# This file is MACHINE GENERATED! Do not edit.
 
 from __future__ import print_function as _print_function
 
+import sys as _sys
+
 """
 _GENERATED_FILE_FOOTER = '\n\ndel _print_function\n'
 _DEPRECATION_FOOTER = """
-import sys as _sys
-from tensorflow.python.util import deprecation_wrapper as _deprecation_wrapper
+from tensorflow.python.util import module_wrapper as _module_wrapper
 
-if not isinstance(_sys.modules[__name__], _deprecation_wrapper.DeprecationWrapper):
-  _sys.modules[__name__] = _deprecation_wrapper.DeprecationWrapper(
-      _sys.modules[__name__], "%s")
+if not isinstance(_sys.modules[__name__], _module_wrapper.TFModuleWrapper):
+  _sys.modules[__name__] = _module_wrapper.TFModuleWrapper(
+      _sys.modules[__name__], "%s", public_apis=_PUBLIC_APIS, deprecation=%s,
+      has_lite=%s)
+"""
+_MODULE_TEXT_TEMPLATE = """
+# Inform pytype that this module is dynamically populated (b/111239204).
+_LAZY_LOADING = False
+
+_PUBLIC_APIS = {
+%s
+}
+
+if _LAZY_LOADING:
+  _HAS_DYNAMIC_ATTRIBUTES = True
+else:
+  import importlib as _importlib
+  for symbol, symbol_loc_info in _PUBLIC_APIS.items():
+    if symbol_loc_info[0]:
+      attr = getattr(_importlib.import_module(symbol_loc_info[0]), symbol_loc_info[1])
+    else:
+      attr = _importlib.import_module(symbol_loc_info[1])
+    setattr(_sys.modules[__name__], symbol, attr)
+  try:
+    del symbol
+  except NameError:
+    pass
+  try:
+    del symbol_loc_info
+  except NameError:
+    pass
+  try:
+    del attr
+  except NameError:
+    pass
 """
 
 
@@ -76,17 +109,7 @@ def format_import(source_module_name, source_name, dest_name):
   Returns:
     An import statement string.
   """
-  if source_module_name:
-    if source_name == dest_name:
-      return 'from %s import %s' % (source_module_name, source_name)
-    else:
-      return 'from %s import %s as %s' % (
-          source_module_name, source_name, dest_name)
-  else:
-    if source_name == dest_name:
-      return 'import %s' % source_name
-    else:
-      return 'import %s as %s' % (source_name, dest_name)
+  return "  '%s': ('%s', '%s')," % (dest_name, source_module_name, source_name)
 
 
 def get_canonical_import(import_set):
@@ -129,7 +152,6 @@ class _ModuleInitCodeBuilder(object):
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
-    self._underscore_names_in_root = []
     self._api_version = api_version
 
   def _check_already_imported(self, symbol_id, api_name):
@@ -166,9 +188,6 @@ class _ModuleInitCodeBuilder(object):
     symbol_id = -1 if not symbol else id(symbol)
     self._check_already_imported(symbol_id, full_api_name)
 
-    if not dest_module_name and dest_name.startswith('_'):
-      self._underscore_names_in_root.append(dest_name)
-
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
     # one.
@@ -197,11 +216,13 @@ class _ModuleInitCodeBuilder(object):
           submodule = module_split[submodule_index-1]
           parent_module += '.' + submodule if parent_module else submodule
         import_from = self._output_package
-        if submodule_index > 0:
-          import_from += '.' + '.'.join(module_split[:submodule_index])
+        import_from += '.' + '.'.join(module_split[:submodule_index + 1])
         self.add_import(
-            None, import_from, module_split[submodule_index],
-            parent_module, module_split[submodule_index])
+            symbol=None,
+            source_module_name='',
+            source_name=import_from,
+            dest_module_name=parent_module,
+            dest_name=module_split[submodule_index])
 
   def build(self):
     """Get a map from destination module to __init__.py code for that module.
@@ -221,26 +242,20 @@ class _ModuleInitCodeBuilder(object):
           get_canonical_import(imports)
           for _, imports in dest_name_to_imports.items()
       ]
-      module_text_map[dest_module] = '\n'.join(sorted(imports_list))
+      module_text_map[dest_module] = _MODULE_TEXT_TEMPLATE % '\n'.join(
+          sorted(imports_list))
 
-    # Expose exported symbols with underscores in root module
-    # since we import from it using * import.
-    underscore_names_str = ', '.join(
-        '\'%s\'' % name for name in self._underscore_names_in_root)
-    # We will always generate a root __init__.py file to let us handle *
-    # imports consistently. Be sure to have a root __init__.py file listed in
-    # the script outputs.
-    module_text_map[''] = module_text_map.get('', '') + '''
-_names_with_underscore = [%s]
-__all__ = [_s for _s in dir() if not _s.startswith('_')]
-__all__.extend([_s for _s in _names_with_underscore])
-''' % underscore_names_str
-
-    if self._api_version == 1:  # Add 1.* deprecations.
-      for dest_module, _ in self._module_imports.items():
+    for dest_module, _ in self._module_imports.items():
+      deprecation = 'False'
+      has_lite = 'False'
+      if self._api_version == 1:  # Add 1.* deprecations.
         if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
-          footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-              dest_module)
+          deprecation = 'True'
+      # Workaround to make sure not load lite from lite/__init__.py
+      if not dest_module and 'lite' in self._module_imports:
+        has_lite = 'True'
+      footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+          dest_module, deprecation, has_lite)
 
     return module_text_map, footer_text_map
 
@@ -519,7 +534,11 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
           _GENERATED_FILE_HEADER % get_module_docstring(
               module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
     if module in deprecation_footer_map:
-      contents += deprecation_footer_map[module]
+      if '# WRAPPER_PLACEHOLDER' in contents:
+        contents = contents.replace('# WRAPPER_PLACEHOLDER',
+                                    deprecation_footer_map[module])
+      else:
+        contents += deprecation_footer_map[module]
     with open(module_name_to_file_path[module], 'w') as fp:
       fp.write(contents)
 

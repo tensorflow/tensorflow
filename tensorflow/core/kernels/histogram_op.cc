@@ -129,7 +129,7 @@ class HistogramFixedWidthOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_KERNELS(type)                                 \
   REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")          \
                               .Device(DEVICE_GPU)              \
@@ -142,6 +142,6 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

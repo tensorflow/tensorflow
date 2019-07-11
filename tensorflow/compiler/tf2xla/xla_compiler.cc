@@ -85,8 +85,7 @@ ComputeArgAndRetvalCores(const Graph& graph) {
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max()));
     if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() ==
-                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      TF_RET_CHECK(sharding.value().type() == xla::OpSharding::MAXIMAL);
       return sharding.value().tile_assignment_devices(0);
     } else {
       return -1;
@@ -235,11 +234,8 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
-        // Resources are pushed into elems later when processing resource
-        // arguments. This is correct as long as the input and output resources
-        // are in the same order. In the case of functionalized while body,
-        // this property is guaranteed since a corresponding output is always
-        // created for a DT_RESOURCE input in a corresponding location.
+        // Resources will be pushed into elems later when processing resource
+        // arguments below.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();
@@ -835,7 +831,7 @@ Status XlaCompiler::BuildArguments(
     xla::XlaOp tuple;
     if (is_entry_computation) {
       xla::OpSharding tuple_sharding;
-      tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
+      tuple_sharding.set_type(xla::OpSharding::TUPLE);
       for (int64 parameter : *input_to_args) {
         auto it = arg_cores.find(parameter);
         const int core = it == arg_cores.end() ? 0 : it->second;

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,14 +35,11 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     y1 = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='SAME', name='y1')
     z1 = nn.relu(y1, name='z1')
     filt2 = constant_op.constant(
-        np.random.randn(9), shape=(3, 3, 1, 1), dtype=dtype, name='filt2')
+        0.3, shape=(3, 3, 1, 1), dtype=dtype, name='filt2')
     y2 = nn.conv2d(z1, filt2, strides=[1, 1, 1, 1], padding='SAME', name='y2')
     z2 = nn.relu(y2, name='z')
     filt3 = constant_op.constant(
-        np.random.randn(3, 3, 1, 1),
-        shape=(3, 3, 1, 1),
-        dtype=dtype,
-        name='filt3')
+        0.3, shape=(3, 3, 1, 1), dtype=dtype, name='filt3')
     y3 = nn.conv2d(z2, filt3, strides=[1, 1, 1, 1], padding='SAME', name='y3')
     return nn.relu(y3, name='output_0')
 

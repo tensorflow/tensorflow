@@ -41,6 +41,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import load
@@ -798,11 +799,37 @@ class TrtGraphConverter(GraphConverter):
     super(TrtGraphConverter, self).save(output_saved_model_dir)
 
 
+def _get_resource_handle(name, device):
+  with ops.device(device):
+    return gen_trt_ops.create_trt_engine_cache_handle(
+        container=_TRT_ENGINE_CACHE_CONTAINER_NAME, resource_name=name)
+
+
+class TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
+  """Resource deleter for destroying TRT engine cache resource."""
+
+  def __init__(self, resource_name, device):
+    super(TRTEngineResourceDeleter, self).__init__()
+    self._resource_name = resource_name
+    self._device = device
+
+  def destroy_resource(self):
+    handle = _get_resource_handle(self._resource_name, self._device)
+    with ops.device(self._device):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True)
+
+
 class TRTEngineResource(tracking.TrackableResource):
   """Class to track the serialized engines resource."""
 
-  def __init__(self, resource_name, filename, maximum_cached_engines):
-    super(TRTEngineResource, self).__init__()
+  def __init__(self,
+               resource_name,
+               filename,
+               maximum_cached_engines,
+               device="GPU"):
+    super(TRTEngineResource, self).__init__(
+        device=device, deleter=TRTEngineResourceDeleter(resource_name, device))
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -810,13 +837,13 @@ class TRTEngineResource(tracking.TrackableResource):
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
-    return gen_trt_ops.create_trt_engine_cache(
-        container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
-        resource_name=self._resource_name,
-        max_cached_engines_count=self._maximum_cached_engines)
+    return _get_resource_handle(self._resource_name, self._resource_device)
 
   def _initialize(self):
-    gen_trt_ops.populate_trt_engine_cache(self.resource_handle, self._filename)
+    gen_trt_ops.populate_trt_engine_cache(
+        self.resource_handle,
+        self._filename,
+        max_cached_engines_count=self._maximum_cached_engines)
 
 
 class TrtGraphConverterV2(object):
@@ -994,6 +1021,7 @@ class TrtGraphConverterV2(object):
         # and we don't need to track any serialized TRT engines.
         return
 
+      # TODO(laigd): add an option for the user to choose the device.
       resource_map[canonical_engine_name] = TRTEngineResource(
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)

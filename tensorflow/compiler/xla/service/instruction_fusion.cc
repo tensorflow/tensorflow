@@ -663,8 +663,7 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion && !consumer->IsLoopFusion() &&
-      !consumer->IsInputFusion() && !consumer->IsOutputFusion()) {
+  if (consumer->opcode() == HloOpcode::kFusion && consumer->IsCustomFusion()) {
     return false;
   }
 

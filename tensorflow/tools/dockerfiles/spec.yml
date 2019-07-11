@@ -40,7 +40,7 @@ releases:
     nightly:
         tag_specs:
             - "{nightly}{py}{jupyter}"
-            - "{ubuntu-devel}{py}"
+            - "{_TAG_PREFIX}{ubuntu-devel}{py}"
 
     # Built per-release and pushed to tensorflow/tensorflow
     # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".

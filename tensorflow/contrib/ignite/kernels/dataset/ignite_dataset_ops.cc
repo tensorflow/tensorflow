@@ -98,14 +98,15 @@ class IgniteDatasetOp : public DatasetOpKernel {
     if (env_cache_name) {
       cache_name = string(env_cache_name);
     } else {
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<string>(ctx, "cache_name", &cache_name));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<string>(ctx, "cache_name",
+                                                            &cache_name));
     }
 
     if (env_host) {
       host = string(env_host);
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "host", &host));
+      OP_REQUIRES_OK(ctx,
+                     data::ParseScalarArgument<string>(ctx, "host", &host));
     }
 
     if (env_port) {
@@ -114,13 +115,14 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "variable is not a valid integer: ",
                                           env_port));
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "port", &port));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<int32>(ctx, "port", &port));
     }
 
     if (env_local) {
       local = true;
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "local", &local));
+      OP_REQUIRES_OK(ctx,
+                     data::ParseScalarArgument<bool>(ctx, "local", &local));
     }
 
     if (env_part) {
@@ -129,7 +131,7 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "variable is not a valid integer: ",
                                           env_part));
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<int32>(ctx, "part", &part));
     }
 
     if (env_page_size) {
@@ -139,8 +141,8 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "integer: ",
                                           env_page_size));
     } else {
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<int32>(ctx, "page_size", &page_size));
+      OP_REQUIRES_OK(
+          ctx, data::ParseScalarArgument<int32>(ctx, "page_size", &page_size));
     }
 
     if (env_username) username = string(env_username);

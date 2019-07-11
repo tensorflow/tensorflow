@@ -22,6 +22,18 @@ cc_library(
 )
 
 cc_library(
+    name = "destroy_tensor_handle_node",
+    hdrs = ["destroy_tensor_handle_node.h"],
+    deps = [
+        ":eager_client",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+    ],
+)
+
+cc_library(
     name = "eager_client",
     hdrs = ["eager_client.h"],
     deps = [
@@ -39,6 +51,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -49,8 +63,8 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        ":remote_mgr",
         ":remote_tensor_handle",
-        "//tensorflow:grpc",
         "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
@@ -80,6 +94,7 @@ tf_cc_test(
     srcs = ["eager_service_impl_test.cc"],
     deps = [
         ":eager_service_impl",
+        ":remote_mgr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:eager_service_proto_cc",
@@ -91,8 +106,27 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:session_mgr",
+        "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+    ],
+)
+
+cc_library(
+    name = "remote_mgr",
+    srcs = [
+        "remote_mgr.cc",
+    ],
+    hdrs = [
+        "remote_mgr.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_tensor_handle",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 
@@ -101,8 +135,8 @@ cc_library(
     srcs = ["remote_tensor_handle_data.cc"],
     hdrs = ["remote_tensor_handle_data.h"],
     deps = [
+        ":destroy_tensor_handle_node",
         ":eager_client",
-        ":remote_execute_node",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:tensor_handle_data",
     ],

@@ -814,9 +814,14 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
   }
 
   // Update colocation constraints.
-  auto class_attr = node_def->mutable_attr()->find("_class");
+  constexpr char kClassAttr[] = "_class";
+  auto class_attr = node_def->mutable_attr()->find(kClassAttr);
   if (class_attr != node_def->mutable_attr()->end()) {
-    class_attr->second.set_s(strings::StrCat(prefix, class_attr->second.s()));
+    AttrValue new_value;
+    new_value.mutable_list()->add_s(
+        strings::StrCat(prefix, class_attr->second.s()));
+    node_def->mutable_attr()->erase(kClassAttr);
+    node_def->mutable_attr()->insert({kClassAttr, new_value});
   }
 
   return Status::OK();

@@ -81,17 +81,17 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   if (total_count == 0) {
     return;
   }
-  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+  GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
-    TF_CHECK_OK(CudaLaunchKernel(BiasNHWCKernel<T>, config.block_count,
-                                 config.thread_per_block, 0, d.stream(),
-                                 config.virtual_thread_count, input, bias,
-                                 output, bias_size));
+    TF_CHECK_OK(GpuLaunchKernel(BiasNHWCKernel<T>, config.block_count,
+                                config.thread_per_block, 0, d.stream(),
+                                config.virtual_thread_count, input, bias,
+                                output, bias_size));
   } else {
-    TF_CHECK_OK(CudaLaunchKernel(BiasNCHWKernel<T>, config.block_count,
-                                 config.thread_per_block, 0, d.stream(),
-                                 config.virtual_thread_count, input, bias,
-                                 output, bias_size, image_size));
+    TF_CHECK_OK(GpuLaunchKernel(BiasNCHWKernel<T>, config.block_count,
+                                config.thread_per_block, 0, d.stream(),
+                                config.virtual_thread_count, input, bias,
+                                output, bias_size, image_size));
   }
 }
 
@@ -204,7 +204,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
     return;
   }
   static constexpr int32 kWarpSize = 32;
-  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+  GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
   int32 shared_memory_size = 0;
@@ -214,10 +214,10 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   // Check if we have enough shared memory.
   if (shared_memory_size <= max_shared_memory_size) {
     if (data_format == FORMAT_NHWC) {
-      TF_CHECK_OK(CudaLaunchKernel(BiasGradNHWC_SharedAtomics<T>,
-                                   config.block_count, config.thread_per_block,
-                                   shared_memory_size, d.stream(), total_count,
-                                   output_backprop, bias_backprop, bias_size));
+      TF_CHECK_OK(GpuLaunchKernel(BiasGradNHWC_SharedAtomics<T>,
+                                  config.block_count, config.thread_per_block,
+                                  shared_memory_size, d.stream(), total_count,
+                                  output_backprop, bias_backprop, bias_size));
     } else {
       // Round up the block count to multiple of bias_size.
       int group_size = (config.block_count + bias_size - 1) / bias_size;
@@ -225,24 +225,24 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
       if (config.thread_per_block < kWarpSize) {
         config.thread_per_block = kWarpSize;
       }
-      TF_CHECK_OK(CudaLaunchKernel(
-          BiasGradNCHW_SharedAtomics<T>, config.block_count,
-          config.thread_per_block, 0, d.stream(), output_backprop,
-          bias_backprop, batch, bias_size, image_size, group_size));
+      TF_CHECK_OK(GpuLaunchKernel(BiasGradNCHW_SharedAtomics<T>,
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), output_backprop, bias_backprop,
+                                  batch, bias_size, image_size, group_size));
     }
   } else {
     // Note that even if we don't have enough shared memory to fit the entire
     // output block, it is possible to process one group of elements at a time.
     // But for now, we simply fall back to the naive implementation.
     if (data_format == FORMAT_NHWC) {
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           BiasGradNHWC_Naive<T>, config.block_count, config.thread_per_block, 0,
           d.stream(), total_count, output_backprop, bias_backprop, bias_size));
     } else {
-      TF_CHECK_OK(CudaLaunchKernel(BiasGradNCHW_Naive<T>, config.block_count,
-                                   config.thread_per_block, 0, d.stream(),
-                                   total_count, output_backprop, bias_backprop,
-                                   bias_size, image_size));
+      TF_CHECK_OK(GpuLaunchKernel(BiasGradNCHW_Naive<T>, config.block_count,
+                                  config.thread_per_block, 0, d.stream(),
+                                  total_count, output_backprop, bias_backprop,
+                                  bias_size, image_size));
     }
   }
 }

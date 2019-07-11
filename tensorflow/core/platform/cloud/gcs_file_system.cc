@@ -66,10 +66,6 @@ constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
-// The environment variable that disables the GCS block cache for reads.
-// This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
-// takes precedence over either of those environment variables.
-constexpr char kReadCacheDisabled[] = "GCS_READ_CACHE_DISABLED";
 // The environment variable that overrides the maximum age of entries in the
 // Stat cache. A value of 0 (the default) means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
@@ -313,6 +309,97 @@ class GcsRandomAccessFile : public RandomAccessFile {
   const string filename_;
   /// The implementation of the read operation (provided by the GCSFileSystem).
   const ReadFn read_fn_;
+};
+
+/// A GCS-based implementation of a random access file with a read buffer.
+class BufferedGcsRandomAccessFile : public RandomAccessFile {
+ public:
+  using ReadFn =
+      std::function<Status(const string& filename, uint64 offset, size_t n,
+                           StringPiece* result, char* scratch)>;
+
+  // Initialize the reader. Provided read_fn should be thread safe.
+  BufferedGcsRandomAccessFile(const string& filename, uint64 buffer_size,
+                              ReadFn read_fn)
+      : filename_(filename),
+        read_fn_(std::move(read_fn)),
+        buffer_size_(buffer_size),
+        buffer_start_(0) {}
+
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
+  /// The implementation of reads with an read buffer. Thread safe.
+  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in `*result`
+  /// because of EOF.
+  Status Read(uint64 offset, size_t n, StringPiece* result,
+              char* scratch) const override {
+    if (n > buffer_size_) {
+      return read_fn_(filename_, offset, n, result, scratch);
+    }
+    {
+      mutex_lock l(buffer_mutex_);
+      size_t buffer_end = buffer_start_ + buffer_.size();
+      size_t copy_size = 0;
+      if (offset < buffer_end && offset >= buffer_start_) {
+        copy_size = std::min(n, static_cast<size_t>(buffer_end - offset));
+        memcpy(scratch, buffer_.data() + (offset - buffer_start_), copy_size);
+        *result = StringPiece(scratch, copy_size);
+      }
+      if (copy_size < n) {
+        // Try reading from the file regardless of previous read status.
+        // The file might have grown since the last read.
+        Status status = FillBuffer(offset + copy_size);
+        if (!status.ok() && status.code() != errors::Code::OUT_OF_RANGE) {
+          // Empty the buffer to avoid caching bad reads.
+          buffer_.resize(0);
+          return status;
+        }
+        size_t remaining_copy = std::min(n - copy_size, buffer_.size());
+        memcpy(scratch + copy_size, buffer_.data(), remaining_copy);
+        copy_size += remaining_copy;
+        *result = StringPiece(scratch, copy_size);
+      }
+      if (copy_size < n) {
+        return errors::OutOfRange("EOF reached. Requested to read ", n,
+                                  " bytes from ", offset, " but only got ",
+                                  copy_size, " bytes.");
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  Status FillBuffer(uint64 start) const
+      EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
+    buffer_start_ = start;
+    buffer_.resize(buffer_size_);
+    StringPiece str_piece;
+    Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
+                             &(buffer_[0]));
+    buffer_.resize(str_piece.size());
+    return status;
+  }
+
+  // The filename of this file.
+  const string filename_;
+
+  // The implementation of the read operation (provided by the GCSFileSystem).
+  const ReadFn read_fn_;
+
+  // Size of buffer that we read from GCS each time we send a request.
+  const uint64 buffer_size_;
+
+  // Mutex for buffering operations that can be accessed from multiple threads.
+  // The following members are mutable in order to provide a const Read.
+  mutable mutex buffer_mutex_;
+
+  // Offset of buffer from start of the file.
+  mutable uint64 buffer_start_ GUARDED_BY(buffer_mutex_);
+
+  mutable string buffer_ GUARDED_BY(buffer_mutex_);
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -628,7 +715,7 @@ string ZoneToRegion(string* zone) {
 
 GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   uint64 value;
-  size_t block_size = kDefaultBlockSize;
+  block_size_ = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
   uint64 max_staleness = kDefaultMaxStaleness;
 
@@ -642,27 +729,29 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
 
   // Apply the sys env override for the readahead buffer size if it's provided.
   if (GetEnvVar(kReadaheadBufferSize, strings::safe_strtou64, &value)) {
-    block_size = value;
+    block_size_ = value;
   }
+
   // Apply the overrides for the block size (MB), max bytes (MB), and max
   // staleness (seconds) if provided.
   if (GetEnvVar(kBlockSize, strings::safe_strtou64, &value)) {
-    block_size = value * 1024 * 1024;
+    block_size_ = value * 1024 * 1024;
   }
+
   if (GetEnvVar(kMaxCacheSize, strings::safe_strtou64, &value)) {
     max_bytes = value * 1024 * 1024;
   }
+
   if (GetEnvVar(kMaxStaleness, strings::safe_strtou64, &value)) {
     max_staleness = value;
   }
-  if (std::getenv(kReadCacheDisabled) || !make_default_cache) {
-    // Setting either to 0 disables the cache; set both for good measure.
-    block_size = max_bytes = 0;
+  if (!make_default_cache) {
+    max_bytes = 0;
   }
   VLOG(1) << "GCS cache max size = " << max_bytes << " ; "
-          << "block size = " << block_size << " ; "
+          << "block size = " << block_size_ << " ; "
           << "max staleness = " << max_staleness;
-  file_block_cache_ = MakeFileBlockCache(block_size, max_bytes, max_staleness);
+  file_block_cache_ = MakeFileBlockCache(block_size_, max_bytes, max_staleness);
   // Apply overrides for the stat cache max age and max entries, if provided.
   uint64 stat_cache_max_age = kStatCacheDefaultMaxAge;
   size_t stat_cache_max_entries = kStatCacheDefaultMaxEntries;
@@ -788,6 +877,7 @@ GcsFileSystem::GcsFileSystem(
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       zone_provider_(std::move(zone_provider)),
+      block_size_(block_size),
       file_block_cache_(
           MakeFileBlockCache(block_size, max_bytes, max_staleness)),
       stat_cache_(new StatCache(stat_cache_max_age, stat_cache_max_entries)),
@@ -805,13 +895,18 @@ Status GcsFileSystem::NewRandomAccessFile(
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
-  result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
-                                                   const string& fname,
-                                                   uint64 offset, size_t n,
-                                                   StringPiece* result,
-                                                   char* scratch) {
-    tf_shared_lock l(block_cache_lock_);
-    if (file_block_cache_->IsCacheEnabled()) {
+  bool cache_enabled;
+  {
+    mutex_lock l(block_cache_lock_);
+    cache_enabled = file_block_cache_->IsCacheEnabled();
+  }
+  if (cache_enabled) {
+    result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
+                                                     const string& fname,
+                                                     uint64 offset, size_t n,
+                                                     StringPiece* result,
+                                                     char* scratch) {
+      tf_shared_lock l(block_cache_lock_);
       GcsFileStat stat;
       TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
           fname, &stat,
@@ -824,19 +919,36 @@ Status GcsFileSystem::NewRandomAccessFile(
             << "File signature has been changed. Refreshing the cache. Path: "
             << fname;
       }
-    }
-    *result = StringPiece();
-    size_t bytes_transferred;
-    TF_RETURN_IF_ERROR(
-        file_block_cache_->Read(fname, offset, n, scratch, &bytes_transferred));
-    *result = StringPiece(scratch, bytes_transferred);
-    if (bytes_transferred < n) {
-      return errors::OutOfRange("EOF reached, ", result->size(),
-                                " bytes were read out of ", n,
-                                " bytes requested.");
-    }
-    return Status::OK();
-  }));
+      *result = StringPiece();
+      size_t bytes_transferred;
+      TF_RETURN_IF_ERROR(file_block_cache_->Read(fname, offset, n, scratch,
+                                                 &bytes_transferred));
+      *result = StringPiece(scratch, bytes_transferred);
+      if (bytes_transferred < n) {
+        return errors::OutOfRange("EOF reached, ", result->size(),
+                                  " bytes were read out of ", n,
+                                  " bytes requested.");
+      }
+      return Status::OK();
+    }));
+  } else {
+    result->reset(new BufferedGcsRandomAccessFile(
+        fname, block_size_,
+        [this, bucket, object](const string& fname, uint64 offset, size_t n,
+                               StringPiece* result, char* scratch) {
+          *result = StringPiece();
+          size_t bytes_transferred;
+          TF_RETURN_IF_ERROR(
+              LoadBufferFromGCS(fname, offset, n, scratch, &bytes_transferred));
+          *result = StringPiece(scratch, bytes_transferred);
+          if (bytes_transferred < n) {
+            return errors::OutOfRange("EOF reached, ", result->size(),
+                                      " bytes were read out of ", n,
+                                      " bytes requested.");
+          }
+          return Status::OK();
+        }));
+  }
   return Status::OK();
 }
 

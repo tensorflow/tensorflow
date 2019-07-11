@@ -12,6 +12,7 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
+        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -119,6 +120,18 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "hard_swish",
+    srcs = ["hard_swish.cc"],
+    hdrs = ["hard_swish.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 
@@ -301,5 +314,26 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+objc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = [
+        "test_util.mm",
+    ],
+    hdrs = ["test_util.h"],
+    sdk_frameworks = [
+        "Metal",
+    ],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:api",
+        "//tensorflow/lite/delegates/gpu/metal:inference_context",
     ],
 )
