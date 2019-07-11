@@ -40,8 +40,8 @@ namespace tensorflow {
 
 struct ConvParametersPeer {
   template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreDnn7() {
-    return params.ShouldIncludeWinogradNonfusedAlgoPreDnn7<T>();
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() {
+    return params.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
   }
 
   ConvParameters params;
@@ -67,7 +67,7 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
       0,            // device_id
   }};
   EXPECT_TRUE(
-      conv_params_small.ShouldIncludeWinogradNonfusedAlgoPreDnn7<float>());
+      conv_params_small.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 
   ConvParametersPeer conv_params_large = {{
       1,            // batch
@@ -88,7 +88,7 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
       0,            // device_id
   }};
   EXPECT_FALSE(
-      conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreDnn7<float>());
+      conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

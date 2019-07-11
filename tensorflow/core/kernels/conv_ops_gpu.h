@@ -160,7 +160,7 @@ class ConvParameters {
     if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }
-    return ShouldIncludeWinogradNonfusedAlgoPreDnn7<T>();
+    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
   }
 
  protected:
@@ -185,7 +185,7 @@ class ConvParameters {
   }
 
   template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreDnn7() const {
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
