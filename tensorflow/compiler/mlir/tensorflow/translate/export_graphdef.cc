@@ -512,7 +512,7 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
   // Checks for gradient attribute. If present converts the gradient function
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
-  if (auto attr = function.getAttrOfType<mlir::FunctionAttr>(grad_string)) {
+  if (auto attr = function.getAttrOfType<mlir::SymbolRefAttr>(grad_string)) {
     auto grad_func =
         function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());

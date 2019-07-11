@@ -275,10 +275,10 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
-  auto thenAttr = getAttrOfType<FunctionAttr>("then_branch");
+  auto thenAttr = getAttrOfType<SymbolRefAttr>("then_branch");
   if (!thenAttr) return emitOpError("requires then_branch attribute");
 
-  auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
+  auto elseAttr = getAttrOfType<SymbolRefAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
   auto module = getParentOfType<ModuleOp>();
@@ -728,7 +728,7 @@ void TruncateDivOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 LogicalResult WhileOp::verify() {
-  auto condAttr = getAttrOfType<FunctionAttr>("cond");
+  auto condAttr = getAttrOfType<SymbolRefAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
   auto module = getParentOfType<ModuleOp>();
@@ -739,7 +739,7 @@ LogicalResult WhileOp::verify() {
   if (condFuncType.getNumResults() != 1)
     return emitOpError("requires cond function to have exactly one result");
 
-  auto bodyAttr = getAttrOfType<FunctionAttr>("body");
+  auto bodyAttr = getAttrOfType<SymbolRefAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
   auto bodyFn = module.lookupSymbol<FuncOp>(bodyAttr.getValue());
   auto bodyFuncType = bodyFn.getType();

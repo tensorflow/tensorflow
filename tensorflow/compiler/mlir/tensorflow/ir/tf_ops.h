@@ -119,11 +119,11 @@ class IfOp : public Op<IfOp, TensorFlowOp, OpTrait::AtLeastNOperands<1>::Impl,
 
   // TODO(b/132271680): This is not following Google naming style
   StringRef getThen() {
-    return getAttrOfType<FunctionAttr>("then_branch").getValue();
+    return getAttrOfType<SymbolRefAttr>("then_branch").getValue();
   }
 
   StringRef getElse() {
-    return getAttrOfType<FunctionAttr>("else_branch").getValue();
+    return getAttrOfType<SymbolRefAttr>("else_branch").getValue();
   }
 
   LogicalResult verify();
@@ -157,8 +157,12 @@ class WhileOp : public Op<WhileOp, TensorFlowOp, OpTrait::VariadicOperands,
   using Op::Op;
   static StringRef getOperationName() { return "tf.While"; }
 
-  StringRef getCond() { return getAttrOfType<FunctionAttr>("cond").getValue(); }
-  StringRef getBody() { return getAttrOfType<FunctionAttr>("body").getValue(); }
+  StringRef getCond() {
+    return getAttrOfType<SymbolRefAttr>("cond").getValue();
+  }
+  StringRef getBody() {
+    return getAttrOfType<SymbolRefAttr>("body").getValue();
+  }
 
   LogicalResult verify();
 };
