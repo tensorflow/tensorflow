@@ -2,12 +2,13 @@ load("@local_config_mlir//:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
@@ -118,10 +119,12 @@ cc_library(
         ":tensorflow_ops_inc_gen",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/core:lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Parser",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
@@ -277,6 +280,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
     ],
 )
 
@@ -373,6 +377,7 @@ cc_library(
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
+        ":tf_graph_optimization_pass",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
@@ -394,6 +399,27 @@ cc_library(
         ":tf_dialect_passes",
         "@local_config_mlir//:StandardDialectRegistration",
     ],
+)
+
+cc_library(
+    name = "tf_graph_optimization_pass",
+    srcs = ["transforms/tf_graph_optimization_pass.cc"],
+    deps = [
+        ":convert_graphdef",
+        ":mlir_roundtrip_flags",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

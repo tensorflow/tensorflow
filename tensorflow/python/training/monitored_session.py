@@ -762,17 +762,24 @@ class _MonitoredSession(object):
         computations with access to a raw session.  The returned value of the
         `step_fn` will be returned from `run_step_fn`, unless a stop is
         requested.  In that case, the next `should_stop` call will return True.
-        Example usage:  ```python
-           with tf.Graph().as_default(): c =
-             tf.compat.v1.placeholder(dtypes.float32) v = tf.add(c, 4.0) w =
-             tf.add(c, 0.5)
-             def step_fn(step_context):
-               a = step_context.session.run(fetches=v, feed_dict={c: 0.5})
-               if a <= 4.5: step_context.request_stop()
-               return step_context.run_with_hooks(fetches=w, feed_dict={c: 0.1})
-             with tf.MonitoredSession() as session:
-               while not session.should_stop(): a = session.run_step_fn(step_fn)
-                 ```  Hooks interact with the `run_with_hooks()` call inside the
+        Example usage:
+            ```python
+            with tf.Graph().as_default():
+              c = tf.compat.v1.placeholder(dtypes.float32)
+              v = tf.add(c, 4.0)
+              w = tf.add(c, 0.5)
+              def step_fn(step_context):
+                a = step_context.session.run(fetches=v, feed_dict={c: 0.5})
+                if a <= 4.5:
+                  step_context.request_stop()
+                  return step_context.run_with_hooks(fetches=w,
+                                                     feed_dict={c: 0.1})
+
+              with tf.MonitoredSession() as session:
+                while not session.should_stop():
+                  a = session.run_step_fn(step_fn)
+            ```
+            Hooks interact with the `run_with_hooks()` call inside the
                  `step_fn` as they do with a `MonitoredSession.run` call.
 
     Returns:

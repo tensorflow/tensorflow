@@ -7,13 +7,14 @@ load(
 package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
-        "//visibility:public",
+        ":friends",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
@@ -364,7 +365,7 @@ cc_library(
         "flatbuffer_operator.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -385,6 +386,20 @@ tf_native_cc_binary(
 )
 
 cc_library(
+    name = "emit_error_reporter",
+    srcs = [
+        "emit_error_reporter.cc",
+    ],
+    hdrs = [
+        "emit_error_reporter.h",
+    ],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
         "flatbuffer_translate.cc",
@@ -394,8 +409,8 @@ cc_library(
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
+        ":tensorflow_lite",
+        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",

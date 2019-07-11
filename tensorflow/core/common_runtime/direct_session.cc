@@ -496,11 +496,7 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
 
   profiler::TraceMe activity(
-      [&] {
-        return strings::StrCat(
-            "SessionRun #id=", step_id,
-            ",step_container_name=", run_state.step_container.name(), "#");
-      },
+      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;

@@ -158,16 +158,6 @@ py_library(
 )
 
 py_library(
-    name = "casting_utils",
-    srcs = ["engine/casting_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
-    ],
-)
-
-py_library(
     name = "engine",
     srcs = [
         "engine/__init__.py",
@@ -258,10 +248,11 @@ py_library(
     deps = [
         ":backend",
         ":base_layer_utils",
-        ":casting_utils",
         ":constraints",
         ":engine_utils",
         ":regularizers",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",

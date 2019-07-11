@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
@@ -48,7 +49,8 @@ class TestEagerServiceImpl : public EagerServiceImpl {
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
 
-    return context->GetTensorHandle(remote_handle, handle);
+    return context->Context()->RemoteMgr()->GetTensorHandle(remote_handle,
+                                                            handle);
   }
 };
 

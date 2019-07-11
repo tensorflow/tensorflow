@@ -154,11 +154,12 @@ class TimeDistributedTest(test.TestCase):
       model = keras.models.Sequential()
       model.add(
           keras.layers.TimeDistributed(
-              keras.layers.Dense(2, kernel_regularizer='l1'),
+              keras.layers.Dense(2, kernel_regularizer='l1',
+                                 activity_regularizer='l1'),
               input_shape=(3, 4)))
       model.add(keras.layers.Activation('relu'))
       model.compile(optimizer='rmsprop', loss='mse')
-      self.assertEqual(len(model.losses), 1)
+      self.assertEqual(len(model.losses), 2)
 
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
@@ -626,11 +627,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       x_reachable_loss = x * x
       layer = keras.layers.Bidirectional(
           keras.layers.SimpleRNN(
-              3, kernel_regularizer='l1', bias_regularizer='l1'))
+              3, kernel_regularizer='l1', bias_regularizer='l1',
+              activity_regularizer='l1'))
       _ = layer(x)
-      assert len(layer.losses) == 4
+      assert len(layer.losses) == 6
       assert len(layer.get_losses_for(None)) == 4
-      assert not layer.get_losses_for(x)
+      assert len(layer.get_losses_for(x)) == 2
 
       # Create a random tensor that is not conditional on the inputs.
       with keras.backend.get_graph().as_default():
@@ -640,9 +642,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       layer.forward_layer.add_loss(const_tensor, inputs=None)
       layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
       layer.backward_layer.add_loss(const_tensor, inputs=None)
-      assert len(layer.losses) == 8
+      assert len(layer.losses) == 10
       assert len(layer.get_losses_for(None)) == 6
-      assert len(layer.get_losses_for(x)) == 2
+      assert len(layer.get_losses_for(x)) == 4
 
   def test_Bidirectional_with_constants(self):
     with self.cached_session():

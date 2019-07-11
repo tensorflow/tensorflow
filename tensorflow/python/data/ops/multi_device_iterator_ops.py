@@ -100,7 +100,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
     self._incarnation_id_index = -1
     for i, arg in enumerate(self._next_captured_args):
-      if arg == incarnation_id:
+      if arg is incarnation_id:
         self._incarnation_id_index = i
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.

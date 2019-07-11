@@ -174,6 +174,10 @@ class DeviceNameUtils {
   // component to be fully specified.
   static bool SplitDeviceName(StringPiece name, string* task, string* device);
 
+  // Get the task name from ParsedName. Return false if the task component is
+  // not fully specified.
+  static bool GetTaskName(const ParsedName& pn, string* task);
+
   static string ParsedNameToString(const ParsedName& pn);
 
   // Returns canonical and legacy full names for the given parsed

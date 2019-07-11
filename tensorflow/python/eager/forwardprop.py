@@ -40,6 +40,24 @@ class ForwardGradientAccumulator(object):
     y = tf.reduce_sum(tf.sin(x) * tf.tan(x), axis=1)
   jvp = acc.jvp(y)
   ```
+
+  Note that `ForwardGradientAccumulator`s are always applied in creation order,
+  so inner accumulators may not see JVP computation from outer
+  accumulators. Take higher-order gradients from outer accumulators:
+
+  ```
+  primal = tf.constant(1.1)
+  with ForwardGradientAccumulator() as outer_acc:
+    outer_acc.watch(primal, tf.constant(1.))
+    with ForwardGradientAccumulator() as acc:
+      acc.watch(primal, tf.constant(1.))
+      primal_out = primal ** tf.constant(3.5)
+  inner_jvp = acc.jvp(primal_out)
+  outer_jvp = outer_acc.jvp(inner_jvp)
+  ```
+
+  Reversing the collection in the last two lines to instead retrieve
+  `acc.jvp(outer_acc.jvp(primal_out))` will not work.
   """
 
   def __init__(self):
@@ -70,6 +88,9 @@ class ForwardGradientAccumulator(object):
     pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
     self._recording = False
 
+  # TODO(allenl): Does this need to be public, or should the constructor instead
+  # take all watched Tensors? Write a realistic usage example (e.g. Hessian-free
+  # optimization) and decide.
   def watch(self, tensor, tangents):
     """Ensures that `tensor` is being traced by this tape.
 

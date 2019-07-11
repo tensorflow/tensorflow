@@ -171,7 +171,7 @@ class InitializableLookupTableBase(LookupInterface):
       self._initializer = self._track_trackable(initializer, "_initializer")
     with ops.init_scope():
       self._resource_handle = self._create_resource()
-    self._init_op = self._initialize()
+      self._init_op = self._initialize()
 
   def _initialize(self):
     return self._initializer.initialize(self)
@@ -420,9 +420,10 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
-    self._values = ops.convert_to_tensor(
-        values, dtype=value_dtype, name="values")
+    with ops.init_scope():
+      self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+      self._values = ops.convert_to_tensor(
+          values, dtype=value_dtype, name="values")
     self._name = name if name is not None else "key_value_init"
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious

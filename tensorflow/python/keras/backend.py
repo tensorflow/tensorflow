@@ -2284,7 +2284,19 @@ def maximum(x, y):
       y: Tensor or variable.
 
   Returns:
-      A tensor.
+      A tensor with the element wise maximum value(s) of `x` and `y`.
+
+  Examples:
+  ```python
+      # maximum of two tensors
+      >>> x = tf.Variable([[1, 2], [3, 4]])
+      >>> y = tf.Variable([[2, 1], [0, -1]])
+      >>> m = tf.keras.backend.maximum(x, y)
+      >>> m
+      <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+      array([[2, 2],
+             [3, 4]], dtype=int32)>
+  ```
   """
   return math_ops.maximum(x, y)
 
@@ -3489,11 +3501,10 @@ class EagerExecutionFunction(object):
     # EagerTensor.numpy() will often make a copy to ensure memory safety.
     # However in this case `outputs` is not directly returned, so it is always
     # safe to reuse the underlying buffer without checking. In such a case the
-    # private numpy conversion method is preferred to guarantee performance. We
-    # also have to call `_cpu_nograd()` since the Tensor may not be on the CPU.
-    # (otherwise it's just a no-op.)
+    # private numpy conversion method is preferred to guarantee performance.
     return nest.pack_sequence_as(
-        self._outputs_structure, [x._cpu_nograd()._numpy() for x in outputs],  # pylint: disable=protected-access
+        self._outputs_structure,
+        [x._numpy() for x in outputs],  # pylint: disable=protected-access
         expand_composites=True)
 
 
@@ -5418,9 +5429,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   num_batches_tns = array_ops.stack([label_shape[0]])
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
-  def range_less_than(_, current_input):
+  def range_less_than(old_input, current_input):
     return array_ops.expand_dims(
-        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+        math_ops.range(array_ops.shape(old_input)[1]), 0) < array_ops.fill(
             max_num_labels_tns, current_input)
 
   init = math_ops.cast(

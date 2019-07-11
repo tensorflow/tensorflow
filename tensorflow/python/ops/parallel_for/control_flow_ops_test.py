@@ -354,6 +354,8 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_max_pool3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
       g.watch(x)

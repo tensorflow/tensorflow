@@ -27,7 +27,7 @@ class CopyToDeviceNode : public EagerNode {
  public:
   CopyToDeviceNode(TensorHandle* src, TensorHandle* dst, Device* dstd,
                    EagerContext* ctx)
-      : EagerNode(ctx->NextId()), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
+      : EagerNode(), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
     src_->Ref();
     dst_->Ref();
   }

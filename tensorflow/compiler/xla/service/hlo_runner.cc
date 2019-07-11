@@ -37,7 +37,7 @@ HloRunner::CreateModuleFromString(const absl::string_view hlo_string,
                                   const DebugOptions& debug_options) {
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseHloString(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
 namespace {
@@ -81,7 +81,7 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
                                                   filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseHloString(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
 HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {

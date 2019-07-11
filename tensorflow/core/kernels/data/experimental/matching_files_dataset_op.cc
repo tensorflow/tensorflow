@@ -366,6 +366,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("MatchingFilesDataset").Device(DEVICE_CPU),
+                        MatchingFilesDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMatchingFilesDataset").Device(DEVICE_CPU),
     MatchingFilesDatasetOp);

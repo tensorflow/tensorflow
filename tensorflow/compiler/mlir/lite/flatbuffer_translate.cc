@@ -77,9 +77,9 @@ using llvm::Twine;
 using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::Function;
+using mlir::FuncOp;
 using mlir::MLIRContext;
-using mlir::Module;
+using mlir::ModuleOp;
 using mlir::NoneType;
 using mlir::openOutputFile;
 using mlir::Operation;
@@ -243,18 +243,18 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
 // TODO(hinsu): Now that translation is done by making a single pass over the
 // MLIR module, consider inlining these validation checks at the place where
 // these invariants are assumed instead of checking upfront.
-static bool IsValidTFLiteMlirModule(Module module) {
+static bool IsValidTFLiteMlirModule(ModuleOp module) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
-  Function main_fn = module.getNamedFunction("main");
+  FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
            false;
   }
 
-  for (auto fn : module.getFunctions()) {
+  for (auto fn : module.getOps<FuncOp>()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -323,14 +323,14 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
-  static Optional<std::string> Translate(Module module,
+  static Optional<std::string> Translate(ModuleOp module,
                                          bool emit_builtin_tflite_ops,
                                          bool emit_select_tf_ops,
                                          bool emit_custom_ops);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(Module module, bool emit_builtin_tflite_ops,
+  explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops)
       : module_(module), builder_(kInitialBufferSize) {
     // The first buffer must be empty according to the schema definition.
@@ -391,11 +391,11 @@ class Translator {
       Operation* inst, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(Function fn);
+  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
-  void InitializeNamesFromAttribute(Function fn);
+  void InitializeNamesFromAttribute(FuncOp fn);
 
   // Returns a unique name for `op`.
   std::string UniqueName(mlir::Operation* op);
@@ -403,7 +403,7 @@ class Translator {
   // Returns a unique name starting with a given prefix.
   std::string UniqueName(llvm::StringRef prefix);
 
-  Module module_;
+  ModuleOp module_;
 
   flatbuffers::FlatBufferBuilder builder_;
   BufferOffset<tflite::Buffer> empty_buffer_;
@@ -781,7 +781,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
          llvm::None;
 }
 
-void Translator::InitializeNamesFromAttribute(Function fn) {
+void Translator::InitializeNamesFromAttribute(FuncOp fn) {
   auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
@@ -823,8 +823,7 @@ void Translator::InitializeNamesFromAttribute(Function fn) {
   }
 }
 
-Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
-    Function fn) {
+Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   InitializeNamesFromAttribute(fn);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
@@ -927,7 +926,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
-Optional<std::string> Translator::Translate(Module module,
+Optional<std::string> Translator::Translate(ModuleOp module,
                                             bool emit_builtin_tflite_ops,
                                             bool emit_select_tf_ops,
                                             bool emit_custom_ops) {
@@ -941,14 +940,14 @@ Optional<std::string> Translator::TranslateInternal() {
   // Create a list of functions in the module with main function being the
   // first function in the list. This is required as the first subgraph in the
   // model is entry point for the model.
-  std::vector<Function> functions;
+  std::vector<FuncOp> functions;
   functions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
-  Function main_fn = module_.getNamedFunction("main");
+  FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_.getFunctions()) {
+  for (auto fn : module_.getOps<FuncOp>()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
@@ -992,7 +991,7 @@ Optional<std::string> Translator::TranslateInternal() {
 // * Ops with variable tensors
 //
 bool tflite::MlirToFlatBufferTranslateFunction(
-    Module module, std::string* serialized_flatbuffer,
+    ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
     bool emit_custom_ops) {
   auto maybe_translated = Translator::Translate(
@@ -1002,25 +1001,25 @@ bool tflite::MlirToFlatBufferTranslateFunction(
   return false;
 }
 
-static bool MlirToFlatBufferFileTranslateFunction(Module module,
-                                                  llvm::StringRef filename) {
+static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
+    ModuleOp module, llvm::StringRef filename) {
   std::string serialized_flatbuffer;
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
           emit_select_tf_ops, emit_custom_ops))
-    return true;
+    return mlir::failure();
 
   auto file = openOutputFile(filename);
   if (!file) {
     auto* context = module.getContext();
     return emitError(UnknownLoc::get(context), "failed to open output file ")
                << filename,
-           true;
+           mlir::failure();
   }
 
   file->os() << serialized_flatbuffer;
   file->keep();
-  return false;
+  return mlir::success();
 }
 
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(

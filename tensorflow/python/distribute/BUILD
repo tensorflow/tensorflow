@@ -176,6 +176,7 @@ py_test(
         "no_rocm",
     ],
     deps = [
+        ":combinations",
         ":distribute_lib",
         ":input_lib",
         ":reduce_util",
@@ -962,6 +963,7 @@ distribute_py_test(
     deps = [
         ":single_loss_example",
         "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",

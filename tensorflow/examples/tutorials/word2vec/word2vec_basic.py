@@ -226,7 +226,7 @@ def word2vec_basic(log_dir):
   # Step 5: Begin training.
   num_steps = 100001
 
-  with tf.Session(graph=graph) as session:
+  with tf.compat.v1.Session(graph=graph) as session:
     # Open a writer to write summaries.
     writer = tf.summary.FileWriter(log_dir, session.graph)
 

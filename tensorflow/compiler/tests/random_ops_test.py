@@ -116,20 +116,17 @@ class RandomOpsTest(xla_test.XLATestCase):
     def rng(dtype):
       return random_ops.truncated_normal(shape=[2], dtype=dtype)
 
-    # There is no double precision float kernel for truncated normal
-    for dtype in self._random_types() & self.float_types - {np.float64}:
+    for dtype in self._random_types() & self.float_types:
       self._testRngIsNotConstant(rng, dtype)
 
   def testTruncatedNormalIsInRange(self):
     count = 10000000
 
-    # There is no double precision float kernel for truncated normal
-    for dtype in self._random_types() & self.float_types - {np.float64}:
+    for dtype in self._random_types() & self.float_types:
 
-      # TODO: CPU backend doesn't produce a valid distribution. Remove this
-      # check when it does.
-      # TODO(sanjay): remove the check for XLA_GPU if the tests work on the
+      # TODO(sanjoy): remove the check for XLA_GPU if the tests work on the
       # GPU backend.
+      # TODO(b/34339814): make this test work with 16 bit float types.
       if (self.device in ["XLA_GPU", "XLA_CPU"
                           ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue

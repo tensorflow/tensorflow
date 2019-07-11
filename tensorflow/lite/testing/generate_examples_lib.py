@@ -3856,6 +3856,33 @@ def make_zeros_like_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function()
+def make_cast_tests(options):
+  """Generate examples for cast."""
+  test_parameters = [{
+      "input_dtype": [tf.int32],
+      "output_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the cast testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.cast(input_value, parameters["output_dtype"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
 def _make_elementwise_tests(op):
   """Make a set of tests to do element-wise operations."""
 
@@ -3989,6 +4016,14 @@ def make_slice_tests(options):
           "begin": [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
                     [0, 0, 0, 1]],
           "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
+      },
+      # last dimension out of index
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4]],
+          "begin": [[3, 3, 4]],
+          "size": [[-1, -1, -1]],
       },
   ]
 

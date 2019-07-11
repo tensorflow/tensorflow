@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -37,6 +38,25 @@ namespace xla {
 namespace {
 
 class HloSchedulingTest : public HloTestBase {};
+
+int64 PeakMemoryUseOfEntryComputation(
+    HloModule* module, LogicalBuffer::SizeFunction size_function) {
+  CHECK(module->has_entry_computation());
+  CHECK(module->has_schedule());
+
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+
+  const HloSchedule& schedule = module->schedule();
+
+  HloComputation* computation = module->entry_computation();
+  const HloInstructionSequence& sequence = schedule.sequence(computation);
+  return HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                            *computation, sequence, *alias_analysis,
+                            size_function)
+      .ValueOrDie()
+      .heap_size;
+}
 
 TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   // Tests scheduling of the following HLO code:
@@ -117,14 +137,16 @@ ENTRY root {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
+  int64 peak_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler, &peak_memory));
+  TF_ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -145,6 +167,8 @@ ENTRY root {
   SequentialHloOrdering ordering(schedule);
   EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("d"),
                                       instructions_by_name.at("e")));
+  EXPECT_EQ(PeakMemoryUseOfEntryComputation(module.get(), size_fn),
+            peak_memory);
 }
 
 TEST_F(HloSchedulingTest, HostSendDoneSchedule) {
@@ -164,7 +188,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
 
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
@@ -306,7 +330,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_FALSE(module->has_schedule());
   TF_ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
   ASSERT_TRUE(module->has_schedule());

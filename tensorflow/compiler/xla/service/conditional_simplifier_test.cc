@@ -202,7 +202,7 @@ ENTRY main {
   ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
 }
 )";
-  auto status = ParseHloString(hlo_string);
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(false, false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -268,7 +268,7 @@ TEST_F(ConditionalSimplifierTest,
         param.1), true_computation=computation.1,
         false_computation=computation.2
     })";
-  auto status = ParseHloString(hlo_string);
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
   HloVerifier v(false, false);

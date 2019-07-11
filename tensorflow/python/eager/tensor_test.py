@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import variables
 
 
 def _create_tensor(value, device=None, dtype=None):
@@ -391,6 +392,16 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = constant_op.constant([0.0])
     t._numpy()[0] = 42.0
     self.assertAllClose(t, constant_op.constant([42.0]))
+
+  def test_numpyFailsForResource(self):
+    v = variables.Variable(42)
+    with self.assertRaisesRegex(ValueError, "Cannot convert .+ resource"):
+      v._handle._numpy()
+
+  def testMemoryviewFailsForResource(self):
+    v = variables.Variable(42)
+    with self.assertRaisesRegex(BufferError, "Cannot convert .+ resource"):
+      np.asarray(memoryview(v._handle))
 
   def testMemoryviewIsReadonly(self):
     t = constant_op.constant([0.0])
