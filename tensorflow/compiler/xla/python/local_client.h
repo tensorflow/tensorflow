@@ -241,12 +241,6 @@ class PyLocalBuffer {
       const pybind11::object& argument, std::shared_ptr<PyLocalClient> client,
       int device_ordinal);
 
-  // Converts multiple (python object, device ordinal) pairs into
-  // PyLocalBuffers in parallel.
-  static StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> FromPythonValues(
-      const std::vector<std::pair<pybind11::object, int>>& argument,
-      std::shared_ptr<PyLocalClient> client);
-
   static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
       const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, int device_ordinal);

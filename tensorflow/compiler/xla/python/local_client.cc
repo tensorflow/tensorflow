@@ -381,69 +381,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
   return buffer;
 }
 
-/*static */ StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalBuffer::FromPythonValues(
-    const std::vector<std::pair<py::object, int>>& arguments,
-    std::shared_ptr<PyLocalClient> client) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPythonValues");
-  int num_arguments = static_cast<int>(arguments.size());
-  std::vector<std::unique_ptr<PyLocalBuffer>> outputs(num_arguments);
-  if (num_arguments == 0) {
-    return outputs;
-  }
-
-  struct H2DTransfer {
-    PythonBufferTree tree;
-    StatusOr<std::unique_ptr<PyLocalBuffer>> buffer;
-    PythonRefManager::ManagedPyObjects py_buffer_refs;
-  };
-
-  std::vector<H2DTransfer> transfers(num_arguments);
-  for (int i = 0; i < num_arguments; ++i) {
-    TF_ASSIGN_OR_RETURN(transfers[i].tree,
-                        GetPythonBufferTree(arguments[i].first));
-    transfers[i].py_buffer_refs = client->py_ref_manager().ManageReferences(
-        absl::MakeSpan(transfers[i].tree.arrays));
-  }
-  client->py_ref_manager().CollectGarbage();
-  // We are done manipulating Python objects; release the GIL.
-  py::gil_scoped_release gil_release;
-
-  auto transfer_h2d = [&](int i) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
-    int device_ordinal = arguments[i].second;
-    return TransferHostToDeviceAsync(transfers[i].tree, device_ordinal, client,
-                                     client->device(device_ordinal));
-  };
-
-  // We perform the transfers on a thread pool in case XLA needs to do any
-  // host-side preprocessing of the input data.
-  if (num_arguments == 1) {
-    transfers[0].buffer = transfer_h2d(0);
-  } else {
-    absl::BlockingCounter counter(num_arguments);
-    for (int i = 0; i < num_arguments; ++i) {
-      client->h2d_transfer_pool()->Schedule([&, i]() {
-        transfers[i].buffer = transfer_h2d(i);
-        counter.DecrementCount();
-      });
-    }
-    counter.Wait();
-  }
-
-  // Release our references once the transfers have completed.
-  for (int i = 0; i < num_arguments; ++i) {
-    int device_ordinal = arguments[i].second;
-    const Device& device = client->device(device_ordinal);
-    device.ThenRelease(device.host_to_device_stream(),
-                       std::move(transfers[i].py_buffer_refs));
-  }
-
-  for (int i = 0; i < num_arguments; ++i) {
-    TF_ASSIGN_OR_RETURN(outputs[i], std::move(transfers[i].buffer));
-  }
-  return outputs;
-}
-
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
     const std::vector<PyLocalBuffer*> buffers,
     std::shared_ptr<PyLocalClient> client, int device_ordinal) {

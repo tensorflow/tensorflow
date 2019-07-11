@@ -580,7 +580,7 @@ class DefFunctionTest(test.TestCase):
 
   # TODO(b/137148281): reenable
   @test_util.run_gpu_only
-  def DISABLED_testDeviceAnnotationRespected(self):
+  def testDeviceAnnotationRespected(self):
     a = []
 
     @def_function.function()
@@ -590,13 +590,13 @@ class DefFunctionTest(test.TestCase):
             (2, 2), maxval=1000000, dtype=dtypes.int64)
 
       if not a:
-        with ops.device("CPU:0"):
+        with ops.device('CPU:0'):
           a.append(resource_variable_ops.ResourceVariable(initial_value))
 
       return a[0].read_value()
 
     created_variable_read = create_variable()
-    self.assertRegexpMatches(created_variable_read.device, "CPU")
+    self.assertRegexpMatches(a[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)

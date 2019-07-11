@@ -760,7 +760,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
         if (operand_index != 1) {
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "
-              "is not suported: %s",
+              "is not supported: %s",
               hlo->ToString());
         }
         // A mapping from output to input batch dim number. -1 means not a batch
@@ -803,7 +803,7 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
         if (operand_index == 0) {
           return Unimplemented(
               "Detects a dynamic dimension on the data input of scatter, which "
-              "is not suported: %s",
+              "is not supported: %s",
               hlo->ToString());
         }
 
@@ -820,7 +820,7 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
                                   dimension)) {
           return Unimplemented(
               "Dynamic dimension of update window dims is not supported "
-              "is not suported: %s",
+              "is not supported: %s",
               hlo->ToString());
         }
         // The dynamic dimension is collapsed and won't show up in the output.

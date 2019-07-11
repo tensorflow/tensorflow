@@ -225,7 +225,7 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
-  // Fusing nodes with 0 user makes no sense and the rest of the implementation
+  // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
   if (instr1->user_count() == 0 || instr2->user_count() == 0) {
     return false;

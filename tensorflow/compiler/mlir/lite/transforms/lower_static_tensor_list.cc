@@ -276,8 +276,8 @@ LogicalResult LowerStaticTensorListPass::UpdateWhileFunctionType(
 
   auto *context = &getContext();
   auto module = getModule();
-  FuncOp cond_func = module.getNamedFunction(while_op->getCond());
-  FuncOp body_func = module.getNamedFunction(while_op->getBody());
+  FuncOp cond_func = module.lookupSymbol<FuncOp>(while_op->getCond());
+  FuncOp body_func = module.lookupSymbol<FuncOp>(while_op->getBody());
 
   if (cond_func) {
     // Change `cond_func`'s argument types to `unranked_argument_types`.

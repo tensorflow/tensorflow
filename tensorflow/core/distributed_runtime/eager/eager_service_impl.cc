@@ -229,8 +229,10 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   TF_RETURN_IF_ERROR(GetNumRetvals(server_context->Context(), operation.name(),
                                    operation.attrs(), &num_retvals));
 
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals;
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
+      num_retvals);
   TF_RETURN_IF_ERROR(EagerExecute(op.get(), &retvals, &num_retvals));
+  retvals.resize(num_retvals);
 
   server_context->Context()->RemoteMgr()->AddOperationOutputs(retvals,
                                                               operation.id());

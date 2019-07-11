@@ -63,7 +63,7 @@ static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
 static LogicalResult MlirToGraphdefTranslateFunction(
-    Module module, llvm::StringRef output_filename) {
+    ModuleOp module, llvm::StringRef output_filename) {
   if (!module) return failure();
 
   std::error_code error;

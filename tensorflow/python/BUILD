@@ -5299,7 +5299,21 @@ tf_py_test(
         ":lib",
         ":util",
     ],
-    tags = ["no_windows"],  # b/137097422
+)
+
+tf_py_test(
+    name = "tf_record_multiprocessing_test",
+    size = "small",
+    srcs = ["lib/io/tf_record_multiprocessing_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":errors",
+        ":lib",
+        ":util",
+    ],
+    # The multiprocessing module behaves differently on windows, so we
+    # disable this test on windows.
+    tags = ["no_windows"],
 )
 
 cuda_py_test(

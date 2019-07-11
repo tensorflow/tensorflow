@@ -44,6 +44,7 @@ struct DatasetDebugStringParams {
 
 struct IteratorPrefixParams {
   int op_version = 1;
+  string dataset_prefix = "";
 };
 
 // Merge the given args in the format of "(arg1, arg2, ..., argn)".

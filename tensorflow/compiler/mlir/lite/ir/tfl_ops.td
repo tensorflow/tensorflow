@@ -1692,9 +1692,10 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  // TODO(haoliang): missing Uint8.
+  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TensorOf<[F32, I16, I8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -1962,6 +1963,25 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   );
 
   let hasOptions = 1;
+}
+
+def TFL_CastOp : TFL_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Cast operator";
+
+  let description = [{
+    Casts input from input type to output type.
+  }];
+
+  // TODO(b/135538711): Add complex types here.
+  let arguments = (ins
+    TensorOf<[F32, I1, I32, I64]>:$input
+  );
+
+  let results = (outs TensorOf<[F32, I1, I32, I64]>:$output);
+
+  // TFLite's cast op does not utilize CastOptions, instead derives types
+  // from the TfLiteTensors.
+  let hasOptions = 0;
 }
 
 

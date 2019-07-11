@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -3069,59 +3070,6 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
                           float* output_data) {
   Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
       output_data);
-}
-
-template <typename T>
-inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  // Note that the output_shape is not used herein.
-  tflite::StridedSliceParams params_copy = op_params;
-
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  // Reverse and pad to 4 dimensions because that is what the runtime code
-  // requires (ie. all shapes must be 4D and are given backwards).
-  strided_slice::StridedSlicePadIndices(&params_copy, 4);
-
-  const int start_b = strided_slice::StartForAxis(params_copy, input_shape, 0);
-  const int stop_b =
-      strided_slice::StopForAxis(params_copy, input_shape, 0, start_b);
-  const int start_h = strided_slice::StartForAxis(params_copy, input_shape, 1);
-  const int stop_h =
-      strided_slice::StopForAxis(params_copy, input_shape, 1, start_h);
-  const int start_w = strided_slice::StartForAxis(params_copy, input_shape, 2);
-  const int stop_w =
-      strided_slice::StopForAxis(params_copy, input_shape, 2, start_w);
-  const int start_d = strided_slice::StartForAxis(params_copy, input_shape, 3);
-  const int stop_d =
-      strided_slice::StopForAxis(params_copy, input_shape, 3, start_d);
-
-  T* out_ptr = output_data;
-  for (int in_b = start_b;
-       !strided_slice::LoopCondition(in_b, stop_b, params_copy.strides[0]);
-       in_b += params_copy.strides[0]) {
-    for (int in_h = start_h;
-         !strided_slice::LoopCondition(in_h, stop_h, params_copy.strides[1]);
-         in_h += params_copy.strides[1]) {
-      for (int in_w = start_w;
-           !strided_slice::LoopCondition(in_w, stop_w, params_copy.strides[2]);
-           in_w += params_copy.strides[2]) {
-        for (int in_d = start_d; !strided_slice::LoopCondition(
-                 in_d, stop_d, params_copy.strides[3]);
-             in_d += params_copy.strides[3]) {
-          *out_ptr++ = input_data[Offset(input_shape, in_b, in_h, in_w, in_d)];
-        }
-      }
-    }
-  }
 }
 
 template <typename T>

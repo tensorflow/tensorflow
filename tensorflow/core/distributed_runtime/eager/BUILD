@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

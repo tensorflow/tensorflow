@@ -86,7 +86,7 @@ class Importer {
 
   explicit Importer(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::Module module,
+      const NodeSpecs& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : module_(module),
         context_(module.getContext()),
@@ -262,7 +262,7 @@ class Importer {
   using NodeValueMap = absl::flat_hash_map<int, mlir::Operation*>;
 
   std::unique_ptr<mlir::OpBuilder> builder_;
-  mlir::Module module_;
+  mlir::ModuleOp module_;
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
@@ -615,7 +615,7 @@ StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_.getNamedFunction(mlir_func_name);
+  auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
   return builder_->getFunctionAttr(func);
 }
 
@@ -721,7 +721,7 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_.getNamedFunction(mlir_grad_func_name);
+    auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
     auto gradient_attr = builder_->getFunctionAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
@@ -1292,7 +1292,7 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const NodeSpecs& specs) {
   mlir::OwningModuleRef module =
-      mlir::Module::create(mlir::UnknownLoc::get(context));
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   Importer importer(flib_def, debug_info, specs, module.get(),
                     &tf_name_to_mlir_name);

@@ -1816,8 +1816,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        if (TF_PREDICT_FALSE(
-                MightTrace(item, event_collector_, trace_using_annotations_))) {
+        {
           profiler::TraceMe activity(
               [&] {
                 return strings::StrCat(
@@ -1826,8 +1825,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                     ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
-          device->ComputeAsync(async, &state->ctx, done);
-        } else {
           device->ComputeAsync(async, &state->ctx, done);
         }
       } else {
