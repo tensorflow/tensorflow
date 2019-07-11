@@ -3891,10 +3891,21 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
 
 
 @tf_export("image.generate_bounding_box_proposals")
-def generate_bounding_box_proposals(scores, bbox_deltas, image_info, anchors, nms_threshold=0.7, pre_nms_topn=6000, min_size=16, post_nms_topn=300, correct_transform_coords=True, name=None):
+def generate_bounding_box_proposals(scores,
+                                    bbox_deltas,
+                                    image_info,
+                                    anchors,
+                                    nms_threshold=0.7,
+                                    pre_nms_topn=6000,
+                                    min_size=16,
+                                    post_nms_topn=300,
+                                    correct_transform_coords=True,
+                                    name=None):
   """ Generate bounding box proposals from encoded bounding boxes.
   Returns:
     rois: Region of interest boxes sorted by their scores.
     roi_probabilities: scores of the roi boxes in the rois tensor.
   """
-  return gen_image_ops.generate_bounding_box_proposals(scores, bbox_deltas, image_info, anchors, nms_threshold, pre_nms_topn, min_size, post_nms_topn, correct_transform_coords)
+  return gen_image_ops.generate_bounding_box_proposals(
+      scores, bbox_deltas, image_info, anchors, nms_threshold, pre_nms_topn,
+      min_size, post_nms_topn, correct_transform_coords)
