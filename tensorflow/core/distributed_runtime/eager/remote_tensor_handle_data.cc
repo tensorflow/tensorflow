@@ -137,6 +137,8 @@ UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
     DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
                               output_num_);
+  } else {
+    ctx_->Unref();
   }
 }
 
