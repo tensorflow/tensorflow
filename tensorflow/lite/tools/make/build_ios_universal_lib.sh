@@ -22,13 +22,13 @@ cd "$SCRIPT_DIR/../../../.."
 usage() {
   echo "Usage: $(basename "$0") [-a]"
   echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64 arm64)"
-  echo "  default is [x86_64 armv7 armv7s arm64]"
+  echo "  default is [i386 x86_64 armv7 armv7s arm64]"
   echo "-p enable profiling"
   exit 1
 }
 
 profiling_args=""
-BUILD_ARCHS="x86_64 armv7 armv7s arm64"
+BUILD_ARCHS="i386 x86_64 armv7 armv7s arm64"
 while getopts "a:p" opt_name; do
   case "$opt_name" in
     a) BUILD_ARCHS="${OPTARG}";;
