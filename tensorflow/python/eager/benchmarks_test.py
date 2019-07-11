@@ -935,6 +935,26 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(fn, 10000)
 
+  def benchmark_convert_3x_list_to_tensor(self):
+    xs = [1, 2, 3]
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_convert_3x_array_to_tensor(self):
+    xs = np.array([1, 2, 3], dtype=np.int32)
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_constant_40x2_list_to_tensor(self):
+    xs = [[0] * 2] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x2_array_to_tensor(self):
+    xs = np.array([[0] * 2] * 40, dtype=np.int32)
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x_list_of_2x_arrays_to_tensor(self):
+    xs = [np.array([0] * 2, dtype=np.int32)] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):
