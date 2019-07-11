@@ -1018,6 +1018,39 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "fixed_length_record_dataset_op",
+    srcs = ["fixed_length_record_dataset_op.cc"],
+    hdrs = ["fixed_length_record_dataset_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "fixed_length_record_dataset_op_test",
+    size = "small",
+    srcs = ["fixed_length_record_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":fixed_length_record_dataset_op",
+        ":iterator_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.cc"],
     hdrs = ["iterator_ops.h"],
@@ -1193,6 +1226,7 @@ tf_kernel_library(
         ":concatenate_dataset_op",
         ":dataset_ops",
         ":filter_dataset_op",
+        ":fixed_length_record_dataset_op",
         ":flat_map_dataset_op",
         ":generator_dataset_op",
         ":interleave_dataset_op",
