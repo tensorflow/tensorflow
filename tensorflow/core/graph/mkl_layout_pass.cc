@@ -2319,7 +2319,7 @@ void MklLayoutRewritePass::CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
     name = iter->first;
     auto attr = iter->second;
     nb->Attr(name, attr);
-    iter++;
+    ++iter;
   }
 }
 
