@@ -132,8 +132,8 @@ py_test(
     size = "small",
     srcs = ["build_docs_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
     tags = [
+        "no_oss",
         # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
@@ -151,9 +151,9 @@ py_test(
     name = "generate2_test",
     srcs = ["generate2_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
     tags = [
         "manual",
+        "no_oss",
         # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
