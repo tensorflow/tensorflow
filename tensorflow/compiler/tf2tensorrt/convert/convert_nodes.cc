@@ -270,6 +270,9 @@ Status ValidateTensorProperties(const string& producer_node_type,
   // Convert data type.
   TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, trt_dtype));
 
+  if (producer_node_type == "TRTPluginOp" && validation_only) {
+    return Status::OK();
+  }
   // Convert shape.
   if (shape.dims() < 0) {
     return errors::InvalidArgument("Input tensor rank is unknown.");
@@ -990,6 +993,41 @@ const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
     "FakeQuantWithMinMaxVars",
     "FakeQuantWithMinMaxArgs",
 };
+// Need to initialize plugin before node validators so that segmenter can parse
+// them.
+
+static void InitializeTrtPlugins() {
+  static mutex plugin_mutex(LINKER_INITIALIZED);
+  static bool plugin_initialized = false;
+  static Logger trt_logger;
+  mutex_lock lock(plugin_mutex);
+  if (plugin_initialized) return;
+
+  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  if (!plugin_initialized) {
+    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
+                  "fail later.";
+  }
+
+  int num_trt_plugins = 0;
+  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
+      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
+  if (!trt_plugin_creator_list) {
+    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+  } else {
+    VLOG(1) << "Found the following " << num_trt_plugins
+            << " TensorRT plugins in registry:";
+    for (int i = 0; i < num_trt_plugins; ++i) {
+      if (!trt_plugin_creator_list[i]) {
+        LOG(WARNING) << "TensorRT plugin at index " << i
+                     << " is not accessible (null pointer returned by "
+                        "getPluginCreatorList for this plugin)";
+      } else {
+        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
+      }
+    }
+  }
+}
 
 TrtNodeValidator::TrtNodeValidator(
     const grappler::GraphProperties& graph_properties,
@@ -997,6 +1035,7 @@ TrtNodeValidator::TrtNodeValidator(
     : graph_properties_(graph_properties),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
+  InitializeTrtPlugins();
   RegisterOpValidators();
 }
 
@@ -1090,39 +1129,6 @@ Status TrtNodeValidator::ConvertConstToWeights(
   Status status = op_validators_["Const"](&params);
   if (status.ok() && output) *output = outputs[0];
   return status;
-}
-
-static void InitializeTrtPlugins() {
-  static mutex plugin_mutex(LINKER_INITIALIZED);
-  static bool plugin_initialized = false;
-  static Logger trt_logger;
-  mutex_lock lock(plugin_mutex);
-  if (plugin_initialized) return;
-
-  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
-  if (!plugin_initialized) {
-    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
-                  "fail later.";
-  }
-
-  int num_trt_plugins = 0;
-  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
-      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
-  if (!trt_plugin_creator_list) {
-    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
-  } else {
-    VLOG(1) << "Found the following " << num_trt_plugins
-            << " TensorRT plugins in registry:";
-    for (int i = 0; i < num_trt_plugins; ++i) {
-      if (!trt_plugin_creator_list[i]) {
-        LOG(WARNING) << "TensorRT plugin at index " << i
-                     << " is not accessible (null pointer returned by "
-                        "getPluginCreatorList for this plugin)";
-      } else {
-        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
-      }
-    }
-  }
 }
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
@@ -1978,6 +1984,259 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
+#define TYPESTR(x) TypeToString<x>()
+template<typename T> string TypeToString();
+#define TYPESTRING(x) template<> string TypeToString<x>(){return std::move(string(#x));}
+TYPESTRING(float);
+TYPESTRING(double);
+TYPESTRING(int8);
+TYPESTRING(short);
+TYPESTRING(int);
+TYPESTRING(Eigen::half);
+#undef TYPESTRING
+
+template <typename T> void TypeDump(string* msg,T val){
+  StrAppend(msg,val," ");
+}
+template<>
+void TypeDump<Eigen::half>(string* msg,Eigen::half val){
+  StrAppend(msg,Eigen::half_impl::half_to_float(val)," ");
+}
+template <typename T>
+void DumpField(const char* name, const Tensor& vals, int max_len) {
+  int to_dump = std::min((int)vals.NumElements(), max_len);
+  const T* val_vec = vals.flat<T>().data();
+  string msg =
+      StrCat(name, " , ", TYPESTR(T), "[", vals.NumElements(), "]", " v= ");
+  for (int f = 0; f < to_dump; f++) {
+    TypeDump(&msg, *(val_vec + f));
+  }
+  VLOG(0) << "Field " << msg;
+}
+
+#undef TYPESTR
+Status ConvertPlugin(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TFAttrs attrs(node_def);
+
+  const auto& plugin_name = attrs.at("plugin_name")->s();
+  const auto& plugin_version = attrs.at("plugin_version")->s();
+  auto registry = getPluginRegistry();
+  if (!registry) {
+    return errors::Unavailable("Plugin registry is missing!");
+  }
+  auto creator =
+      registry->getPluginCreator(plugin_name.c_str(), plugin_version.c_str());
+  if (!creator) {
+    return errors::Unavailable("No plugin creator is registered for plugin '",
+                               plugin_name, "', version", plugin_version,
+                               ". Did you loaded your plugin library?");
+  }
+  const auto field_names = creator->getFieldNames();
+  std::vector<nvinfer1::PluginField> fields;
+  std::vector<Tensor> store;
+  // need special treatment of dims;
+  std::vector<nvinfer1::Dims> dim_store;
+
+  if (field_names) {
+    int num_fields = field_names->nbFields;
+    auto field = field_names->fields;
+    for (int i = 0; i < num_fields; ++i) {
+      if (!field->name) {
+        LOG(WARNING) << "Field " << i << " in plugin field map for "
+                     << node_def.name() << " is nullptr";
+        field++;
+        continue;
+      }
+      VLOG(2) << "Trying to parse plugin requested attribute " << field->name;
+      string hidden_attr = StrCat("_", field->name);
+      if (!attrs.count(hidden_attr)) {
+        LOG(WARNING) << "Field " << field->name
+                     << " is not defined in plugin node_def for "
+                     << node_def.name() << " skipping field.";
+        field++;
+        continue;
+      }
+      const auto attr_value = attrs.at(hidden_attr);
+      const auto& attr_type = attr_value->value_case();
+      if (attr_type == AttrValue::kList) {
+        LOG(WARNING) << "Can't parse lists yet!";
+        field++;
+        continue;
+      }
+      if (attr_type != AttrValue::kTensor) {
+        LOG(WARNING) << field->name
+                     << " is not a tensor. Need args to be encoded in tensors!";
+        field++;
+        continue;
+      }
+      Tensor t;
+      if (!t.FromProto(attr_value->tensor())) {
+        return errors::InvalidArgument("Can't parse tensor from attribute ",
+                                       field->name, " at op ", node_def.name());
+      }
+
+      switch (field->type) {
+        case nvinfer1::PluginFieldType::kFLOAT16: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<Eigen::half>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name,
+                              store.back().flat<Eigen::half>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kFLOAT32: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<float>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<float>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kFLOAT64: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<double>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<double>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kINT8: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<int8>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<int8>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kINT16: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<short>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<short>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kINT32: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            DumpField<int>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<int>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kCHAR: {
+          store.emplace_back(std::move(t));
+          if (VLOG_IS_ON(2)) {
+            // treat chars as int for dumping
+            DumpField<int8>(field->name, store.back(), 5);
+          }
+          fields.emplace_back(field->name, store.back().flat<int8>().data(),
+                              field->type, store.back().NumElements());
+          break;
+        }
+        case nvinfer1::PluginFieldType::kDIMS: {
+          if (t.dims() != 2) {
+            return errors::InvalidArgument(
+                "Dims in ", field->name, " at op ", node_def.name(),
+                " should be encoded in a tensor of shape [2,nbDims]");
+          }
+          int n_dims = t.dim_size(1);
+          if (n_dims > nvinfer1::Dims::MAX_DIMS) {
+            return errors::InvalidArgument("Dims in ", field->name, " at op ",
+                                           node_def.name(), " has size ",
+                                           n_dims, " bigger than max dims ",
+                                           nvinfer1::Dims::MAX_DIMS);
+          }
+          const auto& m = t.matrix<int>();
+          nvinfer1::Dims d;
+          d.nbDims = n_dims;
+          // find a better way!
+          for (int k = 0; k < n_dims; ++k) {
+            d.d[k] = m(0, k);
+            switch ((nvinfer1::DimensionType)m(1, k)) {
+              case nvinfer1::DimensionType::kSPATIAL: {
+                d.type[k] = nvinfer1::DimensionType::kSPATIAL;
+                break;
+              }
+              case nvinfer1::DimensionType::kCHANNEL: {
+                d.type[k] = nvinfer1::DimensionType::kCHANNEL;
+                break;
+              }
+              case nvinfer1::DimensionType::kINDEX: {
+                d.type[k] = nvinfer1::DimensionType::kINDEX;
+                break;
+              }
+              case nvinfer1::DimensionType::kSEQUENCE: {
+                d.type[k] = nvinfer1::DimensionType::kSEQUENCE;
+                break;
+              }
+              default: {
+                return errors::InvalidArgument("Dim ", k, " in ", field->name,
+                                               " at op ", node_def.name(),
+                                               " has unknown dim type");
+                break;
+              }
+            }
+          }
+          dim_store.emplace_back(std::move(d));
+          fields.emplace_back(field->name, &dim_store.back(), field->type, 1);
+          break;
+        }
+        case nvinfer1::PluginFieldType::kUNKNOWN:
+          return errors::InvalidArgument(
+              "kUNKNOWN type at attribute ", field->name, " of op ",
+              node_def.name(), " need all attibutes defined!");
+        default: {
+          LOG(FATAL) << "UNKNOWN field type!";
+          break;
+        }
+      }
+      field++;
+    }
+    if (fields.size() != num_fields) {
+      LOG(WARNING) << "Plugin " << plugin_name << " asked for " << num_fields
+                   << " attributes but got " << fields.size();
+    }
+  }
+  if (params->validation_only) {
+    return Status::OK();
+  }
+  nvinfer1::PluginField* pfs = nullptr;
+  if (fields.size()) {
+    pfs = &fields[0];
+  }
+  nvinfer1::PluginFieldCollection pfc{(int)fields.size(), pfs};
+  auto plugin = creator->createPlugin(node_def.name().c_str(), &pfc);
+  if (!plugin) {
+    return errors::Internal("Creator failed to construct a plugin object for ",
+                            node_def.name());
+  }
+  // prepare input
+  std::vector<nvinfer1::ITensor*> all_inputs;
+  all_inputs.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    all_inputs.emplace_back(input.tensor());
+  }
+
+  nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
+      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
+
+  for (int i = 0; i < layer->getNbOutputs(); i++) {
+    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
+    params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  }
   return Status::OK();
 }
 
@@ -4960,6 +5219,7 @@ static void RegisterValidatableOpConverters(
   for (auto batch_matmul_type : {"BatchMatMul", "BatchMatMulV2"}) {
     (*registration)[batch_matmul_type] = ConvertBatchMatMul;
   }
+  (*registration)["TRTPluginOp"] = ConvertPlugin;
 }
 
 void TrtNodeValidator::RegisterOpValidators() {

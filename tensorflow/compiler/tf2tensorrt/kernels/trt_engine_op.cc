@@ -771,6 +771,21 @@ Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 
+class TRTPluginOp : public OpKernel {
+ public:
+  explicit TRTPluginOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  ~TRTPluginOp() override {}
+
+  void Compute(OpKernelContext* context) override {
+    LOG(FATAL)
+        << "This op is not meant to run. Please run TFTRT on this graph!";
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TRTPluginOp").Device(DEVICE_GPU), TRTPluginOp);
+REGISTER_KERNEL_BUILDER(Name("TRTPluginOp").Device(DEVICE_CPU), TRTPluginOp);
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

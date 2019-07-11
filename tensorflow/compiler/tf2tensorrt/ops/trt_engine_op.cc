@@ -56,6 +56,17 @@ REGISTER_OP("TRTEngineOp")
     .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
     .Attr("static_engine: bool = true");
+
+REGISTER_OP("TRTPluginOp")
+    .Attr("InT: list({int8,int16,int32,float16,float32,float64,string})") 
+    .Attr("OutT: list({int8,int16,int32,float16,float32,float64,string})")
+    .Attr("plugin_name: string")
+    .Attr("plugin_version: string")
+    .Attr("subsegment: string")
+    .Input("in_tensor: InT")
+    .Output("out_tensor: OutT")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_TENSORRT
