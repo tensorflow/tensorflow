@@ -123,8 +123,8 @@ py_test(
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "notsan",  # b/62863147
         "no_oss",
+        "notsan",  # b/62863147
     ],
     deps = [
         ":gbdt_batch",
