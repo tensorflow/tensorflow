@@ -390,9 +390,9 @@ public:
   Operation::operand_range getInputsAndOutputs() {
     return impl->getInputsAndOutputs(getOperation());
   }
-  LinalgOp create(OpBuilder &builder, Location loc,
-                  ArrayRef<Value *> operands) {
-    return LinalgOp(impl->create(builder, loc, operands));
+  LinalgOp create(OpBuilder &builder, Location loc, ArrayRef<Value *> operands,
+                  ArrayRef<NamedAttribute> attributes) {
+    return LinalgOp(impl->create(builder, loc, operands, attributes));
   }
 
 private:
@@ -416,7 +416,8 @@ private:
     virtual Operation::operand_range getOutputs(Operation *op) = 0;
     virtual Operation::operand_range getInputsAndOutputs(Operation *op) = 0;
     virtual Operation *create(OpBuilder &builder, Location loc,
-                              ArrayRef<Value *> operands) = 0;
+                              ArrayRef<Value *> operands,
+                              ArrayRef<NamedAttribute> attributes) = 0;
   };
 
   /// The implementation is inspired from Sean Parent's concept-based
@@ -481,9 +482,10 @@ private:
       return cast<ConcreteOp>(op).getInputsAndOutputs();
     }
     Operation *create(OpBuilder &builder, Location loc,
-                      ArrayRef<Value *> operands) override {
+                      ArrayRef<Value *> operands,
+                      ArrayRef<NamedAttribute> attributes) override {
       return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
-                                        ArrayRef<NamedAttribute>{});
+                                        attributes);
     }
   };
   Concept *impl;

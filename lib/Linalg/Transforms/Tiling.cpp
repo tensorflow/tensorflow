@@ -394,7 +394,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
                                                  viewsToPromote.end()),
                                 [](bool b) { return b; });
     if (!promote) {
-      res = op.create(b, loc, views);
+      res = op.create(b, loc, views, op.getAttrs());
       return;
     }
 
@@ -424,7 +424,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
         opViews[i] = views[i];
       }
     }
-    res = op.create(b, loc, opViews);
+    res = op.create(b, loc, opViews, op.getAttrs());
 
     // 6. Emit write-back for the promoted output views: copy the partial view.
     for (unsigned i = 0, e = writebackViews.size(); i < e; ++i) {
