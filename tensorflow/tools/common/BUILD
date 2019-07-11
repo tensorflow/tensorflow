@@ -22,6 +22,7 @@ py_test(
     name = "public_api_test",
     srcs = ["public_api_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":public_api",
         "//tensorflow/python:platform_test",
@@ -39,6 +40,7 @@ py_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":test_module1",
         ":test_module2",
