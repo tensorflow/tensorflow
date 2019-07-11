@@ -1157,6 +1157,9 @@ def internal_convert_to_tensor(value,
           (dtype.name, value.dtype.name, value))
     return value
 
+  if preferred_dtype is not None:
+    preferred_dtype = dtypes.as_dtype(preferred_dtype)
+
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
@@ -1167,15 +1170,13 @@ def internal_convert_to_tensor(value,
             value, dtype=preferred_dtype, name=name, as_ref=as_ref)
       except (TypeError, ValueError):
         # Could not coerce the conversion to use the preferred dtype.
-        ret = None
-
-      if ret is not None and ret is not NotImplemented:
-        if (ret.dtype.base_dtype !=
-            dtypes.as_dtype(preferred_dtype).base_dtype):
+        pass
+      else:
+        if (ret is not NotImplemented and
+            ret.dtype.base_dtype != preferred_dtype.base_dtype):
           raise TypeError("convert_to_tensor did not convert to "
                           "the preferred dtype: %s vs %s " %
-                          (ret.dtype.base_dtype,
-                           dtypes.as_dtype(preferred_dtype).base_dtype))
+                          (ret.dtype.base_dtype, preferred_dtype.base_dtype))
 
     if ret is None:
       ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
