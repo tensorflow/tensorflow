@@ -117,6 +117,12 @@ class RandomOpsTest(xla_test.XLATestCase):
       return random_ops.truncated_normal(shape=[2], dtype=dtype)
 
     for dtype in self._random_types() & self.float_types:
+
+      # TODO(b/34339814): make this test work with 16 bit float types.
+      if (self.device in ["XLA_GPU", "XLA_CPU"
+                          ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
+        continue
+
       self._testRngIsNotConstant(rng, dtype)
 
   def testTruncatedNormalIsInRange(self):
