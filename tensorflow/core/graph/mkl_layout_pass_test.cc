@@ -3680,10 +3680,10 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_DeviceTest) {
       " input: ['A', 'B', 'C', 'D', 'E'] }"
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'F'] }",
-      kCPUDevice);
+      kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(Input);E(Input);"
-            "F(_MklFusedBatchNormV3);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
+            "F(FusedBatchNormV3);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
             "E->F:4;F->G:1");
 }
 

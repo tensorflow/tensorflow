@@ -456,15 +456,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          CopyAttrsFusedBatchNormV2, AlwaysRewrite,
          kRewriteForLayoutPropagation});
 
+    // Using CopyAttrsFusedBatchNormV2 for V3 on CPU, as there are no additional
+    // attributes.
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
-         CopyAttrsFusedBatchNormV3, AlwaysRewrite,
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
          kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
-         CopyAttrsFusedBatchNormV3, AlwaysRewrite,
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
          kRewriteForLayoutPropagation});
 
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
@@ -1782,8 +1784,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                       bool change_format = false);
   static void CopyAttrsFusedBatchNormV2(const Node* orig_node, NodeBuilder* nb,
                                         bool change_format = false);
-  static void CopyAttrsFusedBatchNormV3(const Node* orig_node, NodeBuilder* nb,
-                                        bool change_format = false);
   static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
                                  bool change_format = false);
   static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
@@ -2977,14 +2977,6 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNormV2(const Node* orig_node,
   DataType U;
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "U", &U));
   nb->Attr("U", U);
-}
-
-// Calls corresp api of FBNV2, for V3 on CPU, as there are no additional
-// attributes.
-void MklLayoutRewritePass::CopyAttrsFusedBatchNormV3(const Node* orig_node,
-                                                     NodeBuilder* nb,
-                                                     bool change_format) {
-  CopyAttrsFusedBatchNormV2(orig_node, nb, change_format);
 }
 
 void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,

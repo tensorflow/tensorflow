@@ -844,7 +844,6 @@ class MklFusedBatchNormOp : public OpKernel {
                                 reserved_space_tensor, tf_shape_scale,
                                 mkl_shape_reserved_space);
       DCHECK((*reserved_space_tensor) != nullptr);
-      // set NAN variance value in case of empty input tensor
       auto saved_reserved_space_data =
           (*reserved_space_tensor)->flat<U>().data();
       std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(NAN));
@@ -870,12 +869,12 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     try {
-      const size_t kDiffDstIndex = 0;   // index of diff_dst tensor
-      const size_t kSrcIndex = 1;       // index of src input tensor
-      const size_t kScaleIndex = 2;     // index of scale tensor
-      const size_t kMeanIndex = 3;      // index of saved_mean tensor
-      const size_t kVarianceIndex = 4;  // index of saved_variance tensor
-      const size_t kReSpaceIndex = 5;   // index of reserved space 3 tensor
+      const size_t kDiffDstIndex = 0;        // index of diff_dst tensor
+      const size_t kSrcIndex = 1;            // index of src input tensor
+      const size_t kScaleIndex = 2;          // index of scale tensor
+      const size_t kMeanIndex = 3;           // index of saved_mean tensor
+      const size_t kVarianceIndex = 4;       // index of saved_variance tensor
+      const size_t kReservedSpaceIndex = 5;  // index of reserved space 3 tensor
 
       const Tensor& diff_dst_tensor = MklGetInput(context, kDiffDstIndex);
       const Tensor& src_tensor = MklGetInput(context, kSrcIndex);
@@ -883,9 +882,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       const Tensor& saved_mean_tensor = MklGetInput(context, kMeanIndex);
       const Tensor& saved_variance_tensor =
           MklGetInput(context, kVarianceIndex);
-      const Tensor temp;
       const Tensor& reserved_space_tensor =
-          (reserved_space) ? MklGetInput(context, kReSpaceIndex) : temp;
+          (reserved_space) ? MklGetInput(context, kReservedSpaceIndex)
+                           : Tensor();
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, kSrcIndex, &dnn_shape_src);
@@ -1051,11 +1050,11 @@ class MklFusedBatchNormGradOp : public OpKernel {
       T* diff_src_data = static_cast<T*>(diff_src_tensor->flat<T>().data());
       U* diff_weights_data = static_cast<U*>(diff_weights.GetAllocatedBuffer());
 
-      U* res_space_data = nullptr;
-      if (reserved_space) {
-        res_space_data = static_cast<U*>(
-            const_cast<U*>(reserved_space_tensor.flat<U>().data()));
-      }
+      U* res_space_data =
+          ((reserved_space) ? static_cast<U*>(const_cast<U*>(
+                                  reserved_space_tensor.flat<U>().data()))
+                            : nullptr);
+
       // Execute
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
                       weights_data, diff_src_data, diff_weights_data,
