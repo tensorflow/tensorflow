@@ -1648,6 +1648,12 @@ LogicalResult AffineLoadOp::verify() {
     if (map.getNumResults() != getMemRefType().getRank())
       return emitOpError("affine.load affine map num results must equal"
                          " memref rank");
+    if (map.getNumInputs() != getNumOperands() - 1)
+      return emitOpError("expects as many subscripts as affine map inputs");
+  } else {
+    if (getMemRefType().getRank() != getNumOperands() - 1)
+      return emitOpError(
+          "expects the number of subscripts to be equal to memref rank");
   }
 
   for (auto *idx : getIndices())
@@ -1734,7 +1740,14 @@ LogicalResult AffineStoreOp::verify() {
     if (map.getNumResults() != getMemRefType().getRank())
       return emitOpError("affine.store affine map num results must equal"
                          " memref rank");
+    if (map.getNumInputs() != getNumOperands() - 2)
+      return emitOpError("expects as many subscripts as affine map inputs");
+  } else {
+    if (getMemRefType().getRank() != getNumOperands() - 2)
+      return emitOpError(
+          "expects the number of subscripts to be equal to memref rank");
   }
+
   for (auto *idx : getIndices())
     if (!idx->getType().isIndex())
       return emitOpError("index to load must have 'index' type");
