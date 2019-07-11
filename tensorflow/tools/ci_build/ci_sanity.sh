@@ -449,8 +449,6 @@ do_bazel_nobuild() {
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
-  BAZEL_FLAGS="${BAZEL_FLAGS} --incompatible_package_name_is_a_function=false"
-  BAZEL_FLAGS="${BAZEL_FLAGS} --incompatible_remove_native_http_archive=false"
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
