@@ -89,8 +89,9 @@ struct memref_t {
 // Allows to register a pointer with the CUDA runtime. Helpful until
 // we have transfer functions implemented.
 extern "C" void mcuMemHostRegister(const memref_t arg, int32_t flags) {
-  reportErrorIfAny(cuMemHostRegister(arg.values, arg.length, flags),
-                   "MemHostRegister");
+  reportErrorIfAny(
+      cuMemHostRegister(arg.values, arg.length * sizeof(float), flags),
+      "MemHostRegister");
 }
 
 /// Prints the given float array to stderr.
