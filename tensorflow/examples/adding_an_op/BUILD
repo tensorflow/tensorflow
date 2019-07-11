@@ -68,7 +68,10 @@ py_test(
     size = "small",
     srcs = ["zero_out_1_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notap"],
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":zero_out_op_1",
         "//tensorflow:tensorflow_py",
@@ -80,7 +83,10 @@ py_test(
     size = "small",
     srcs = ["zero_out_2_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notap"],
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":zero_out_grad_2",
         ":zero_out_op_2",
@@ -93,7 +99,10 @@ py_test(
     size = "small",
     srcs = ["zero_out_3_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notap"],
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":zero_out_op_3",
         "//tensorflow:tensorflow_py",
@@ -134,6 +143,7 @@ py_test(
     size = "small",
     srcs = ["fact_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = ["//tensorflow:tensorflow_py"],
 )
 

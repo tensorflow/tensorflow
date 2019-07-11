@@ -26,6 +26,7 @@ py_test(
         "doc_generator_visitor_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":doc_generator_visitor",
         ":generate_lib",
@@ -45,6 +46,7 @@ py_test(
     size = "small",
     srcs = ["doc_controls_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":doc_controls",
         "//tensorflow/python:platform_test",
@@ -69,6 +71,7 @@ py_test(
     size = "small",
     srcs = ["parser_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":parser",
         "//tensorflow/python:platform_test",
@@ -104,6 +107,7 @@ py_test(
     size = "small",
     srcs = ["generate_lib_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":generate_lib",
         ":parser",
@@ -128,6 +132,7 @@ py_test(
     size = "small",
     srcs = ["build_docs_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     tags = [
         # No reason to run sanitizers or fastbuild for this test.
         "noasan",
@@ -146,6 +151,7 @@ py_test(
     name = "generate2_test",
     srcs = ["generate2_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     tags = [
         "manual",
         # No reason to run sanitizers or fastbuild for this test.
@@ -177,6 +183,7 @@ py_test(
     size = "small",
     srcs = ["py_guide_parser_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",
