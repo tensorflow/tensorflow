@@ -606,6 +606,9 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -814,6 +817,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1293,6 +1299,9 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1394,7 +1403,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    tags = ["notsan"],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1405,6 +1417,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1421,6 +1436,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
@@ -1436,6 +1452,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1451,7 +1470,10 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1484,6 +1506,7 @@ tf_py_test(
         "//tensorflow/python/feature_column:feature_column_py",
     ],
     tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
@@ -1500,6 +1523,7 @@ tf_py_test(
     ],
     tags = [
         "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
@@ -1561,6 +1585,7 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no-internal-py3",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1575,7 +1600,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1589,6 +1617,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1613,6 +1644,9 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
