@@ -2492,3 +2492,6 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
+
+def tfcompile_extra_flags():
+    return ""
