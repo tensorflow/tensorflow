@@ -178,19 +178,6 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return Status::OK();
 }
 
-namespace {
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
-  return absl::nullopt;
-}
-
-}  // namespace
-
-HloDataflowAnalysis::CanShareBuffer AMDGPUCompiler::GetCanShareBuffer() {
-  return &CanShareBufferHint;
-}
-
 AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
     : GpuCompiler(platform_id, amdgpu::kTargetTriple, amdgpu::kDataLayout) {}
 

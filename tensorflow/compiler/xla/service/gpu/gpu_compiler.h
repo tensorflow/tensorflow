@@ -70,7 +70,11 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() = 0;
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
+    return [] -> HloDataflowAnalysis::CanShareBuffer {
+      return absl::nullopt;
+    };
+  }
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
 

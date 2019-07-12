@@ -51,8 +51,6 @@ class AMDGPUCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
-
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
