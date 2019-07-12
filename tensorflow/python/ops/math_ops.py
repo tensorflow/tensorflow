@@ -2796,12 +2796,11 @@ def _calc_mat_mul_flops(graph, node):
 
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
-def _calc_mat_mul_flops(graph, node):
+def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
   a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
   a_shape.assert_is_fully_defined()
-  batch_size = np.prod(a_shape[:-2])
   if transpose_a:
     k = int(a_shape[-2])
   else:
