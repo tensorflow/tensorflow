@@ -1158,7 +1158,7 @@ Status Importer::Convert(llvm::StringRef func_name,
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
-  auto* bb = builder_->createBlock();
+  auto* bb = builder_->createBlock(&function.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));

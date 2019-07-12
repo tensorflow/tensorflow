@@ -125,7 +125,7 @@ class QuantizationDriver {
   explicit QuantizationDriver(FuncOp fn) : builder_(fn.getBody()) {}
 
   // The entry point of the quantization parameters propagation.
-  void Run();
+  void Run(FuncOp fn);
 
  private:
   // This is used to identify an operand or result of an op. The second element
@@ -133,7 +133,7 @@ class QuantizationDriver {
   using OpValue = std::pair<mlir::Operation *, int>;
 
   // Sets up the states for all the op results in the function.
-  void Initialize();
+  void Initialize(FuncOp fn);
 
   // Propagates the quantization parameters across all the ops.
   bool PropagateParams();
@@ -560,10 +560,10 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 // TODO(fengliuai): This algorithm assumes there are only one pair of
 // tfl.quantize and tfl.dequantize ops between two quantizable ops. A sanity
 // check should be applied.
-void QuantizationDriver::Initialize() {
+void QuantizationDriver::Initialize(FuncOp fn) {
   llvm::DenseMap<Value *, int> value_to_state;
 
-  builder_.getRegion()->walk([&](Operation *op) {
+  fn.walk([&](Operation *op) {
     if (op->isKnownTerminator()) return;
     if (!GetQuantSpec(op)->is_quantizable) return;
     work_list_.push_back(op);
@@ -700,15 +700,15 @@ void QuantizationDriver::Finalize() {
   }
 }
 
-void QuantizationDriver::Run() {
-  Initialize();
+void QuantizationDriver::Run(FuncOp fn) {
+  Initialize(fn);
   if (PropagateParams()) {
     Finalize();
   }
 }
 
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func) {
-  QuantizationDriver(func).Run();
+  QuantizationDriver(func).Run(func);
 }
 
 }  // namespace TFL
