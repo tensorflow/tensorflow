@@ -769,6 +769,23 @@ cc_test(
 )
 
 cc_test(
+    name = "conv_per_channel_quantized_test16x8",
+    srcs = [
+        "conv_per_channel_quantized_test16x8.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
     deps = [

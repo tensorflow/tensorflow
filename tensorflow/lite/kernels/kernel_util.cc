@@ -47,7 +47,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
   const bool is_per_channel = affine_quantization->scale->size > 1;
   if (is_per_channel) {
     //  Currently only Int8 is supported for per channel quantization.
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+    TF_LITE_ENSURE(context, input->type==kTfLiteInt8 || input->type==kTfLiteInt16);
     TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
@@ -189,6 +189,16 @@ void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
                                   int32_t* act_max) {
   const int32_t qmin = std::numeric_limits<int8_t>::min();
   const int32_t qmax = std::numeric_limits<int8_t>::max();
+
+  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
+                                        act_max);
+}
+
+void CalculateActivationRangeInt16(TfLiteFusedActivation activation,
+                                   TfLiteTensor* output, int32_t* act_min,
+                                   int32_t* act_max) {
+  const int32_t qmin = std::numeric_limits<int16_t>::min();
+  const int32_t qmax = std::numeric_limits<int16_t>::max();
 
   CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
                                         act_max);
