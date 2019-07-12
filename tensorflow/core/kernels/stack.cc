@@ -20,7 +20,6 @@ limitations under the License.
 #include <atomic>
 #include <list>
 #include <map>
-#include <queue>
 #include <stack>
 #include <vector>
 
@@ -139,7 +138,7 @@ class Stack : public ResourceBase {
       *value = &(stack_[index].value);
       return true;
     }
-    return false; // nothing to swap out
+    return false;  // nothing to swap out
   }
 
   bool GetTensorToSwapIn(TensorAndAllocation** value, int* index) {
@@ -152,7 +151,7 @@ class Stack : public ResourceBase {
       is_swapping_ins_[*index] = true;
       return true;
     }
-    return false; // nothing to swap in
+    return false;  // nothing to swap in
   }
 
   void FinishSwappingIn(size_t index) {
