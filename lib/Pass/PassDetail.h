@@ -23,6 +23,20 @@ namespace mlir {
 namespace detail {
 
 //===----------------------------------------------------------------------===//
+// Verifier Passes
+//===----------------------------------------------------------------------===//
+
+/// Pass to verify a function and signal failure if necessary.
+class FunctionVerifierPass : public FunctionPass<FunctionVerifierPass> {
+  void runOnFunction() override;
+};
+
+/// Pass to verify a module and signal failure if necessary.
+class ModuleVerifierPass : public ModulePass<ModuleVerifierPass> {
+  void runOnModule() override;
+};
+
+//===----------------------------------------------------------------------===//
 // PassExecutor
 //===----------------------------------------------------------------------===//
 
@@ -144,6 +158,11 @@ inline bool isModuleToFunctionAdaptorPass(Pass *pass) {
 /// ModuleToFunctionPassAdaptor.
 inline bool isAdaptorPass(Pass *pass) {
   return isModuleToFunctionAdaptorPass(pass);
+}
+
+/// Utility function to return if a pass refers to a verifier pass.
+inline bool isVerifierPass(Pass *pass) {
+  return isa<FunctionVerifierPass>(pass) || isa<ModuleVerifierPass>(pass);
 }
 
 } // end namespace detail

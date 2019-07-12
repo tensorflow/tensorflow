@@ -58,6 +58,11 @@ private:
 };
 } // end anonymous namespace
 
+/// Returns true if the given pass is hidden from IR printing.
+static bool isHiddenPass(Pass *pass) {
+  return isAdaptorPass(pass) || isVerifierPass(pass);
+}
+
 static void printIR(const llvm::Any &ir, bool printModuleScope,
                     raw_ostream &out) {
   // Check for printing at module scope.
@@ -87,20 +92,22 @@ static void printIR(const llvm::Any &ir, bool printModuleScope,
 /// Instrumentation hooks.
 void IRPrinterInstrumentation::runBeforePass(Pass *pass, const llvm::Any &ir) {
   // Skip adaptor passes and passes that the user filtered out.
-  if (!shouldPrintBeforePass || isAdaptorPass(pass) ||
+  if (!shouldPrintBeforePass || isHiddenPass(pass) ||
       !shouldPrintBeforePass(pass))
     return;
   out << formatv("*** IR Dump Before {0} ***", pass->getName());
   printIR(ir, printModuleScope, out);
+  out << "\n\n";
 }
 
 void IRPrinterInstrumentation::runAfterPass(Pass *pass, const llvm::Any &ir) {
   // Skip adaptor passes and passes that the user filtered out.
-  if (!shouldPrintAfterPass || isAdaptorPass(pass) ||
+  if (!shouldPrintAfterPass || isHiddenPass(pass) ||
       !shouldPrintAfterPass(pass))
     return;
   out << formatv("*** IR Dump After {0} ***", pass->getName());
   printIR(ir, printModuleScope, out);
+  out << "\n\n";
 }
 
 void IRPrinterInstrumentation::runAfterPassFailed(Pass *pass,
@@ -111,6 +118,7 @@ void IRPrinterInstrumentation::runAfterPassFailed(Pass *pass,
     return;
   out << formatv("*** IR Dump After {0} Failed ***", pass->getName());
   printIR(ir, printModuleScope, out);
+  out << "\n\n";
 }
 
 //===----------------------------------------------------------------------===//

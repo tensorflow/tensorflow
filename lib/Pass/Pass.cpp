@@ -226,28 +226,24 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
 }
 
 //===----------------------------------------------------------------------===//
-// PassManager
+// Verifier Passes
 //===----------------------------------------------------------------------===//
 
-namespace {
-/// Pass to verify a function and signal failure if necessary.
-class FunctionVerifier : public FunctionPass<FunctionVerifier> {
-  void runOnFunction() {
-    if (failed(verify(getFunction())))
-      signalPassFailure();
-    markAllAnalysesPreserved();
-  }
-};
+void FunctionVerifierPass::runOnFunction() {
+  if (failed(verify(getFunction())))
+    signalPassFailure();
+  markAllAnalysesPreserved();
+}
 
-/// Pass to verify a module and signal failure if necessary.
-class ModuleVerifier : public ModulePass<ModuleVerifier> {
-  void runOnModule() {
-    if (failed(verify(getModule())))
-      signalPassFailure();
-    markAllAnalysesPreserved();
-  }
-};
-} // end anonymous namespace
+void ModuleVerifierPass::runOnModule() {
+  if (failed(verify(getModule())))
+    signalPassFailure();
+  markAllAnalysesPreserved();
+}
+
+//===----------------------------------------------------------------------===//
+// PassManager
+//===----------------------------------------------------------------------===//
 
 PassManager::PassManager(bool verifyPasses)
     : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses),
@@ -287,7 +283,7 @@ void PassManager::addPass(ModulePassBase *pass) {
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    mpe->addPass(new ModuleVerifier());
+    mpe->addPass(new ModuleVerifierPass());
 }
 
 /// Add a function pass to the current manager. This takes ownership over the
@@ -317,7 +313,7 @@ void PassManager::addPass(FunctionPassBase *pass) {
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    fpe->addPass(new FunctionVerifier());
+    fpe->addPass(new FunctionVerifierPass());
 }
 
 /// Add the provided instrumentation to the pass manager. This takes ownership
