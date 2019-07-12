@@ -53,8 +53,7 @@ enum Kind {
 };
 }
 
-// Provides a common base class between VectorType, SPIR-V ArrayType, SPIR-V
-// StructType.
+// SPIR-V composite type: VectorType, SPIR-V ArrayType, or SPIR-V StructType.
 class CompositeType : public Type {
 public:
   using Type::Type;
@@ -65,9 +64,9 @@ public:
             type.getKind() == StandardTypes::Vector);
   }
 
-  uint64_t getNumMembers() const;
+  unsigned getNumElements() const;
 
-  Type getMemberType(uint64_t) const;
+  Type getElementType(unsigned) const;
 };
 
 // SPIR-V array type
@@ -78,11 +77,11 @@ public:
 
   static bool kindof(unsigned kind) { return kind == TypeKind::Array; }
 
-  static ArrayType get(Type elementType, int64_t elementCount);
+  static ArrayType get(Type elementType, unsigned elementCount);
+
+  unsigned getNumElements() const;
 
   Type getElementType() const;
-
-  int64_t getElementCount() const;
 };
 
 // SPIR-V type for return of EntryPointOp. The EntryPointOp returns a value that
@@ -147,7 +146,6 @@ public:
   Type getPointeeType() const;
 
   StorageClass getStorageClass() const;
-  StringRef getStorageClassStr() const;
 };
 
 // SPIR-V run-time array type
@@ -186,10 +184,13 @@ public:
   static StructType get(ArrayRef<Type> memberTypes,
                         ArrayRef<LayoutInfo> layoutInfo);
 
-  size_t getNumMembers() const;
-  Type getMemberType(size_t) const;
+  unsigned getNumElements() const;
+
+  Type getElementType(unsigned) const;
+
   bool hasLayout() const;
-  uint64_t getOffset(size_t) const;
+
+  uint64_t getOffset(unsigned) const;
 };
 
 } // end namespace spirv

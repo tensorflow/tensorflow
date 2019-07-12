@@ -17,6 +17,7 @@
 #include "mlir/SPIRV/SPIRVOps.h"
 #include "mlir/SPIRV/SPIRVTypes.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -497,7 +498,7 @@ Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
 //===----------------------------------------------------------------------===//
 
 static void print(ArrayType type, llvm::raw_ostream &os) {
-  os << "array<" << type.getElementCount() << " x " << type.getElementType()
+  os << "array<" << type.getNumElements() << " x " << type.getElementType()
      << ">";
 }
 
@@ -521,14 +522,14 @@ static void print(ImageType type, llvm::raw_ostream &os) {
 
 static void print(StructType type, llvm::raw_ostream &os) {
   os << "struct<";
-  std::string sep = "";
-  for (size_t i = 0, e = type.getNumMembers(); i != e; ++i) {
-    os << sep << type.getMemberType(i);
+  auto printMember = [&](unsigned i) {
+    os << type.getElementType(i);
     if (type.hasLayout()) {
       os << " [" << type.getOffset(i) << "]";
     }
-    sep = ", ";
-  }
+  };
+  mlir::interleaveComma(llvm::seq<unsigned>(0, type.getNumElements()), os,
+                        printMember);
   os << ">";
 }
 

@@ -34,7 +34,7 @@ using namespace mlir::spirv;
 //===----------------------------------------------------------------------===//
 
 struct spirv::detail::ArrayTypeStorage : public TypeStorage {
-  using KeyTy = std::pair<Type, int64_t>;
+  using KeyTy = std::pair<Type, unsigned>;
 
   static ArrayTypeStorage *construct(TypeStorageAllocator &allocator,
                                      const KeyTy &key) {
@@ -42,35 +42,36 @@ struct spirv::detail::ArrayTypeStorage : public TypeStorage {
   }
 
   bool operator==(const KeyTy &key) const {
-    return key == KeyTy(elementType, elementCount);
+    return key == KeyTy(elementType, getSubclassData());
   }
 
   ArrayTypeStorage(const KeyTy &key)
-      : elementType(key.first), elementCount(key.second) {}
+      : TypeStorage(key.second), elementType(key.first) {}
 
   Type elementType;
-  int64_t elementCount;
 };
 
-ArrayType ArrayType::get(Type elementType, int64_t elementCount) {
+ArrayType ArrayType::get(Type elementType, unsigned elementCount) {
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
                    elementCount);
 }
 
-Type ArrayType::getElementType() const { return getImpl()->elementType; }
+unsigned ArrayType::getNumElements() const {
+  return getImpl()->getSubclassData();
+}
 
-int64_t ArrayType::getElementCount() const { return getImpl()->elementCount; }
+Type ArrayType::getElementType() const { return getImpl()->elementType; }
 
 //===----------------------------------------------------------------------===//
 // CompositeType
 //===----------------------------------------------------------------------===//
 
-Type CompositeType::getMemberType(uint64_t index) const {
+Type CompositeType::getElementType(unsigned index) const {
   switch (getKind()) {
-  case spirv::TypeKind::Struct:
-    return cast<StructType>().getMemberType(index);
   case spirv::TypeKind::Array:
     return cast<ArrayType>().getElementType();
+  case spirv::TypeKind::Struct:
+    return cast<StructType>().getElementType(index);
   case StandardTypes::Vector:
     return cast<VectorType>().getElementType();
   default:
@@ -78,12 +79,12 @@ Type CompositeType::getMemberType(uint64_t index) const {
   }
 }
 
-uint64_t CompositeType::getNumMembers() const {
+unsigned CompositeType::getNumElements() const {
   switch (getKind()) {
-  case spirv::TypeKind::Struct:
-    return cast<StructType>().getNumMembers();
   case spirv::TypeKind::Array:
-    return cast<ArrayType>().getElementCount();
+    return cast<ArrayType>().getNumElements();
+  case spirv::TypeKind::Struct:
+    return cast<StructType>().getNumElements();
   case StandardTypes::Vector:
     return cast<VectorType>().getNumElements();
   default:
@@ -323,10 +324,6 @@ StorageClass PointerType::getStorageClass() const {
   return getImpl()->getStorageClass();
 }
 
-StringRef PointerType::getStorageClassStr() const {
-  return stringifyStorageClass(getStorageClass());
-}
-
 //===----------------------------------------------------------------------===//
 // RuntimeArrayType
 //===----------------------------------------------------------------------===//
@@ -418,22 +415,22 @@ StructType StructType::get(ArrayRef<Type> memberTypes,
                    memberTypes, layoutInfo);
 }
 
-size_t StructType::getNumMembers() const {
+unsigned StructType::getNumElements() const {
   return getImpl()->getSubclassData();
 }
 
-Type StructType::getMemberType(size_t i) const {
+Type StructType::getElementType(unsigned index) const {
   assert(
-      getNumMembers() > i &&
+      getNumElements() > index &&
       "element index is more than number of members of the SPIR-V StructType");
-  return getImpl()->memberTypes[i];
+  return getImpl()->memberTypes[index];
 }
 
 bool StructType::hasLayout() const { return getImpl()->layoutInfo; }
 
-uint64_t StructType::getOffset(size_t i) const {
+uint64_t StructType::getOffset(unsigned index) const {
   assert(
-      getNumMembers() > i &&
+      getNumElements() > index &&
       "element index is more than number of members of the SPIR-V StructType");
-  return getImpl()->layoutInfo[i];
+  return getImpl()->layoutInfo[index];
 }

@@ -113,7 +113,7 @@ func @composite_extract_vector_out_of_bounds_access(%arg0: vector<4xf32>) -> () 
 // -----
 
 func @composite_extract_invalid_types_1(%arg0: !spv.array<4x!spv.array<4xf32>>) -> () {
-  // expected-error @+1 {{invalid type to extract from}}
+  // expected-error @+1 {{cannot extract from non-composite type 'f32' with index 3}}
   %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32, 3 : i32] : !spv.array<4x!spv.array<4xf32>>
   return
 }
@@ -121,7 +121,7 @@ func @composite_extract_invalid_types_1(%arg0: !spv.array<4x!spv.array<4xf32>>) 
 // -----
 
 func @composite_extract_invalid_types_2(%arg0: f32) -> () {
- // expected-error @+1 {{invalid type to extract from}}
+  // expected-error @+1 {{cannot extract from non-composite type 'f32' with index 1}}
   %0 = spv.CompositeExtract %arg0[1 : i32] : f32
   return
 }
@@ -132,6 +132,14 @@ func @composite_extract_invalid_extracted_type(%arg0: !spv.array<4x!spv.array<4x
   // expected-error @+1 {{expected at least one index for spv.CompositeExtract}}
   %0 = spv.CompositeExtract %arg0[] : !spv.array<4x!spv.array<4xf32>>
   return
+}
+
+// -----
+
+func @composite_extract_result_type_mismatch(%arg0: !spv.array<4xf32>) -> i32 {
+  // expected-error @+1 {{invalid result type: expected 'f32' but provided 'i32'}}
+  %0 = "spv.CompositeExtract"(%arg0) {indices = [2: i32]} : (!spv.array<4xf32>) -> (i32)
+  return %0: i32
 }
 
 // -----

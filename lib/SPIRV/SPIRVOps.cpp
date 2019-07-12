@@ -242,22 +242,18 @@ static ParseResult parseCompositeExtractOp(OpAsmParser *parser,
                  "expexted an 32-bit integer for index, but found '")
              << indexAttr << "'";
     }
-    if (resultType.isa<spirv::CompositeType>()) {
-      if (index < 0 ||
-          static_cast<uint32_t>(index) >=
-              resultType.cast<spirv::CompositeType>().getNumMembers()) {
+
+    if (auto cType = resultType.dyn_cast<spirv::CompositeType>()) {
+      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
         return parser->emitError(attrLocation, "index ")
                << index << " out of bounds for " << resultType;
       }
-      resultType = resultType.cast<spirv::CompositeType>().getMemberType(index);
+      resultType = cType.getElementType(index);
     } else {
-      return parser->emitError(attrLocation, "invalid type to extract from");
+      return parser->emitError(attrLocation,
+                               "cannot extract from non-composite type ")
+             << resultType << " with index " << index;
     }
-  }
-
-  if (!resultType) {
-    return parser->emitError(attrLocation,
-                             "can not extract from composite type");
   }
 
   state->addTypes(resultType);
@@ -282,27 +278,22 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 
   int32_t index;
   for (auto indexAttr : indicesArrayAttr) {
-    if (!resultType) {
-      return compExOp.emitError("invalid type to extract from");
-    }
-
     index = indexAttr.dyn_cast<IntegerAttr>().getInt();
-    if (resultType.isa<spirv::CompositeType>()) {
-      if (index < 0 ||
-          static_cast<uint32_t>(index) >=
-              resultType.cast<spirv::CompositeType>().getNumMembers()) {
+    if (auto cType = resultType.dyn_cast<spirv::CompositeType>()) {
+      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
         return compExOp.emitOpError("index ")
                << index << " out of bounds for " << resultType;
       }
-      resultType = resultType.cast<spirv::CompositeType>().getMemberType(index);
+      resultType = cType.getElementType(index);
     } else {
-      return compExOp.emitOpError("invalid type to extract from");
+      return compExOp.emitError("cannot extract from non-composite type ")
+             << resultType << " with index " << index;
     }
   }
 
   if (resultType != compExOp.getType()) {
-    return compExOp.emitOpError("invalid result type, expected ")
-           << resultType << " provided " << compExOp.getType();
+    return compExOp.emitOpError("invalid result type: expected ")
+           << resultType << " but provided " << compExOp.getType();
   }
 
   return success();
