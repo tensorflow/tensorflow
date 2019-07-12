@@ -49,6 +49,7 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -149,6 +150,7 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
+    self._run_distributed = False
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -236,6 +238,7 @@ class Model(network.Network):
     """
     _keras_api_gauge.get_cell('compile').set(True)
     self._run_eagerly = kwargs.pop('run_eagerly', None)
+    self._run_distributed = kwargs.pop('run_distributed', False)
 
     if distribute is not None:
       if tf2.enabled():
@@ -452,6 +455,18 @@ class Model(network.Network):
 
   def _select_training_loop(self, inputs):
     """Select training loop for fit/eval/predict based on the inputs."""
+    # Experiment training loop with default DS path.
+    if (context.executing_eagerly()
+        and self._run_distributed
+        and not self.run_eagerly
+        and tf2.enabled()
+        and not isinstance(inputs, (iterator_ops.Iterator,
+                                    iterator_ops.IteratorV2))
+        and not distributed_training_utils.is_tpu_strategy(
+            self._distribution_strategy)
+        and not getattr(self, '_cloning', False)):
+      return training_v2.Loop()
+
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
