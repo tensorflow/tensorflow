@@ -94,12 +94,6 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     desc = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
     self.assertEqual(desc.name, "beep")
 
-  def testBadName(self):
-    for bad_name in ["", "$foo", "a:b"]:
-      with self.assertRaisesRegexp(ValueError,
-                                   "is not a valid TensorSpec name"):
-        tensor_spec.TensorSpec([1], dtypes.float32, name=bad_name)
-
   def testRepr(self):
     desc1 = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
     self.assertEqual(
