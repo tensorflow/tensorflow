@@ -725,6 +725,10 @@ class NNAPIOpBuilder {
       tensor_rank = 1;
       tensor_dims = &tensor_rank;
     }
+    if (tensor_rank == 0) {
+      // if the tensor_rank is 0, the dimension ptr must be nullptr.
+      tensor_dims = nullptr;
+    }
     ANeuralNetworksSymmPerChannelQuantParams ann_perchannel_params;
     if (tensor_type == kTfLiteInt8 || tensor_type == kTfLiteUInt8) {
       if (tensor->quantization.type == kTfLiteAffineQuantization) {
