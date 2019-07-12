@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -5016,19 +5017,30 @@ Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
+    if (IsEngineInput(node_name)){
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kInputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      string type_key;
+      if (node_def.op() == "Placeholder") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(kInputPHName), &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+        type_key = "dtype";
+      } else if (tensorflow::grappler::IsArg(node_def)) {
+        // Maybe remove the dependence on grappler and re-implement IsArg,
+        // which is pretty simple (but could change if new Arg nodes are added)
+        slot_number = node_def.attr().at("index").i();
+        type_key = "T";
+      } else {
+        return errors::InvalidArgument("Node ", node_name, " with name starting with kInputPHName is neither Placeholder nor Arg, instead ", node_def.op());  
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
       int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
       auto status = ValidateTensorProperties(
-          node_def.op(), node_def.attr().at("dtype").type(), shape,
+          node_def.op(), node_def.attr().at(type_key).type(), shape,
           /*validation_only=*/false, &trt_dtype, &trt_dims, &batch_size);
       if (!status.ok()) {
         const string error_message =
@@ -5044,12 +5056,18 @@ Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      if (node_def.op() == "Identity") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+      } else if (tensorflow::grappler::IsRetval(node_def)) {
+        slot_number = node_def.attr().at("index").i();
+      } else {
+        return errors::InvalidArgument("Node with name ", node_name, " starting with kOutputPHName is neither Identity nor Retval, instead ", node_def.op());  
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);

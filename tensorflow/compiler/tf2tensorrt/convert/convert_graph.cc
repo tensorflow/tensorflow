@@ -135,6 +135,7 @@ Status GetEngineInfo(const Graph* g,
       DeviceNameUtils::ParsedName parsed_name;
       const bool parse_succeeded =
           DeviceNameUtils::ParseFullName(node_device, &parsed_name);
+      VLOG(0) << node_device;
       if (!parse_succeeded || (parse_succeeded && parsed_name.type == "CPU")) {
         string msg;
         if (!parse_succeeded) {
@@ -441,7 +442,8 @@ Status CreateTRTNode(const ConversionParams& params,
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
   } else {
-    segment_string = info.segment_graph_def.SerializeAsString();
+    //segment_string = info.segment_graph_def.SerializeAsString();
+    segment_string = "";
   }
 
   string prec_string;
@@ -461,15 +463,13 @@ Status CreateTRTNode(const ConversionParams& params,
   }
 
   NodeDef trt_node;
+  //TODO(phillip-kravtsov): use_function_backup: fix this
   Status status =
       node_builder.Attr("input_shapes", input_shape_protos)
           .Attr("output_shapes", output_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
-          .Attr("segment_funcdef_name",
-                params.use_function_backup
-                    ? StrCat(info.engine_name, "_native_segment")
-                    : "")
+          .Attr("segment_funcdef_name", StrCat(info.engine_name, "_native_segment"))
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
@@ -539,15 +539,15 @@ Status CreateTRTNode(const ConversionParams& params,
 }
 
 // Function to construct a funcdef from the segment and add it to the graph.
-Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
-                                                const GraphDef& segment,
-                                                const string& engine_name) {
-  Graph sgraph(graph->flib_def());
+Status ModifyGraphForFunctionDef(Graph* graph,
+                                 const GraphDef& segment,
+                                 Graph* sgraph) {
+  //Graph sgraph(graph->flib_def());
   GraphConstructorOptions gcopts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, &sgraph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, sgraph));
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
-  for (auto n : sgraph.op_nodes()) {
+  for (auto n : sgraph->op_nodes()) {
     if (absl::StartsWith(n->name(), kInputPHName)) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
@@ -567,12 +567,12 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
                            .Attr("index", i)
                            .Finalize(&nd));
     Status s;
-    auto node_arg = sgraph.AddNode(nd, &s);
+    auto node_arg = sgraph->AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Arg node for " << name;
     }
     for (auto edge : node->out_edges()) {
-      sgraph.AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
+      sgraph->AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
       VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
               << " - > " << edge->dst()->name() << ":" << edge->dst_input();
       if (!s.ok()) {
@@ -580,7 +580,7 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
                    << " to " << edge->dst()->name() << ":" << edge->dst_input();
       }
     }
-    sgraph.RemoveNode(node);
+    sgraph->RemoveNode(node);
   }
 
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
@@ -604,34 +604,40 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
       VLOG(3) << nd.DebugString();
     }
     Status s;
-    auto node_ret = sgraph.AddNode(nd, &s);
+    auto node_ret = sgraph->AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Ret node for " << name;
     }
     VLOG(1) << "Update edge from " << edge->src()->name() << ":"
             << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
-    sgraph.AddEdge(edge->src(), edge->src_output(), node_ret, 0);
-    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
+    sgraph->AddEdge(edge->src(), edge->src_output(), node_ret, 0);
+    s = sgraph->UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
                  << edge->src_output() << " - > " << node_ret->name() << ":"
                  << 0;
     }
-    sgraph.RemoveNode(node);
+    sgraph->RemoveNode(node);
   }
-  FunctionDefLibrary fdeflib;
+  return Status::OK();
+}
+
+Status RegisterModifiedGraphToFunctionLibrary(Graph* sgraph, Graph* graph,
+                                              FunctionDefLibrary fdeflib,
+                                              const string& engine_name) {
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
+      *sgraph, StrCat(engine_name, "_native_segment"), native_segment));
   // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
   // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
   // would be on host if the op generating the tensor has host memory tag set.
   (*native_segment
         ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
       .set_b(true);
-  if (VLOG_IS_ON(7)) {
-    VLOG(7) << engine_name << " Function_Def ";
-    VLOG(7) << native_segment->DebugString();
+  //TODO(phillip-kravtsov): set this back to 7
+  if (VLOG_IS_ON(0)) {
+    VLOG(0) << engine_name << " Function_Def ";
+    VLOG(0) << native_segment->DebugString();
   }
   VLOG(1) << "Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
@@ -761,14 +767,24 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    if (params.use_function_backup) {
-      status = RegisterSegmentFunctionToFunctionLibrary(
-          &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to register segment graphdef as a function "
-                     << t << ": " << status;
-        continue;
-      }
+    
+
+    Graph sgraph(flib);
+    status = ModifyGraphForFunctionDef(&graph, curr_engine.segment_graph_def,
+                                       &sgraph);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to modify graph as a function "
+                   << t << ": " << status;
+      continue;
+    }
+    FunctionDefLibrary fdeflib;
+    status = RegisterModifiedGraphToFunctionLibrary(&sgraph, &graph,
+        fdeflib, curr_engine.engine_name);
+    
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to register segment graphdef as a function "
+                   << t << ": " << status;
+      continue;
     }
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
@@ -777,7 +793,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     engine_segments.push_back(std::move(curr_engine));
     converted_segments.push_back(std::move(curr_segment));
 
-    if (VLOG_IS_ON(8)) {
+    if (VLOG_IS_ON(8) && 
+        curr_engine.engine_type == EngineInfo::EngineType::TRTStatic) {
       string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
