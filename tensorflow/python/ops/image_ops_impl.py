@@ -3583,7 +3583,7 @@ def crop_and_resize_v2(image,
   boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
   box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0, maxval=BATCH_SIZE, dtype=tf.int32)
   output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
-  print(output.shape)  #=> (5, 24, 24, 3)
+  output.shape  #=> (5, 24, 24, 3)
   ```
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
