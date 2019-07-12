@@ -4122,7 +4122,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-    op = _op_to_colocate_with(op)
+    op = _op_to_colocate_with(op, self)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -6426,7 +6426,7 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
                   (op.name, dtype, name, as_ref))
 
 
-def _op_to_colocate_with(v):
+def _op_to_colocate_with(v, graph):
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
     return None
@@ -6445,7 +6445,10 @@ def _op_to_colocate_with(v):
   # import dependency is acceptable.
   if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
       v.handle.op, Operation):
-    return v.handle.op
+    if graph.building_function:
+      return graph.capture(v.handle).op
+    else:
+      return v.handle.op
   return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
 
 
