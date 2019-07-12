@@ -33,9 +33,14 @@ class AutotuneBenchmark(test.Benchmark):
   def benchmark_map(self):
     a = self._benchmark_map(autotune=False)
     b = self._benchmark_map(autotune=True)
-    print("speedup: %f" % (a / b))
+    c = self._benchmark_map(
+        autotune=True, algorithm=dataset_ops.AutotuneAlgorithm.GRADIENT_DESCENT)
+    print("HillClimb vs Default speedup: %f" % (a / b))
+    print("GradientDescent vs Default speedup: %f" % (a / c))
 
-  def _benchmark_map(self, autotune):
+  def _benchmark_map(self,
+                     autotune,
+                     algorithm=dataset_ops.AutotuneAlgorithm.HILL_CLIMB):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
@@ -45,6 +50,8 @@ class AutotuneBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
+    if autotune:
+      options.experimental_optimization.autotune_algorithm = algorithm.value
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -62,15 +69,19 @@ class AutotuneBenchmark(test.Benchmark):
     self.report_benchmark(
         iters=10000,
         wall_time=np.median(deltas),
-        name="map" + ("_autotune" if autotune else ""))
+        name="map" + (("_autotune_%s" % algorithm.name) if autotune else ""))
     return np.median(deltas)
 
   def benchmark_map_and_batch(self):
     a = self._benchmark_map_and_batch(autotune=False)
     b = self._benchmark_map_and_batch(autotune=True)
-    print("speedup: %f" % (a / b))
+    c = self._benchmark_map_and_batch(
+        autotune=True, algorithm=dataset_ops.AutotuneAlgorithm.GRADIENT_DESCENT)
+    print("HillClimb vs Default speedup: %f" % (a / b))
+    print("GradientDescent vs Default speedup: %f" % (a / c))
 
-  def _benchmark_map_and_batch(self, autotune):
+  def _benchmark_map_and_batch(
+      self, autotune, algorithm=dataset_ops.AutotuneAlgorithm.HILL_CLIMB):
     batch_size = 16
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
@@ -83,6 +94,8 @@ class AutotuneBenchmark(test.Benchmark):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.autotune = autotune
+    if autotune:
+      options.experimental_optimization.autotune_algorithm = algorithm.value
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -100,15 +113,21 @@ class AutotuneBenchmark(test.Benchmark):
     self.report_benchmark(
         iters=1000,
         wall_time=np.median(deltas),
-        name="map_and_batch" + ("_autotune" if autotune else ""))
+        name="map_and_batch" +
+        (("_autotune_%s" % algorithm.name) if autotune else ""))
     return np.median(deltas)
 
   def benchmark_interleave(self):
     a = self._benchmark_interleave(autotune=False)
     b = self._benchmark_interleave(autotune=True)
-    print("speedup: %f" % (a / b))
+    c = self._benchmark_interleave(
+        autotune=True, algorithm=dataset_ops.AutotuneAlgorithm.GRADIENT_DESCENT)
+    print("HillClimb vs Default speedup: %f" % (a / b))
+    print("GradientDescent vs Default speedup: %f" % (a / c))
 
-  def _benchmark_interleave(self, autotune):
+  def _benchmark_interleave(self,
+                            autotune,
+                            algorithm=dataset_ops.AutotuneAlgorithm.HILL_CLIMB):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
@@ -121,6 +140,8 @@ class AutotuneBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
+    if autotune:
+      options.experimental_optimization.autotune_algorithm = algorithm.value
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -138,15 +159,20 @@ class AutotuneBenchmark(test.Benchmark):
     self.report_benchmark(
         iters=10000,
         wall_time=np.median(deltas),
-        name="interleave" + ("_autotune" if autotune else ""))
+        name="interleave" +
+        (("_autotune_%s" % algorithm.name) if autotune else ""))
     return np.median(deltas)
 
   def benchmark_map_and_interleave(self):
     a = self._benchmark_map_and_interleave(autotune=False)
     b = self._benchmark_map_and_interleave(autotune=True)
-    print("speedup: %f" % (a / b))
+    c = self._benchmark_map_and_interleave(
+        autotune=True, algorithm=dataset_ops.AutotuneAlgorithm.GRADIENT_DESCENT)
+    print("HillClimb vs Default speedup: %f" % (a / b))
+    print("GradientDescent vs Default speedup: %f" % (a / c))
 
-  def _benchmark_map_and_interleave(self, autotune):
+  def _benchmark_map_and_interleave(
+      self, autotune, algorithm=dataset_ops.AutotuneAlgorithm.HILL_CLIMB):
     k = 1024 * 1024
     a = (np.random.rand(1, 8 * k), np.random.rand(8 * k, 1))
     b = (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))
@@ -181,6 +207,8 @@ class AutotuneBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
+    if autotune:
+      options.experimental_optimization.autotune_algorithm = algorithm.value
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
@@ -189,16 +217,17 @@ class AutotuneBenchmark(test.Benchmark):
     with session.Session() as sess:
       for _ in range(5):
         sess.run(get_next)
-      for _ in range(1000):
+      for _ in range(10000):
         start = time.time()
         sess.run(get_next)
         end = time.time()
         deltas.append(end - start)
 
     self.report_benchmark(
-        iters=1000,
+        iters=10000,
         wall_time=np.median(deltas),
-        name="map_and_interleave" + ("_autotune" if autotune else ""))
+        name="map_and_interleave" +
+        (("_autotune_%s" % algorithm.name) if autotune else ""))
     return np.median(deltas)
 
 

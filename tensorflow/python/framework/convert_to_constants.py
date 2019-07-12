@@ -31,8 +31,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training.saver import export_meta_graph
 
 
-def _disable_lower_using_switch_merge(graph_def):
+# TODO(nupurgarg): Handle StatelessIf op.
+_CONTROL_FLOW_OPS = set(["If", "While"])
+
+
+def disable_lower_using_switch_merge(graph_def):
   """Set '_lower_using_switch_merge' attributes to False in If and While ops.
+
+  Sets the attribute to False in the NodeDefs in the main graph and the NodeDefs
+  in each function's graph.
 
   Args:
     graph_def: GraphDef proto.
@@ -41,14 +48,19 @@ def _disable_lower_using_switch_merge(graph_def):
     GraphDef
   """
   output_graph_def = graph_pb2.GraphDef()
-  output_graph_def.library.CopyFrom(graph_def.library)
-  output_graph_def.versions.CopyFrom(graph_def.versions)
+  output_graph_def.CopyFrom(graph_def)
 
-  for input_node in graph_def.node:
-    output_node = output_graph_def.node.add()
-    output_node.CopyFrom(input_node)
-    if output_node.op in ("If", "While"):
-      output_node.attr["_lower_using_switch_merge"].b = False
+  def disable_control_flow_lowering(node):
+    if node.op in _CONTROL_FLOW_OPS:
+      node.attr["_lower_using_switch_merge"].b = False
+
+  for node in output_graph_def.node:
+    disable_control_flow_lowering(node)
+
+  if output_graph_def.library:
+    for func in output_graph_def.library.function:
+      for node in func.node_def:
+        disable_control_flow_lowering(node)
   return output_graph_def
 
 
@@ -68,7 +80,7 @@ def _run_inline_graph_optimization(func, lower_control_flow):
   """
   graph_def = func.graph.as_graph_def()
   if not lower_control_flow:
-    graph_def = _disable_lower_using_switch_merge(graph_def)
+    graph_def = disable_lower_using_switch_merge(graph_def)
   meta_graph = export_meta_graph(graph_def=graph_def, graph=func.graph)
 
   # Clear the initializer_name for the variables collections, since they are not
@@ -110,6 +122,44 @@ def _get_tensor_name(name):
   return name.split(":")[0]
 
 
+def _get_new_function_name(name):
+  """Returns the function name with '_frozen' appended.
+
+  Args:
+    name: str
+
+  Returns:
+    str
+  """
+  return name + "_frozen"
+
+
+def _get_node_defs_list(graph_def):
+  """Returns a list of NodeDefs in the GraphDef.
+
+  This list consists of all NodeDefs in the main graph as well as all control
+  flow NodeDefs in the functions.
+
+  The remaining NodeDefs in the functions are not included because the op names
+  are not unique and the variables are handled differently than the main graph.
+  The control flow ops need to be extracted because they are need their
+  attributes to be updated similar to the control flow ops in the main graph.
+
+  Args:
+    graph_def: GraphDef proto.
+
+  Returns:
+    [NodeDef]
+  """
+  node_defs = list(graph_def.node)
+
+  if graph_def.library:
+    for func in graph_def.library.function:
+      node_defs.extend(
+          [node for node in func.node_def if node.op in _CONTROL_FLOW_OPS])
+  return node_defs
+
+
 def _get_tensor_data(func):
   """Gets the tensor data for all Placeholders in the model.
 
@@ -146,7 +196,7 @@ def _get_tensor_data(func):
   return tensor_data
 
 
-def _get_control_flow_function_types(graph_def, tensor_data):
+def _get_control_flow_function_types(node_defs, tensor_data):
   """Gets the types for the parameters to the function.
 
   Creates a map from function name to a list of types that correspond with the
@@ -155,7 +205,7 @@ def _get_control_flow_function_types(graph_def, tensor_data):
   from the type of the data contained within the Tensor.
 
   Args:
-    graph_def: GraphDef proto.
+    node_defs: List of NodeDefs.
     tensor_data: {str name : Tensor}.
 
   Returns:
@@ -163,7 +213,7 @@ def _get_control_flow_function_types(graph_def, tensor_data):
   """
   # TODO(b/133793620): Support the "While" op.
   func_types = {}
-  for node in graph_def.node:
+  for node in node_defs:
     if node.op == "If":
       arg_types = [dtype for dtype in node.attr["Tin"].list.type]
 
@@ -210,6 +260,24 @@ def _populate_identity_op(output_node, input_node):
   output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
   if "_class" in input_node.attr:
     output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
+
+
+def _populate_if_op(output_node, input_node, function_types):
+  """Updates the type attributes and the function names of the If op.
+
+  Args:
+    output_node: TensorFlow NodeDef.
+    input_node: TensorFlow NodeDef.
+    function_types: Map of function names to the list of DataTypes that
+      correspond with the function arguments.
+  """
+  output_node.CopyFrom(input_node)
+  then_func = input_node.attr["then_branch"].func.name
+  output_node.attr["then_branch"].func.name = _get_new_function_name(then_func)
+  output_node.attr["else_branch"].func.name = _get_new_function_name(
+      input_node.attr["else_branch"].func.name)
+  output_node.attr["Tin"].list.CopyFrom(
+      attr_value_pb2.AttrValue.ListValue(type=function_types[then_func]))
 
 
 def _construct_concrete_function(func, output_graph_def,
@@ -271,17 +339,19 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   # Inline the graph in order to remove functions when possible.
   graph_def = _run_inline_graph_optimization(func, lower_control_flow)
 
+  # Gets list of all node defs include those in the library.
+  node_defs = _get_node_defs_list(graph_def)
+
   # Get mapping from node name to node.
-  name_to_node = {_get_tensor_name(node.name): node for node in graph_def.node}
+  name_to_node = {_get_tensor_name(node.name): node for node in node_defs}
 
   # Get mapping from node name to variable value.
   tensor_data = _get_tensor_data(func)
 
   # Get mapping from function name to argument types.
-  get_new_func_name = lambda func_name: func_name + "_frozen"
-  function_types = _get_control_flow_function_types(graph_def, tensor_data)
+  function_types = _get_control_flow_function_types(node_defs, tensor_data)
 
-  # Get variable data.
+  # Get variable data for all nodes in `node_defs`.
   reference_variables = {}
   resource_identities = {}
   placeholders = {}
@@ -294,7 +364,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     }
     converted_input_indices.add(tensor_data[node_name]["index"])
 
-  for node in graph_def.node:
+  for node in node_defs:
     if node.op == "If":
       # Get dtype and data for resource Placeholders.
       then_func = node.attr["then_branch"].func.name
@@ -330,7 +400,6 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
 
   # Reconstruct the graph with constants in place of variables.
   output_graph_def = graph_pb2.GraphDef()
-  how_many_converted = 0
 
   for input_node in graph_def.node:
     output_node = output_graph_def.node.add()
@@ -340,13 +409,11 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
       dtype = attr_value_pb2.AttrValue(type=data.dtype.as_datatype_enum)
       _populate_const_op(output_node, input_node.name, dtype, data.numpy(),
                          data.shape)
-      how_many_converted += 1
     # Convert Placeholder ops to Const ops.
     elif input_node.name in placeholders:
       data = placeholders[input_node.name]["data"]
       dtype = placeholders[input_node.name]["dtype"]
       _populate_const_op(output_node, input_node.name, dtype, data, data.shape)
-      how_many_converted += 1
     # Update the dtype for Identity ops that are inputs to ReadVariableOps.
     elif input_node.name in resource_identities:
       output_node.CopyFrom(input_node)
@@ -356,13 +423,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
       _populate_identity_op(output_node, input_node)
     # Update the function names and function's arguments types for the If ops.
     elif input_node.op == "If":
-      output_node.CopyFrom(input_node)
-      then_func = input_node.attr["then_branch"].func.name
-      output_node.attr["then_branch"].func.name = get_new_func_name(then_func)
-      output_node.attr["else_branch"].func.name = get_new_func_name(
-          input_node.attr["else_branch"].func.name)
-      output_node.attr["Tin"].list.CopyFrom(
-          attr_value_pb2.AttrValue.ListValue(type=function_types[then_func]))
+      _populate_if_op(output_node, input_node, function_types)
     else:
       output_node.CopyFrom(input_node)
 
@@ -372,7 +433,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
 
     for input_library_func in graph_def.library.function:
       orig_func_name = input_library_func.signature.name
-      new_func_name = get_new_func_name(orig_func_name)
+      new_func_name = _get_new_function_name(orig_func_name)
 
       # Do not copy any functions that aren't being used in the graph. Any
       # functions that are not used by control flow should have been inlined.
@@ -404,6 +465,8 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
         # Convert ReadVariableOps to Identity ops.
         if input_node.op == "ReadVariableOp":
           _populate_identity_op(output_node, input_node)
+        elif input_node.op == "If":
+          _populate_if_op(output_node, input_node, function_types)
         else:
           output_node.CopyFrom(input_node)
           # Convert :value to :output for ops that use the ReadVariableOp.

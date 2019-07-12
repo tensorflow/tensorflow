@@ -65,6 +65,10 @@ class ZlibOutputBuffer : public WritableFile {
   // To immediately write contents to file call `Flush()`.
   Status Append(StringPiece data) override;
 
+#if defined(PLATFORM_GOOGLE)
+  Status Append(const absl::Cord& cord) override;
+#endif
+
   // Deflates any cached input and writes all output to file.
   Status Flush() override;
 

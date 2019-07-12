@@ -149,6 +149,7 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:wrap_function",
     ],
 )
 

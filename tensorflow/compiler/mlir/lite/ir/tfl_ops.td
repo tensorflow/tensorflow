@@ -51,6 +51,13 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
              BuildableType<"getType<mlir::TF::StringType>()">;
 
 //===----------------------------------------------------------------------===//
+// TFLite dialect uint8 type - uses the TF uint8 type as implementation
+//===----------------------------------------------------------------------===//
+def TFL_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
+                    "TFLite uint8 type">,
+              BuildableType<"getType<mlir::TF::Uint8Type>()">;
+
+//===----------------------------------------------------------------------===//
 // Activation function enum definitions.
 //===----------------------------------------------------------------------===//
 
@@ -438,13 +445,13 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   }];
 
   let arguments = (
-    ins Variadic<TensorOf<[F32, I64, I32, I16, I8, TFL_QI8]>>:$values,
+    ins Variadic<TensorOf<[F32, I64, I32, I16, I8, TFL_QI8, TFL_Uint8]>>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
-    TensorOf<[F32, I64, I32, I16, I8, TFL_QI8]>:$output
+    TensorOf<[F32, I64, I32, I16, I8, TFL_QI8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -559,9 +566,8 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [Broadcastable, NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO(haoliang): missing Uint8
-      ins TensorOf<[F32, I32, I64, I8]>:$lhs,
-      TensorOf<[F32, I32, I64, I8]>:$rhs);
+      ins TensorOf<[F32, I32, I64, I8, TFL_Uint8]>:$lhs,
+      TensorOf<[F32, I32, I64, I8, TFL_Uint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -671,10 +677,9 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, Broadcastable,
   }];
 
   let arguments = (
-    // TODO: missing Uint8
     ins
-    TensorOf<[I1, F32, I32, I64, I8]>:$x,
-    TensorOf<[I1, F32, I32, I64, I8]>:$y
+    TensorOf<[I1, F32, I32, I64, I8, TFL_Uint8]>:$x,
+    TensorOf<[I1, F32, I32, I64, I8, TFL_Uint8]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1072,8 +1077,7 @@ def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    // TODO: missing uint8
-    TensorOf<[F32, I8, I32, I64]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
     TensorOf<[I32, I64]>:$axis,
     BoolAttr:$keep_dims
   );

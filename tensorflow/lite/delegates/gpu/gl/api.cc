@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
 #include "tensorflow/lite/delegates/gpu/gl/runtime.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
 #include "tensorflow/lite/delegates/gpu/gl/serialization.h"
@@ -168,7 +169,7 @@ class InferenceContextWithBatchImpl : public InferenceContext {
 
 struct ProgramParameters {
   // A list of uniform parameters to be set.
-  std::vector<UniformParameter> parameters;
+  std::vector<Variable> parameters;
 
   // A list of objects to bind to opengl program.
   std::vector<Object> objects;
@@ -277,7 +278,7 @@ class CompiledModelImpl
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
   // Called on deserialization
-  Status OnProgram(const std::vector<UniformParameter>& parameters,
+  Status OnProgram(const std::vector<Variable>& parameters,
                    const std::vector<Object>& objects,
                    const uint3& workgroup_size, const uint3& num_workgroups,
                    size_t partial_shader_index) final {

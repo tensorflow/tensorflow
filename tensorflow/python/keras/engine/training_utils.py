@@ -1723,6 +1723,13 @@ def convert_eager_tensors_to_numpy(structure):
   return nest.map_structure(_convert, structure)
 
 
+def list_to_tuple(maybe_list):
+  """Datasets will stack the list of tensor, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
+
+
 def should_run_validation(validation_freq, epoch):
   """Checks if validation should be run this epoch.
 

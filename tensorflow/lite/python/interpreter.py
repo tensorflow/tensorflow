@@ -40,7 +40,7 @@ try:
 except ImportError:
   # When full Tensorflow Python PIP is not available do not use lazy load
   # and instead of the tflite_runtime path.
-  from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
 
   def tf_export_dummy(*x, **kwargs):
     del x, kwargs

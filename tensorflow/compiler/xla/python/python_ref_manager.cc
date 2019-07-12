@@ -37,9 +37,9 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
   }
 }
 
-PythonRefManager::ManagedPyObjects PythonRefManager::ManageReferences(
-    absl::Span<py::object> objects) {
-  return ManagedPyObjects(this, objects);
+std::shared_ptr<PythonRefManager::ManagedPyObjects>
+PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
+  return std::make_shared<ManagedPyObjects>(this, objects);
 }
 
 void PythonRefManager::CollectGarbage() {

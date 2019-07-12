@@ -547,13 +547,6 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
-def list_to_tuple(maybe_list):
-  """Datasets treat lists specially, so switch them to tuples."""
-  if isinstance(maybe_list, list):
-    return tuple(maybe_list)
-  return maybe_list
-
-
 def get_iterator(dataset, distribution_strategy):
   with distribution_strategy.scope():
     iterator = distribution_strategy.make_dataset_iterator(dataset)

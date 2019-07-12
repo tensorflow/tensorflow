@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -158,8 +159,8 @@ class Importer {
     return ::tensorflow::ConvertTensorProto(value, builder_.get());
   }
 
-  // Converts func name in graphdef to mlir::FunctionAttribute.
-  StatusOr<mlir::FunctionAttr> ConvertFunctionCallName(
+  // Converts func name in graphdef to mlir::SymbolRefAttribute.
+  StatusOr<mlir::SymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
@@ -611,12 +612,12 @@ Status Importer::ConvertFunctionCallAttribute(
   return Status::OK();
 }
 
-StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
+StatusOr<mlir::SymbolRefAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
   auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
-  return builder_->getFunctionAttr(func);
+  return builder_->getSymbolRefAttr(func);
 }
 
 StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
@@ -722,7 +723,7 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
     auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
-    auto gradient_attr = builder_->getFunctionAttr(grad_func);
+    auto gradient_attr = builder_->getSymbolRefAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
   }

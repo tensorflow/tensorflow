@@ -13,30 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+#include "tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h"
 
-#include <array>
-#include <cstdint>
-#include <vector>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
-#include "absl/types/variant.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
+TF_LITE_MICRO_TESTS_BEGIN
 
-namespace tflite {
-namespace gpu {
-namespace gl {
+TF_LITE_MICRO_TEST(TestCallability) {
+  tflite::MicroErrorReporter micro_error_reporter;
+  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-struct UniformParameter {
-  using ValueType = absl::variant<int32_t, int2, int4, uint32_t, uint4, float,
-                                  float2, float4, std::vector<int2>>;
+  // This will have external side-effects (like printing to the debug console
+  // or lighting an LED) that are hard to observe, so the most we can do is
+  // make sure the call doesn't crash.
+  HandleOutput(error_reporter, 0, 0);
+}
 
-  std::string name;
-  ValueType value;
-};
-
-}  // namespace gl
-}  // namespace gpu
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+TF_LITE_MICRO_TESTS_END
