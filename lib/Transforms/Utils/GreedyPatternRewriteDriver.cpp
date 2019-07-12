@@ -99,6 +99,7 @@ protected:
   void notifyOperationRemoved(Operation *op) override {
     addToWorklist(op->getOperands());
     removeFromWorklist(op);
+    folder.notifyRemoval(op);
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
@@ -138,13 +139,15 @@ private:
   /// the function, even if they aren't the root of a pattern.
   std::vector<Operation *> worklist;
   DenseMap<Operation *, unsigned> worklistMap;
+
+  /// Non-pattern based folder for operations.
+  OperationFolder folder;
 };
 } // end anonymous namespace
 
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   Region *region = getRegion();
-  OperationFolder helper;
 
   // Add the given operation to the worklist.
   auto collectOps = [this](Operation *op) { addToWorklist(op); };
@@ -172,7 +175,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       if (op->hasNoSideEffect() && op->use_empty()) {
         // Be careful to update bookkeeping in OperationFolder to keep
         // consistency if this is a constant op.
-        helper.notifyRemoval(op);
+        folder.notifyRemoval(op);
         op->erase();
         continue;
       }
@@ -192,7 +195,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       };
 
       // Try to fold this op.
-      if (succeeded(helper.tryToFold(op, collectOps, collectOperandsAndUses))) {
+      if (succeeded(folder.tryToFold(op, collectOps, collectOperandsAndUses))) {
         changed |= true;
         continue;
       }
