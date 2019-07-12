@@ -20,6 +20,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Note that for each op in this file, we use a tool to automatically generate
+// certain sections in its definition: basic structure, summary, description.
+// So modifications to these sections will not be respected. Modifications to
+// op traits, arguments, results, and sections after the results are retained.
+// Besides, ops in this file must be separated via the '// -----' marker.
+
 #ifdef SPIRV_OPS
 #else
 #define SPIRV_OPS
@@ -35,6 +41,52 @@ include "mlir/SPIRV/SPIRVBase.td"
 include "mlir/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
+// -----
+
+def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
+  let summary = "Extract a part of a composite object.";
+
+  let description = [{
+    Result Type must be the type of object selected by the last provided
+    index.  The instruction result is the extracted object.
+
+    Composite is the composite to extract from.
+
+    Indexes walk the type hierarchy, potentially down to component
+    granularity, to select the part to extract. All indexes must be in
+    bounds.  All composite constituents use zero-based numbering, as
+    described by their OpType… instruction.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    composite-extract-op ::= ssa-id `=` `spv.CompositeExtract` ssa-use
+                             `[` integer-literal (',' integer-literal)* `]`
+                             `:` composite-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
+    %1 = spv.Load "Function" %0 ["Volatile"] : !spv.array<4x!spv.array<4xf32>>
+    %2 = spv.CompositeExtract %1[1 : i32] : !spv.array<4x!spv.array<4xf32>>
+    ```
+
+  }];
+
+  let arguments = (ins
+    SPV_Composite:$composite,
+    I32ArrayAttr:$indices
+  );
+
+  let results = (outs
+    SPV_Type:$component
+  );
+}
+
+// -----
+
 def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
   let summary = [{
     Declare an entry point, its execution model, and its interface.
@@ -46,20 +98,23 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
 
     Entry Point must be the Result <id> of an OpFunction instruction.
 
-    Name is a name string for the entry point. A module cannot have
-    two OpEntryPoint instructions with the same Execution Model and
-    the same Name string.
+    Name is a name string for the entry point. A module cannot have two
+    OpEntryPoint instructions with the same Execution Model and the same
+    Name string.
 
-    Interface is a list of <id> of global OpVariable
-    instructions. These declare the set of global variables from a
-    module that form the interface of this entry point. The set of
-    Interface <id> must be equal to or a superset of the global
-    OpVariable Result <id> referenced by the entry point’s static call
-    tree, within the interface’s storage classes. Before version 1.4,
-    the interface’s storage classes are limited to the Input and
-    Output storage classes. Starting with version 1.4, the interface’s
-    storage classes are all storage classes used in declaring all
-    global variables referenced by the entry point’s call tree.
+    Interface is a list of <id> of global OpVariable instructions. These
+    declare the set of global variables from a module that form the
+    interface of this entry point. The set of Interface <id> must be equal
+    to or a superset of the global OpVariable Result <id> referenced by the
+    entry point’s static call tree, within the interface’s storage classes.
+    Before version 1.4, the interface’s storage classes are limited to the
+    Input and Output storage classes. Starting with version 1.4, the
+    interface’s storage classes are all storage classes used in declaring
+    all global variables referenced by the entry point’s call tree.
+
+    Interface <id> are forward references. Before version 1.4, duplication
+    of these <id> is tolerated. Starting with version 1.4, an <id> must not
+    appear more than once.
 
     ### Custom assembly form
 
@@ -90,18 +145,20 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
   let results = (outs SPV_EntryPoint:$id);
 }
 
+// -----
+
 def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
   let summary = "Declare an execution mode for an entry point.";
 
   let description = [{
-    Entry Point must be the Entry Point <id> operand of an
-    OpEntryPoint instruction.
+    Entry Point must be the Entry Point <id> operand of an OpEntryPoint
+    instruction.
 
     Mode is the execution mode. See Execution Mode.
 
-    This instruction is only valid when the Mode operand is an
-    execution mode that takes no Extra Operands, or takes Extra
-    Operands that are not <id> operands.
+    This instruction is only valid when the Mode operand is an execution
+    mode that takes no Extra Operands, or takes Extra Operands that are not
+    <id> operands.
 
     ### Custom assembly form
 
@@ -127,18 +184,39 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
     OptionalAttr<I32ArrayAttr>:$values
   );
 
+  let results = (outs);
+
   let verifier = [{ return success(); }];
 }
 
+// -----
+
 def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Floating-point multiplication of Operand 1 and Operand 2";
+  let summary = "Floating-point multiplication of Operand 1 and Operand 2.";
 
   let description = [{
     Result Type must be a scalar or vector of floating-point type.
 
-    The types of Operand 1 and Operand 2 both must be the same as Result Type.
+     The types of Operand 1 and Operand 2 both must be the same as Result
+    Type.
 
-    Results are computed per component.
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    execution-mode-op ::= `spv.FMul` ssa-use, ssa-use
+                          `:` float-scalar-vector-type
+    ```
+
+    For example:
+
+    ```
+    spv.FMul %0, %1 : f32
+    spv.FMul %2, %3 : vector<4xf32>
+    ```
   }];
 
   let arguments = (ins
@@ -157,20 +235,22 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let verifier = [{ return success(); }];
 }
 
-def SPV_LoadOp : SPV_Op<"Load"> {
-  let summary = "Load value through a pointer.";
+// -----
+
+def SPV_LoadOp : SPV_Op<"Load", []> {
+  let summary = "Load through a pointer.";
 
   let description = [{
-    Result Type is the type of the loaded object. It must be a type
-    with fixed size; i.e., it cannot be, nor include, any
-    OpTypeRuntimeArray types.
+    Result Type is the type of the loaded object. It must be a type with
+    fixed size; i.e., it cannot be, nor include, any OpTypeRuntimeArray
+    types.
 
-    Pointer is the pointer to load through. Its type must be an
+    Pointer is the pointer to load through.  Its type must be an
     OpTypePointer whose Type operand is the same as Result Type.
 
     If present, any Memory Operands must begin with a memory operand
-    literal. If not present, it is the same as specifying the memory
-    operand None.
+    literal. If not present, it is the same as specifying the memory operand
+    None.
 
     ### Custom assembly form
 
@@ -203,11 +283,19 @@ def SPV_LoadOp : SPV_Op<"Load"> {
   );
 }
 
+// -----
+
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
-  let summary = "Return with no value from a function with void return type";
+  let summary = "Return with no value from a function with void return type.";
 
   let description = [{
     This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    return-op ::= `spv.Return`
+    ```
   }];
 
   let arguments = (ins);
@@ -220,19 +308,20 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let verifier = [{ return verifyReturn(*this); }];
 }
 
-def SPV_StoreOp : SPV_Op<"Store"> {
+// -----
+
+def SPV_StoreOp : SPV_Op<"Store", []> {
   let summary = "Store through a pointer.";
 
   let description = [{
-    Pointer is the pointer to store through. Its type must be an
-    OpTypePointer whose Type operand is the same as the type of
-    Object.
+    Pointer is the pointer to store through.  Its type must be an
+    OpTypePointer whose Type operand is the same as the type of Object.
 
     Object is the object to store.
 
     If present, any Memory Operands must begin with a memory operand
-    literal. If not present, it is the same as specifying the memory
-    operand None.
+    literal. If not present, it is the same as specifying the memory operand
+    None.
 
     ### Custom assembly form
 
@@ -257,26 +346,31 @@ def SPV_StoreOp : SPV_Op<"Store"> {
     OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
     OptionalAttr<APIntAttr>:$alignment
   );
+
+  let results = (outs);
 }
 
-def SPV_VariableOp : SPV_Op<"Variable"> {
+// -----
+
+def SPV_VariableOp : SPV_Op<"Variable", []> {
   let summary = [{
     Allocate an object in memory, resulting in a pointer to it, which can be
-    used with OpLoad and OpStore
+    used with OpLoad and OpStore.
   }];
 
   let description = [{
-    Result Type must be an OpTypePointer. Its Type operand is the type of object
-    in memory.
+    Result Type must be an OpTypePointer. Its Type operand is the type of
+    object in memory.
 
     Storage Class is the Storage Class of the memory holding the object. It
-    cannot be Generic. It must be the same as the Storage Class operand of the
-    Result Type.
+    cannot be Generic. It must be the same as the Storage Class operand of
+    the Result Type.
 
-    Initializer is optional. If Initializer is present, it will be the initial
-    value of the variable’s memory content. Initializer must be an <id> from a
-    constant instruction or a global (module scope) OpVariable instruction.
-    Initializer must have the same type as the type pointed to by Result Type.
+    Initializer is optional.  If Initializer is present, it will be the
+    initial value of the variable’s memory content. Initializer must be an
+    <id> from a constant instruction or a global (module scope) OpVariable
+    instruction. Initializer must have the same type as the type pointed to
+    by Result Type.
 
     ### Custom assembly form
 
@@ -310,46 +404,6 @@ def SPV_VariableOp : SPV_Op<"Variable"> {
   );
 }
 
-def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
-  let summary = "Extract a part of a composite object.";
-
-  let description = [{
-    Result Type must be the type of object selected by the last provided index.
-    The instruction result is the extracted object.
-
-    Composite is the composite to extract from.
-
-    Indexes walk the type hierarchy, potentially down to component granularity,
-    to select the part to extract. All indexes must be in bounds.
-    All composite constituents use zero-based numbering, as described by their
-    OpType… instruction.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    composite-extract-op ::= ssa-id `=` `spv.CompositeExtract` ssa-use
-                             `[` integer-literal (',' integer-literal)* `]`
-                             `:` composite-type
-    ```
-
-    For example:
-
-    ```
-    %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
-    %1 = spv.Load "Function" %0 ["Volatile"] : !spv.array<4x!spv.array<4xf32>>
-    %2 = spv.CompositeExtract %1[1 : i32] : !spv.array<4x!spv.array<4xf32>>
-    ```
-
-  }];
-
-  let arguments = (ins
-    SPV_Composite:$composite,
-    I32ArrayAttr:$indices
-  );
-
-  let results = (outs
-    SPV_Type:$component
-  );
-}
+// -----
 
 #endif // SPIRV_OPS
