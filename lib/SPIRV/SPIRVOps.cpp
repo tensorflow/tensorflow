@@ -39,6 +39,7 @@ using namespace mlir;
 static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kBindingAttrName[] = "binding";
 static constexpr const char kDescriptorSetAttrName[] = "descriptor_set";
+static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
 static constexpr const char kFnNameAttrName[] = "fn";
@@ -196,6 +197,115 @@ static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value *ptr,
 static void printNoIOOp(Operation *op, OpAsmPrinter *printer) {
   *printer << op->getName();
   printer->printOptionalAttrDict(op->getAttrs());
+}
+
+//===----------------------------------------------------------------------===//
+// spv.CompositeExtractOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseCompositeExtractOp(OpAsmParser *parser,
+                                           OperationState *state) {
+  OpAsmParser::OperandType compositeInfo;
+  Attribute indicesAttr;
+  Type compositeType;
+  llvm::SMLoc attrLocation;
+  int32_t index;
+
+  if (parser->parseOperand(compositeInfo) ||
+      parser->getCurrentLocation(&attrLocation) ||
+      parser->parseAttribute(indicesAttr, kIndicesAttrName,
+                             state->attributes) ||
+      parser->parseColonType(compositeType) ||
+      parser->resolveOperand(compositeInfo, compositeType, state->operands)) {
+    return failure();
+  }
+
+  auto indicesArrayAttr = indicesAttr.dyn_cast<ArrayAttr>();
+  if (!indicesArrayAttr) {
+    return parser->emitError(
+        attrLocation,
+        "expected an 32-bit integer array attribute for 'indices'");
+  }
+
+  if (!indicesArrayAttr.size()) {
+    return parser->emitError(
+        attrLocation, "expected at least one index for spv.CompositeExtract");
+  }
+
+  Type resultType = compositeType;
+  for (auto indexAttr : indicesArrayAttr) {
+    if (auto indexIntAttr = indexAttr.dyn_cast<IntegerAttr>()) {
+      index = indexIntAttr.getInt();
+    } else {
+      return parser->emitError(
+                 attrLocation,
+                 "expexted an 32-bit integer for index, but found '")
+             << indexAttr << "'";
+    }
+    if (resultType.isa<spirv::CompositeType>()) {
+      if (index < 0 ||
+          static_cast<uint32_t>(index) >=
+              resultType.cast<spirv::CompositeType>().getNumMembers()) {
+        return parser->emitError(attrLocation, "index ")
+               << index << " out of bounds for " << resultType;
+      }
+      resultType = resultType.cast<spirv::CompositeType>().getMemberType(index);
+    } else {
+      return parser->emitError(attrLocation, "invalid type to extract from");
+    }
+  }
+
+  if (!resultType) {
+    return parser->emitError(attrLocation,
+                             "can not extract from composite type");
+  }
+
+  state->addTypes(resultType);
+  return success();
+}
+
+static void print(spirv::CompositeExtractOp compositeExtractOp,
+                  OpAsmPrinter *printer) {
+  *printer << spirv::CompositeExtractOp::getOperationName() << ' '
+           << *compositeExtractOp.composite() << compositeExtractOp.indices()
+           << " : " << compositeExtractOp.composite()->getType();
+}
+
+static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
+  auto resultType = compExOp.composite()->getType();
+  auto indicesArrayAttr = compExOp.indices().dyn_cast<ArrayAttr>();
+
+  if (!indicesArrayAttr.size()) {
+    return compExOp.emitOpError(
+        "expexted at least one index for spv.CompositeExtractOp");
+  }
+
+  int32_t index;
+  for (auto indexAttr : indicesArrayAttr) {
+    if (!resultType) {
+      return compExOp.emitError("invalid type to extract from");
+    }
+
+    index = indexAttr.dyn_cast<IntegerAttr>().getInt();
+    if (resultType.isa<spirv::CompositeType>()) {
+      if (index < 0 ||
+          static_cast<uint32_t>(index) >=
+              resultType.cast<spirv::CompositeType>().getNumMembers()) {
+        return compExOp.emitOpError("index ")
+               << index << " out of bounds for " << resultType;
+      }
+      resultType = resultType.cast<spirv::CompositeType>().getMemberType(index);
+    } else {
+      return compExOp.emitOpError("invalid type to extract from");
+    }
+  }
+
+  if (resultType != compExOp.getType()) {
+    return compExOp.emitOpError("invalid result type, expected ")
+           << resultType << " provided " << compExOp.getType();
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -310,4 +310,46 @@ def SPV_VariableOp : SPV_Op<"Variable"> {
   );
 }
 
+def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
+  let summary = "Extract a part of a composite object.";
+
+  let description = [{
+    Result Type must be the type of object selected by the last provided index.
+    The instruction result is the extracted object.
+
+    Composite is the composite to extract from.
+
+    Indexes walk the type hierarchy, potentially down to component granularity,
+    to select the part to extract. All indexes must be in bounds.
+    All composite constituents use zero-based numbering, as described by their
+    OpType… instruction.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    composite-extract-op ::= ssa-id `=` `spv.CompositeExtract` ssa-use
+                             `[` integer-literal (',' integer-literal)* `]`
+                             `:` composite-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
+    %1 = spv.Load "Function" %0 ["Volatile"] : !spv.array<4x!spv.array<4xf32>>
+    %2 = spv.CompositeExtract %1[1 : i32] : !spv.array<4x!spv.array<4xf32>>
+    ```
+
+  }];
+
+  let arguments = (ins
+    SPV_Composite:$composite,
+    I32ArrayAttr:$indices
+  );
+
+  let results = (outs
+    SPV_Type:$component
+  );
+}
+
 #endif // SPIRV_OPS

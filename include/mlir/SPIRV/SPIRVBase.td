@@ -72,22 +72,23 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-def SPV_OC_OpMemoryModel   : I32EnumAttrCase<"OpMemoryModel", 14>;
-def SPV_OC_OpEntryPoint    : I32EnumAttrCase<"OpEntryPoint", 15>;
-def SPV_OC_OpExecutionMode : I32EnumAttrCase<"OpExecutionMode", 16>;
-def SPV_OC_OpTypeVoid      : I32EnumAttrCase<"OpTypeVoid", 19>;
-def SPV_OC_OpTypeFunction  : I32EnumAttrCase<"OpTypeFunction", 33>;
-def SPV_OC_OpVariable      : I32EnumAttrCase<"OpVariable", 59>;
-def SPV_OC_OpLoad          : I32EnumAttrCase<"OpLoad", 61>;
-def SPV_OC_OpStore         : I32EnumAttrCase<"OpStore", 62>;
-def SPV_OC_OpFMul          : I32EnumAttrCase<"OpFMul", 133>;
-def SPV_OC_OpReturn        : I32EnumAttrCase<"OpReturn", 253>;
+def SPV_OC_OpMemoryModel      : I32EnumAttrCase<"OpMemoryModel", 14>;
+def SPV_OC_OpEntryPoint       : I32EnumAttrCase<"OpEntryPoint", 15>;
+def SPV_OC_OpExecutionMode    : I32EnumAttrCase<"OpExecutionMode", 16>;
+def SPV_OC_OpTypeVoid         : I32EnumAttrCase<"OpTypeVoid", 19>;
+def SPV_OC_OpTypeFunction     : I32EnumAttrCase<"OpTypeFunction", 33>;
+def SPV_OC_OpVariable         : I32EnumAttrCase<"OpVariable", 59>;
+def SPV_OC_OpLoad             : I32EnumAttrCase<"OpLoad", 61>;
+def SPV_OC_OpStore            : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpCompositeExtract : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpFMul             : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpReturn           : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
       SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
       SPV_OC_OpTypeVoid, SPV_OC_OpTypeFunction, SPV_OC_OpVariable, SPV_OC_OpLoad,
-      SPV_OC_OpStore, SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpStore, SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -104,6 +105,7 @@ def SPV_OpcodeAttr :
 def SPV_IsPtrType : CPred<"$_self.isa<::mlir::spirv::PointerType>()">;
 def SPV_IsArrayType : CPred<"$_self.isa<::mlir::spirv::ArrayType>()">;
 def SPV_IsRTArrayType : CPred<"$_self.isa<::mlir::spirv::RuntimeArrayType>()">;
+def SPV_IsStructType : CPred<"$_self.isa<::mlir::spirv::StructType>()">;
 
 // See https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_types
 // for the definition of the following types and type categories.
@@ -118,14 +120,15 @@ def SPV_Vector : VectorOf<[SPV_Bool, SPV_Integer, SPV_Float]>;
 def SPV_AnyPtr : Type<SPV_IsPtrType, "any SPIR-V pointer type">;
 def SPV_AnyArray : Type<SPV_IsArrayType, "any SPIR-V array type">;
 def SPV_AnyRTArray : Type<SPV_IsRTArrayType, "any SPIR-V runtime array type">;
+def SPV_AnyStruct : Type<SPV_IsStructType, "any SPIR-V struct type">;
 
 def SPV_Numerical : AnyTypeOf<[SPV_Integer, SPV_Float]>;
 def SPV_Scalar : AnyTypeOf<[SPV_Numerical, SPV_Bool]>;
-def SPV_Aggregrate : AnyTypeOf<[SPV_AnyArray]>;
-def SPV_Composite: AnyTypeOf<[SPV_Vector, SPV_AnyArray]>;
+def SPV_Aggregrate : AnyTypeOf<[SPV_AnyArray, SPV_AnyStruct]>;
+def SPV_Composite: AnyTypeOf<[SPV_Vector, SPV_AnyArray, SPV_AnyStruct]>;
 def SPV_Type : AnyTypeOf<[
     SPV_Void, SPV_Bool, SPV_Integer, SPV_Float, SPV_Vector,
-    SPV_AnyPtr, SPV_AnyArray, SPV_AnyRTArray
+    SPV_AnyPtr, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct
   ]>;
 
 class SPV_ScalarOrVectorOf<Type type> :

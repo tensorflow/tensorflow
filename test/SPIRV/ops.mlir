@@ -1,6 +1,142 @@
 // RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
+// spv.CompositeExtractOp
+//===----------------------------------------------------------------------===//
+
+func @composite_extract_f32_from_1D_array(%arg0: !spv.array<4xf32>) -> f32 {
+  // CHECK: %0 = spv.CompositeExtract %arg0[1 : i32] : !spv.array<4 x f32>
+  %0 = spv.CompositeExtract %arg0[1 : i32] : !spv.array<4xf32>
+  return %0: f32
+}
+
+// -----
+
+func @composite_extract_f32_from_2D_array(%arg0: !spv.array<4x!spv.array<4xf32>>) -> f32 {
+  // CHECK: %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32] : !spv.array<4 x !spv.array<4 x f32>>
+  %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return %0: f32
+}
+
+// -----
+
+func @composite_extract_1D_array_from_2D_array(%arg0: !spv.array<4x!spv.array<4xf32>>) -> !spv.array<4xf32> {
+  // CHECK: %0 = spv.CompositeExtract %arg0[1 : i32] : !spv.array<4 x !spv.array<4 x f32>>
+  %0 = spv.CompositeExtract %arg0[1 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return %0 : !spv.array<4xf32>
+}
+
+// -----
+
+func @composite_extract_struct(%arg0 : !spv.struct<f32, !spv.array<4xf32>>) -> f32 {
+  // CHECK: %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32] : !spv.struct<f32, !spv.array<4 x f32>>
+  %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32] : !spv.struct<f32, !spv.array<4xf32>>
+  return %0 : f32
+}
+
+// -----
+
+func @composite_extract_vector(%arg0 : vector<4xf32>) -> f32 {
+  // CHECK: %0 = spv.CompositeExtract %arg0[1 : i32] : vector<4xf32>
+  %0 = spv.CompositeExtract %arg0[1 : i32] : vector<4xf32>
+  return %0 : f32
+}
+
+// -----
+
+func @composite_extract_no_ssa_operand() -> () {
+  // expected-error @+1 {{expected SSA operand}}
+  %0 = spv.CompositeExtract [4 : i32, 1 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_index_type_1() -> () {
+  %0 = spv.constant 10 : i32
+  %1 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
+  %2 = spv.Load "Function" %1 ["Volatile"] : !spv.array<4x!spv.array<4xf32>>
+  // expected-error @+1 {{expected non-function type}}
+  %3 = spv.CompositeExtract %2[%0] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_index_type_2(%arg0 : !spv.array<4x!spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{op attribute 'indices' failed to satisfy constraint: 32-bit integer array attribute}}
+  %0 = spv.CompositeExtract %arg0[1] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_index_identifier(%arg0 : !spv.array<4x!spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{expected bare identifier}}
+  %0 = spv.CompositeExtract %arg0(1 : i32) : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_2D_array_out_of_bounds_access_1(%arg0: !spv.array<4x!spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{index 4 out of bounds for '!spv.array<4 x !spv.array<4 x f32>>'}}
+  %0 = spv.CompositeExtract %arg0[4 : i32, 1 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_2D_array_out_of_bounds_access_2(%arg0: !spv.array<4x!spv.array<4xf32>>
+) -> () {
+  // expected-error @+1 {{index 4 out of bounds for '!spv.array<4 x f32>'}}
+  %0 = spv.CompositeExtract %arg0[1 : i32, 4 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_struct_element_out_of_bounds_access(%arg0 : !spv.struct<f32, !spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{index 2 out of bounds for '!spv.struct<f32, !spv.array<4 x f32>>'}}
+  %0 = spv.CompositeExtract %arg0[2 : i32, 0 : i32] : !spv.struct<f32, !spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_vector_out_of_bounds_access(%arg0: vector<4xf32>) -> () {
+  // expected-error @+1 {{index 4 out of bounds for 'vector<4xf32>'}}
+  %0 = spv.CompositeExtract %arg0[4 : i32] : vector<4xf32>
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_types_1(%arg0: !spv.array<4x!spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{invalid type to extract from}}
+  %0 = spv.CompositeExtract %arg0[1 : i32, 2 : i32, 3 : i32] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_types_2(%arg0: f32) -> () {
+ // expected-error @+1 {{invalid type to extract from}}
+  %0 = spv.CompositeExtract %arg0[1 : i32] : f32
+  return
+}
+
+// -----
+
+func @composite_extract_invalid_extracted_type(%arg0: !spv.array<4x!spv.array<4xf32>>) -> () {
+  // expected-error @+1 {{expected at least one index for spv.CompositeExtract}}
+  %0 = spv.CompositeExtract %arg0[] : !spv.array<4x!spv.array<4xf32>>
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.EntryPoint
 //===----------------------------------------------------------------------===//
 
