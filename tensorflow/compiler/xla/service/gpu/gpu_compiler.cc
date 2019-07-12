@@ -437,7 +437,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
-          /*must_not_live_out=*/{}, &CanShareBufferHint));
+          /*must_not_live_out=*/{}, GetCanShareBuffer()));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(

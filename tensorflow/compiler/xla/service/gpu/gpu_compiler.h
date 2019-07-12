@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -72,50 +74,51 @@ class GpuCompiler : public LLVMCompiler {
     return
         [](const HloInstruction*, const HloInstruction*,
            const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
+  }
 
-    virtual GpuVersion GetGpuVersion(se::StreamExecutor * stream_exec) = 0;
+  virtual GpuVersion GetGpuVersion(se::StreamExecutor * stream_exec) = 0;
 
-    virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
-    CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
-                        GpuVersion gpu_version,
-                        se::StreamExecutor* stream_exec) = 0;
+  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
+  CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
+                      GpuVersion gpu_version,
+                      se::StreamExecutor* stream_exec) = 0;
 
-    Status PrepareHloModuleForIrEmitting(HloModule * hlo_module);
+  Status PrepareHloModuleForIrEmitting(HloModule * hlo_module);
 
-    StatusOr<std::unique_ptr<Executable>> RunBackend(
-        std::unique_ptr<HloModule> module, se::StreamExecutor * stream_exec,
-        se::DeviceMemoryAllocator * device_allocator) override;
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module, se::StreamExecutor * stream_exec,
+      se::DeviceMemoryAllocator * device_allocator) override;
 
-    StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-    CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                       AotCompilationOptions const& options) override;
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                     AotCompilationOptions const& options) override;
 
-    se::Platform::Id PlatformId() const override { return platform_id_; }
+  se::Platform::Id PlatformId() const override { return platform_id_; }
 
-    HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-      // Capture just the pointer size, not the entire GpuCompiler object.
-      int64 pointer_size = pointer_size_;
-      return [pointer_size](const Shape& shape) {
-        return ShapeUtil::ByteSizeOf(shape, pointer_size);
-      };
-    }
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
+    // Capture just the pointer size, not the entire GpuCompiler object.
+    int64 pointer_size = pointer_size_;
+    return [pointer_size](const Shape& shape) {
+      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    };
+  }
 
-   private:
-    se::Platform::Id platform_id_;
+ private:
+  se::Platform::Id platform_id_;
 
-    // The triple that represents our target.
-    const char* target_triple_;
+  // The triple that represents our target.
+  const char* target_triple_;
 
-    // The data layout of the emitted module.
-    const char* data_layout_;
+  // The data layout of the emitted module.
+  const char* data_layout_;
 
-    // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
-    const int64 pointer_size_;
+  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
+  const int64 pointer_size_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
-  };
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
+};
 
 }  // namespace gpu
-}  // namespace gpu
+}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_COMPILER_H_

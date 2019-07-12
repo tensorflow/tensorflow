@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -361,9 +360,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(llvm_module,
-                                 absl::get<std::pair<int, int>>(gpu_version),
-                                 module->config(), libdevice_dir));
+        ptx,
+        CompileToPtx(llvm_module, absl::get<std::pair<int, int>>(gpu_version),
+                     module->config(), libdevice_dir));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);
