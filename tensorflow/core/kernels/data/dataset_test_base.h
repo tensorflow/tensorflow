@@ -71,6 +71,11 @@ Status WriteDataToFile(const string& filename, const char* data);
 Status WriteDataToFile(const string& filename, const char* data,
                        const CompressionParams& params);
 
+// Writes the input data into the TFRecord file with the specified compression.
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params);
+
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
  public:
