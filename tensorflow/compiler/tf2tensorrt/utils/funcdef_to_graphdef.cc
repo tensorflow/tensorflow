@@ -113,8 +113,6 @@ Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
                              std::vector<int>* output_node_ids) {
   const FunctionLibraryDefinition* flib_def = flib_runtime->GetFunctionLibraryDefinition();
   const FunctionBody* fbody;
-  VLOG(0) << "Getting Function Body \n";
-  VLOG(0) << "HANDLE" << handle;
   fbody = flib_runtime->GetFunctionBody(handle);
   //TF_RET_CHECK(*fbody)
   std::unique_ptr<Graph> graph(new Graph(flib_def));
@@ -160,9 +158,7 @@ Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
 
   for (const auto node_def : graph_def->node()) {
     string node_name = node_def.name();
-    VLOG(0) << "NODENAME AFTER FROM FUNCDEF " << node_name << ", op=" << node_def.op();
   }
-  VLOG(0) << "Finished converting \n";
 
   return Status::OK();
 
