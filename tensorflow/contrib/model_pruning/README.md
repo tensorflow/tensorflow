@@ -51,7 +51,6 @@ The pruning library allows for specification of the following hyper parameters:
 | begin_pruning_step | integer | 0 | The global step at which to begin pruning |
 | end_pruning_step   | integer | -1 | The global step at which to terminate pruning. Defaults to -1 implying that pruning continues till  the training stops |
 | weight_sparsity_map | list of strings | [""] | list of weight variable name regex (or layer name regex):target sparsity pairs. Eg. [conv1:0.9,conv.*/kernel:0.8]. For layers/weights not in this list, sparsity as specified by the target_sparsity hyperparameter is used. |
-| block_dims_map | list of strings | [""] | list of weight variable name regex (or layer name regex):block_heightxblock_width pairs. Eg. [dense1:4x4,dense2:1x16,dense3:1x1].  For layers/weights not in this list, block dims are specified by the block_height, block_width hyperparameters are used. |
 | threshold_decay | float | 0.0 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
 | block_height|integer | 1 | Number of rows in a block for block sparse matrices|
