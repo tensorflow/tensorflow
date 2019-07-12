@@ -228,8 +228,10 @@ class IrEmitterUnnested : public IrEmitter,
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
   // expected to have the operand values in it already. If use_atomic
   // is true, we will use an atomic update. Using false for use_atomic
-  // is safe only when it is guaranteed that there is no duplicate
+  // is safe only when it is guaranteed that there are no duplicate
   // indices.
+  // When using use_atomi=false, it is the caller responsibility to
+  // ensure there is overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen,
