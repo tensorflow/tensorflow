@@ -209,3 +209,23 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "object_detection_stage",
+    srcs = ["object_detection_stage.cc"],
+    hdrs = ["object_detection_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":image_preprocessing_stage",
+        ":object_detection_average_precision_stage",
+        ":tflite_inference_stage",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation:utils",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf_headers",
+    ],
+)
