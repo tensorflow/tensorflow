@@ -1154,14 +1154,14 @@ def deserialize(name, custom_objects=None):
 
 
 @keras_export('keras.losses.get')
-def get(identifier, custom_objects=None):
+def get(identifier):
   if identifier is None:
     return None
   if isinstance(identifier, six.string_types):
     identifier = str(identifier)
-    return deserialize(identifier, custom_objects)
+    return deserialize(identifier)
   if isinstance(identifier, dict):
-    return deserialize(identifier, custom_objects)
+    return deserialize(identifier)
   elif callable(identifier):
     return identifier
   else:
