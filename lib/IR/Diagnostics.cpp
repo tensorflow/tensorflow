@@ -400,11 +400,13 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
   // Extract a file location from this loc.
   auto fileLoc = getFileLineColLoc(loc);
 
-  // If one doesn't exist, then print the location as part of the message.
+  // If one doesn't exist, then print the raw message without a source location.
   if (!fileLoc) {
     std::string str;
     llvm::raw_string_ostream strOS(str);
-    strOS << loc << ": " << message;
+    if (!loc.isa<UnknownLoc>())
+      strOS << loc << ": ";
+    strOS << message;
     return mgr.PrintMessage(os, llvm::SMLoc(), getDiagKind(kind), strOS.str());
   }
 
