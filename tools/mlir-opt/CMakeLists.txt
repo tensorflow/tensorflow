@@ -19,6 +19,7 @@ set(LIBS
   MLIRAffineOps
   MLIRLoopsToGPU
   MLIRAnalysis
+  MLIRControlFlowToCFG
   MLIREDSC
   MLIRFxpMathOps
   MLIRGPU

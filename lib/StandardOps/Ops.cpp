@@ -1656,6 +1656,14 @@ void mlir::ensureStdTerminator(Region &region, Builder &builder, Location loc) {
   impl::ensureRegionTerminator<TerminatorOp>(region, builder, loc);
 }
 
+void ForOp::build(Builder *builder, OperationState *result, Value *lb,
+                  Value *ub, Value *step) {
+  result->addOperands({lb, ub, step});
+  Region *bodyRegion = result->addRegion();
+  ensureStdTerminator(*bodyRegion, *builder, result->location);
+  bodyRegion->front().addArgument(builder->getIndexType());
+}
+
 LogicalResult verify(ForOp op) {
   if (auto cst = dyn_cast_or_null<ConstantIndexOp>(op.step()->getDefiningOp()))
     if (cst.getValue() <= 0)
@@ -1726,6 +1734,16 @@ ForOp getForOpInductionVarOwner(Value *val) {
 //===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
+
+void IfOp::build(Builder *builder, OperationState *result, Value *cond,
+                 bool withElseRegion) {
+  result->addOperands(cond);
+  Region *thenRegion = result->addRegion();
+  Region *elseRegion = result->addRegion();
+  ensureStdTerminator(*thenRegion, *builder, result->location);
+  if (withElseRegion)
+    ensureStdTerminator(*elseRegion, *builder, result->location);
+}
 
 static LogicalResult verify(IfOp op) {
   // Verify that the entry of each child region does not have arguments.

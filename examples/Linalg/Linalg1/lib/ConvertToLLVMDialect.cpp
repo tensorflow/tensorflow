@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/EDSC/Builders.h"
@@ -28,9 +29,11 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/IR/DerivedTypes.h"
@@ -406,13 +409,13 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 };
 } // end anonymous namespace
 
-void linalg::convertToLLVM(mlir::ModuleOp module) {
-  // Remove affine constructs if any by using an existing pass.
-  PassManager pm;
-  pm.addPass(createLowerAffinePass());
-  auto rr = pm.run(module);
-  (void)rr;
-  assert(succeeded(rr) && "affine loop lowering failed");
+LogicalResult linalg::convertToLLVM(mlir::ModuleOp module) {
+  for (auto func : module.getOps<FuncOp>()) {
+    if (failed(mlir::lowerAffineConstructs(func)))
+      return failure();
+    if (failed(mlir::lowerControlFlow(func)))
+      return failure();
+  }
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
@@ -423,15 +426,19 @@ void linalg::convertToLLVM(mlir::ModuleOp module) {
 
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
-  auto r =
-      applyConversionPatterns(module, target, converter, std::move(patterns));
-  (void)r;
-  assert(succeeded(r) && "conversion failed");
+  if (failed(applyConversionPatterns(module, target, converter,
+                                     std::move(patterns))))
+    return failure();
+
+  return success();
 }
 
 namespace {
 struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
-  void runOnModule() { linalg::convertToLLVM(getModule()); }
+  void runOnModule() {
+    if (failed(linalg::convertToLLVM(getModule())))
+      signalPassFailure();
+  }
 };
 } // namespace
 

@@ -6,6 +6,7 @@ set(LLVM_OPTIONAL_SOURCES
 set(LIBS
   MLIRAffineOps
   MLIRAnalysis
+  MLIRControlFlowToCFG
   MLIREDSC
   MLIRExecutionEngine
   MLIRIR

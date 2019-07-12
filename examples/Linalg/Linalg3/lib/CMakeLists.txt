@@ -19,6 +19,7 @@ target_link_libraries(Linalg3
   PUBLIC
     MLIRAffineOps
     MLIRAnalysis
+    MLIRControlFlowToCFG
     MLIRDialect
     MLIREDSC
     MLIRIR

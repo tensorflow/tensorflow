@@ -28,7 +28,9 @@ class Module;
 
 namespace mlir {
 class DialectConversion;
+class FuncOp;
 class LLVMTypeConverter;
+class LogicalResult;
 class MLIRContext;
 class ModuleOp;
 class ModulePassBase;

@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/EDSC/Builders.h"
@@ -146,12 +147,13 @@ static void populateLinalg3ToLLVMConversionPatterns(
                                                                  context);
 }
 
-void linalg::convertLinalg3ToLLVM(ModuleOp module) {
+LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {
   // Remove affine constructs.
   for (auto func : module.getOps<FuncOp>()) {
-    auto rr = lowerAffineConstructs(func);
-    (void)rr;
-    assert(succeeded(rr) && "affine loop lowering failed");
+    if (failed(lowerAffineConstructs(func)))
+      return failure();
+    if (failed(mlir::lowerControlFlow(func)))
+      return failure();
   }
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
@@ -164,8 +166,9 @@ void linalg::convertLinalg3ToLLVM(ModuleOp module) {
 
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
-  auto r =
-      applyConversionPatterns(module, target, converter, std::move(patterns));
-  (void)r;
-  assert(succeeded(r) && "conversion failed");
+  if (failed(applyConversionPatterns(module, target, converter,
+                                     std::move(patterns))))
+    return failure();
+
+  return success();
 }

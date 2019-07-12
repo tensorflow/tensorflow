@@ -1,4 +1,4 @@
-//===- ConvertToLLVMDialect.h - conversion from Linalg to LLVM --*- C++ -*-===//
+//===- ConvertControlFlowToCFG.h - Pass entrypoint --------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,16 +15,20 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG3_CONVERTTOLLVMDIALECT_H_
-#define LINALG3_CONVERTTOLLVMDIALECT_H_
+#ifndef MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
+#define MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
 
 namespace mlir {
+class FuncOp;
 struct LogicalResult;
-class ModuleOp;
-} // end namespace mlir
+class ModulePassBase;
 
-namespace linalg {
-mlir::LogicalResult convertLinalg3ToLLVM(mlir::ModuleOp module);
-} // end namespace linalg
+/// Lowers std.for, std.if and std.terminator ops to CFG.
+LogicalResult lowerControlFlow(FuncOp func);
 
-#endif // LINALG3_CONVERTTOLLVMDIALECT_H_
+/// Creates a pass to convert std.for, std.if and std.terminator ops to CFG.
+ModulePassBase *createConvertToCFGPass();
+
+} // namespace mlir
+
+#endif // MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_

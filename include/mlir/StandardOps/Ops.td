@@ -635,6 +635,12 @@ def IfOp : Std_Op<"if"> {
   let arguments = (ins I1:$condition);
   let regions = (region SizedRegion<1>:$thenRegion, AnyRegion:$elseRegion);
 
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState *result, "
+              "Value *cond, bool withElseRegion">
+  ];
+
   let extraClassDeclaration = [{
     OpBuilder getThenBodyBuilder() {
       assert(!thenRegion().empty() && "Unexpected empty 'then' region.");
@@ -680,9 +686,9 @@ def ForOp : Std_Op<"for"> {
     lower bound but does not include the upper bound.
 
     The body region must contain exactly one block that terminates with
-    "std.terminator".  Calling ForOp::build will create such region and
-    insert the terminator, so will the parsing even in cases when it is absent
-    from the custom format. For example:
+    "std.terminator".  Calling ForOp::build will create such region and insert 
+    the terminator, so will the parsing even in cases when it is absent from the
+    custom format. For example:
 
        for %iv = %lb to %ub step %step {
          ... // body
@@ -690,6 +696,12 @@ def ForOp : Std_Op<"for"> {
   }];
   let arguments = (ins Index:$lowerBound, Index:$upperBound, Index:$step);
   let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState *result, "
+              "Value *lowerBound, Value *upperBound, Value *step">
+  ];
 
   let extraClassDeclaration = [{
     Block *body() { return &region().front(); }

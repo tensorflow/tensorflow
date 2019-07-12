@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -1030,8 +1031,11 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
       return signalPassFailure();
 
     ModuleOp m = getModule();
-    LLVM::ensureDistinctSuccessors(m);
+    for (auto func : m.getOps<FuncOp>())
+      if (failed(mlir::lowerControlFlow(func)))
+        signalPassFailure();
 
+    LLVM::ensureDistinctSuccessors(m);
     std::unique_ptr<LLVMTypeConverter> typeConverter =
         typeConverterMaker(&getContext());
     if (!typeConverter)
