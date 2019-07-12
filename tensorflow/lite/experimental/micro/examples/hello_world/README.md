@@ -1,9 +1,9 @@
 # Hello World example
 
-This example is designed to demonstrate the absolute basics of using TensorFlow
-Lite for Microcontrollers. It includes the full end-to-end workflow of training
-a model, converting it for use with TensorFlow Lite, and running inference on a
-microcontroller.
+This example is designed to demonstrate the absolute basics of using [TensorFlow
+Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers/overview).
+It includes the full end-to-end workflow of training a model, converting it for
+use with TensorFlow Lite, and running inference on a microcontroller.
 
 The sample is built around a model trained to replicate a `sine` function. It
 contains implementations for several platforms. In each case, the model is used
