@@ -1635,9 +1635,9 @@ def adjust_contrast(images, contrast_factor):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_contrast(x,2)
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.adjust_contrast(x,2)
     ```
   """
   with ops.name_scope(None, 'adjust_contrast',
