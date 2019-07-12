@@ -54,9 +54,9 @@ class Stack : public ResourceBase {
 
   struct StackElement {
     TensorAndAllocation value;
-    absl::optional<std::list<int>::iterator>
+    absl::optional<std::list<size_t>::iterator>
         unswap_iter;  // holds iterator to unswapped_lru_
-    absl::optional<std::list<int>::iterator>
+    absl::optional<std::list<size_t>::iterator>
         swap_iter;  // holds iterator to swapped_mru_
   };
 
@@ -141,7 +141,7 @@ class Stack : public ResourceBase {
     return false;  // nothing to swap out
   }
 
-  bool GetTensorToSwapIn(TensorAndAllocation** value, int* index) {
+  bool GetTensorToSwapIn(TensorAndAllocation** value, size_t* index) {
     mutex_lock l(mu_);
     while (!swapped_mru_.empty()) {
       *index = swapped_mru_.back();
@@ -197,11 +197,11 @@ class Stack : public ResourceBase {
   bool closed_ GUARDED_BY(mu_);
   std::vector<StackElement> stack_ GUARDED_BY(mu_);
 
-  std::list<int> unswapped_lru_ GUARDED_BY(mu_);  // holds indices into stack_
-  std::list<int> swapped_mru_ GUARDED_BY(mu_);    // holds indices into stack_
+  std::list<size_t> unswapped_lru_ GUARDED_BY(mu_);  // holds indices of stack_
+  std::list<size_t> swapped_mru_ GUARDED_BY(mu_);    // holds indices of stack_
 
-  std::map<int, bool> is_swapping_ins_ GUARDED_BY(mu_);
-  std::map<int, condition_variable> cond_swapping_ins_;
+  std::map<size_t, bool> is_swapping_ins_ GUARDED_BY(mu_);
+  std::map<size_t, condition_variable> cond_swapping_ins_;
 
   Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
@@ -436,7 +436,7 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
   // Obtain the most recent swapped TensorAndAllocation.
   Stack::TensorAndAllocation* to_swap_in = nullptr;
-  int to_swap_in_index;
+  size_t to_swap_in_index;
   if (!stack->GetTensorToSwapIn(&to_swap_in, &to_swap_in_index)) {
     return;
   }
