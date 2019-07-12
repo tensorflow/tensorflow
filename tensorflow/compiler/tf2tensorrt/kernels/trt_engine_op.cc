@@ -260,22 +260,10 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("use_calibration", &use_calibration_));
   native_func_ = kInvalidHandle;
   if (!static_engine_) {
-    //TODO(phillip-kravtsov) error checking here: how?
-    VLOG(0) << "Funcdef_name: " << funcdef_name_;
-    VLOG(0) << "Static Engine? " << static_engine_;
-    Status status = ConstructFunctionHandle(context);
-    VLOG(0) << "Status: " << status;
+    OP_REQUIRES_OK(context, ConstructFunctionHandle(context));
     FunctionLibraryRuntime* lib = context->function_library();
-    VLOG(0) << "Funcdef to graphdef";
-    FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
-                          &input_node_ids_, &output_node_ids_);
-    for (int id : input_node_ids_) {
-      VLOG(0) << "Input node id: " << id << " from engine " << name();
-    }
-    for (int id : output_node_ids_) {
-      VLOG(0) << "Output node id: " << id << " from engine " << name();
-    }
-  
+    OP_REQUIRES_OK(context, FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
+                          &input_node_ids_, &output_node_ids_));
   }
   calibration_mode_ =
       (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
@@ -491,10 +479,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // input.
   const int num_batch = ctx->input(0).shape().dim_size(0);
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
-  for (int i = 0; i < num_binding; i++) {
-    auto binding_name = cuda_engine->getBindingName(i);
-    VLOG(0) << "Binding name for index " << i << " " << binding_name;
-  }
 
   std::vector<void*> buffers(num_binding);
 
