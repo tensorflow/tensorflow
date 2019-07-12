@@ -53,7 +53,7 @@ public:
 
   /// Perform the rewrites. Return true if the rewrite converges in
   /// `maxIterations`.
-  bool simplifyFunction(int maxIterations);
+  bool simplifyFunction(Region *region, int maxIterations);
 
   void addToWorklist(Operation *op) {
     // Check to see if the worklist already contains this op.
@@ -146,9 +146,8 @@ private:
 } // end anonymous namespace
 
 /// Perform the rewrites.
-bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
-  Region *region = getRegion();
-
+bool GreedyPatternRewriteDriver::simplifyFunction(Region *region,
+                                                  int maxIterations) {
   // Add the given operation to the worklist.
   auto collectOps = [this](Operation *op) { addToWorklist(op); };
 
@@ -220,7 +219,8 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
 bool mlir::applyPatternsGreedily(FuncOp fn,
                                  OwningRewritePatternList &&patterns) {
   GreedyPatternRewriteDriver driver(fn, std::move(patterns));
-  bool converged = driver.simplifyFunction(maxPatternMatchIterations);
+  bool converged =
+      driver.simplifyFunction(&fn.getBody(), maxPatternMatchIterations);
   LLVM_DEBUG(if (!converged) {
     llvm::dbgs()
         << "The pattern rewrite doesn't converge after scanning the function "

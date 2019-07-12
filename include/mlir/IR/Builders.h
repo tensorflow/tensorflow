@@ -181,13 +181,13 @@ protected:
 /// automatically inserted at an insertion point. The builder is copyable.
 class OpBuilder : public Builder {
 public:
+  /// Create a builder with the given context.
+  explicit OpBuilder(MLIRContext *ctx) : Builder(ctx) {}
+
   /// Create a builder and set the insertion point to the start of the region.
-  explicit OpBuilder(Region *region)
-      : Builder(region->getContext()), region(region) {
+  explicit OpBuilder(Region *region) : Builder(region->getContext()) {
     if (!region->empty())
       setInsertionPoint(&region->front(), region->front().begin());
-    else
-      clearInsertionPoint();
   }
   explicit OpBuilder(Region &region) : OpBuilder(&region) {}
 
@@ -195,19 +195,16 @@ public:
 
   /// Create a builder and set insertion point to the given operation, which
   /// will cause subsequent insertions to go right before it.
-  OpBuilder(Operation *op) : OpBuilder(op->getContainingRegion()) {
+  explicit OpBuilder(Operation *op) : Builder(op->getContext()) {
     setInsertionPoint(op);
   }
 
-  OpBuilder(Block *block) : OpBuilder(block, block->end()) {}
+  explicit OpBuilder(Block *block) : OpBuilder(block, block->end()) {}
 
   OpBuilder(Block *block, Block::iterator insertPoint)
       : OpBuilder(block->getParent()) {
     setInsertionPoint(block, insertPoint);
   }
-
-  /// Return the region this builder is referring to.
-  Region *getRegion() const { return region; }
 
   /// This class represents a saved insertion point.
   class InsertPoint {
@@ -281,11 +278,13 @@ public:
   /// Returns the current insertion point of the builder.
   Block::iterator getInsertionPoint() const { return insertPoint; }
 
-  /// Add new block and set the insertion point to the end of it.  If an
-  /// 'insertBefore' block is passed, the block will be placed before the
-  /// specified block.  If not, the block will be appended to the end of the
-  /// current region.
-  Block *createBlock(Block *insertBefore = nullptr);
+  /// Add new block and set the insertion point to the end of it. The block is
+  /// inserted at the provided insertion point of 'parent'.
+  Block *createBlock(Region *parent, Region::iterator insertPt = {});
+
+  /// Add new block and set the insertion point to the end of it. The block is
+  /// placed before 'insertBefore'.
+  Block *createBlock(Block *insertBefore);
 
   /// Returns the current block of the builder.
   Block *getBlock() const { return block; }
@@ -345,12 +344,12 @@ public:
   /// and adds those mappings to the map.
   Operation *clone(Operation &op, BlockAndValueMapping &mapper) {
     Operation *cloneOp = op.clone(mapper);
-    block->getOperations().insert(insertPoint, cloneOp);
+    insert(cloneOp);
     return cloneOp;
   }
   Operation *clone(Operation &op) {
     Operation *cloneOp = op.clone();
-    block->getOperations().insert(insertPoint, cloneOp);
+    insert(cloneOp);
     return cloneOp;
   }
 
@@ -359,12 +358,12 @@ public:
   /// updated to contain the results.
   Operation *cloneWithoutRegions(Operation &op, BlockAndValueMapping &mapper) {
     Operation *cloneOp = op.cloneWithoutRegions(mapper);
-    block->getOperations().insert(insertPoint, cloneOp);
+    insert(cloneOp);
     return cloneOp;
   }
   Operation *cloneWithoutRegions(Operation &op) {
     Operation *cloneOp = op.cloneWithoutRegions();
-    block->getOperations().insert(insertPoint, cloneOp);
+    insert(cloneOp);
     return cloneOp;
   }
 
@@ -373,7 +372,9 @@ private:
   /// 'results'.
   void tryFold(Operation *op, SmallVectorImpl<Value *> &results);
 
-  Region *region;
+  /// Insert the given operation at the current insertion point.
+  void insert(Operation *op);
+
   Block *block = nullptr;
   Block::iterator insertPoint;
 };

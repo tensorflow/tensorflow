@@ -335,29 +335,31 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 
 OpBuilder::~OpBuilder() {}
 
-/// Add new block and set the insertion point to the end of it.  If an
-/// 'insertBefore' block is passed, the block will be placed before the
-/// specified block.  If not, the block will be appended to the end of the
-/// current region.
-Block *OpBuilder::createBlock(Block *insertBefore) {
+/// Add new block and set the insertion point to the end of it. The block is
+/// inserted at the provided insertion point of 'parent'.
+Block *OpBuilder::createBlock(Region *parent, Region::iterator insertPt) {
+  assert(parent && "expected valid parent region");
+  if (insertPt == Region::iterator())
+    insertPt = parent->end();
+
   Block *b = new Block();
-
-  // If we are supposed to insert before a specific block, do so, otherwise add
-  // the block to the end of the region.
-  if (insertBefore)
-    region->getBlocks().insert(Region::iterator(insertBefore), b);
-  else
-    region->push_back(b);
-
+  parent->getBlocks().insert(insertPt, b);
   setInsertionPointToEnd(b);
   return b;
+}
+
+/// Add new block and set the insertion point to the end of it.  The block is
+/// placed before 'insertBefore'.
+Block *OpBuilder::createBlock(Block *insertBefore) {
+  assert(insertBefore && "expected valid insertion block");
+  return createBlock(insertBefore->getParent(), Region::iterator(insertBefore));
 }
 
 /// Create an operation given the fields represented as an OperationState.
 Operation *OpBuilder::createOperation(const OperationState &state) {
   assert(block && "createOperation() called without setting builder's block");
   auto *op = Operation::create(state);
-  block->getOperations().insert(insertPoint, op);
+  insert(op);
   return op;
 }
 
@@ -385,4 +387,10 @@ void OpBuilder::tryFold(Operation *op, SmallVectorImpl<Value *> &results) {
   llvm::transform(foldResults, std::back_inserter(results),
                   [](OpFoldResult result) { return result.get<Value *>(); });
   op->erase();
+}
+
+/// Insert the given operation at the current insertion point.
+void OpBuilder::insert(Operation *op) {
+  if (block)
+    block->getOperations().insert(insertPoint, op);
 }

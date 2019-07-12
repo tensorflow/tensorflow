@@ -132,7 +132,7 @@ BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
   auto *ib = currentB.getInsertionBlock();
   auto ip = currentB.getInsertionPoint();
   BlockHandle res;
-  res.block = ScopedContext::getBuilder().createBlock();
+  res.block = ScopedContext::getBuilder().createBlock(ib->getParent());
   // createBlock sets the insertion point inside the block.
   // We do not want this behavior when using declarative builders with nesting.
   currentB.setInsertionPoint(ib, ip);

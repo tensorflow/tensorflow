@@ -87,7 +87,7 @@ private:
                                 LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
     // Insert a body block that just returns the constant.
     OpBuilder ob(result.getBody());
-    ob.createBlock();
+    ob.createBlock(&result.getBody());
     auto sizeConstant = ob.create<LLVM::ConstantOp>(
         loc, getIndexType(),
         builder.getIntegerAttr(builder.getIndexType(), blob.getValue().size()));
