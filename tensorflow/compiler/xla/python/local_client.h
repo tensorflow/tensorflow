@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
@@ -69,9 +70,11 @@ class PyLocalClient {
       bool asynchronous, const AllocatorConfig& allocator_config);
 
   // `allocator` may null, in which case the platform default allocator is used.
-  explicit PyLocalClient(std::string platform_name, LocalClient* client,
-                         std::vector<std::unique_ptr<Device>> devices,
-                         std::unique_ptr<se::DeviceMemoryAllocator> allocator);
+  explicit PyLocalClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<Device>> devices,
+      std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
   virtual ~PyLocalClient() = default;
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
@@ -84,6 +87,9 @@ class PyLocalClient {
   }
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
+  tensorflow::Allocator* host_memory_allocator() const {
+    return host_memory_allocator_.get();
+  }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
@@ -104,6 +110,11 @@ class PyLocalClient {
   std::vector<std::unique_ptr<Device>> devices_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+
+  // Allocator to be used for staging memory transfers to devices. Optional;
+  // only used on GPU where it is more efficient to copy buffers to and from the
+  // device via a staging area of pinned memory.
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
