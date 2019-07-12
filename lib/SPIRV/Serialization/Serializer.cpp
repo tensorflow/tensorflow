@@ -22,6 +22,7 @@
 #include "mlir/SPIRV/Serialization.h"
 
 #include "SPIRVBinaryUtils.h"
+#include "mlir/SPIRV/SPIRVDialect.h"
 #include "mlir/SPIRV/SPIRVOps.h"
 #include "mlir/SPIRV/SPIRVTypes.h"
 #include "mlir/Support/LogicalResult.h"
@@ -87,12 +88,23 @@ private:
                                     SmallVectorImpl<uint32_t> &operands);
 
   // Main method to dispatch operation serialization
-  LogicalResult processOperation(Operation *op, uint32_t &opID);
+  LogicalResult processOperation(Operation *op);
 
   // Methods to serialize individual operation types
-  LogicalResult processFuncOp(FuncOp op, uint32_t &funcID);
+  LogicalResult processFuncOp(FuncOp op);
+  // Serialize op that dont produce a value and have no operands, like
+  // spirv::ReturnOp
+  template <typename OpType> LogicalResult processNullaryOp(OpType op);
 
   uint32_t getNextID() { return nextID++; }
+
+  Optional<uint32_t> findTypeID(Type type) const {
+    auto it = typeIDMap.find(type);
+    return (it != typeIDMap.end() ? it->second : Optional<uint32_t>(None));
+  }
+
+  Type voidType() { return mlir::NoneType::get(module.getContext()); }
+  bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
 private:
   /// The SPIR-V module to be serialized.
@@ -114,11 +126,13 @@ private:
   // TODO(antiagainst): debug instructions
   SmallVector<uint32_t, 0> decorations;
   SmallVector<uint32_t, 0> typesGlobalValues;
-  SmallVector<uint32_t, 0> functionDecls;
-  SmallVector<uint32_t, 0> functionDefns;
+  SmallVector<uint32_t, 0> functions;
 
   // Map from type used in SPIR-V module to their IDs
   DenseMap<Type, uint32_t> typeIDMap;
+
+  // Map from FuncOps to IDs
+  DenseMap<Operation *, uint32_t> funcIDMap;
 };
 } // namespace
 
@@ -132,8 +146,7 @@ LogicalResult Serializer::serialize() {
   // Iterate over the module body to serialze it. Assumptions are that there is
   // only one basic block in the moduleOp
   for (auto &op : module.getBlock()) {
-    uint32_t opID = 0;
-    if (failed(processOperation(&op, opID))) {
+    if (failed(processOperation(&op))) {
       return failure();
     }
   }
@@ -147,7 +160,7 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
                     extendedSets.size() + memoryModel.size() +
                     entryPoints.size() + executionModes.size() +
                     decorations.size() + typesGlobalValues.size() +
-                    functionDecls.size() + functionDefns.size();
+                    functions.size();
 
   binary.clear();
   binary.reserve(moduleSize);
@@ -162,8 +175,7 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
   binary.append(executionModes.begin(), executionModes.end());
   binary.append(decorations.begin(), decorations.end());
   binary.append(typesGlobalValues.begin(), typesGlobalValues.end());
-  binary.append(functionDecls.begin(), functionDecls.end());
-  binary.append(functionDefns.begin(), functionDefns.end());
+  binary.append(functions.begin(), functions.end());
 }
 
 LogicalResult Serializer::processHeader() {
@@ -207,9 +219,9 @@ LogicalResult Serializer::processMemoryModel() {
 
 LogicalResult Serializer::processType(Location loc, Type type,
                                       uint32_t &typeID) {
-  auto it = typeIDMap.find(type);
-  if (it != typeIDMap.end()) {
-    typeID = it->second;
+  auto id = findTypeID(type);
+  if (id) {
+    typeID = id.getValue();
     return success();
   }
   typeID = getNextID();
@@ -230,7 +242,7 @@ LogicalResult Serializer::processType(Location loc, Type type,
 LogicalResult
 Serializer::processBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
                              SmallVectorImpl<uint32_t> &operands) {
-  if (type.isa<NoneType>()) {
+  if (isVoidType(type)) {
     typeEnum = spirv::Opcode::OpTypeVoid;
     return success();
   }
@@ -246,11 +258,9 @@ Serializer::processFunctionType(Location loc, FunctionType type,
   assert(type.getNumResults() <= 1 &&
          "Serialization supports only a single return value");
   uint32_t resultID = 0;
-  if (failed(processType(loc,
-                         type.getNumResults() == 1
-                             ? type.getResult(0)
-                             : mlir::NoneType::get(module.getContext()),
-                         resultID))) {
+  if (failed(processType(
+          loc, type.getNumResults() == 1 ? type.getResult(0) : voidType(),
+          resultID))) {
     return failure();
   }
   operands.push_back(resultID);
@@ -264,21 +274,80 @@ Serializer::processFunctionType(Location loc, FunctionType type,
   return success();
 }
 
-LogicalResult Serializer::processOperation(Operation *op, uint32_t &opID) {
-  opID = getNextID();
-  if ((isa<FuncOp>(op) && succeeded(processFuncOp(cast<FuncOp>(op), opID))) ||
-      isa<spirv::ModuleEndOp>(op)) {
+LogicalResult Serializer::processOperation(Operation *op) {
+  if (isa<FuncOp>(op)) {
+    return processFuncOp(cast<FuncOp>(op));
+  } else if (isa<spirv::ReturnOp>(op)) {
+    return processNullaryOp(cast<spirv::ReturnOp>(op));
+  } else if (isa<spirv::ModuleEndOp>(op)) {
     return success();
   }
   /// TODO(ravishankarm) : Handle other ops
   return op->emitError("unhandled operation serialization");
 }
 
-LogicalResult Serializer::processFuncOp(FuncOp op, uint32_t &funcID) {
-  uint32_t typeID = 0;
+LogicalResult Serializer::processFuncOp(FuncOp op) {
+  uint32_t fnTypeID = 0;
   // Generate type of the function
-  processType(op.getLoc(), op.getType(), typeID);
-  // TODO(ravishankarm) : Process Function body
+  processType(op.getLoc(), op.getType(), fnTypeID);
+
+  /// Add the function definition
+  SmallVector<uint32_t, 4> operands;
+  uint32_t resTypeID = 0;
+  auto resultTypes = op.getType().getResults();
+  if (resultTypes.size() > 1) {
+    return emitError(op.getLoc(),
+                     "cannot serialize function with multiple return types");
+  }
+  if (failed(processType(op.getLoc(),
+                         (resultTypes.empty() ? voidType() : resultTypes[0]),
+                         resTypeID))) {
+    return failure();
+  }
+  operands.push_back(resTypeID);
+  auto funcID = getNextID();
+  funcIDMap[op.getOperation()] = funcID;
+  operands.push_back(funcID);
+  /// TODO : Support other function control options
+  operands.push_back(static_cast<uint32_t>(spirv::FunctionControl::None));
+  operands.push_back(fnTypeID);
+  buildInstruction(spirv::Opcode::OpFunction, operands, functions);
+
+  // Declare the parameters
+  for (auto argType : op.getType().getInputs()) {
+    uint32_t argTypeID = 0;
+    if (failed(processType(op.getLoc(), argType, argTypeID))) {
+      return failure();
+    }
+    buildInstruction(spirv::Opcode::OpFunctionParameter,
+                     {argTypeID, getNextID()}, functions);
+  }
+
+  // Process the body
+  if (!op.empty()) {
+    for (auto &b : op) {
+      for (auto &op : b) {
+        if (failed(processOperation(&op))) {
+          return failure();
+        }
+      }
+    }
+  }
+
+  // Insert Function End
+  buildInstruction(spirv::Opcode::OpFunctionEnd, {}, functions);
+
+  // If the function body is empty return an error
+  // TODO : Handle external functions
+  if (op.empty()) {
+    return emitError(op.getLoc(), "external function is unhandled");
+  }
+  return success();
+}
+
+template <typename OpType>
+LogicalResult Serializer::processNullaryOp(OpType op) {
+  buildInstruction(spirv::getOpcode<OpType>(), ArrayRef<uint32_t>(), functions);
   return success();
 }
 

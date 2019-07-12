@@ -66,8 +66,19 @@ private:
   /// Get type for a given result <id>
   Type getType(uint32_t id) { return typeMap.lookup(id); }
 
+  /// Get Value associated with a result <id>
+  Value *getValue(uint32_t id) { return valueMap.lookup(id); }
+
+  // Check if a type is void
+  bool isVoidType(Type type) const { return type.isa<NoneType>(); }
+
   /// Processes SPIR-V module header.
   LogicalResult processHeader();
+
+  /// Deserialize a single instruction. The |opcode| and |operands| are returned
+  /// after deserialization to the caller.
+  LogicalResult deserializeInstruction(spirv::Opcode &opcode,
+                                       ArrayRef<uint32_t> &operands);
 
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   LogicalResult processInstruction(spirv::Opcode opcode,
@@ -76,6 +87,13 @@ private:
   /// Processes a SPIR-V type instruction with given 'opcode' and 'operands'
   LogicalResult processType(spirv::Opcode opcode, ArrayRef<uint32_t> operands);
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
+
+  /// Process SPIR-V instructions that dont have any operands
+  template <typename OpTy>
+  LogicalResult processNullaryInstruction(ArrayRef<uint32_t> operands);
+
+  /// Process function objects in binary
+  LogicalResult processFunction(ArrayRef<uint32_t> operands);
 
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
 
@@ -102,6 +120,12 @@ private:
 
   // result <id> to type mapping
   DenseMap<uint32_t, Type> typeMap;
+
+  // result <id> to function mapping
+  DenseMap<uint32_t, Operation *> funcMap;
+
+  // result <id> to value mapping
+  DenseMap<uint32_t, Value *> valueMap;
 };
 } // namespace
 
@@ -114,30 +138,11 @@ LogicalResult Deserializer::deserialize() {
   if (failed(processHeader()))
     return failure();
 
-  auto binarySize = binary.size();
-  curOffset = spirv::kHeaderWordCount;
-
-  while (curOffset < binarySize) {
-    // For each instruction, get its word count from the first word to slice it
-    // from the stream properly, and then dispatch to the instruction handler.
-
-    uint32_t wordCount = binary[curOffset] >> 16;
-    uint32_t opcode = binary[curOffset] & 0xffff;
-
-    if (wordCount == 0)
-      return emitError(unknownLoc, "word count cannot be zero");
-
-    uint32_t nextOffset = curOffset + wordCount;
-    if (nextOffset > binarySize)
-      return emitError(unknownLoc,
-                       "insufficient words for the last instruction");
-
-    auto operands = binary.slice(curOffset + 1, wordCount - 1);
-    if (failed(
-            processInstruction(static_cast<spirv::Opcode>(opcode), operands)))
+  spirv::Opcode opcode;
+  ArrayRef<uint32_t> operands;
+  while (succeeded(deserializeInstruction(opcode, operands))) {
+    if (failed(processInstruction(opcode, operands)))
       return failure();
-
-    curOffset = nextOffset;
   }
 
   return success();
@@ -154,6 +159,32 @@ LogicalResult Deserializer::processHeader() {
     return emitError(unknownLoc, "incorrect magic number");
 
   // TODO(antiagainst): generator number, bound, schema
+  curOffset = spirv::kHeaderWordCount;
+  return success();
+}
+
+LogicalResult
+Deserializer::deserializeInstruction(spirv::Opcode &opcode,
+                                     ArrayRef<uint32_t> &operands) {
+  auto binarySize = binary.size();
+  if (curOffset >= binarySize) {
+    return failure();
+  }
+  // For each instruction, get its word count from the first word to slice it
+  // from the stream properly, and then dispatch to the instruction handler.
+
+  uint32_t wordCount = binary[curOffset] >> 16;
+  opcode = static_cast<spirv::Opcode>(binary[curOffset] & 0xffff);
+
+  if (wordCount == 0)
+    return emitError(unknownLoc, "word count cannot be zero");
+
+  uint32_t nextOffset = curOffset + wordCount;
+  if (nextOffset > binarySize)
+    return emitError(unknownLoc, "insufficient words for the last instruction");
+
+  operands = binary.slice(curOffset + 1, wordCount - 1);
+  curOffset = nextOffset;
   return success();
 }
 
@@ -174,7 +205,11 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
     }
     argTypes.push_back(ty);
   }
-  typeMap[operands[0]] = FunctionType::get(argTypes, {returnType}, context);
+  ArrayRef<Type> returnTypes;
+  if (!isVoidType(returnType)) {
+    returnTypes = llvm::makeArrayRef(returnType);
+  }
+  typeMap[operands[0]] = FunctionType::get(argTypes, returnTypes, context);
   return success();
 }
 
@@ -205,6 +240,118 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
   return success();
 }
 
+template <typename OpTy>
+LogicalResult
+Deserializer::processNullaryInstruction(ArrayRef<uint32_t> operands) {
+  if (!operands.empty()) {
+    return emitError(unknownLoc) << stringifyOpcode(spirv::getOpcode<OpTy>())
+                                 << " must have no operands, but found "
+                                 << operands.size() << " operands";
+  }
+  opBuilder.create<OpTy>(unknownLoc);
+  return success();
+}
+
+LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
+  // Get the result type
+  if (operands.size() != 4) {
+    return emitError(unknownLoc, "OpFunction must have 4 parameters");
+  }
+  Type resultType = getType(operands[0]);
+  if (!resultType) {
+    return emitError(unknownLoc, "unknown result type from <id> ")
+           << operands[0];
+  }
+  if (funcMap.count(operands[1])) {
+    return emitError(unknownLoc, "duplicate function definition/declaration");
+  }
+  auto functionControl = spirv::symbolizeFunctionControl(operands[2]);
+  if (!functionControl) {
+    return emitError(unknownLoc, "unknown Function Control : ") << operands[2];
+  }
+  if (functionControl.getValue() != spirv::FunctionControl::None) {
+    /// TODO : Handle different function controls
+    return emitError(unknownLoc, "unhandled Function Control : '")
+           << spirv::stringifyFunctionControl(functionControl.getValue())
+           << "'";
+  }
+  Type fnType = getType(operands[3]);
+  if (!fnType || !fnType.isa<FunctionType>()) {
+    return emitError(unknownLoc, "unknown function type from <id> ")
+           << operands[3];
+  }
+  auto functionType = fnType.cast<FunctionType>();
+  if ((isVoidType(resultType) && functionType.getNumResults() != 0) ||
+      (functionType.getNumResults() == 1 &&
+       functionType.getResult(0) != resultType)) {
+    return emitError(unknownLoc, "mismatch in function type ")
+           << functionType << " and return type " << resultType << " specified";
+  }
+  /// TODO : The function name must be obtained from OpName eventually
+  std::string fnName = "spirv_fn_" + std::to_string(operands[2]);
+  auto funcOp = opBuilder.create<FuncOp>(unknownLoc, fnName, functionType,
+                                         ArrayRef<NamedAttribute>());
+  funcOp.addEntryBlock();
+
+  // Parse the op argument instructions
+  if (functionType.getNumInputs()) {
+    for (size_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
+      auto argType = functionType.getInput(i);
+      spirv::Opcode opcode;
+      ArrayRef<uint32_t> operands;
+      if (failed(deserializeInstruction(opcode, operands))) {
+        return failure();
+      }
+      if (opcode != spirv::Opcode::OpFunctionParameter) {
+        return emitError(
+                   unknownLoc,
+                   "missing OpFunctionParameter instruction for argument ")
+               << i;
+      }
+      if (operands.size() != 2) {
+        return emitError(
+            unknownLoc,
+            "expected result type and result <id> for OpFunctionParameter");
+      }
+      auto argDefinedType = getType(operands[0]);
+      if (argDefinedType || argDefinedType != argType) {
+        return emitError(unknownLoc,
+                         "mismatch in argument type between function type "
+                         "definition ")
+               << functionType << " and argument type definition "
+               << argDefinedType << " at argument " << i;
+      }
+      if (getValue(operands[1])) {
+        return emitError(unknownLoc, "duplicate definition of result <id> '")
+               << operands[1];
+      }
+      auto argValue = funcOp.getArgument(i);
+      valueMap[operands[1]] = argValue;
+    }
+  }
+
+  // Create a new builder for building the body
+  OpBuilder funcBody(funcOp.getBody());
+  std::swap(funcBody, opBuilder);
+
+  spirv::Opcode opcode;
+  ArrayRef<uint32_t> instOperands;
+  while (succeeded(deserializeInstruction(opcode, instOperands)) &&
+         opcode != spirv::Opcode::OpFunctionEnd) {
+    if (failed(processInstruction(opcode, instOperands))) {
+      return failure();
+    }
+  }
+  std::swap(funcBody, opBuilder);
+  if (opcode != spirv::Opcode::OpFunctionEnd) {
+    return failure();
+  }
+  if (!instOperands.empty()) {
+    return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
+  }
+  return success();
+}
+
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands) {
   switch (opcode) {
@@ -213,6 +360,10 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypeVoid:
   case spirv::Opcode::OpTypeFunction:
     return processType(opcode, operands);
+  case spirv::Opcode::OpReturn:
+    return processNullaryInstruction<spirv::ReturnOp>(operands);
+  case spirv::Opcode::OpFunction:
+    return processFunction(operands);
   default:
     break;
   }

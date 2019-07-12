@@ -72,23 +72,29 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-def SPV_OC_OpMemoryModel      : I32EnumAttrCase<"OpMemoryModel", 14>;
-def SPV_OC_OpEntryPoint       : I32EnumAttrCase<"OpEntryPoint", 15>;
-def SPV_OC_OpExecutionMode    : I32EnumAttrCase<"OpExecutionMode", 16>;
-def SPV_OC_OpTypeVoid         : I32EnumAttrCase<"OpTypeVoid", 19>;
-def SPV_OC_OpTypeFunction     : I32EnumAttrCase<"OpTypeFunction", 33>;
-def SPV_OC_OpVariable         : I32EnumAttrCase<"OpVariable", 59>;
-def SPV_OC_OpLoad             : I32EnumAttrCase<"OpLoad", 61>;
-def SPV_OC_OpStore            : I32EnumAttrCase<"OpStore", 62>;
-def SPV_OC_OpCompositeExtract : I32EnumAttrCase<"OpCompositeExtract", 81>;
-def SPV_OC_OpFMul             : I32EnumAttrCase<"OpFMul", 133>;
-def SPV_OC_OpReturn           : I32EnumAttrCase<"OpReturn", 253>;
+def SPV_OC_OpMemoryModel       : I32EnumAttrCase<"OpMemoryModel", 14>;
+def SPV_OC_OpEntryPoint        : I32EnumAttrCase<"OpEntryPoint", 15>;
+def SPV_OC_OpExecutionMode     : I32EnumAttrCase<"OpExecutionMode", 16>;
+def SPV_OC_OpTypeVoid          : I32EnumAttrCase<"OpTypeVoid", 19>;
+def SPV_OC_OpTypeFunction      : I32EnumAttrCase<"OpTypeFunction", 33>;
+def SPV_OC_OpFunction          : I32EnumAttrCase<"OpFunction", 54>;
+def SPV_OC_OpFunctionParameter : I32EnumAttrCase<"OpFunctionParameter", 55>;
+def SPV_OC_OpFunctionEnd       : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpVariable          : I32EnumAttrCase<"OpVariable", 59>;
+def SPV_OC_OpLoad              : I32EnumAttrCase<"OpLoad", 61>;
+def SPV_OC_OpStore             : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpDecorate          : I32EnumAttrCase<"OpDecorate", 71>;
+def SPV_OC_OpCompositeExtract  : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpFMul              : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
       SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
-      SPV_OC_OpTypeVoid, SPV_OC_OpTypeFunction, SPV_OC_OpVariable, SPV_OC_OpLoad,
-      SPV_OC_OpStore, SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpTypeVoid, SPV_OC_OpTypeFunction, SPV_OC_OpFunction,
+      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
+      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
+      SPV_OC_OpFMul, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -294,6 +300,21 @@ def SPV_ExecutionModelAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
+def SPV_FC_None       : I32EnumAttrCase<"None", 0x0000>;
+def SPV_FC_Inline     : I32EnumAttrCase<"Inline", 0x0001>;
+def SPV_FC_DontInline : I32EnumAttrCase<"DontInline", 0x0002>;
+def SPV_FC_Pure       : I32EnumAttrCase<"Pure", 0x0004>;
+def SPV_FC_Const      : I32EnumAttrCase<"Const", 0x0008>;
+
+def SPV_FunctionControlAttr :
+    I32EnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
+      SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
+    ]> {
+  let returnType = "::mlir::spirv::FunctionControl";
+  let convertFromStorage = "static_cast<::mlir::spirv::FunctionControl>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
 def SPV_IF_Unknown      : I32EnumAttrCase<"Unknown", 0>;
 def SPV_IF_Rgba32f      : I32EnumAttrCase<"Rgba32f", 1>;
 def SPV_IF_Rgba16f      : I32EnumAttrCase<"Rgba16f", 2>;
@@ -349,6 +370,18 @@ def SPV_ImageFormatAttr :
     ]> {
   let returnType = "::mlir::spirv::ImageFormat";
   let convertFromStorage = "static_cast<::mlir::spirv::ImageFormat>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_LT_Export : I32EnumAttrCase<"Export", 0>;
+def SPV_LT_Import : I32EnumAttrCase<"Import", 1>;
+
+def SPV_LinkageTypeAttr :
+    I32EnumAttr<"LinkageType", "valid SPIR-V LinkageType", [
+      SPV_LT_Export, SPV_LT_Import
+    ]> {
+  let returnType = "::mlir::spirv::LinkageType";
+  let convertFromStorage = "static_cast<::mlir::spirv::LinkageType>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 

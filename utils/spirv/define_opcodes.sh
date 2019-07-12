@@ -29,7 +29,6 @@
 # in SPIR-V
 
 set -e
-set -x
 
 current_file="$(readlink -f "$0")"
 current_dir="$(dirname "$current_file")"

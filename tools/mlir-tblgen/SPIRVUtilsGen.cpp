@@ -44,10 +44,12 @@ using mlir::tblgen::Operator;
 static void emitGetOpcodeFunction(const llvm::Record &record,
                                   Operator const &op, raw_ostream &os) {
   if (record.getValueAsInt("hasOpcode")) {
-    os << formatv("template <> constexpr inline uint32_t getOpcode<{0}>()",
+    os << formatv("template <> constexpr inline ::mlir::spirv::Opcode "
+                  "getOpcode<{0}>()",
                   op.getQualCppClassName())
-       << " {\n  return static_cast<uint32_t>("
-       << formatv("Opcode::Op{0});\n}\n", record.getValueAsString("opName"));
+       << " {\n  "
+       << formatv("return ::mlir::spirv::Opcode::Op{0};\n}\n",
+                  record.getValueAsString("opName"));
   }
 }
 
@@ -56,7 +58,8 @@ static bool emitSerializationUtils(const RecordKeeper &recordKeeper,
   llvm::emitSourceFileHeader("SPIR-V Serialization Utilities", os);
 
   /// Define the function to get the opcode
-  os << "template <typename OpClass> inline constexpr uint32_t getOpcode();\n";
+  os << "template <typename OpClass> inline constexpr ::mlir::spirv::Opcode "
+        "getOpcode();\n";
   auto defs = recordKeeper.getAllDerivedDefinitions("SPV_Op");
   for (const auto *def : defs) {
     Operator op(def);
