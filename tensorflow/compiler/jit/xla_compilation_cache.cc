@@ -171,7 +171,7 @@ Status XlaCompilationCache::Compile(
     xla::LocalExecutable** out_executable) {
   absl::optional<int64> compile_threshold;
   if (compile_mode == CompileMode::kLazy) {
-    compile_threshold = kDefaultCompilationThreshold;
+    compile_threshold = XlaCompilationCache::kDefaultCompilationThreshold;
   }
   auto compile_fn = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
