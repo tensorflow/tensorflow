@@ -216,7 +216,7 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelConstruction* ctx) {
   }
   auto func_names = lib->GetFunctionLibraryDefinition()->ListFunctionNames();
   for (auto func_name : func_names) {
-    VLOG(0) << "Func name: " << func_name;
+    VLOG(2) << "Func name: " << func_name;
   }
   auto fdef = lib->GetFunctionLibraryDefinition()->Find(funcdef_name_);
   if (fdef == nullptr) {

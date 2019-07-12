@@ -62,7 +62,6 @@ class TRTEngineOpTestBase : public OpsTestBase {
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
     /*
-    //VLOG(0) << "Beginning TRTEngineOpTest new code";
     */
     const string func_name = "myop_native_segment";
     Graph* graph = s.graph();
@@ -74,18 +73,15 @@ class TRTEngineOpTestBase : public OpsTestBase {
     //TF_ASSERT_OK(convert::RegisterSegmentFunctionToFunctionLibrary(graph, graph_def, "myop"));
 
     //FunctionDefLibrary fdeflib;
-    //VLOG(0) << "Before converting graph to function def";
     //auto native_segment = fdeflib.add_function();
     
     //GraphToFunctionDef(*graph, func_name, native_segment);
-    //VLOG(0) << "After conversion from graph to func def";
     /*(*native_segment
           ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
         .set_b(true);
     */
 
     //graph->AddFunctionLibrary(fdeflib);
-    //VLOG(0) << native_segment->DebugString();
     
     PartialTensorShape shape({-1, -1});
 

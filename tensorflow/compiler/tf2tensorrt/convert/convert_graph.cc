@@ -135,7 +135,6 @@ Status GetEngineInfo(const Graph* g,
       DeviceNameUtils::ParsedName parsed_name;
       const bool parse_succeeded =
           DeviceNameUtils::ParseFullName(node_device, &parsed_name);
-      VLOG(0) << node_device;
       if (!parse_succeeded || (parse_succeeded && parsed_name.type == "CPU")) {
         string msg;
         if (!parse_succeeded) {
