@@ -23,6 +23,7 @@ from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -35,7 +36,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     if not structure.are_compatible(
         input_dataset.element_spec,
-        structure.TensorStructure(dtypes.string, [None])):
+        tensor_spec.TensorSpec([None], dtypes.string)):
       raise TypeError("Input dataset should be a dataset of vectors of strings")
     self._num_parallel_calls = num_parallel_calls
     # pylint: disable=protected-access
