@@ -358,7 +358,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
   string ptx;
   {
-    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::InvokeBackend - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
                                  module->config(), libdevice_dir));

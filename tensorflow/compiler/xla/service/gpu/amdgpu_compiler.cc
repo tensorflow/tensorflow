@@ -205,7 +205,8 @@ AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
 
   std::vector<uint8> hsaco;
   {
-    XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::InvokeBackend - CompileToHsaco");
+    XLA_SCOPED_LOGGING_TIMER(
+        "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
     TF_ASSIGN_OR_RETURN(hsaco,
                         amdgpu::CompileToHsaco(llvm_module, gpu_version,
                                                module->config(), rocdl_dir_));
