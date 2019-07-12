@@ -41,8 +41,8 @@ namespace {
 // A pass that traverses top-level loops in the function and converts them to
 // GPU launch operations.  Nested launches are not allowed, so this does not
 // walk the function recursively to avoid considering nested loops.
-struct AffineForGPUMapper : public FunctionPass<AffineForGPUMapper> {
-  AffineForGPUMapper(unsigned numBlockDims, unsigned numThreadDims)
+struct ForLoopMapper : public FunctionPass<ForLoopMapper> {
+  ForLoopMapper(unsigned numBlockDims, unsigned numThreadDims)
       : numBlockDims(numBlockDims), numThreadDims(numThreadDims) {}
 
   void runOnFunction() override {
@@ -63,18 +63,15 @@ struct AffineForGPUMapper : public FunctionPass<AffineForGPUMapper> {
   unsigned numBlockDims;
   unsigned numThreadDims;
 };
-
-struct AffineForGPUMapperCLI : public AffineForGPUMapper {
-  AffineForGPUMapperCLI()
-      : AffineForGPUMapper(clNumBlockDims.getValue(),
-                           clNumThreadDims.getValue()) {}
-};
 } // namespace
 
 FunctionPassBase *mlir::createSimpleLoopsToGPUPass(unsigned numBlockDims,
                                                    unsigned numThreadDims) {
-  return new AffineForGPUMapper(numBlockDims, numThreadDims);
+  return new ForLoopMapper(numBlockDims, numThreadDims);
 }
 
-static PassRegistration<AffineForGPUMapperCLI>
-    registration(PASS_NAME, "Convert top-level loops to GPU kernels");
+static PassRegistration<ForLoopMapper>
+    registration(PASS_NAME, "Convert top-level loops to GPU kernels", [] {
+      return new ForLoopMapper(clNumBlockDims.getValue(),
+                               clNumThreadDims.getValue());
+    });
