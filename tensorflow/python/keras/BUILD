@@ -173,6 +173,7 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
+        "engine/training_v2.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",

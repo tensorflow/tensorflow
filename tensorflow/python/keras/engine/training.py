@@ -2106,12 +2106,11 @@ class Model(network.Network):
 
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
-        x = distributed_training_utils.list_to_tuple(x)
+        x = training_utils.list_to_tuple(x)
         if y is not None:
-          y = distributed_training_utils.list_to_tuple(y)
+          y = training_utils.list_to_tuple(y)
           if sample_weight is not None:
-            sample_weight = distributed_training_utils.list_to_tuple(
-                sample_weight)
+            sample_weight = training_utils.list_to_tuple(sample_weight)
             in_tuple = (x, y, sample_weight)
           else:
             in_tuple = (x, y)
