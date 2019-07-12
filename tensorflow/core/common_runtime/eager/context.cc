@@ -266,19 +266,11 @@ EagerContext::~EagerContext() {
   executor_.WaitForAllPendingNodes().IgnoreError();
   rendezvous_->Unref();
 
-  for (auto& thread : child_threads_) {
-    thread.reset();
-  }
-
   // Release resources ahead of destroying the device manager as the resource
   // destructors (e.g. ~IteratorResource) assume devices still exist.
   for (auto device : local_device_mgr()->ListDevices()) {
     device->ClearResourceMgr();
   }
-}
-
-void EagerContext::AddChildThread(std::unique_ptr<Thread> thread) {
-  child_threads_.push_back(std::move(thread));
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {

@@ -323,9 +323,6 @@ class EagerContext : public core::RefCounted {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  // All child threads will be reset() when destructing EagerContext.
-  void AddChildThread(std::unique_ptr<Thread> thread);
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
   bool IsLocal(const Device* d) const;
@@ -454,7 +451,6 @@ class EagerContext : public core::RefCounted {
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
-  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow
