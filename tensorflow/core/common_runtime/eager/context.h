@@ -449,6 +449,7 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
+  bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;

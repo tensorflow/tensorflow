@@ -236,7 +236,6 @@ void EagerContext::CloseRemoteContexts() {
 #endif  // !IS_MOBILE_PLATFORM
 
 EagerContext::~EagerContext() {
-#if !defined(IS_MOBILE_PLATFORM)
   ClearCaches();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
@@ -245,6 +244,7 @@ EagerContext::~EagerContext() {
   }
   registered_functions_.clear();
 
+#if !defined(IS_MOBILE_PLATFORM)
   if (server_) {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
@@ -258,7 +258,7 @@ EagerContext::~EagerContext() {
     keep_alive_thread_cv_.notify_all();
   }
   keep_alive_thread_.reset();
-  if (!remote_contexts_.empty() && keep_alive_thread_ != nullptr) {
+  if (!remote_contexts_.empty() && is_master_) {
     CloseRemoteContexts();
   }
 #endif  // !IS_MOBILE_PLATFORM
@@ -645,6 +645,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
   mutex_lock l(remote_state_mu_);
+  is_master_ = true;
 
   if (!remote_contexts_.empty()) {
     CloseRemoteContexts();
@@ -763,6 +764,7 @@ Status EagerContext::InitializeRemoteWorker(
         "EagerContext::InitializeRemoteWorker Failed. ",
         "Already initialized remote as a master context.");
   }
+  is_master_ = false;
 
   remote_contexts_ = remote_contexts;
   context_id_ = context_id;
