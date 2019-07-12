@@ -524,9 +524,14 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
     *flib->add_gradient() = grad;
   }
 
-  // Ignore the gradient attribute on the function as it gets converted to
-  // GradientDef.
-  absl::flat_hash_set<string> attrs_to_ignore = {grad_string};
+  auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+  if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
+    func_def.mutable_signature()->set_is_stateful(true);
+  }
+
+  // Ignore the gradient and is_stateful attribute on the function as they have
+  // been handled above.
+  absl::flat_hash_set<string> attrs_to_ignore = {grad_string, stateful_string};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(
