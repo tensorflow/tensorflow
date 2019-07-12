@@ -2,7 +2,13 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(default_visibility = [":internal"])
+visibility = [
+    ":internal",
+    # TODO(mihaimaruseac): Why do we need these for 1.13.2 patch?
+    "//bazel_pip/tensorflow/tools:__subpackages__",
+]
+
+package(default_visibility = visibility)
 
 licenses(["notice"])  # Apache 2.0
 

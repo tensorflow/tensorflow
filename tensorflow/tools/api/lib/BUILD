@@ -1,8 +1,12 @@
 # Helper libraries for TensorFlow API compatibility test.
 
-package(
-    default_visibility = ["//tensorflow/tools/api:__subpackages__"],
-)
+visibility = [
+    "//tensorflow/tools/api:__subpackages__",
+    # TODO(mihaimaruseac): Why do we need these for 1.13.2 patch?
+    "//bazel_pip/tensorflow/tools:__subpackages__",
+]
+
+package(default_visibility = visibility)
 
 licenses(["notice"])  # Apache 2.0
 

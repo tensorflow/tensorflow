@@ -1,13 +1,17 @@
 # Description:
 #   Common functionality for TensorFlow tooling
 
+visibility = [
+    "//tensorflow:__subpackages__",
+    # TODO(mihaimaruseac): Why do we need these for 1.13.2 patch?
+    "//bazel_pip/tensorflow/tools:__subpackages__",
+]
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(
-    default_visibility = ["//tensorflow:__subpackages__"],
-)
+package(default_visibility = visibility)
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 

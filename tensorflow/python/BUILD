@@ -13,6 +13,8 @@ visibility = [
     "//tensorflow_model_optimization:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
+    # TODO(mihaimaruseac): Why do we need these for 1.13.2 patch?
+    "//bazel_pip/tensorflow/tools:__subpackages__",
 ]
 
 package(default_visibility = visibility)
