@@ -37,7 +37,7 @@ Drop-in replacements are available for the following:
 TensorFlow Lite does not currently support
 [Control Flow](https://www.tensorflow.org/api_docs/cc/group/control-flow-ops)
 operations. This means that models built with the following TensorFlow functions
-will not convert successfully unless one of the conversion strategies below are
+will not convert successfully if one of the conversion strategies below are
 employed:
 
 *   [tf.nn.static_rnn](https://www.tensorflow.org/api_docs/python/tf/nn/static_rnn)
