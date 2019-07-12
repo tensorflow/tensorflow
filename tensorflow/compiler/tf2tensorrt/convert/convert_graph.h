@@ -47,8 +47,6 @@ struct ConversionParams {
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
-  // Whether to use function fallback for TRTEngineOp
-  bool use_function_backup = true;
 };
 
 // Method to call from optimization pass

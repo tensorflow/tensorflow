@@ -463,7 +463,6 @@ Status CreateTRTNode(const ConversionParams& params,
   }
 
   NodeDef trt_node;
-  //TODO(phillip-kravtsov): use_function_backup: fix this
   Status status =
       node_builder.Attr("input_shapes", input_shape_protos)
           .Attr("output_shapes", output_shape_protos)
@@ -634,10 +633,9 @@ Status RegisterModifiedGraphToFunctionLibrary(Graph* sgraph, Graph* graph,
   (*native_segment
         ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
       .set_b(true);
-  //TODO(phillip-kravtsov): set this back to 7
-  if (VLOG_IS_ON(0)) {
-    VLOG(0) << engine_name << " Function_Def ";
-    VLOG(0) << native_segment->DebugString();
+  if (VLOG_IS_ON(7)) {
+    VLOG(7) << engine_name << " Function_Def ";
+    VLOG(7) << native_segment->DebugString();
   }
   VLOG(1) << "Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
@@ -697,16 +695,9 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 // Entry function from optimization pass.
 Status ConvertAfterShapes(const ConversionParams& params) {
   // Sanity checks.
-  if (params.precision_mode == TrtPrecisionMode::INT8) {
-    if (params.use_calibration && !params.use_function_backup) {
-      return errors::InvalidArgument(
-          "Calibration requires enabling fallback to TF function execution.");
-    }
-  } else {
-    if (params.use_calibration) {
-      return errors::InvalidArgument(
-          "Calibration with FP32 or FP16 is not supported.");
-    }
+  if (params.precision_mode != TrtPrecisionMode::INT8 && params.use_calibration) {
+    return errors::InvalidArgument(
+        "Calibration requires enabling fallback to TF function execution.");
   }
 
   // Convert graphdef to graph.
