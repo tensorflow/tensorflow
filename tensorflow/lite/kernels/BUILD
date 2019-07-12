@@ -669,6 +669,7 @@ cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1149,6 +1150,7 @@ cc_test(
     name = "log_softmax_test",
     size = "small",
     srcs = ["log_softmax_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

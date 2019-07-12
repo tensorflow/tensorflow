@@ -40,6 +40,9 @@ namespace tensorflow {
 namespace grappler {
 
 namespace {
+
+const char kScopedAllocatorAttrName[] = "_scoped_allocator";
+
 // Node names often have some kind of name_scope prefix, with slashes,
 // and a _nn numeric suffix.  Returns true if the main part of the node_name
 // matches op_name, i.e. it looks from the name like this node is
@@ -161,27 +164,51 @@ Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
   return Status::OK();
 }
 
-// If `input` to `op` is an Exit node, rewrite the graph to insert an identity
-// op between `input` and `op`.  Return the input to op in `new_input`.
-// `edge_name` gives the name of the edge from `input` to `op`, and
-// `edge_position` is the output position of this edge on `input`.
+// In certain cases, we would like to insert an identity op between `input` and
+// `op` to ensure correctness.  We currently do this in 2 cases: when `input` is
+// Exit node, or when `input` is already marked for allocation with another
+// scoped allocator op.
 //
-// (loop)            is rewritten to      (loop)
+// If `input` is an Exit node, we add an identity to avoid the case when Exit
+// has inputs from different frames.
+//
+// If `input` has kScopedAllocatorAttrName attribute, this means that it was
+// previously marked for allocation with a different scope id.  Since there can
+// be only one scope id per output, we insert an identity between the input and
+// op.  This will ensure that the identity becomes the new input to op, and this
+// identity can be marked with a new scope id different from `input`.
+//
+// If the graph is rewritten, this function will perform the following change:
+//
+//  input                                  input
 //   |                                      |
-//  Exit                                   Exit
-//   |                                      |
-// (collective op)                       Identity
+//   op                                  Identity
 //                                          |
-//                                       (collective op)
-// This avoids the case when Exit has inputs from different frames.
-Status MaybeRewriteExitNode(ScopedAllocatorOptimizer* sa_opti,
-                            int64 invocation_count, GraphDef* graph,
-                            NodeMap* node_map, const DataType& dtype,
-                            NodeDef* input, const string& edge_name,
-                            int edge_position, NodeDef* op,
-                            NodeDef** new_input) {
-  if (!IsExit(*input)) {
+//                                          op
+//
+// This function returns the input to op in `new_input`, and the output index
+// from input to op in `new_output_index`.
+// `edge_name` gives the name of the edge from `input` to `op`, and
+// `output_index` is the output index of this edge on `input`.
+Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
+                         int64 invocation_count, GraphDef* graph,
+                         NodeMap* node_map, const DataType& dtype,
+                         NodeDef* input, const string& edge_name,
+                         int output_index, NodeDef* op, NodeDef** new_input,
+                         int* new_output_index) {
+  bool rewrite = false;
+  if (IsExit(*input)) {
+    rewrite = true;
+  } else {
+    AttrSlice input_attrs = AttrSlice(*input);
+    std::vector<int32> scopes;
+    Status sa_status =
+        GetNodeAttr(input_attrs, kScopedAllocatorAttrName, &scopes);
+    rewrite = sa_status.ok();
+  }
+  if (!rewrite) {
     *new_input = input;
+    *new_output_index = output_index;
     return Status::OK();
   }
 
@@ -197,15 +224,21 @@ Status MaybeRewriteExitNode(ScopedAllocatorOptimizer* sa_opti,
   NodeDefBuilder identity_builder(identity_name, "Identity");
   identity_builder.Device(op->device());
   identity_builder.Attr("T", dtype);
-  // Connect `input` to `identity`.
-  identity_builder.Input(NodeDefBuilder::NodeOut(input->name(), 0, dtype));
+  // Connect output at `output_index` from `input` to `identity`.
+  identity_builder.Input(
+      NodeDefBuilder::NodeOut(input->name(), output_index, dtype));
   LOG_WARNING_AND_RETURN_IF_ERROR(identity_builder.Finalize(identity));
   node_map->AddNode(identity_name, identity);
   node_map->AddOutput(input->name(), identity_name);
-  // Connect `identity` to `op`.
+  // Connect `identity` to `op`.  Both output index at `identity` and input
+  // index at `op` are 0.
   node_map->AddOutput(identity_name, op->name());
-  *op->mutable_input(edge_position) = strings::StrCat(identity_name, ":", 0);
+  *op->mutable_input(0) = strings::StrCat(identity_name, ":", 0);
   *new_input = identity;
+  *new_output_index = 0;
+  VLOG(1) << "Rewrite input " << edge_name << " op " << op->name()
+          << " old output index " << output_index << " with identity "
+          << identity_name << " new output index 0";
   return Status::OK();
 }
 
@@ -219,7 +252,7 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
   VLOG(1) << "Getinputs";
   for (NodeDef* n : ops) {
     NodeDef* inode = nullptr;
-    int position = 0;
+    int output_index = 0;
     VLOG(2) << "for node " << n->name();
     for (const auto& input_name : n->input()) {
       if (!IsControlInput(input_name)) {
@@ -227,16 +260,18 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
           return errors::Internal("Found more than one input for node ",
                                   n->name());
         }
-        ParseNodeName(input_name, &position);
+        ParseNodeName(input_name, &output_index);
         inode = node_map->GetNode(input_name);
         if (inode == nullptr) {
           return errors::Internal("Did not find node ", input_name);
         }
-        VLOG(2) << "inode " << inode->DebugString();
-        LOG_WARNING_AND_RETURN_IF_ERROR(MaybeRewriteExitNode(
+        VLOG(2) << "inode " << inode->DebugString() << " output_index "
+                << output_index;
+        LOG_WARNING_AND_RETURN_IF_ERROR(MaybeRewriteInput(
             sa_opti, invocation_count, graph, node_map, dtype, inode,
-            input_name, position, n, &inode));
-        VLOG(2) << "inode after rewrite " << inode->DebugString();
+            input_name, output_index, n, &inode, &output_index));
+        VLOG(2) << "inode after rewrite " << inode->DebugString()
+                << " output_index " << output_index;
       }
     }
     AttrSlice inode_attrs = AttrSlice(*inode);
@@ -247,7 +282,7 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
       return errors::Internal("ScopedAllocatorOptimizer expected input type ",
                               dtype, " but found ", inode_dtype);
     }
-    inputs->emplace_back(inode, position, n);
+    inputs->emplace_back(inode, output_index, n);
   }
   return Status::OK();
 }
@@ -274,19 +309,24 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
   ~UnaryElementwiseRewriter() override {}
 
   // Return non-OK if any input is already committed to a ScopedAllocator.
+  //
+  // We insert an identity to ensure that inputs are not committed to different
+  // scope ids in `MaybeRewriteInput`, so this function is basically a sanity
+  // check.
   Status CheckExistingScopedAllocator(const std::vector<InputDesc>& inputs) {
     for (const InputDesc& nd : inputs) {
       VLOG(2) << "get attrs for " << nd.from_node_def->name();
       AttrSlice n_attrs = AttrSlice(*nd.from_node_def);
-      int sa_id;
-      Status ss = GetNodeAttr(n_attrs, "sa_id", &sa_id);
+      std::vector<int32> scope_ids;
+      Status ss = GetNodeAttr(n_attrs, kScopedAllocatorAttrName, &scope_ids);
       if (ss.ok()) {
-        LOG(INFO) << "Abandoning PARewriter because input "
-                  << nd.from_node_def->name() << " is already assigned "
-                  << "to ScopedAllocator " << sa_id;
+        LOG(INFO) << "Abandoning ScopedAllocatorOptimizer because input "
+                  << nd.from_node_def->name() << " output " << scope_ids[0]
+                  << " is already assigned to scope_id " << scope_ids[1];
         return errors::Internal(
-            "Abandoning PARewriter because input ", nd.from_node_def->name(),
-            " is already assigned to ScopedAllocator ", sa_id);
+            "Abandoning ScopedAllocatorOptimizer because input ",
+            nd.from_node_def->name(), " output ", scope_ids[0], " is already ",
+            "assigned to scope_id ", scope_ids[1]);
       }
     }
     return Status::OK();
@@ -397,7 +437,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       nd.from_node_def->add_input(strings::StrCat("^", sa_name));
       // This attribute says: allocate output_slot from
       // ScopedAllocator instance sa_id + 1 + i.
-      ScopedAllocatorOptimizer::ExtendNodeAttr("_scoped_allocator",
+      ScopedAllocatorOptimizer::ExtendNodeAttr(kScopedAllocatorAttrName,
                                                {nd.output_slot, sa_id + 1 + i},
                                                nd.from_node_def);
       node_map->AddOutput(sa_name, nd.from_node_def->name());
@@ -535,7 +575,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       // maintained by NodeMap in the loop.
       std::set<NodeDef*> output_nodes = node_map->GetOutputs(old_op->name());
       VLOG(3) << "old_op " << old_op->name() << " had " << output_nodes.size()
-              << " outputs.  Moving them to the PASplit node.";
+              << " outputs.  Moving them to the ScopedAllocatorSplit node.";
       if (VLOG_IS_ON(2)) {
         for (NodeDef* n : output_nodes) {
           VLOG(3) << "    output: " << n->name();
@@ -908,7 +948,8 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
         VLOG(1) << "Processing " << op_name << " set size " << it.second.size();
         Rewriter* rewriter = GetRewriter(op_name);
         if (!rewriter) {
-          LOG(ERROR) << "Failed to find PARewriter for op_name " << op_name;
+          LOG(ERROR) << "Failed to find Rewriter in ScopedAllocatorOptimizer "
+                     << "for op_name " << op_name;
           continue;
         }
         rewriter->SetGraphProperties(graph_properties);

@@ -1653,5 +1653,25 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
   EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
+XLA_TEST_F(ReduceWindowTextTest, R4OnlyDilation) {
+  const string hlo_string = R"(
+HloModule R4OnlyDilation
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R4OnlyDilation {
+  operand = f32[2,2,2,2]{3,2,1,0} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[3,3,3,3]{3,2,1,0}
+    reduce-window(operand, constant),
+    window={size=1x1x1x1 pad=0_0x0_0x0_0x0_0 lhs_dilate=2x2x2x2},
+    to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
 }  // namespace
 }  // namespace xla

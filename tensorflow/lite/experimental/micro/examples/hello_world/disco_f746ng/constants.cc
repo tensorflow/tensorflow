@@ -13,30 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+#include "tensorflow/lite/experimental/micro/examples/hello_world/constants.h"
 
-#include <array>
-#include <cstdint>
-#include <vector>
-
-#include "absl/types/variant.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
-
-namespace tflite {
-namespace gpu {
-namespace gl {
-
-struct UniformParameter {
-  using ValueType = absl::variant<int32_t, int2, int4, uint32_t, uint4, float,
-                                  float2, float4, std::vector<int2>>;
-
-  std::string name;
-  ValueType value;
-};
-
-}  // namespace gl
-}  // namespace gpu
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_UNIFORM_PARAMETER_H_
+// A larger number than the default to make the animation smoother
+const int kInferencesPerCycle = 70;

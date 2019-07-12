@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARED_DEVICE_BUFFER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -50,14 +51,11 @@ namespace xla {
 // same stream causes no additional waiting.
 class BufferDefinitionEvent {
  public:
-  // Creates a new definition event whose event has not yet been triggered.
-  static StatusOr<std::shared_ptr<BufferDefinitionEvent>> Create(
-      se::StreamExecutor* executor);
+  BufferDefinitionEvent() = default;
 
-  explicit BufferDefinitionEvent(se::StreamExecutor* executor);
-
-  // Records the definition event on the tail of 'stream'.
-  void RecordOnStream(se::Stream* stream);
+  // Sets the definition event of the buffer to 'event', which is recorded
+  // on 'stream'. Must be called at most once.
+  void SetDefinitionEvent(EventPool::Handle event, se::Stream* stream);
 
   // Adds synchronization events to 'stream' that wait for this event to be
   // defined on 'stream'. Does nothing if the event is already known to have
@@ -68,7 +66,7 @@ class BufferDefinitionEvent {
   // An event that is triggered when the content of one or more buffers is
   // ready. If this event is nullptr, it is assumed that the buffer's content is
   // always defined.
-  se::Event event_;
+  EventPool::Handle event_;
 
   absl::Mutex mu_;
 

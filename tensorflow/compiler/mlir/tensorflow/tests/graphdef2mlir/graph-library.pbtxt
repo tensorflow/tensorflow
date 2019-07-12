@@ -41,12 +41,10 @@ versions {
 # CHECK-NEXT:    %1 = "_tf.bar0"() {device = "", name = "unnamed1"} : () -> !_tf.control
 # CHECK-NEXT:    return
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
-# CHECK-NEXT:  func @foo0() {
+# CHECK:  func @foo0() {
 # CHECK-NEXT:    %0 = "_tf.bar0"() {device = "", name = "unnamed"} : () -> !_tf.control
 # CHECK-NEXT:    return
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
-# CHECK-NEXT:  func @bar0() {
+# CHECK:  func @bar0() {
 # CHECK-NEXT:    return
 # CHECK-NEXT:  }

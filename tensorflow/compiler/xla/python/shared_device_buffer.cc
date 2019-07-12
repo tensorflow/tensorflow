@@ -21,21 +21,12 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ StatusOr<std::shared_ptr<BufferDefinitionEvent>>
-BufferDefinitionEvent::Create(se::StreamExecutor* executor) {
-  auto event = std::make_shared<BufferDefinitionEvent>(executor);
-  TF_RET_CHECK(event->event_.Init())
-      << "Buffer definition event initialization failed";
-  return event;
-}
-
-BufferDefinitionEvent::BufferDefinitionEvent(se::StreamExecutor* executor)
-    : event_(executor) {}
-
-void BufferDefinitionEvent::RecordOnStream(se::Stream* stream) {
+void BufferDefinitionEvent::SetDefinitionEvent(EventPool::Handle event,
+                                               se::Stream* stream) {
   absl::MutexLock lock(&mu_);
+  CHECK(!event_.event());
+  event_ = std::move(event);
   CHECK(streams_defined_on_.empty());
-  stream->ThenRecordEvent(&event_);
   streams_defined_on_.push_back(stream);
 }
 
@@ -50,7 +41,7 @@ void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(&event_);
+  stream->ThenWaitFor(event_.event());
   streams_defined_on_.push_back(stream);
 }
 

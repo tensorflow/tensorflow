@@ -3219,9 +3219,9 @@ TEST_F(TransposerTest, StridedSliceTransposer) {
 
   auto attrs = ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7);
 
-  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
-  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
-  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2, 1}, {4});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3, 1}, {4});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1, 1}, {4});
 
   auto strided_slice_op = ops::StridedSlice(
       scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
@@ -3309,9 +3309,9 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
   auto attrs =
       ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7).EllipsisMask(0x2);
 
-  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
-  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
-  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2, 1}, {4});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3, 1}, {4});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1, 1}, {4});
 
   auto strided_slice_op = ops::StridedSlice(
       scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
@@ -3342,6 +3342,90 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
   VerifyRegularFaninMatch(updated_stridedslice_node, 1, "begin", 0);
   VerifyRegularFaninMatch(updated_stridedslice_node, 2, "end", 0);
   VerifyRegularFaninMatch(updated_stridedslice_node, 3, "strides", 0);
+
+  auto* z_output_node = context.graph_view->GetNode("z");
+  ASSERT_NE(z_output_node, nullptr);
+  ASSERT_EQ(z_output_node->NumRegularFanins(), 1);
+  VerifyRegularFaninMatch(z_output_node, 0,
+                          updated_stridedslice_node->GetName(), 0);
+}
+
+TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
+#if !GOOGLE_CUDA
+  GTEST_SKIP() << "CUDA is not enabled";
+#endif  // !GOOGLE_CUDA
+  GrapplerItem item;
+  Scope scope = Scope::NewRootScope();
+
+  auto input =
+      ops::RandomUniform(scope.WithOpName("input"),
+                         {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
+  auto filter =
+      ops::RandomUniform(scope.WithOpName("filter"),
+                         {kHeight, kWidth, kDepthIn, kDepthOut}, DT_FLOAT);
+  Output conv2d = ops::Conv2D(
+      scope.WithOpName("conv2d").WithDevice("/device:GPU:0"), input, filter,
+      {1, 2, 4, 1}, "SAME", ops::Conv2D::DataFormat(kSrcFormat));
+
+  auto attrs = ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7);
+
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+
+  auto strided_slice_op = ops::StridedSlice(
+      scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
+      begin, end, strides, attrs);
+  auto z = ops::Identity(scope.WithOpName("z"), strided_slice_op);
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  TransposeContext context;
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
+
+  DefaultLayoutSensitiveOpTransposer conv2d_transposer;
+  auto* c2d = context.graph_view->GetNode("conv2d");
+  ASSERT_NE(c2d, nullptr);
+  TF_ASSERT_OK(conv2d_transposer.TransposeNode(&context, c2d));
+
+  StridedSliceTransposer stridedslice_transposer;
+  auto* stridedslice = context.graph_view->GetNode("stridedslice");
+  ASSERT_NE(stridedslice, nullptr);
+  TF_ASSERT_OK(stridedslice_transposer.TransposeNode(&context, stridedslice));
+
+  auto* input_transpose_node = context.graph_view->GetNode(
+      "stridedslice-0-TransposeNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(input_transpose_node, nullptr);
+
+  auto* begin_node = context.graph_view->GetNode(
+      "stridedslice-1-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(begin_node, nullptr);
+  auto* end_node = context.graph_view->GetNode(
+      "stridedslice-2-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(end_node, nullptr);
+  auto* strides_node = context.graph_view->GetNode(
+      "stridedslice-3-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(strides_node, nullptr);
+
+  auto* updated_stridedslice_node = context.graph_view->GetNode("stridedslice");
+  ASSERT_NE(updated_stridedslice_node, nullptr);
+  ASSERT_EQ(updated_stridedslice_node->NumRegularFanins(), 4);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 0,
+                          "conv2d-0-0-TransposeNCHWToNHWC-LayoutOptimizer", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 1, "begin", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 2, "end", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 3, "strides", 0);
+  const auto* begin_mask_attr =
+      updated_stridedslice_node->GetAttr("begin_mask");
+  ASSERT_NE(begin_mask_attr, nullptr);
+  EXPECT_EQ(begin_mask_attr->i(), 0xB);
+  const auto* end_mask_attr = updated_stridedslice_node->GetAttr("end_mask");
+  ASSERT_NE(end_mask_attr, nullptr);
+  EXPECT_EQ(end_mask_attr->i(), 0x7);
+
+  auto* output_transpose_node = context.graph_view->GetNode(
+      "stridedslice-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+  ASSERT_EQ(output_transpose_node, nullptr);
 
   auto* z_output_node = context.graph_view->GetNode("z");
   ASSERT_NE(z_output_node, nullptr);

@@ -97,6 +97,7 @@ tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 class AutotuneAlgorithm(enum.Enum):
   HILL_CLIMB = 0
+  GRADIENT_DESCENT = 1
 
 
 @tf_export("data.Dataset", v1=[])

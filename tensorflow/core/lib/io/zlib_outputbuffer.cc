@@ -190,6 +190,17 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
   return Status::OK();
 }
 
+#if defined(PLATFORM_GOOGLE)
+Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
+  absl::CordReader reader(cord);
+  absl::string_view fragment;
+  while (reader.ReadFragment(&fragment)) {
+    TF_RETURN_IF_ERROR(Append(fragment));
+  }
+  return Status::OK();
+}
+#endif
+
 Status ZlibOutputBuffer::Flush() {
   TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
   TF_RETURN_IF_ERROR(FlushOutputBufferToFile());

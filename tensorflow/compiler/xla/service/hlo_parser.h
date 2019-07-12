@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
-#include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -44,13 +43,6 @@ StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
 // ParseAndReturnVerifiedModule() instead!
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str);
-
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    absl::string_view str, const HloModuleConfig& config);
-
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // builds the HloModule in place at the given module pointer. 'module' must

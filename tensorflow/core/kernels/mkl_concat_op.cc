@@ -247,7 +247,9 @@ class MklConcatOp : public OpKernel {
       ConstMatrixVector;
 
   explicit MklConcatOp(OpKernelConstruction* c)
-      : OpKernel(c), eigen_concat_op_(c) {}
+      : OpKernel(c),
+        eigen_concat_op_(c),
+        data_format_(TensorFormat::FORMAT_NCHW) {}
 
   void Compute(OpKernelContext* context) override {
     try {

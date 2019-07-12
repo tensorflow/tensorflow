@@ -275,18 +275,18 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
-  auto thenAttr = getAttrOfType<FunctionAttr>("then_branch");
+  auto thenAttr = getAttrOfType<SymbolRefAttr>("then_branch");
   if (!thenAttr) return emitOpError("requires then_branch attribute");
 
-  auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
+  auto elseAttr = getAttrOfType<SymbolRefAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto module = getParentOfType<Module>();
-  auto thenFn = module.getNamedFunction(thenAttr.getValue());
+  auto module = getParentOfType<ModuleOp>();
+  auto thenFn = module.lookupSymbol<FuncOp>(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
            << thenAttr;
-  auto elseFn = module.getNamedFunction(elseAttr.getValue());
+  auto elseFn = module.lookupSymbol<FuncOp>(elseAttr.getValue());
   if (!elseFn)
     return emitOpError("else_branch refers to an undefined function : ")
            << elseAttr;
@@ -627,9 +627,10 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SoftmaxOp op) {
-  if (!IsOfRankOrUnranked(op.logits(), 2))
-    return op.emitOpError("requires operand to be 2D tensor");
-
+  if (!IsOfRankOrUnranked(op.logits(), 1) &&
+      !IsOfRankOrUnranked(op.logits(), 2)) {
+    return op.emitOpError("requires operand to be 1D/2D tensor");
+  }
   return success();
 }
 
@@ -727,20 +728,20 @@ void TruncateDivOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 LogicalResult WhileOp::verify() {
-  auto condAttr = getAttrOfType<FunctionAttr>("cond");
+  auto condAttr = getAttrOfType<SymbolRefAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto module = getParentOfType<Module>();
-  auto condFn = module.getNamedFunction(condAttr.getValue());
+  auto module = getParentOfType<ModuleOp>();
+  auto condFn = module.lookupSymbol<FuncOp>(condAttr.getValue());
   auto condFuncType = condFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
     return emitOpError("requires cond function to have exactly one result");
 
-  auto bodyAttr = getAttrOfType<FunctionAttr>("body");
+  auto bodyAttr = getAttrOfType<SymbolRefAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
-  auto bodyFn = module.getNamedFunction(bodyAttr.getValue());
+  auto bodyFn = module.lookupSymbol<FuncOp>(bodyAttr.getValue());
   auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(getOperandTypes());

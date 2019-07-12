@@ -3588,7 +3588,7 @@ def where(condition, x=None, y=None, name=None):
 
   If both non-None, `x` and `y` must have the same shape.
   The `condition` tensor must be a scalar if `x` and `y` are scalar.
-  If `x` and `y` are vectors of higher rank, then `condition` must be either a
+  If `x` and `y` are tensors of higher rank, then `condition` must be either a
   vector with size matching the first dimension of `x`, or must have the same
   shape as `x`.
 
@@ -3807,7 +3807,7 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if compat.forward_compatible(2019, 7, 10):
+  if compat.forward_compatible(2019, 8, 10):
     if axis is None:
       axis = batch_dims
     if axis != 0:

@@ -462,9 +462,16 @@ cc_library(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "tf_tfl_translate_main",
+    srcs = [
+        "tf_tfl_translate.cc",
+    ],
+)
+
 tf_cc_binary(
     name = "tf_tfl_translate",
-    srcs = ["tf_tfl_translate.cc"],
+    srcs = [":tf_tfl_translate_main"],
     deps = [
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",

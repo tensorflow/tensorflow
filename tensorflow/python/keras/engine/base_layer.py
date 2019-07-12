@@ -37,6 +37,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -47,7 +48,6 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine import casting_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
@@ -67,11 +67,11 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
-from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -697,10 +697,7 @@ class Layer(module.Module):
 
           if not self.dynamic:
             try:
-              # We do not directly pass self.weights, because we do not want
-              # to include weights of any layers in self.layers.
-              with casting_utils.autocast_context_manager(
-                  self._trainable_weights + self._non_trainable_weights,
+              with base_layer_utils.autocast_context_manager(
                   input_list,
                   self._mixed_precision_policy.should_cast_variables):
                 # Add auto_control_deps in V2 when they are not already added by
@@ -756,11 +753,8 @@ class Layer(module.Module):
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          # We do not directly pass self.weights, because we do not want
-          # to include weights of any layers in self.layers.
-          with casting_utils.autocast_context_manager(
-              self._trainable_weights + self._non_trainable_weights, input_list,
-              self._mixed_precision_policy.should_cast_variables):
+          with base_layer_utils.autocast_context_manager(
+              input_list, self._mixed_precision_policy.should_cast_variables):
             outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -1503,7 +1497,7 @@ class Layer(module.Module):
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
         with tf_utils.maybe_init_scope(self):
-          self.build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -2401,21 +2395,30 @@ class TensorFlowOpLayer(Layer):
       return self._defun_call(inputs)
     return self._make_op(inputs)
 
+  def _make_node_def(self, graph):
+    node_def = node_def_pb2.NodeDef()
+    node_def.CopyFrom(self.node_def)
+    node_def.name = graph.unique_name(node_def.name)
+    return node_def
+
   def _make_op(self, inputs):
     inputs = nest.flatten(inputs)
     graph = inputs[0].graph
+    node_def = self._make_node_def(graph)
     with graph.as_default():
       for index, constant in self.constants.items():
-        constant = ops.convert_to_tensor(constant)
+        # Recreate constant in graph to add distribution context.
+        value = tensor_util.constant_value(constant)
+        if value is not None:
+          constant = constant_op.constant(value, name=node_def.input[index])
         inputs.insert(index, constant)
-
-      self.node_def.name = graph.unique_name(self.node_def.name)
       # Check for case where first input should be a list of Tensors.
-      if 'N' in self.node_def.attr:
-        num_tensors = self.node_def.attr['N'].i
+      if 'N' in node_def.attr:
+        num_tensors = node_def.attr['N'].i
         inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
-      c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
+      c_op = ops._create_c_op(graph, node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
+      op._control_flow_post_processing()
 
       # Record the gradient because custom-made ops don't go through the
       # code-gen'd eager call path
@@ -2426,8 +2429,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs,
-                              op.name)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs, op.name)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

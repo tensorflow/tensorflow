@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -260,12 +261,14 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
+  auto remote_mgr =
+      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true);
 
   return ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
       std::move(remote_eager_workers), std::move(remote_device_mgr),
       remote_workers, context_id, r, device_mgr, keep_alive_secs,
-      worker_session->cluster_flr.get());
+      worker_session->cluster_flr.get(), std::move(remote_mgr));
 #undef LOG_AND_RETURN_IF_ERROR
 }
 #endif  // !IS_MOBILE_PLATFORM

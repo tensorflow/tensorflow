@@ -89,7 +89,7 @@ std::vector<GraphOptimizationPass*> GraphOptPass::FindPassIds() {
 }
 
 void GraphOptPass::runOnModule() {
-  mlir::Module module_in = getModule();
+  mlir::ModuleOp module_in = getModule();
   mlir::MLIRContext& ctx = getContext();
 
   // Convert MLIR to Graph

@@ -313,7 +313,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob)
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob))
       final_count = 0
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
@@ -340,7 +340,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -364,7 +364,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
         value = self.evaluate(dropout)
@@ -409,7 +409,9 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     dropout_x = nn_ops.dropout(
-        x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
+        x,
+        rate=(1 - keep_prob),
+        noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
   def testPartialShapedDropout(self):
@@ -419,7 +421,7 @@ class DropoutTest(test_lib.TestCase):
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
       # Set noise_shape=[None, 1] which means [x_dim, 1].
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[None, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -478,22 +480,23 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
+      _ = nn_ops.dropout(
+          t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim + 10])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim, 5])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim + 3])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim + 3])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim])
     # test that broadcasting proceeds
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, 1])
 
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
-    y = nn_ops.dropout(x, keep_prob=1)
+    y = nn_ops.dropout(x, rate=0)
     self.assertTrue(x is y)
 
     y = nn_ops.dropout_v2(x, rate=0)
@@ -1291,6 +1294,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1301,6 +1306,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1355,6 +1362,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1365,6 +1374,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2

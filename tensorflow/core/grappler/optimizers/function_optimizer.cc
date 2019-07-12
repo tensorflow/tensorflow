@@ -1190,19 +1190,20 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
     // `PartitionedCall` is a TF-2.0 function call mechanism for multi-device
     // functions:
-    // a) Function can be multi-device, and we can't override device placements.
+    // a) Function can be multi-device.
     // b) Automatic control dependencies tracking guarantees that all function
     //    side-effectful nodes will have a path to one of the control outputs.
     //    Control outputs and control edges between side-effectful (stateful)
     //    nodes are used to explicitly mark the nodes that must execute, and to
     //    define their execution order.
     if (n->IsPartitionedCall() || force_inline_as_multi_device) {
-      inline_options.override_device = false;
-      inline_options.initialize_empty_device = true;
       inline_options.output_control_src = OutputControlSource::kControlOutputs;
+      inline_options.inlined_function_body_placer =
+          InlinedFunctionBodyPlacer::MultiDevice();
     } else {
-      inline_options.override_device = true;
       inline_options.output_control_src = OutputControlSource::kDataOutputs;
+      inline_options.inlined_function_body_placer =
+          InlinedFunctionBodyPlacer::SingleDevice();
     }
 
     if (fetch_nodes.contains(n->name())) {

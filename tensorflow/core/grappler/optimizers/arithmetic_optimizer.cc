@@ -190,6 +190,13 @@ bool GetElementUnexhaustive(const Tensor& t, int i, const std::set<int>& dtypes,
   }
 }
 
+bool NodeIsOnCpu(const NodeDef& node) {
+  string task;
+  string device;
+  return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
+         absl::StrContains(device, DEVICE_CPU);
+}
+
 // Graph optimizer context extension specific to ArithmeticOptimizer.
 struct ArithmeticOptimizerContext {
   explicit ArithmeticOptimizerContext(SetVector<NodeDef*>* nodes_to_simplify)
@@ -2361,13 +2368,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
     const DataType type = GetDataTypeFromAttr(*node, "T");
     bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
 
-    string task;
-    string device;
-    bool is_on_cpu =
-        DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-        absl::StrContains(device, DEVICE_CPU);
-
-    if (!is_complex || is_on_cpu) {
+    if (!is_complex || NodeIsOnCpu(*node)) {
       NodeDef* new_square_node = AddCopyNode(optimized_node_name, node);
       new_square_node->set_op("Square");
       for (int i = 1; i < new_square_node->input_size(); ++i) {
@@ -2528,6 +2529,30 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
       node->set_input(1, AsControlDependency(y->name()));
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
+    } else if (curr == complex128(3, 0)) {
+      // TODO(courbet): Use 'Cube' when it's added to TF ops.
+      if (NodeIsOnCpu(*node)) {
+        // We create an inner square node: inner_square = square(x)
+        const NodeScopeAndName scope_and_name =
+            ParseNodeScopeAndName(node->name());
+        const string inner_square_name =
+            OptimizedNodeName(scope_and_name, "_inner");
+        NodeDef* inner_square_node = ctx().node_map->GetNode(inner_square_name);
+        if (inner_square_node == nullptr) {
+          inner_square_node = AddCopyNode(inner_square_name, node);
+          inner_square_node->set_op("Square");
+          inner_square_node->mutable_input()->RemoveLast();
+        }
+        ctx().node_map->AddOutput(x->name(), inner_square_node->name());
+        // We modify `node`: node = mul(x, inner_square);
+        node->set_op("Mul");
+        node->set_input(1, inner_square_node->name());
+        node->add_input(AsControlDependency(y->name()));
+
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(inner_square_node);
+        AddToOptimizationQueue(y);
+      }
     } else if (curr == complex128(1, 0) &&
                ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
       // Pow could be used to broadcast, so make sure the shapes of the two
@@ -2983,17 +3008,6 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
     }
     return !(IsDrivenByControlDependency(node) ||
              DrivesControlDependency(node));
-  }
-
-  // UnaryOpsComposition is defined only for CPU.
-  bool NodeIsOnCpu(const NodeDef& node) const {
-    using absl::StartsWith;
-
-    string task;
-    string device;
-
-    return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
-           StartsWith(device, DEVICE_CPU);
   }
 
   bool NodeIsAlreadyFused(const NodeDef& node) const {

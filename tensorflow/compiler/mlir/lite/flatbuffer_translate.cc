@@ -77,9 +77,9 @@ using llvm::Twine;
 using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::Function;
+using mlir::FuncOp;
 using mlir::MLIRContext;
-using mlir::Module;
+using mlir::ModuleOp;
 using mlir::NoneType;
 using mlir::openOutputFile;
 using mlir::Operation;
@@ -167,6 +167,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_STRING;
     case mlir::TF::TensorFlowTypes::COMPLEX64:
       return tflite::TensorType_COMPLEX64;
+    case mlir::TF::TensorFlowTypes::UINT8:
+      return tflite::TensorType_UINT8;
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {
@@ -243,18 +245,18 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
 // TODO(hinsu): Now that translation is done by making a single pass over the
 // MLIR module, consider inlining these validation checks at the place where
 // these invariants are assumed instead of checking upfront.
-static bool IsValidTFLiteMlirModule(Module module) {
+static bool IsValidTFLiteMlirModule(ModuleOp module) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
-  Function main_fn = module.getNamedFunction("main");
+  FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
   if (!main_fn) {
     return emitError(UnknownLoc::get(context),
                      "should have a function named 'main'"),
            false;
   }
 
-  for (auto fn : module.getOps<Function>()) {
+  for (auto fn : module.getOps<FuncOp>()) {
     if (fn.getBlocks().size() != 1) {
       return fn.emitError("should have exactly one basic block"), false;
     }
@@ -323,14 +325,14 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns llvm::None on unsupported, invalid inputs or
   // internal error.
-  static Optional<std::string> Translate(Module module,
+  static Optional<std::string> Translate(ModuleOp module,
                                          bool emit_builtin_tflite_ops,
                                          bool emit_select_tf_ops,
                                          bool emit_custom_ops);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(Module module, bool emit_builtin_tflite_ops,
+  explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops)
       : module_(module), builder_(kInitialBufferSize) {
     // The first buffer must be empty according to the schema definition.
@@ -391,11 +393,11 @@ class Translator {
       Operation* inst, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(Function fn);
+  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
-  void InitializeNamesFromAttribute(Function fn);
+  void InitializeNamesFromAttribute(FuncOp fn);
 
   // Returns a unique name for `op`.
   std::string UniqueName(mlir::Operation* op);
@@ -403,7 +405,7 @@ class Translator {
   // Returns a unique name starting with a given prefix.
   std::string UniqueName(llvm::StringRef prefix);
 
-  Module module_;
+  ModuleOp module_;
 
   flatbuffers::FlatBufferBuilder builder_;
   BufferOffset<tflite::Buffer> empty_buffer_;
@@ -449,10 +451,16 @@ std::string Translator::GetName(Operation* inst) {
 }
 
 std::string Translator::UniqueName(llvm::StringRef prefix) {
+  // Keep incrementing the counter until we find a unique name.
   std::string name = prefix;
-  auto& val = name_to_count_[name];
-  if (val) name = (prefix + llvm::Twine(val)).str();
-  ++val;
+  int64_t& prefix_count = name_to_count_[name];
+  int64_t val = prefix_count;
+  while (val != 0) {
+    name = (prefix + llvm::Twine(prefix_count)).str();
+    ++prefix_count;
+    val = name_to_count_[name];
+  }
+  name_to_count_[name] = 1;
   return name;
 }
 
@@ -781,7 +789,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
          llvm::None;
 }
 
-void Translator::InitializeNamesFromAttribute(Function fn) {
+void Translator::InitializeNamesFromAttribute(FuncOp fn) {
   auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
@@ -794,8 +802,10 @@ void Translator::InitializeNamesFromAttribute(Function fn) {
       fn.emitWarning() << "invalid entry function specification";
       return;
     }
-    for (auto it : llvm::enumerate(fn.getArguments()))
+    for (auto it : llvm::enumerate(fn.getArguments())) {
       op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
+      ++name_to_count_[input_names[it.index()].str()];
+    }
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
@@ -813,18 +823,19 @@ void Translator::InitializeNamesFromAttribute(Function fn) {
       // ensure the name that will be assigned to the buffer is the same, or
       // insert an op so that we can have a buffer named such. This cannot
       // currently happen due to pseudo_input nodes.
-      if (auto op = it.value()->getDefiningOp())
+      if (auto op = it.value()->getDefiningOp()) {
         op_to_name_[op] = output_names[it.index()];
-      else
+        name_to_count_[output_names[it.index()].str()] = 1;
+      } else {
         fn.emitWarning() << "output is not due to an op and '"
                          << output_names[it.index()]
                          << "' may not be a named output";
+      }
     }
   }
 }
 
-Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
-    Function fn) {
+Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   InitializeNamesFromAttribute(fn);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
@@ -927,7 +938,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
-Optional<std::string> Translator::Translate(Module module,
+Optional<std::string> Translator::Translate(ModuleOp module,
                                             bool emit_builtin_tflite_ops,
                                             bool emit_select_tf_ops,
                                             bool emit_custom_ops) {
@@ -941,14 +952,14 @@ Optional<std::string> Translator::TranslateInternal() {
   // Create a list of functions in the module with main function being the
   // first function in the list. This is required as the first subgraph in the
   // model is entry point for the model.
-  std::vector<Function> functions;
+  std::vector<FuncOp> functions;
   functions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
-  Function main_fn = module_.getNamedFunction("main");
+  FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   functions.push_back(main_fn);
-  for (auto fn : module_.getOps<Function>()) {
+  for (auto fn : module_.getOps<FuncOp>()) {
     if (fn == main_fn) continue;
 
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
@@ -992,7 +1003,7 @@ Optional<std::string> Translator::TranslateInternal() {
 // * Ops with variable tensors
 //
 bool tflite::MlirToFlatBufferTranslateFunction(
-    Module module, std::string* serialized_flatbuffer,
+    ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
     bool emit_custom_ops) {
   auto maybe_translated = Translator::Translate(
@@ -1003,7 +1014,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
-    Module module, llvm::StringRef filename) {
+    ModuleOp module, llvm::StringRef filename) {
   std::string serialized_flatbuffer;
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,

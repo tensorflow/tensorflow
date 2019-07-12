@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -34,11 +35,11 @@ struct ParameterComparator {
     const T* v = absl::get_if<T>(&p.value);
     return v && t == *v;
   }
-  const UniformParameter& p;
+  const Variable& p;
 };
 
 // partially equal
-bool operator==(const UniformParameter& l, const UniformParameter& r) {
+bool operator==(const Variable& l, const Variable& r) {
   return l.name == r.name && absl::visit(ParameterComparator{l}, r.value);
 }
 
@@ -83,8 +84,8 @@ TEST(Preprocessor, ReadFromBufferByIndex) {
   EXPECT_EQ(accessor.Rewrite("obj[x,y + 5,z]", &result),
             RewriteStatus::SUCCESS);
   EXPECT_THAT(parameters.GetUniformParameters(),
-              testing::UnorderedElementsAre(UniformParameter{"obj_w", 1},
-                                            UniformParameter{"obj_h", 2}));
+              testing::UnorderedElementsAre(Variable{"obj_w", 1},
+                                            Variable{"obj_h", 2}));
   ASSERT_EQ(result, "obj.data[x + $obj_w$ * (y + 5 + $obj_h$ * (z))]");
 }
 
@@ -132,8 +133,8 @@ TEST(Preprocessor, WriteToBufferByIndex) {
   EXPECT_EQ(accessor.Rewrite(" obj[i,j,k]  =value", &result),
             RewriteStatus::SUCCESS);
   EXPECT_THAT(parameters.GetUniformParameters(),
-              testing::UnorderedElementsAre(UniformParameter{"obj_w", 1},
-                                            UniformParameter{"obj_h", 2}));
+              testing::UnorderedElementsAre(Variable{"obj_w", 1},
+                                            Variable{"obj_h", 2}));
   ASSERT_EQ(result, "obj.data[i + $obj_w$ * (j + $obj_h$ * (k))] = value");
 }
 

@@ -29,10 +29,16 @@ _toco_python = LazyLoader(
 del LazyLoader
 
 
-def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str):
+def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
+                         debug_info_str, enable_mlir_converter):
   """Wraps TocoConvert with lazy loader."""
-  return _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                  input_data_str)
+  return _toco_python.TocoConvert(
+      model_flags_str,
+      toco_flags_str,
+      input_data_str,
+      False,  # extended_return
+      debug_info_str,
+      enable_mlir_converter)
 
 
 def wrapped_get_potentially_supported_ops():

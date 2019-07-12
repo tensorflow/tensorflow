@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <sys/types.h>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,7 +37,7 @@ namespace gl {
 namespace {
 
 struct ProgramDesc {
-  std::vector<UniformParameter> parameters;
+  std::vector<Variable> parameters;
   std::vector<Object> objects;
   uint3 workgroup_size;
   uint3 num_workgroups;
@@ -49,7 +50,7 @@ struct Handler : public DeserializationHandler {
     return OkStatus();
   }
 
-  Status OnProgram(const std::vector<UniformParameter>& parameters,
+  Status OnProgram(const std::vector<Variable>& parameters,
                    const std::vector<Object>& objects,
                    const uint3& workgroup_size, const uint3& num_workgroups,
                    size_t shader_index) final {
@@ -107,10 +108,10 @@ struct ParameterComparator {
     auto v = absl::get<float4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
-  UniformParameter a;
+  Variable a;
 };
 
-bool Eq(const UniformParameter& a, const UniformParameter& b) {
+bool Eq(const Variable& a, const Variable& b) {
   return a.name == b.name && absl::visit(ParameterComparator{a}, b.value);
 }
 
@@ -138,17 +139,17 @@ TEST(Smoke, Read) {
   builder.AddShader(shader1);
   builder.AddShader(shader2);
 
-  std::vector<UniformParameter> parameters;
-  parameters.push_back(UniformParameter{"1", int32_t(1)});
-  parameters.push_back(UniformParameter{"2", int2(1, 2)});
-  parameters.push_back(UniformParameter{"3", int4(1, 2, 3, 4)});
-  parameters.push_back(UniformParameter{"4", uint32_t(10)});
-  parameters.push_back(UniformParameter{"5", uint4(10, 20, 30, 40)});
-  parameters.push_back(UniformParameter{"6", -2.0f});
-  parameters.push_back(UniformParameter{"7", float2(1, -1)});
-  parameters.push_back(UniformParameter{"8", float4(1, -1, 2, -2)});
-  parameters.push_back(UniformParameter{
-      "9", std::vector<int2>{int2(1, 2), int2(3, 4), int2(5, 6)}});
+  std::vector<Variable> parameters;
+  parameters.push_back({"1", int32_t(1)});
+  parameters.push_back({"2", int2(1, 2)});
+  parameters.push_back({"3", int4(1, 2, 3, 4)});
+  parameters.push_back({"4", uint32_t(10)});
+  parameters.push_back({"5", uint4(10, 20, 30, 40)});
+  parameters.push_back({"6", -2.0f});
+  parameters.push_back({"7", float2(1, -1)});
+  parameters.push_back({"8", float4(1, -1, 2, -2)});
+  parameters.push_back(
+      {"9", std::vector<int2>{int2(1, 2), int2(3, 4), int2(5, 6)}});
 
   std::vector<Object> objects;
   objects.push_back(MakeReadonlyBuffer(std::vector<float>{1, 2, 3, 4}));

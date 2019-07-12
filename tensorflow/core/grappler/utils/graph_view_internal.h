@@ -364,7 +364,6 @@ struct NodeViewDiff {
 
   GraphViewT* graph_view;
   int node_index;
-  bool removed = false;
   string name;
   bool update_name = false;
   string op;
@@ -392,12 +391,6 @@ struct NodeViewDiff {
   absl::flat_hash_set<string> attrs_to_remove;
   AttrValueMap processed_attrs;
 };
-
-// Sets node for removal via diff.
-template <typename GraphViewT>
-inline void SetRemoved(NodeViewDiff<GraphViewT>* diff, bool removed) {
-  diff->removed = removed;
-}
 
 // Updates node name. If `name` is the same as the name in the original node,
 // the field will be cleared in the diff.
@@ -629,8 +622,8 @@ template <typename GraphViewT>
 inline bool IsEmpty(NodeViewDiff<GraphViewT>* diff) {
   ResizeByTrimmingEndForValue(&diff->regular_inputs_to_remove, false);
   ResizeByTrimmingEndForValue(&diff->regular_inputs_to_add, EmptyTensorId());
-  return !diff->removed && !diff->update_name && !diff->update_op &&
-         !diff->update_device && diff->regular_inputs_to_add.empty() &&
+  return !diff->update_name && !diff->update_op && !diff->update_device &&
+         diff->regular_inputs_to_add.empty() &&
          diff->regular_inputs_to_update.empty() &&
          diff->regular_inputs_to_remove.empty() &&
          diff->controlling_inputs_to_add.empty() &&
@@ -641,7 +634,6 @@ inline bool IsEmpty(NodeViewDiff<GraphViewT>* diff) {
 // Resets and clears existing diff.
 template <typename GraphViewT>
 inline void Reset(NodeViewDiff<GraphViewT>* diff) {
-  diff->removed = false;
   diff->name.clear();
   diff->update_name = false;
   diff->op.clear();

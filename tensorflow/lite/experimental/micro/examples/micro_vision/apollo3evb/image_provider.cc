@@ -75,11 +75,6 @@ static hm01b0_cfg_t s_HM01B0Cfg = {
   pfnGpioIsr : NULL,
 };
 
-static constexpr int kDebugRowLenElements = 16;
-// Each byte takes two characters plus a space, and the offset takes an
-// additional 8 characters plus a space.
-static constexpr int kDebugLineLenBytes = kDebugRowLenElements * 3 + 9;
-
 bool g_is_camera_initialized = false;
 
 void boost_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {

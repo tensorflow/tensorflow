@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
@@ -98,7 +99,7 @@ int main(int argc, char** argv) {
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.
-  mlir::Function main = module->getNamedFunction("main");
+  mlir::FuncOp main = module->lookupSymbol<mlir::FuncOp>("main");
   QCHECK(main) << "No 'main' function specified.";
   if (main.getType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";

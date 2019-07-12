@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_CONSTANTS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_CONSTANTS_H_
+#include "tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h"
 
-namespace xla {
-namespace gpu {
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
-// The triple that represents our target.
-constexpr char kTargetTriple[] = "nvptx64-nvidia-cuda";
+TF_LITE_MICRO_TESTS_BEGIN
 
-// The data layout of the emitted module. Copied from computeDataLayout in
-// NVPTXTargetMachine.cpp.
-constexpr char kDataLayout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+TF_LITE_MICRO_TEST(TestCallability) {
+  tflite::MicroErrorReporter micro_error_reporter;
+  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-}  // namespace gpu
-}  // namespace xla
+  // This will have external side-effects (like printing to the debug console
+  // or lighting an LED) that are hard to observe, so the most we can do is
+  // make sure the call doesn't crash.
+  HandleOutput(error_reporter, 0, 0);
+}
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_CONSTANTS_H_
+TF_LITE_MICRO_TESTS_END

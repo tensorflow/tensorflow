@@ -1008,7 +1008,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
       with self.assertRaisesRegexp(ValueError,
-                                   'Number of steps could not be infered'):
+                                   'Number of steps could not be inferred'):
         model.fit(dataset, epochs=1)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())

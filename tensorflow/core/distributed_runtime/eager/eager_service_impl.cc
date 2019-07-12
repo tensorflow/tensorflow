@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -142,9 +143,12 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return s;
   }
 
+  auto remote_mgr =
+      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false);
   s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
-      remote_workers, request->context_id(), std::move(rendezvous_creator));
+      remote_workers, request->context_id(), std::move(rendezvous_creator),
+      std::move(remote_mgr));
   if (!s.ok()) {
     delete ctx;
     return s;
@@ -209,9 +213,9 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                profiler::TraceMeLevel::kVerbose);
     for (const auto& remote_handle : operation.inputs()) {
       tensorflow::TensorHandle* handle;
-      TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
-          RemoteTensorHandleInternal(remote_handle), &handle));
-
+      TF_RETURN_IF_ERROR(
+          server_context->Context()->RemoteMgr()->DeserializeRemoteTensorHandle(
+              remote_handle, &handle));
       op->AddInput(handle);
     }
   }
@@ -225,10 +229,13 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   TF_RETURN_IF_ERROR(GetNumRetvals(server_context->Context(), operation.name(),
                                    operation.attrs(), &num_retvals));
 
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals;
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
+      num_retvals);
   TF_RETURN_IF_ERROR(EagerExecute(op.get(), &retvals, &num_retvals));
+  retvals.resize(num_retvals);
 
-  server_context->AddOperationOutputs(retvals, operation.id());
+  server_context->Context()->RemoteMgr()->AddOperationOutputs(retvals,
+                                                              operation.id());
 
   for (auto* handle : retvals) {
     TF_RETURN_IF_ERROR(TensorHandleShape(handle, queue_response->add_shape()));
@@ -253,7 +260,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
     if (item.has_operation()) {
       TF_RETURN_IF_ERROR(ExecuteOp(item.operation(), context, queue_response));
     } else {
-      TF_RETURN_IF_ERROR(context->DeleteTensorHandle(
+      TF_RETURN_IF_ERROR(context->Context()->RemoteMgr()->DeleteTensorHandle(
           RemoteTensorHandleInternal(item.handle_to_decref())));
     }
   }
@@ -341,7 +348,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     tensor_handle->Unref();
   }
 
-  context->AddOperationOutputs(tensors, request->op_id());
+  context->Context()->RemoteMgr()->AddOperationOutputs(tensors,
+                                                       request->op_id());
 
   return Status::OK();
 }
