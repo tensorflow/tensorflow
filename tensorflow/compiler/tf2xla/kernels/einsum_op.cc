@@ -49,6 +49,7 @@ class EinsumOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaEinsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
+REGISTER_XLA_OP(Name("Einsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
 
 }  // namespace
 }  // namespace tensorflow
