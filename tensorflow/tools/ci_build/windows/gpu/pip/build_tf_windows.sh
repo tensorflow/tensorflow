@@ -124,6 +124,9 @@ fi
 
 run_configure_for_gpu_build
 
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_package_name_is_a_function=false"
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_remove_native_http_archive=false"
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_strict_action_env=false"
 bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
   ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package || exit $?
@@ -151,7 +154,11 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-bazel test --announce_rc --config=opt -k --test_output=errors \
+bazel test \
+  --incompatible_package_name_is_a_function=false \
+  --incompatible_remove_native_http_archive=false \
+  --incompatible_strict_action_env=false \
+  --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \

@@ -32,7 +32,8 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 
 RELEASE_PATCH_FLAGS = (
   " --incompatible_package_name_is_a_function=false"
-  " --incompatible_remove_native_http_archive=false")
+  " --incompatible_remove_native_http_archive=false"
+  " --incompatible_strict_action_env=false")
 
 
 def GetBuild(dir_base):

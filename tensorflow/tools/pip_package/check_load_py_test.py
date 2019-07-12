@@ -49,6 +49,7 @@ def main():
         'bazel', 'query',
         "--incompatible_package_name_is_a_function=false",
         "--incompatible_remove_native_http_archive=false",
+        "--incompatible_strict_action_env=false",
         'kind(py_test, //tensorflow/contrib/... + '
         '//tensorflow/python/... - '
         '//tensorflow/contrib/tensorboard/...)']).strip()

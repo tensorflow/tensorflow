@@ -122,6 +122,9 @@ fi
 
 run_configure_for_cpu_build
 
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_package_name_is_a_function=false"
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_remove_native_http_archive=false"
+EXTRA_BUILD_FLAGS="${EXTRA_BUILD_FLAGS} --incompatible_strict_action_env=false"
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package \
   --incompatible_remove_native_http_archive=false || exit $?
@@ -148,7 +151,11 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test --announce_rc --config=opt -k --test_output=errors \
+bazel test \
+  --incompatible_package_name_is_a_function=false \
+  --incompatible_remove_native_http_archive=false \
+  --incompatible_strict_action_env=false \
+  --announce_rc --config=opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \
