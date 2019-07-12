@@ -973,18 +973,6 @@ tf_cc_test(
 )
 
 tf_kernel_library(
-    name = "reader_dataset_ops",
-    srcs = ["reader_dataset_ops.cc"],
-    deps = [
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "text_line_dataset_op",
     srcs = ["text_line_dataset_op.cc"],
     hdrs = ["text_line_dataset_op.h"],
@@ -1040,6 +1028,39 @@ tf_cc_test(
         ":dataset_utils",
         ":fixed_length_record_dataset_op",
         ":iterator_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "tf_record_dataset_op",
+    srcs = ["tf_record_dataset_op.cc"],
+    hdrs = ["tf_record_dataset_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_record_dataset_op_test",
+    size = "small",
+    srcs = ["tf_record_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":tf_record_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1242,7 +1263,6 @@ tf_kernel_library(
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
         ":range_dataset_op",
-        ":reader_dataset_ops",
         ":repeat_dataset_op",
         ":shard_dataset_op",
         ":shuffle_dataset_op",
@@ -1252,6 +1272,7 @@ tf_kernel_library(
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
         ":text_line_dataset_op",
+        ":tf_record_dataset_op",
         ":window_dataset_op",
         ":zip_dataset_op",
         "//tensorflow/core:array_ops_op_lib",
