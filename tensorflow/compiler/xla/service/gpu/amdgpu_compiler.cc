@@ -194,7 +194,7 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-AMDGPUCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
+AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version,
                                     se::StreamExecutor* stream_exec) {
@@ -217,7 +217,7 @@ AMDGPUCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
     user_post_optimization_hook_(*llvm_module);
   }
 
-  return std::pair<std::string, std::vector<uint8>>("", hsaco);
+  return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));
 }
 
 }  // namespace gpu

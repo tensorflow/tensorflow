@@ -79,8 +79,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
 
   virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
-  CompileTargetBinary(std::unique_ptr<HloModule> hlo_module,
-                      llvm::Module* llvm_module, GpuVersion gpu_version,
+  CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
+                      GpuVersion gpu_version,
                       se::StreamExecutor* stream_exec) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);

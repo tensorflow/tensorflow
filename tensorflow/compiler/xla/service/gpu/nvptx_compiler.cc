@@ -336,7 +336,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
+NVPTXCompiler::CompileTargetBinary(const HloModule* module,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec) {
@@ -378,7 +378,8 @@ NVPTXCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
       stream_exec, ptx, compute_capability.first, compute_capability.second,
       module->config());
 
-  return std::pair<std::string, std::vector<uint8>>(ptx, cubin);
+  return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
+                                                    std::move(cubin));
 }
 
 std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
