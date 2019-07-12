@@ -116,7 +116,7 @@ class PreprocessingLayerTest(test.TestCase):
         message="Mixing merge and compute calls should not change the data "
         "output.")
 
-    self.assertAllClose(expected, combiner.extract(all_merge))
+    self.assertAllCloseOrEqual(expected, combiner.extract(all_merge))
 
   def validate_accumulator_extract_and_restore(self, combiner, data, expected):
     """Validate that the extract<->restore loop loses no data."""
