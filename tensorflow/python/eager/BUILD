@@ -508,6 +508,7 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":forwardprop",
         ":function",
         ":test",
         ":profiler",
