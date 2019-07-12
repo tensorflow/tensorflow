@@ -917,9 +917,7 @@ ifeq ($(TARGET),OSX)
   endif
 endif
 ifeq ($(TARGET),IOS)
-  ifeq ($(IOS_ARCH),X86_64)
-    HOST_LDOPTS += -framework CoreFoundation
-  endif
+  HOST_LDOPTS += -framework CoreFoundation
 endif
 
 # Runs proto_text to generate C++ source files from protos.
