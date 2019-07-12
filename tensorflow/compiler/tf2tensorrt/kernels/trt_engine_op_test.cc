@@ -23,9 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -42,6 +47,7 @@ using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
+
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
@@ -57,6 +63,13 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
+    const string func_name = "myop_native_segment";
+    Graph* graph = s.graph();
+    Graph segment_graph(graph->flib_def());
+    TF_ASSERT_OK(convert::ConvertSegmentToGraph(graph_def, &segment_graph));
+    TF_ASSERT_OK(convert::RegisterGraphToFunctionLibrary(&segment_graph, graph,
+        flib_def_->ToProto(), "myop"));
+    
     PartialTensorShape shape({-1, -1});
 
     // Create the op.
@@ -66,8 +79,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
                      .Attr("static_engine", false)
-                     .Attr("segment_funcdef_name", "")  // no native fallback
-                     .Attr("serialized_segment", graph_def.SerializeAsString())
+                     .Attr("segment_funcdef_name", func_name)
+                     .Attr("serialized_segment", "")
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
                      .Attr("workspace_size_bytes", 1 << 20)

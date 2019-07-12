@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -75,18 +76,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-// TODO(aaroey): put these constants into some class.
-const char* const kInputPHName = "TensorRTInputPH_";
-const char* const kOutputPHName = "TensorRTOutputPH_";
+namespace convert {
 
 bool IsEngineInput(absl::string_view name) {
-  return absl::StartsWith(name, kInputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
-  return absl::StartsWith(name, kOutputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
 }
 
-namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -5200,19 +5198,34 @@ Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
+    if (IsEngineInput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kInputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      string type_key;
+      if (node_def.op() == "Placeholder") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kInputPHName), &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+        type_key = "dtype";
+      } else if (tensorflow::grappler::IsArg(node_def)) {
+        // Maybe remove the dependence on grappler and re-implement IsArg,
+        // which is pretty simple (but could change if new Arg nodes are added)
+        slot_number = node_def.attr().at("index").i();
+        type_key = "T";
+      } else {
+        return errors::InvalidArgument("Node ", node_name,
+                                       " with name starting with kInputPHName "
+                                       "is neither Placeholder nor Arg, "
+                                       "instead ",
+                                       node_def.op());
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
       int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
       auto status = ValidateTensorProperties(
-          node_def.op(), node_def.attr().at("dtype").type(), shape,
+          node_def.op(), node_def.attr().at(type_key).type(), shape,
           /*validation_only=*/false, &trt_dtype, &trt_dims, &batch_size);
       if (!status.ok()) {
         const string error_message =
@@ -5228,12 +5241,21 @@ Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      if (node_def.op() == "Identity") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName), &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+      } else if (tensorflow::grappler::IsRetval(node_def)) {
+        slot_number = node_def.attr().at("index").i();
+      } else {
+        return errors::InvalidArgument("Node with name ", node_name,
+                                       " starting with IONamePrefixes::kOutputPHName is "
+                                       "neither Identity nor Retval, instead ",
+                                       node_def.op());
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);
@@ -5273,6 +5295,8 @@ Status ConvertSegmentToGraphDef(
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
     string* scope_name) {
   std::set<string> marker_nodes;
+  int arg_num = 0;
+  int ret_num = 0;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
@@ -5302,7 +5326,7 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(kInputPHName, connection.port_number);
+      const string node_name = StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5312,16 +5336,18 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Placeholder");
+      NodeDefBuilder builder(node_name, "_Arg");
       auto status = builder.Attr("shape", partial_shape)
-                        .Attr("dtype", dtype)
+                        .Attr("T", dtype)
+                        .Attr("index", arg_num)
                         .Finalize(seg_node);
+      arg_num++;
       VLOG(1) << "Constructing input " << node_name << " for the edge "
               << connection.outside_node_name << ":" << connection.outside_port
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(kOutputPHName, connection.port_number);
+      const string node_name = StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5331,11 +5357,13 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Identity");
+      NodeDefBuilder builder(node_name, "_Retval");
       auto status =
-          builder
+          builder.Attr("T", dtype)
+              .Attr("index", ret_num)
               .Input(connection.inside_node_name, connection.inside_port, dtype)
               .Finalize(seg_node);
+      ret_num++;
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"
@@ -5359,12 +5387,12 @@ Status ConvertSegmentToGraphDef(
     if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
-    const string placeholder_name =
-        StrCat(kInputPHName, connection.port_number);
+    const string arg_name =
+        StrCat(IONamePrefixes::kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
-            << placeholder_name;
-    snode->set_input(connection.inside_port, placeholder_name);
+            << arg_name;
+    snode->set_input(connection.inside_port, arg_name);
   }
   std::set<string> subgraph_node_names;
   for (const Node* node : subgraph_nodes) {

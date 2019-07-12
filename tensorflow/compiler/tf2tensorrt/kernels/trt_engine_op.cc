@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
@@ -53,6 +54,7 @@ using ::stream_executor::port::StatusOr;
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
+
 class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
@@ -89,7 +91,10 @@ class TRTEngineOp : public AsyncOpKernel {
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
   // Construct a function handle for executing native funcdef graph
-  Status ConstructFunctionHandle(OpKernelContext* ctx);
+  // These are the exact same function.
+
+  Status ConstructFunctionHandle(FunctionLibraryRuntime* lib,
+                                 const string& device_name);
 
   // Execute replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
@@ -121,6 +126,12 @@ class TRTEngineOp : public AsyncOpKernel {
 
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
+
+  // The id's in these vectors are used for getting slot numbers and
+  // node names after they are uniquified in graph->graphdef conversion.
+
+  std::vector<int> input_node_ids_;
+  std::vector<int> output_node_ids_;
 
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
@@ -177,9 +188,9 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
   }
 }
 
-Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
+Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
+                                            const string& device_name) {
   VLOG(1) << "Constructing function handle";
-  auto lib = ctx->function_library();
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
   }
@@ -190,7 +201,7 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
   }
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
-  inst_ops.target = ctx->device()->name();
+  inst_ops.target = device_name;
   native_func_ = 0;
   return lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()), inst_ops,
                           &native_func_);
@@ -204,15 +215,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr("workspace_size_bytes", &workspace_size_));
   OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
-  if (!static_engine_) {
-    OP_REQUIRES(context, segment_graph_.ParseFromString(serialized_segment_),
-                errors::InvalidArgument("Failed to parse segment graphdef!"));
-    VLOG(1) << "Size of serialized GraphDef: "
-            << serialized_segment_.capacity();
-    string tmp;
-    // Swap with temporary empty string to deallocate the CPU memory.
-    serialized_segment_.swap(tmp);
-  }
+
   VLOG(1) << "Constructing " << name();
   string precision_string;
   OP_REQUIRES_OK(context,
@@ -226,6 +229,15 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
+  native_func_ = kInvalidHandle;
+  if (!static_engine_) {
+    OP_REQUIRES_OK(context, ConstructFunctionHandle(context->function_library(),
+                                                    context->device()->name()));
+    FunctionLibraryRuntime* lib = context->function_library();
+    OP_REQUIRES_OK(context,
+                   FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
+                                         &input_node_ids_, &output_node_ids_));
+  }
   calibration_mode_ =
       (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
        calibration_data.empty());
@@ -233,20 +245,18 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
   }
-  native_func_ = kInvalidHandle;
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
-  OP_REQUIRES_ASYNC(ctx, !funcdef_name_.empty(),
-                    errors::Internal("Fallback path is disabled, for ", name()),
-                    *helper);
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {
-    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx), *helper);
+    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx->function_library(),
+                                                      ctx->device()->name()),
+                         *helper);
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
@@ -298,7 +308,9 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     const auto device_tensor =
         calib_ctx->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
-    input_data.emplace(StrCat(kInputPHName, i), data_address);
+    input_data.emplace(
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]),
+        data_address);
   }
   VLOG(2) << "Filled map for sending";
   // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
@@ -435,9 +447,12 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // input.
   const int num_batch = ctx->input(0).shape().dim_size(0);
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
+
   std::vector<void*> buffers(num_binding);
+
   for (int i = 0; i < ctx->num_inputs(); i++) {
-    const string input_name = StrCat(kInputPHName, i);
+    const string input_name =
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
       const string msg =
@@ -479,7 +494,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
-    const string output_name = StrCat(kOutputPHName, i);
+    const string output_name = StrCat(IONamePrefixes::kOutputPHName,
+                                      static_engine_ ? i : output_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
 
@@ -713,7 +729,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
-        StrCat(kInputPHName, i),
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
   }
   cres->calibrator_.reset(

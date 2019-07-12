@@ -439,8 +439,6 @@ Status CreateTRTNode(const ConversionParams& params,
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
-  } else {
-    segment_string = info.segment_graph_def.SerializeAsString();
   }
 
   string prec_string;
@@ -466,9 +464,7 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_funcdef_name",
-                params.use_function_backup
-                    ? StrCat(info.engine_name, "_native_segment")
-                    : "")
+                StrCat(info.engine_name, "_native_segment"))
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
@@ -537,26 +533,24 @@ Status CreateTRTNode(const ConversionParams& params,
   return Status::OK();
 }
 
-// Function to construct a funcdef from the segment and add it to the graph.
-Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
-                                                const GraphDef& segment,
-                                                const string& engine_name) {
-  Graph sgraph(graph->flib_def());
+Status ConvertSegmentToGraph(const GraphDef& segment, Graph* segment_graph) {
+  // segment_graph is a graph for the segment, to be modified by this function
+  // graph is the input graph to be optimized by TRT.
   GraphConstructorOptions gcopts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, &sgraph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
-  for (auto n : sgraph.op_nodes()) {
-    if (absl::StartsWith(n->name(), kInputPHName)) {
+  for (auto n : segment_graph->op_nodes()) {
+    if (absl::StartsWith(n->name(), IONamePrefixes::kInputPHName)) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
-    } else if (absl::StartsWith(n->name(), kOutputPHName)) {
+    } else if (absl::StartsWith(n->name(), IONamePrefixes::kOutputPHName)) {
       io_nodes.insert({n->name(), n});
     }
   }
 
   for (int i = 0; i < num_inputs; ++i) {
-    auto name = StrCat(kInputPHName, i);
+    auto name = StrCat(IONamePrefixes::kInputPHName, i);
     auto node = io_nodes[name];
     NodeDef nd;
     NodeDefBuilder node_builder(StrCat(name, "_Arg"),
@@ -566,12 +560,12 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
                            .Attr("index", i)
                            .Finalize(&nd));
     Status s;
-    auto node_arg = sgraph.AddNode(nd, &s);
+    auto node_arg = segment_graph->AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Arg node for " << name;
     }
     for (auto edge : node->out_edges()) {
-      sgraph.AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
+      segment_graph->AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
       VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
               << " - > " << edge->dst()->name() << ":" << edge->dst_input();
       if (!s.ok()) {
@@ -579,11 +573,11 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
                    << " to " << edge->dst()->name() << ":" << edge->dst_input();
       }
     }
-    sgraph.RemoveNode(node);
+    segment_graph->RemoveNode(node);
   }
 
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-    auto name = StrCat(kOutputPHName, i);
+    auto name = StrCat(IONamePrefixes::kOutputPHName, i);
     auto node = io_nodes[name];
     NodeDef nd;
     NodeDefBuilder node_builder(StrCat(name, "_Ret"),
@@ -603,25 +597,31 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
       VLOG(3) << nd.DebugString();
     }
     Status s;
-    auto node_ret = sgraph.AddNode(nd, &s);
+    auto node_ret = segment_graph->AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Ret node for " << name;
     }
     VLOG(1) << "Update edge from " << edge->src()->name() << ":"
             << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
-    sgraph.AddEdge(edge->src(), edge->src_output(), node_ret, 0);
-    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
+    segment_graph->AddEdge(edge->src(), edge->src_output(), node_ret, 0);
+    s = segment_graph->UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
                  << edge->src_output() << " - > " << node_ret->name() << ":"
                  << 0;
     }
-    sgraph.RemoveNode(node);
+    segment_graph->RemoveNode(node);
   }
-  FunctionDefLibrary fdeflib;
+  return Status::OK();
+}
+
+ 
+Status RegisterGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
+                                      FunctionDefLibrary fdeflib,
+                                      const string& engine_name) {
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
+      *segment_graph, StrCat(engine_name, "_native_segment"), native_segment));
   // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
   // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
   // would be on host if the op generating the tensor has host memory tag set.
@@ -635,6 +635,16 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
   VLOG(1) << "Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
   return Status::OK();
+}
+
+Status RegisterSegmentToFunctionLibrary(Graph* graph, const GraphDef& segment,
+                                        Graph* segment_graph,
+                                        string engine_name) {
+  GraphConstructorOptions gcopts;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
+  FunctionDefLibrary fdeflib;
+  return RegisterGraphToFunctionLibrary(segment_graph, graph, fdeflib,
+                                                  engine_name);
 }
 
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
@@ -690,16 +700,10 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 // Entry function from optimization pass.
 Status ConvertAfterShapes(const ConversionParams& params) {
   // Sanity checks.
-  if (params.precision_mode == TrtPrecisionMode::INT8) {
-    if (params.use_calibration && !params.use_function_backup) {
-      return errors::InvalidArgument(
-          "Calibration requires enabling fallback to TF function execution.");
-    }
-  } else {
-    if (params.use_calibration) {
-      return errors::InvalidArgument(
-          "Calibration with FP32 or FP16 is not supported.");
-    }
+  if (params.precision_mode != TrtPrecisionMode::INT8 &&
+      params.use_calibration) {
+    return errors::InvalidArgument(
+        "Calibration with FP32 or FP16 is not supported.");
   }
 
   // Convert graphdef to graph.
@@ -760,14 +764,14 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    if (params.use_function_backup) {
-      status = RegisterSegmentFunctionToFunctionLibrary(
-          &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to register segment graphdef as a function "
-                     << t << ": " << status;
-        continue;
-      }
+
+    Graph segment_graph(flib);
+    status = RegisterSegmentToFunctionLibrary(&graph,
+        curr_engine.segment_graph_def, &segment_graph, curr_engine.engine_name);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to register segment graphdef to the library " << t
+                   << ": " << status;
+      continue;
     }
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());

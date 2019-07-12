@@ -168,6 +168,7 @@ tf_cuda_cc_test(
         ":trt_op_kernels",
         ":trt_op_libs",
         ":trt_resources",
+        ":trt_conversion",
         "@com_google_googletest//:gtest",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
@@ -237,10 +238,12 @@ tf_cuda_library(
     srcs = [
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
+        "utils/funcdef_to_graphdef.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
+        "utils/funcdef_to_graphdef.h",
     ],
     deps = [
         ":trt_allocator",
@@ -248,6 +251,9 @@ tf_cuda_library(
         ":utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
