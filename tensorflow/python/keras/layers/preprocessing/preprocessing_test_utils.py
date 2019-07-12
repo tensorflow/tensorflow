@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from tensorflow.python.platform import test
@@ -26,10 +27,30 @@ from tensorflow.python.platform import test
 class PreprocessingLayerTest(test.TestCase):
   """Base test class for preprocessing layer API validation."""
 
+  # TODO(b/137303934): Consider incorporating something like this Close vs All
+  # behavior into core tf.test.TestCase.
+  def assertAllCloseOrEqual(self, a, b, msg=None):
+    """Asserts that elements are close (if numeric) or equal (if string)."""
+    if isinstance(a, collections.Mapping):
+      self.assertEqual(len(a), len(b))
+      for key, a_value in a.items():
+        b_value = b[key]
+        error_message = "{} ({})".format(msg, key) if msg else None
+        self.assertAllCloseOrEqual(a_value, b_value, error_message)
+    elif isinstance(a, (list, tuple)):
+      self.assertEqual(len(a), len(b))
+      for a_value, b_value in zip(a, b):
+        self.assertAllCloseOrEqual(a_value, b_value, msg)
+    else:
+      comparison_fn = (
+          self.assertAllClose
+          if np.issubdtype(a.dtype, np.number) else self.assertAllEqual)
+      comparison_fn(a, b, msg=msg)
+
   def assert_accumulator_equal(self, combiner, acc1, acc2, message=None):
     data_1 = combiner.extract(acc1)
     data_2 = combiner.extract(acc2)
-    self.assertAllClose(data_1, data_2, msg=message)
+    self.assertAllCloseOrEqual(data_1, data_2, msg=message)
 
   def validate_accumulator_computation(self, combiner, data, expected):
     """Validate that various combinations of compute and merge are identical."""
@@ -103,7 +124,7 @@ class PreprocessingLayerTest(test.TestCase):
     extracted_data = combiner.extract(acc)
     restored_acc = combiner.restore(extracted_data)
     self.assert_accumulator_equal(combiner, acc, restored_acc)
-    self.assertAllClose(expected, combiner.extract(restored_acc))
+    self.assertAllCloseOrEqual(expected, combiner.extract(restored_acc))
 
   def validate_accumulator_serialize_and_deserialize(self, combiner, data,
                                                      expected):
@@ -112,11 +133,11 @@ class PreprocessingLayerTest(test.TestCase):
     extracted_data = combiner.serialize(acc)
     restored_acc = combiner.deserialize(extracted_data)
     self.assert_accumulator_equal(combiner, acc, restored_acc)
-    self.assertAllClose(expected, combiner.extract(restored_acc))
+    self.assertAllCloseOrEqual(expected, combiner.extract(restored_acc))
 
   def validate_accumulator_uniqueness(self, combiner, data, expected):
     """Validate that every call to compute creates a unique accumulator."""
     acc = combiner.compute(data)
     acc2 = combiner.compute(data)
     self.assertIsNot(acc, acc2)
-    self.assertAllClose(expected, combiner.extract(acc))
+    self.assertAllCloseOrEqual(expected, combiner.extract(acc))
