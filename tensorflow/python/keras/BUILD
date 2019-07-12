@@ -1052,7 +1052,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1067,7 +1067,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
