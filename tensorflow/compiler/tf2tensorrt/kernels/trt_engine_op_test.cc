@@ -23,10 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -47,7 +51,6 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
-
     // Create simple TF graph.
     Scope s = Scope::NewRootScope();
     auto feed = ops::Placeholder(s.WithOpName("TensorRTInputPH_0"), dtype,
@@ -58,6 +61,32 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
+    /*
+    //VLOG(0) << "Beginning TRTEngineOpTest new code";
+    */
+    const string func_name = "myop_native_segment";
+    Graph* graph = s.graph();
+    Graph sgraph(graph->flib_def());
+    TF_ASSERT_OK(convert::ModifyGraphForFunctionDef(
+        graph, graph_def, &sgraph));
+    TF_ASSERT_OK(convert::RegisterModifiedGraphToFunctionLibrary(&sgraph, graph,
+        flib_def_->ToProto(), "myop"));
+    //TF_ASSERT_OK(convert::RegisterSegmentFunctionToFunctionLibrary(graph, graph_def, "myop"));
+
+    //FunctionDefLibrary fdeflib;
+    //VLOG(0) << "Before converting graph to function def";
+    //auto native_segment = fdeflib.add_function();
+    
+    //GraphToFunctionDef(*graph, func_name, native_segment);
+    //VLOG(0) << "After conversion from graph to func def";
+    /*(*native_segment
+          ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
+        .set_b(true);
+    */
+
+    //graph->AddFunctionLibrary(fdeflib);
+    //VLOG(0) << native_segment->DebugString();
+    
     PartialTensorShape shape({-1, -1});
 
     // Create the op.
@@ -67,8 +96,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
                      .Attr("static_engine", false)
-                     .Attr("segment_funcdef_name", "")  // no native fallback
-                     .Attr("serialized_segment", graph_def.SerializeAsString())
+                     .Attr("segment_funcdef_name", func_name)  // no native fallback
+                     .Attr("serialized_segment", "")//graph_def.SerializeAsString())
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
                      .Attr("workspace_size_bytes", 1 << 20)

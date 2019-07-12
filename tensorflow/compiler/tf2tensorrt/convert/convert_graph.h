@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -57,6 +58,17 @@ Status ConvertAfterShapes(const ConversionParams& params);
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
+/*Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
+                                                const GraphDef& segment,
+                                                const string& engine_name);
+                                                */
+Status ModifyGraphForFunctionDef(Graph* graph,
+                                 const GraphDef& segment,
+                                 Graph* sgraph);
+
+Status RegisterModifiedGraphToFunctionLibrary(Graph* sgraph, Graph* graph,
+                                              FunctionDefLibrary fdeflib,
+                                              const string& engine_name);
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
