@@ -3568,23 +3568,23 @@ def crop_and_resize_v2(image,
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
     
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> BATCH_SIZE = 1
-    >> NUM_BOXES = 5
-    >> IMAGE_HEIGHT = 256
-    >> IMAGE_WIDTH = 256
-    >> CHANNELS = 3
-    >> CROP_SIZE = (24, 24)
+  Example:
 
-    >> image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS) )
-    >> boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
-    >> box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0, maxval=BATCH_SIZE, dtype=tf.int32)
-    >> output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
-    >> print(output.shape)
-    (5, 24, 24, 3)
-    ```
+  ```python
+  import tensorflow as tf
+  BATCH_SIZE = 1
+  NUM_BOXES = 5
+  IMAGE_HEIGHT = 256
+  IMAGE_WIDTH = 256
+  CHANNELS = 3
+  CROP_SIZE = (24, 24)
+
+  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS) )
+  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0, maxval=BATCH_SIZE, dtype=tf.int32)
+  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  print(output.shape)  #=> (5, 24, 24, 3)
+  ```
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)
