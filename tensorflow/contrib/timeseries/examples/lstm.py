@@ -202,7 +202,8 @@ def train_and_predict(
   estimator = ts_estimators.TimeSeriesRegressor(
       model=_LSTMModel(num_features=5, num_units=128,
                        exogenous_feature_columns=exogenous_feature_columns),
-      optimizer=tf.compat.v1.train.AdamOptimizer(0.001), config=estimator_config,
+      optimizer=tf.compat.v1.train.AdamOptimizer(0.001),
+      config=estimator_config,
       # Set state to be saved across windows.
       state_manager=state_management.ChainingStateManager())
   reader = tf.contrib.timeseries.CSVReader(
