@@ -234,10 +234,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
-        use_function_backup=False,
         max_batch_size=min(batch_list))
-    return conversion_params._replace(
-        use_function_backup=IsQuantizationWithCalibration(conversion_params))
+    return conversion_params
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -388,8 +386,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=conversion_params.minimum_segment_size,
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
-        use_calibration=conversion_params.use_calibration,
-        use_function_backup=conversion_params.use_function_backup)
+        use_calibration=conversion_params.use_calibration)
 
   def _GetCalibratedInferGraph(self, run_params, saved_model_dir, inputs_data):
     """Return trt converted graphdef in INT8 mode."""
