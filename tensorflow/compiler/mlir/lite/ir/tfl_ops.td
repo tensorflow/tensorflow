@@ -118,20 +118,24 @@ class TFL_QuantizedType<string n, list<int> params, bit signed>
   : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
               CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageTypeIntegralWidth() == " # !head(params)>]>,
-    "quantized type with " # !head(params) # " bits storage type"> {
+    "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
   string asTraitArgsStr =
     StrJoinInt<params>.result # !if(signed, ", true", ", false");
 }
 
-// Uniform quantized type. Two integers "smantissa" and "sexp" are used to
+// Uniform quantized types. Two integers "smantissa" and "sexp" are used to
 // express the Mantissa and Exponent components of the floating-point scale so
 // the scale of the quantized type is "smantissa * 10 ^ sexp".
 class TFL_UInt8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
     : TFL_QuantizedType<"Uniform",
                         [8, zero_pt, smantissa, sexp, 0, 255], 0>;
+class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
+    : TFL_QuantizedType<"Uniform",
+                        [8, zero_pt, smantissa, sexp, -128, 127], 1>;
 
-// A 8bits quantized type. This definition can be used to specify tensor types.
+// 8-bits quantized types. The definitions can be used to specify tensor types.
+def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
 
 //===----------------------------------------------------------------------===//
@@ -445,13 +449,15 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   }];
 
   let arguments = (
-    ins Variadic<TensorOf<[F32, I64, I32, I16, I8, TFL_QI8, TFL_Uint8]>>:$values,
+    ins Variadic<TensorOf<
+      [F32, I64, I32, I16, I8, TFL_QI8, TFL_QUI8, TFL_Uint8]>>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
-    TensorOf<[F32, I64, I32, I16, I8, TFL_QI8, TFL_Uint8]>:$output
+    TensorOf<
+      [F32, I64, I32, I16, I8, TFL_QI8, TFL_QUI8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -988,7 +994,9 @@ def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<127, 625, -4>>]> {
+    // zero_point = max_value
+    // scale = -log_softmax_output_min / (max_value + 1)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<255, 625, -4>>]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -1014,7 +1022,7 @@ def MaxPoolOperandAndResultConstraints : PredOpTrait<"MaxPool2D operand and "
   And<[
     // The input and output tensors should have the same elemental type
     // and they should be one of the specified types below.
-    TCopVTEtIs<0, AnyTypeOf<[F32, TFL_QI8]>>,
+    TCopVTEtIs<0, AnyTypeOf<[F32, TFL_QI8, TFL_QUI8]>>,
     TFL_TCresVTEtIsSameAsOp<0, 0>]>>;
 
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
@@ -1594,7 +1602,9 @@ def TFL_SinOp: TFL_Op<"sin", [NoSideEffect, SameOperandsAndResultType]> {
 def TFL_SoftmaxOp : TFL_Op<"softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<-128, 390625, -8>>]> {
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 390625, -8>>]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -1689,7 +1699,10 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [Broadcastable, NoSid
 def TFL_TanhOp: TFL_Op<"tanh", [
     NoSideEffect,
     SameOperandsAndResultType,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 78125, -7>>]> {
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<128, 78125, -7>>]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{
