@@ -57,7 +57,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
       std::unique_ptr<HloModule> hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version) override;
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec) override;
 
  private:
   // The parent directory of ROCm-Device-Libs IR libraries.

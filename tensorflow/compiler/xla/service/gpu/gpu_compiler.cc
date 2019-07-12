@@ -421,9 +421,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
-  TF_ASSIGN_OR_RETURN(
-      BackendCompileResult backend_result,
-      CompileTargetBinary(std::move(module), &llvm_module, gpu_version));
+  TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
+                      CompileTargetBinary(std::move(module), &llvm_module,
+                                          gpu_version, stream_exec));
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),

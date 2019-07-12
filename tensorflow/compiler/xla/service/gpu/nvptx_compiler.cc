@@ -338,7 +338,8 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8>>>
 NVPTXCompiler::CompileTargetBinary(std::unique_ptr<HloModule> module,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version) {
+                                   GpuVersion gpu_version,
+                                   se::StreamExecutor* stream_exec) {
   std::pair<int, int> compute_capability = absl::get<std::pair<int, int>>(gpu_version);
 
   string libdevice_dir;
