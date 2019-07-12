@@ -827,7 +827,6 @@ def _make_execution_function_without_cloning(model, mode):
   with strategy.scope():
     per_replica_function = _make_replica_execution_function(model, mode)
 
-    @def_function.function
     def distributed_function(input_fn):
       """A single step of the distributed execution across replicas."""
       x, y, sample_weights = input_fn()
@@ -842,9 +841,14 @@ def _make_execution_function_without_cloning(model, mode):
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
       return all_outputs
 
-    def execution_function(input_fn):
-      # `numpy` translates Tensors to values in Eager mode.
-      return [out.numpy() for out in distributed_function(input_fn)]
+    if not model.run_eagerly:
+      distributed_function = def_function.function(distributed_function)
+      def execution_function(input_fn):
+        # `numpy` translates Tensors to values in Eager mode.
+        return [out.numpy() for out in distributed_function(input_fn)]
+    else:
+      execution_function = distributed_function
+
     return execution_function
 
 

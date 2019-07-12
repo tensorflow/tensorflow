@@ -23,8 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 
@@ -102,7 +100,7 @@ def run_one_epoch(model,
   while step < target_steps:
     with training_context.on_batch(step, mode=mode) as batch_logs:
       try:
-        batch_ins = create_batch_inputs(iterator, mode, model, strategy)
+        batch_ins = create_batch_inputs(iterator, mode, model)
         batch_outs = execution_function(batch_ins)
       except StopIteration:
         # The only acceptable case here is that the input has a unknown
@@ -148,25 +146,13 @@ def run_one_epoch(model,
   return results
 
 
-def create_batch_inputs(iterator, mode, model, strategy):
+def create_batch_inputs(iterator, mode, model):
   """Create the input data from the iterator based on the model and strategy."""
-  if strategy:
-    # Note that the batch_ins is a function to avoid the tf.function
-    # retrace.
-    def distribute_batch_ins():
-      return dist_utils._prepare_feed_values(model, iterator, None, None, mode)
-    batch_ins = distribute_batch_ins
-  else:
-    batch_ins = next(iterator)
-    if (mode == ModeKeys.TRAIN
-        and not model.run_eagerly
-        and not isinstance(backend.symbolic_learning_phase(), int)):
-      # Add learning phase value.
-      if not isinstance(batch_ins, collections.Sequence):
-        batch_ins = (batch_ins, True)
-      else:
-        batch_ins += (True,)
-  return batch_ins
+  # Note that the batch_ins is a function to avoid the tf.function
+  # retrace.
+  def distribute_batch_ins():
+    return dist_utils._prepare_feed_values(model, iterator, None, None, mode)
+  return distribute_batch_ins
 
 
 class Loop(training_utils.TrainingLoop):
@@ -185,122 +171,120 @@ class Loop(training_utils.TrainingLoop):
         batch_size, steps_per_epoch, x)
 
     strategy = _get_distribution_strategy(model)
-    if strategy:
-      batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
-          strategy, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
-      dist_utils.validate_callbacks(input_callbacks=callbacks,
-                                    optimizer=model.optimizer)
-      # Enter tf.distribute.Strategy scope.
-      scope = dist_utils.distributed_scope(
-          strategy=strategy, learning_phase=1)
-      scope.__enter__()
+    batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
+        strategy, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+    dist_utils.validate_callbacks(input_callbacks=callbacks,
+                                  optimizer=model.optimizer)
+    # Enter tf.distribute.Strategy scope.
+    with dist_utils.distributed_scope(
+        strategy=strategy, learning_phase=1):
 
-    training_data_adapter, validation_adapter = _process_training_inputs(
-        model,
-        x,
-        y,
-        batch_size=batch_size,
-        sample_weights=sample_weight,
-        class_weights=class_weight,
-        validation_split=validation_split,
-        steps_per_epoch=steps_per_epoch,
-        shuffle=shuffle,
-        validation_data=validation_data,
-        validation_steps=validation_steps,
-        distribution_strategy=strategy)
+      training_data_adapter, validation_adapter = _process_training_inputs(
+          model,
+          x,
+          y,
+          batch_size=batch_size,
+          sample_weights=sample_weight,
+          class_weights=class_weight,
+          validation_split=validation_split,
+          steps_per_epoch=steps_per_epoch,
+          shuffle=shuffle,
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          distribution_strategy=strategy)
 
-    do_validation = (validation_adapter is not None)
+      do_validation = (validation_adapter is not None)
 
-    if not steps_per_epoch:
-      steps_per_epoch = training_data_adapter.get_size()
+      if not steps_per_epoch:
+        steps_per_epoch = training_data_adapter.get_size()
 
-    # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
-    training_context = TrainingContext()
+      # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
+      training_context = TrainingContext()
 
-    initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
-        initial_epoch, ModeKeys.TRAIN)
+      initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
+          initial_epoch, ModeKeys.TRAIN)
 
-    _update_sample_weight_mode(model, ModeKeys.TRAIN, training_data_adapter)
-    training_function = _make_execution_function(model, ModeKeys.TRAIN)
+      _update_sample_weight_mode(model, ModeKeys.TRAIN, training_data_adapter,
+                                 strategy)
+      training_function = dist_utils._make_execution_function(
+          model, ModeKeys.TRAIN)
 
-    training_data_iter = None
-    # Only recreate iterator when the data has a fixed length, which will be
-    # fully consumed every epoch, or has a unknown length (dataset, generator)
-    # and will be fully consumed (steps_per_epoch is None)
-    recreate_training_iterator = (training_data_adapter.get_size() is not None
-                                  or steps_per_epoch is None)
+      training_data_iter = None
+      # Only recreate iterator when the data has a fixed length, which will be
+      # fully consumed every epoch, or has a unknown length (dataset, generator)
+      # and will be fully consumed (steps_per_epoch is None)
+      recreate_training_iterator = (training_data_adapter.get_size() is not None
+                                    or steps_per_epoch is None)
 
-    if do_validation:
-      if not validation_steps:
-        validation_steps = validation_adapter.get_size()
-      eval_function = _make_execution_function(model, ModeKeys.TEST)
-      eval_data_iter = None
-      recreate_eval_iterator = (validation_adapter.get_size() is not None
-                                or validation_steps is None)
+      if do_validation:
+        if not validation_steps:
+          validation_steps = validation_adapter.get_size()
+        eval_function = dist_utils._make_execution_function(
+            model, ModeKeys.TEST)
+        eval_data_iter = None
+        recreate_eval_iterator = (validation_adapter.get_size() is not None
+                                  or validation_steps is None)
 
-    callbacks = cbks.configure_callbacks(
-        callbacks,
-        model,
-        do_validation=do_validation,
-        batch_size=batch_size,
-        epochs=epochs,
-        steps_per_epoch=steps_per_epoch,
-        samples=None,
-        verbose=0,  # Handle ProgBarLogger separately in this loop.
-        mode=ModeKeys.TRAIN)
+      callbacks = cbks.configure_callbacks(
+          callbacks,
+          model,
+          do_validation=do_validation,
+          batch_size=batch_size,
+          epochs=epochs,
+          steps_per_epoch=steps_per_epoch,
+          samples=None,
+          verbose=0,  # Handle ProgBarLogger separately in this loop.
+          mode=ModeKeys.TRAIN)
 
-    with training_context.on_start(model, callbacks, verbose, ModeKeys.TRAIN):
-      # TODO(scottzhu): Handle TPUStrategy training loop
-      for epoch in range(initial_epoch, epochs):
-        if training_context.callbacks.model.stop_training:
-          break
+      with training_context.on_start(model, callbacks, verbose, ModeKeys.TRAIN):
+        # TODO(scottzhu): Handle TPUStrategy training loop
+        for epoch in range(initial_epoch, epochs):
+          if training_context.callbacks.model.stop_training:
+            break
 
-        # Training
-        with training_context.on_epoch(epoch, ModeKeys.TRAIN) as epoch_logs:
-          model.reset_metrics()
-          if training_data_iter is None or recreate_training_iterator:
-            training_data_iter = _create_dataset_iterator(
-                strategy, training_data_adapter.get_dataset())
+          # Training
+          with training_context.on_epoch(epoch, ModeKeys.TRAIN) as epoch_logs:
+            model.reset_metrics()
+            if training_data_iter is None or recreate_training_iterator:
+              training_data_iter = _create_dataset_iterator(
+                  strategy, training_data_adapter.get_dataset())
 
-          training_result = run_one_epoch(
-              model,
-              training_data_iter,
-              training_function,
-              dataset_size=training_data_adapter.get_size(),
-              strategy=strategy,
-              steps_per_epoch=steps_per_epoch,
-              mode=ModeKeys.TRAIN,
-              training_context=training_context,
-              current_epoch=epoch)
-          cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
+            training_result = run_one_epoch(
+                model,
+                training_data_iter,
+                training_function,
+                dataset_size=training_data_adapter.get_size(),
+                strategy=strategy,
+                steps_per_epoch=steps_per_epoch,
+                mode=ModeKeys.TRAIN,
+                training_context=training_context,
+                current_epoch=epoch)
+            cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
 
-          # Evaluation
-          if (do_validation and
-              training_utils.should_run_validation(validation_freq, epoch) and
-              not callbacks.model.stop_training):
-            if eval_data_iter is None or recreate_eval_iterator:
-              eval_data_iter = _create_dataset_iterator(
-                  strategy, validation_adapter.get_dataset())
-            eval_context = TrainingContext()
-            with eval_context.on_start(
-                model, callbacks, verbose=0, mode=ModeKeys.TEST):
-              with eval_context.on_epoch(epoch, ModeKeys.TEST):
-                model.reset_metrics()
-                eval_result = run_one_epoch(
-                    model,
-                    eval_data_iter,
-                    eval_function,
-                    dataset_size=validation_adapter.get_size(),
-                    strategy=strategy,
-                    steps_per_epoch=validation_steps,
-                    mode=ModeKeys.TEST,
-                    training_context=eval_context,
-                    current_epoch=epochs)
-                cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TRAIN,
-                               prefix='val_')
-
-    if strategy:
-      scope.__exit__(None, None, None)
+            # Evaluation
+            if (do_validation and
+                training_utils.should_run_validation(validation_freq, epoch) and
+                not callbacks.model.stop_training):
+              if eval_data_iter is None or recreate_eval_iterator:
+                eval_data_iter = _create_dataset_iterator(
+                    strategy, validation_adapter.get_dataset())
+              eval_context = TrainingContext()
+              with eval_context.on_start(
+                  model, callbacks, verbose=0, mode=ModeKeys.TEST):
+                with eval_context.on_epoch(epoch, ModeKeys.TEST):
+                  model.reset_metrics()
+                  eval_result = run_one_epoch(
+                      model,
+                      eval_data_iter,
+                      eval_function,
+                      dataset_size=validation_adapter.get_size(),
+                      strategy=strategy,
+                      steps_per_epoch=validation_steps,
+                      mode=ModeKeys.TEST,
+                      training_context=eval_context,
+                      current_epoch=epochs)
+                  cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TRAIN,
+                                 prefix='val_')
 
     return model.history
 
@@ -311,65 +295,60 @@ class Loop(training_utils.TrainingLoop):
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps, x)
     strategy = _get_distribution_strategy(model)
-    if strategy:
-      batch_size, steps = dist_utils.process_batch_and_step_size(
-          strategy, x, batch_size, steps, mode)
-      dist_utils.validate_callbacks(input_callbacks=callbacks,
-                                    optimizer=model.optimizer)
-      # Enter tf.distribute.Strategy scope.
-      scope = dist_utils.distributed_scope(
-          strategy=strategy, learning_phase=0)
-      scope.__enter__()
+    batch_size, steps = dist_utils.process_batch_and_step_size(
+        strategy, x, batch_size, steps, mode)
+    dist_utils.validate_callbacks(input_callbacks=callbacks,
+                                  optimizer=model.optimizer)
+    # Enter tf.distribute.Strategy scope.
+    with dist_utils.distributed_scope(
+        strategy=strategy, learning_phase=0):
 
-    adapter = _process_inputs(
-        model,
-        x,
-        y,
-        batch_size=batch_size,
-        sample_weights=sample_weight,
-        steps=steps,
-        distribution_strategy=strategy)
+      adapter = _process_inputs(
+          model,
+          x,
+          y,
+          batch_size=batch_size,
+          sample_weights=sample_weight,
+          steps=steps,
+          distribution_strategy=strategy)
 
-    if not steps:
-      steps = adapter.get_size()
+      if not steps:
+        steps = adapter.get_size()
 
-    # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
-    training_context = TrainingContext()
+      # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
+      training_context = TrainingContext()
 
-    _update_sample_weight_mode(model, mode, adapter)
-    execution_function = _make_execution_function(model, mode)
-    data_iterator = _create_dataset_iterator(
-        strategy, adapter.get_dataset())
+      _update_sample_weight_mode(model, mode, adapter, strategy)
+      execution_function = dist_utils._make_execution_function(model, mode)
+      data_iterator = _create_dataset_iterator(
+          strategy, adapter.get_dataset())
 
-    callbacks = cbks.configure_callbacks(
-        callbacks,
-        model,
-        do_validation=False,
-        batch_size=batch_size,
-        epochs=1,
-        steps_per_epoch=steps,
-        samples=None,
-        verbose=0,  # Handle ProgBarLogger separately in this loop.
-        mode=mode)
+      callbacks = cbks.configure_callbacks(
+          callbacks,
+          model,
+          do_validation=False,
+          batch_size=batch_size,
+          epochs=1,
+          steps_per_epoch=steps,
+          samples=None,
+          verbose=0,  # Handle ProgBarLogger separately in this loop.
+          mode=mode)
 
-    with training_context.on_start(model, callbacks, verbose, mode):
-      # TODO(scottzhu): Handle TPUStrategy training loop
-      with training_context.on_epoch(0, mode) as epoch_logs:
-        model.reset_metrics()
-        result = run_one_epoch(
-            model,
-            data_iterator,
-            execution_function,
-            dataset_size=adapter.get_size(),
-            strategy=strategy,
-            steps_per_epoch=steps,
-            mode=mode,
-            training_context=training_context,
-            current_epoch=1)
-        cbks.make_logs(model, epoch_logs, result, mode)
-
-    if strategy:
-      scope.__exit__(None, None, None)
+      with training_context.on_start(model, callbacks, verbose, mode):
+        # TODO(scottzhu): Handle TPUStrategy training loop
+        with training_context.on_epoch(0, mode) as epoch_logs:
+          model.reset_metrics()
+          result = run_one_epoch(
+              model,
+              data_iterator,
+              execution_function,
+              dataset_size=adapter.get_size(),
+              strategy=strategy,
+              steps_per_epoch=steps,
+              mode=mode,
+              training_context=training_context,
+              current_epoch=1)
+          cbks.make_logs(model, epoch_logs, result, mode)
 
     if len(result) == 1:
       result = result[0]
@@ -498,15 +477,7 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
                      distribution_strategy=distribution_strategy)
 
 
-def _make_execution_function(model, mode):
-  """Makes function to run one step of model execution."""
-  if model._distribution_strategy:
-    return dist_utils._make_execution_function(model, mode)
-  else:
-    return model._make_execution_function(mode)
-
-
-def _update_sample_weight_mode(model, mode, adapter):
+def _update_sample_weight_mode(model, mode, adapter, strategy):
   """Updates the sample_weight_mode of a given model."""
   # Add a quick return to prevent us from calling model._feed_targets that
   # accesses certain model properties that may not be set in the `PREDICT` mode.
@@ -516,10 +487,9 @@ def _update_sample_weight_mode(model, mode, adapter):
   sample_weights = None
 
   # Get some sample inputs from the data_adapter
-  iterator = _create_dataset_iterator(model._distribution_strategy,
+  iterator = _create_dataset_iterator(strategy,
                                       adapter.get_dataset())
-  inputs = create_batch_inputs(iterator, mode, model,
-                               model._distribution_strategy)
+  inputs = create_batch_inputs(iterator, mode, model)
   # `inputs` is the model's inputs + targets + sample_weights +
   # learning phase placeholder if specified. To update the sample_weight_mode
   # we need to determine if the user has passed sample weights as part of the
@@ -545,8 +515,7 @@ def _update_sample_weight_mode(model, mode, adapter):
 
   # Call the DistributionStrategy specific function to update the
   # sample_weight_mode on the model.
-  if model._distribution_strategy:
-    dist_utils._update_sample_weight_modes(model, mode, sample_weights)
+  dist_utils._update_sample_weight_modes(model, mode, sample_weights)
 
   # Force delete the iterator.
   del iterator

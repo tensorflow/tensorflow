@@ -240,7 +240,16 @@ class Model(network.Network):
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._run_distributed = kwargs.pop('run_distributed', False)
 
-    if distribute is not None:
+    if ((sample_weight_mode is not None)
+        or (target_tensors is not None)
+        or (weighted_metrics is not None)):
+      # Fallback out of things that aren't supported with dist strat
+      self._run_distributed = False
+
+    if self._run_distributed:
+      self._distribution_strategy = (
+          distribution_strategy_context.get_strategy())
+    elif distribute is not None:
       if tf2.enabled():
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
@@ -265,10 +274,11 @@ class Model(network.Network):
     # of enabling the feature and graduate it to the main distributed code path.
     self._cloning = kwargs.pop('cloning', False)
 
-    self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
-                                                           sample_weight_mode,
-                                                           target_tensors,
-                                                           weighted_metrics)
+    if not self._run_distributed:
+      self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
+                                                             sample_weight_mode,
+                                                             target_tensors,
+                                                             weighted_metrics)
     self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
@@ -458,7 +468,6 @@ class Model(network.Network):
     # Experiment training loop with default DS path.
     if (context.executing_eagerly()
         and self._run_distributed
-        and not self.run_eagerly
         and tf2.enabled()
         and not isinstance(inputs, (iterator_ops.Iterator,
                                     iterator_ops.IteratorV2))
