@@ -259,6 +259,14 @@ struct InlineFunctionBodyOptions {
   // for available strategies.
   InlinedFunctionBodyPlacer::Config inlined_function_body_placer =
       InlinedFunctionBodyPlacer::Default();
+  // If true, frame names in the function body will be
+  // made unique in the resulting graph (e.g. by prepending a unique prefix).
+  // NOTE(mrry): Only set this option to false when there is a single function
+  // call in the graph (e.g. when making a remote function call via
+  // ClusterFunctionLibraryRuntime). This option is provided because the graph
+  // partitioner generates frame names that must remain unmodified across all
+  // partitions of a multi-device function.
+  bool uniquify_frame_names = true;
 
   // A human-readable debug string for this options.
   string DebugString() const;

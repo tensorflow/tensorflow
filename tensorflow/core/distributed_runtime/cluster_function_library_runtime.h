@@ -54,7 +54,8 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  private:
   static Status ConstructFunctionGraph(
       const OpDef& sig, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const FunctionLibraryDefinition& flib_def, GraphDef* g,
       std::vector<string>* send_keys, std::vector<string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 

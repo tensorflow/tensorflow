@@ -801,11 +801,12 @@ ADD_ATTR(bool)
 #undef ADD_ATTR
 
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
-                                NodeDef* node_def) {
+                                NodeDef* node_def, bool uniquify_frame_name) {
   node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
 
   // Update frame name to avoid multiple LoopCond nodes in one frame.
-  if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
+  if (uniquify_frame_name &&
+      (node_def->op() == "Enter" || node_def->op() == "RefEnter")) {
     string frame_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
     AttrValue& attr = (*node_def->mutable_attr())["frame_name"];
