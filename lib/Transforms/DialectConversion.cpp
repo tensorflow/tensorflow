@@ -359,8 +359,8 @@ struct DialectConversionRewriter final : public PatternRewriter {
     BlockActionKind kind;
   };
 
-  DialectConversionRewriter(Region &region, TypeConverter *converter)
-      : PatternRewriter(region), argConverter(converter, *this) {}
+  DialectConversionRewriter(MLIRContext *ctx, TypeConverter *converter)
+      : PatternRewriter(ctx), argConverter(converter, *this) {}
   ~DialectConversionRewriter() = default;
 
   /// Return the current state of the rewriter.
@@ -962,7 +962,7 @@ LogicalResult FunctionConverter::convertFunction(
   if (f.isExternal())
     return success();
 
-  DialectConversionRewriter rewriter(f.getBody(), typeConverter);
+  DialectConversionRewriter rewriter(f.getContext(), typeConverter);
 
   // Update the signature of the entry block.
   if (signatureConversion) {

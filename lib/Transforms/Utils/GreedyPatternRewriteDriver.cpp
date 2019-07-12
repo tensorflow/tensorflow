@@ -45,9 +45,9 @@ namespace {
 /// applies the locally optimal patterns in a roughly "bottom up" way.
 class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
-  explicit GreedyPatternRewriteDriver(FuncOp fn,
+  explicit GreedyPatternRewriteDriver(MLIRContext *ctx,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(fn.getBody()), matcher(std::move(patterns)) {
+      : PatternRewriter(ctx), matcher(std::move(patterns)) {
     worklist.reserve(64);
   }
 
@@ -218,7 +218,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(Region *region,
 ///
 bool mlir::applyPatternsGreedily(FuncOp fn,
                                  OwningRewritePatternList &&patterns) {
-  GreedyPatternRewriteDriver driver(fn, std::move(patterns));
+  GreedyPatternRewriteDriver driver(fn.getContext(), std::move(patterns));
   bool converged =
       driver.simplifyFunction(&fn.getBody(), maxPatternMatchIterations);
   LLVM_DEBUG(if (!converged) {

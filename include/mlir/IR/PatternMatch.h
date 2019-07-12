@@ -357,7 +357,7 @@ public:
                           ArrayRef<Value *> valuesToRemoveIfDead = {});
 
 protected:
-  PatternRewriter(Region &region) : OpBuilder(region) {}
+  explicit PatternRewriter(MLIRContext *ctx) : OpBuilder(ctx) {}
   virtual ~PatternRewriter();
 
   // These are the callback methods that subclasses can choose to implement if
