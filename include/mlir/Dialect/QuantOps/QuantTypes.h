@@ -192,6 +192,18 @@ public:
   /// Example (for this = !quant.uniform<i8:f32, 1.0>):
   ///   tensor<4xf32> -> tensor<4xi8>
   Type castExpressedToStorageType(Type candidateType);
+
+private:
+  /// Hide the following methods inherited from `Type`. It is almost certainly
+  /// a bug to call them from a `QuantizedType` object. Users should call
+  /// `getStorageType` or `getExpressedType` to get the underlying types
+  /// they want to inspect.
+  using Type::isBF16;
+  using Type::isF16;
+  using Type::isF32;
+  using Type::isF64;
+  using Type::isIndex;
+  using Type::isInteger;
 };
 
 /// A quantized type that maps storage to/from expressed types in an
