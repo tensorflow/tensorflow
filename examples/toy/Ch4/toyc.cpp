@@ -94,9 +94,6 @@ int dumpMLIR() {
   // Register our Dialect with MLIR
   mlir::registerDialect<ToyDialect>();
 
-  // Add generic options for the pass-manager (timing, print-after-all, ...)
-  mlir::registerPassManagerCLOptions();
-
   mlir::MLIRContext context;
   mlir::OwningModuleRef module;
   if (inputType == InputType::MLIR ||
