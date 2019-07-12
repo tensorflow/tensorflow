@@ -204,6 +204,14 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit AvgPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class BiasAddGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit BiasAddGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -560,6 +568,10 @@ bool IsUnaryGrad(const NodeDef& node);
 bool IsMaxPoolV2(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
+
+bool IsMaxPoolGradGradV1(const NodeDef& node);
+
+bool IsMaxPoolGradGradV2(const NodeDef& node);
 
 bool IsBinaryOp(const NodeDef& node);
 
