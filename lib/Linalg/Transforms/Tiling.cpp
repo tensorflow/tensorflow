@@ -505,6 +505,7 @@ static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
 
 namespace {
 struct LinalgTilingPass : public FunctionPass<LinalgTilingPass> {
+  LinalgTilingPass() = default;
   LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews);
 
   void runOnFunction() {
@@ -513,13 +514,6 @@ struct LinalgTilingPass : public FunctionPass<LinalgTilingPass> {
 
   SmallVector<int64_t, 8> tileSizes;
   bool promoteViews;
-
-protected:
-  LinalgTilingPass() {}
-};
-
-struct LinalgTilingPassCLI : public LinalgTilingPass {
-  LinalgTilingPassCLI();
 };
 } // namespace
 
@@ -528,16 +522,16 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
   this->promoteViews = promoteViews;
 }
 
-LinalgTilingPassCLI::LinalgTilingPassCLI() : LinalgTilingPass() {
-  this->tileSizes.assign(clTileSizes.begin(), clTileSizes.end());
-  this->promoteViews = clPromoteFullTileViews;
-}
-
 FunctionPassBase *
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
   return new LinalgTilingPass(tileSizes, promoteViews);
 }
 
-static PassRegistration<LinalgTilingPassCLI>
-    pass("linalg-tile", "Tile operations in the linalg dialect");
+static PassRegistration<LinalgTilingPass>
+    pass("linalg-tile", "Tile operations in the linalg dialect", [] {
+      auto *pass = new LinalgTilingPass();
+      pass->tileSizes.assign(clTileSizes.begin(), clTileSizes.end());
+      pass->promoteViews = clPromoteFullTileViews;
+      return pass;
+    });
