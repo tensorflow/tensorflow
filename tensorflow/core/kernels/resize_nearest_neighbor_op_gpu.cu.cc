@@ -245,7 +245,6 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
           width_scale, output.data()));
       return d.ok();
     }
-
   }
 };
 
