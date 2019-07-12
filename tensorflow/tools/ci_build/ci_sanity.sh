@@ -22,8 +22,6 @@
 #  --incremental  Performs checks incrementally, by using the files changed in
 #                 the latest commit
 
-set -ex
-
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
