@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
@@ -27,6 +28,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.util.tf_export import tf_export
+
+
+# Note: unlike ops._VALID_OP_NAME_REGEX, we allow a leading underscore here,
+# because eager/def_function.py uses the function's argument names as
+# TensorSpec names, and python symbols are allowed to start with an underscore.
+_VALID_TENSOR_SPEC_NAME_REGEX = re.compile("^[A-Za-z0-9._][A-Za-z0-9_.\\-/]*$")
 
 
 @tf_export("TensorSpec")
@@ -58,6 +65,8 @@ class TensorSpec(type_spec.BatchableTypeSpec):
       self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
+    if name is not None and not _VALID_TENSOR_SPEC_NAME_REGEX.match(name):
+      raise ValueError("'%s' is not a valid TensorSpec name" % name)
 
   @classmethod
   def from_spec(cls, spec, name=None):

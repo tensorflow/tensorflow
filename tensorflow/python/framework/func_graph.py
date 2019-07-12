@@ -93,8 +93,10 @@ def convert_structure_to_signature(structure, arg_names=None):
         # The user has explicitly named the argument differently than the name
         # of the function argument.
         name = user_specified_name
-      else:
+      elif path:
         name = "/".join([str(p) for p in path])
+      else:
+        name = "0"  # Empty string is not a valid TensorSpec name.
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
