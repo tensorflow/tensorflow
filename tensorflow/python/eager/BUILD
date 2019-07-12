@@ -250,6 +250,7 @@ cuda_py_test(
         ":forwardprop",
         ":test",
     ],
+    shard_count = 5,
     xla_enable_strict_auto_jit = True,
 )
 
