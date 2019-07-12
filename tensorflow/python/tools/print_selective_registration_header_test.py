@@ -104,8 +104,6 @@ class PrintOpFilegroupTest(test.TestCase):
     ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
     matmul_prefix = ''
-    if test_util.IsMklEnabled():
-      matmul_prefix = 'Mkl'
 
     self.assertListEqual(
         [
