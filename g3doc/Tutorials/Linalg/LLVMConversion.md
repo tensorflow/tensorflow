@@ -88,7 +88,7 @@ elements.
 
 A View will contain as many strides as it has dimensions. For rank-reducing
 strides, this allows one to simply remove the stride of the dimension that is
-not included in the view. For example, taking a view that projets away the
+not included in the view. For example, taking a view that projects away the
 middle dimension from a `2x6x4` array will give one strides `24` and `1` over
 the original buffer.
 
@@ -113,7 +113,7 @@ strides to this offset will let one access the other elements in the view. Since
 addresses are linearized anyway, and since we cannot have a rank-expanding view
 by construction, it is sufficient to store a single linearized offset.
 
-For the sake of simplicitly, we will store the offset separate from the buffer
+For the sake of simplicity, we will store the offset separate from the buffer
 pointer. Combining the two can save the space required for storing the data but
 make functionality like alias analysis more complex. Implementing such a
 combination is left as an exercise to the reader.
@@ -289,7 +289,7 @@ recursive definition, although it is not stored in the descriptor.
 
 The full conversion function is
 [available](https://github.com/tensorflow/mlir/blob/master/examples/Linalg1/lib/ConvertToLLVMDialect.cpp)
-and accounts for all these details and minimzes the number of instructions it
+and accounts for all these details and minimizes the number of instructions it
 produces. Let us consider some parts of this functions to understand how it
 operates.
 

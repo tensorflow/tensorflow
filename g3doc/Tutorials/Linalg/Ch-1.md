@@ -94,8 +94,8 @@ each `mlir::Value` is a `linalg.range`.
 
 ### Simplifying assumption
 
-The `linalg.range` type is generally unrestricted beyond havind elements of
-`index` type. however it is used to build loop nests using the `affine.for`
+The `linalg.range` type is generally unrestricted beyond having elements of
+`index` type. However it is used to build loop nests using the `affine.for`
 [operation](../../Dialects/Affine.md) whose restrictions it inherits, at the
 point where `affine.for` operations are materialized. This is a tradeoff to
 reuse existing MLIR operations that are already known to lower to LLVM. As a

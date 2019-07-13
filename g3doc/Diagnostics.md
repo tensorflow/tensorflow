@@ -3,7 +3,7 @@
 [TOC]
 
 This document presents an introduction to using and interfacing with MLIR's
-diagnostics infrastucture.
+diagnostics infrastructure.
 
 See [MLIR specification](LangRef.md) for more information about MLIR, the
 structure of the IR, operations, etc.

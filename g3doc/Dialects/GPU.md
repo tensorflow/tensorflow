@@ -123,7 +123,7 @@ to have that information by construction.
 Launch a kernel given as a function on the specified grid of thread blocks.
 `gpu.launch` operations are lowered to `gpu.launch_func` operations by outlining
 the kernel body into a function, which is closer to the NVVM model. The
-`gpu.launch_func` operation has a function attribute namend `kernel` to specify
+`gpu.launch_func` operation has a function attribute named `kernel` to specify
 the kernel function to launch. The kernel function itself has a `nvvm.kernel`
 attribute.
 
