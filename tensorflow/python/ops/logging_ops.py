@@ -69,21 +69,7 @@ except NameError:
             "directly specified in session.run or used as a "
             "control dependency for other operators. This is "
             "only a concern in graph mode. Below is an example "
-            "of how to ensure tf.print executes in graph mode:\n"
-            """```python
-    sess = tf.compat.v1.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print(tensor)
-        with tf.control_dependencies([print_op]):
-          out = tf.add(tensor, tensor)
-        sess.run(out)
-    ```
-Additionally, to use tf.print in python 2.7, users must make sure to import
-the following:
-
-  `from __future__ import print_function`
-""")
+            "of how to ensure tf.print executes in graph mode:\n")
 @tf_export(v1=["Print"])
 def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   """Prints a list of tensors.
@@ -107,6 +93,20 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
 
   Returns:
     A `Tensor`. Has the same type and contents as `input_`.
+
+  	```python
+    sess = tf.compat.v1.Session()
+    with sess.as_default():
+        tensor = tf.range(10)
+        print_op = tf.print(tensor)
+        with tf.control_dependencies([print_op]):
+          out = tf.add(tensor, tensor)
+        sess.run(out)
+  	```
+	Additionally, to use tf.print in python 2.7, users must make sure to import
+	the following:
+
+  `from __future__ import print_function`
   """
   return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
