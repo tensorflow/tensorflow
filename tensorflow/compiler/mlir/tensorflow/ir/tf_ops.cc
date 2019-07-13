@@ -67,6 +67,14 @@ static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
   return true;
 }
 
+// Returns true if the given `value` has at least the specified rank or has
+// unranked type.
+static inline bool HasRankAtLeast(Value *value, int64_t rank) {
+  auto type = value->getType();
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
+    return ranked_type.getRank() >= rank;
+  return type.isa<UnrankedTensorType>();
+}
 // Returns true if the given pair of TensorFlow types can be cast to one
 // another. In other words, a single run-time value is legal for both the types.
 // For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
@@ -627,9 +635,8 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SoftmaxOp op) {
-  if (!IsOfRankOrUnranked(op.logits(), 1) &&
-      !IsOfRankOrUnranked(op.logits(), 2)) {
-    return op.emitOpError("requires operand to be 1D/2D tensor");
+  if (!HasRankAtLeast(op.logits(), 1)) {
+    return op.emitOpError("requires operand to have rank at least 1");
   }
   return success();
 }
