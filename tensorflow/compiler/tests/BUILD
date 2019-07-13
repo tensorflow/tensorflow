@@ -481,6 +481,7 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
+    tags = ["no_oss"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

@@ -212,6 +212,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 15,
+    tags = ["no_oss"],
 )
 
 py_library(

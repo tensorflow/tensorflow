@@ -18,4 +18,5 @@ py_test(
         ":k8s_tensorflow_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["no_oss"],
 )
