@@ -744,9 +744,9 @@ def load_weights_from_hdf5_group_by_name(f, layers, skip_mismatch=False):
       if len(weight_values) != len(symbolic_weights):
         if skip_mismatch:
           logging.warning('Skipping loading of weights for '
-                        'layer {}'.format(layer.name) + ' due to mismatch '
-                        'in number of weights ({} vs {}).'.format(
-                        len(symbolic_weights), len(weight_values)))
+                          'layer {}'.format(layer.name) + ' due to mismatch '
+                          'in number of weights ({} vs {}).'.format(
+                              len(symbolic_weights), len(weight_values)))
           continue
         else:
           raise ValueError('Layer #' + str(k) + ' (named "' + layer.name +
@@ -758,9 +758,10 @@ def load_weights_from_hdf5_group_by_name(f, layers, skip_mismatch=False):
         if K.int_shape(symbolic_weights[i]) != weight_values[i].shape:
           if skip_mismatch:
             logging.warning('Skipping loading of weights for '
-                          'layer {}'.format(layer.name) + ' due to '
-                          'mismatch in shape ({} vs {}).'.format(
-                          symbolic_weights[i].shape,weight_values[i].shape))
+                            'layer {}'.format(layer.name) + ' due to '
+                            'mismatch in shape ({} vs {}).'.format(
+                                symbolic_weights[i].shape,
+                                weight_values[i].shape))
             continue
           else:
             raise ValueError('Layer #' + str(k) +' (named "' + layer.name +
