@@ -12,28 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wraps toco interface with python lazy loader."""
+"""Stub to make toco convert accessible."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+# TODO(aselle): Remove once no clients internally depend on this.
 
-# TODO(b/137402359): Remove lazy loading wrapper
-
-
-def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
-                         debug_info_str, enable_mlir_converter):
-  """Wraps TocoConvert with lazy loader."""
-  return pywrap_tensorflow.TocoConvert(
-      model_flags_str,
-      toco_flags_str,
-      input_data_str,
-      False,  # extended_return
-      debug_info_str,
-      enable_mlir_converter)
-
-
-def wrapped_get_potentially_supported_ops():
-  """Wraps TocoGetPotentiallySupportedOps with lazy loader."""
-  return pywrap_tensorflow.TocoGetPotentiallySupportedOps()
+# pylint: disable=unused-import
+from tensorflow.python.pywrap_tensorflow import TocoConvert
+# pylint: enable=unused-import

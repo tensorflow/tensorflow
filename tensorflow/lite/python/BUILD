@@ -174,7 +174,7 @@ py_library(
         "wrap_toco.py",
     ],
     deps = [
-        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )
