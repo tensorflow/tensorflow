@@ -36,76 +36,9 @@ class Operation;
 class Type;
 class Value;
 
-/// Base class for the conversion patterns that require type changes. Specific
-/// conversions must derive this class and implement least one `rewrite` method.
-/// NOTE: These conversion patterns can only be used with the 'apply*' methods
-/// below.
-class ConversionPattern : public RewritePattern {
-public:
-  /// Construct an ConversionPattern.  `rootName` must correspond to the
-  /// canonical name of the first operation matched by the pattern.
-  ConversionPattern(StringRef rootName, PatternBenefit benefit,
-                    MLIRContext *ctx)
-      : RewritePattern(rootName, benefit, ctx) {}
-
-  /// Hook for derived classes to implement rewriting. `op` is the (first)
-  /// operation matched by the pattern, `operands` is a list of rewritten values
-  /// that are passed to this operation, `rewriter` can be used to emit the new
-  /// operations. This function must be reimplemented if the
-  /// ConversionPattern ever needs to replace an operation that does not
-  /// have successors. This function should not fail. If some specific cases of
-  /// the operation are not supported, these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
-                       PatternRewriter &rewriter) const {
-    llvm_unreachable("unimplemented rewrite");
-  }
-
-  /// Hook for derived classes to implement rewriting. `op` is the (first)
-  /// operation matched by the pattern, `properOperands` is a list of rewritten
-  /// values that are passed to the operation itself, `destinations` is a list
-  /// of (potentially rewritten) successor blocks, `operands` is a list of lists
-  /// of rewritten values passed to each of the successors, co-indexed with
-  /// `destinations`, `rewriter` can be used to emit the new operations. It must
-  /// be reimplemented if the ConversionPattern ever needs to replace a
-  /// terminator operation that has successors. This function should not fail
-  /// the pass. If some specific cases of the operation are not supported,
-  /// these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<Value *> properOperands,
-                       ArrayRef<Block *> destinations,
-                       ArrayRef<ArrayRef<Value *>> operands,
-                       PatternRewriter &rewriter) const {
-    llvm_unreachable("unimplemented rewrite for terminators");
-  }
-
-  /// Hook for derived classes to implement combined matching and rewriting.
-  virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
-                  ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<Value *>> operands,
-                  PatternRewriter &rewriter) const {
-    if (!match(op))
-      return matchFailure();
-    rewrite(op, properOperands, destinations, operands, rewriter);
-    return matchSuccess();
-  }
-
-  /// Hook for derived classes to implement combined matching and rewriting.
-  virtual PatternMatchResult matchAndRewrite(Operation *op,
-                                             ArrayRef<Value *> operands,
-                                             PatternRewriter &rewriter) const {
-    if (!match(op))
-      return matchFailure();
-    rewrite(op, operands, rewriter);
-    return matchSuccess();
-  }
-
-  /// Attempt to match and rewrite the IR root at the specified operation.
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const final;
-
-private:
-  using RewritePattern::rewrite;
-};
+//===----------------------------------------------------------------------===//
+// Type Conversion
+//===----------------------------------------------------------------------===//
 
 /// Base class for type conversion interface. Specific converters must
 /// derive this class and implement the pure virtual functions.
@@ -231,6 +164,85 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+// Conversion Patterns
+//===----------------------------------------------------------------------===//
+
+/// Base class for the conversion patterns that require type changes. Specific
+/// conversions must derive this class and implement least one `rewrite` method.
+/// NOTE: These conversion patterns can only be used with the 'apply*' methods
+/// below.
+class ConversionPattern : public RewritePattern {
+public:
+  /// Construct an ConversionPattern.  `rootName` must correspond to the
+  /// canonical name of the first operation matched by the pattern.
+  ConversionPattern(StringRef rootName, PatternBenefit benefit,
+                    MLIRContext *ctx)
+      : RewritePattern(rootName, benefit, ctx) {}
+
+  /// Hook for derived classes to implement rewriting. `op` is the (first)
+  /// operation matched by the pattern, `operands` is a list of rewritten values
+  /// that are passed to this operation, `rewriter` can be used to emit the new
+  /// operations. This function must be reimplemented if the
+  /// ConversionPattern ever needs to replace an operation that does not
+  /// have successors. This function should not fail. If some specific cases of
+  /// the operation are not supported, these cases should not be matched.
+  virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
+                       PatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite");
+  }
+
+  /// Hook for derived classes to implement rewriting. `op` is the (first)
+  /// operation matched by the pattern, `properOperands` is a list of rewritten
+  /// values that are passed to the operation itself, `destinations` is a list
+  /// of (potentially rewritten) successor blocks, `operands` is a list of lists
+  /// of rewritten values passed to each of the successors, co-indexed with
+  /// `destinations`, `rewriter` can be used to emit the new operations. It must
+  /// be reimplemented if the ConversionPattern ever needs to replace a
+  /// terminator operation that has successors. This function should not fail
+  /// the pass. If some specific cases of the operation are not supported,
+  /// these cases should not be matched.
+  virtual void rewrite(Operation *op, ArrayRef<Value *> properOperands,
+                       ArrayRef<Block *> destinations,
+                       ArrayRef<ArrayRef<Value *>> operands,
+                       PatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite for terminators");
+  }
+
+  /// Hook for derived classes to implement combined matching and rewriting.
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<Value *>> operands,
+                  PatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, properOperands, destinations, operands, rewriter);
+    return matchSuccess();
+  }
+
+  /// Hook for derived classes to implement combined matching and rewriting.
+  virtual PatternMatchResult matchAndRewrite(Operation *op,
+                                             ArrayRef<Value *> operands,
+                                             PatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, operands, rewriter);
+    return matchSuccess();
+  }
+
+  /// Attempt to match and rewrite the IR root at the specified operation.
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final;
+
+private:
+  using RewritePattern::rewrite;
+};
+
+//===----------------------------------------------------------------------===//
+// ConversionTarget
+//===----------------------------------------------------------------------===//
+
 /// This class describes a specific conversion target.
 class ConversionTarget {
 public:
@@ -334,6 +346,10 @@ private:
   /// The current context this target applies to.
   MLIRContext &ctx;
 };
+
+//===----------------------------------------------------------------------===//
+// Conversion Application
+//===----------------------------------------------------------------------===//
 
 /// Convert the given module with the provided conversion patterns and type
 /// conversion object. This function returns failure if a type conversion

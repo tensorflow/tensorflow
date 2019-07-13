@@ -531,7 +531,7 @@ struct DialectConversionRewriter final : public PatternRewriter {
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
-// ConversionPattern
+// Conversion Patterns
 //===----------------------------------------------------------------------===//
 
 /// Attempt to match and rewrite the IR root at the specified operation.
@@ -984,7 +984,7 @@ LogicalResult FunctionConverter::convertFunction(
 }
 
 //===----------------------------------------------------------------------===//
-// TypeConverter
+// Type Conversion
 //===----------------------------------------------------------------------===//
 
 /// Append new result types to the signature conversion.
@@ -1121,7 +1121,7 @@ auto ConversionTarget::getOpAction(OperationName op) const
 }
 
 //===----------------------------------------------------------------------===//
-// applyConversionPatterns
+// Conversion Application
 //===----------------------------------------------------------------------===//
 
 /// Convert the given module with the provided conversion patterns and type
