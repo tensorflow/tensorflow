@@ -423,6 +423,27 @@ def TFL_AveragePool2DOp:
   let customOption = "Pool2DOptions";
 }
 
+def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
+  let summary = "ArgMin operator";
+
+  let description = [{
+    Returns the index with the smallest value across dimensions of a tensor."
+      a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+      b = tf.math.argmin(input = a)
+      c = tf.keras.backend.eval(b)
+  }];
+
+  let arguments = (
+    // TODO(pkanwar): Add support for uint8.
+    ins TensorOf<[F32, I32, I8]>:$input,
+    TFL_I32OrI64Tensor:$dim
+  );
+
+  let results = (outs
+    TFL_I32OrI64Tensor:$output
+  );
+}
+
 def TFL_CeilOp: TFL_Op<"ceil", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Ceil operator";
 
