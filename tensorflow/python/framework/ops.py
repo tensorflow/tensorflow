@@ -257,6 +257,25 @@ def numpy_text(tensor, is_repr=False):
   return text
 
 
+def enable_tensor_equality():
+  """Compare Tensors with element-wise comparison and thus be unhashable.
+
+  Comparing tensors with element-wise allows comparisons such as
+  tf.Variable(1.0) == 1.0. Element-wise equality implies that tensors are
+  unhashable. Thus tensors can no longer be directly used in sets or as a key in
+  a dictionary.
+  """
+  Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
+
+
+def disable_tensor_equality():
+  """Compare Tensors by their id and be hashable.
+
+  This is a legacy behaviour of TensorFlow and is highly discouraged.
+  """
+  Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
+
 @tf_export("Tensor")
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
@@ -318,6 +337,8 @@ class Tensor(_TensorLike):
       "__le__",
       "__gt__",
       "__ge__",
+      "__ne__",
+      "__eq__",
       "__and__",
       "__rand__",
       "__or__",
@@ -334,6 +355,9 @@ class Tensor(_TensorLike):
       "__matmul__",
       "__rmatmul__"
   }
+
+  # Whether to allow hashing or numpy-style equality
+  _USE_EQUALITY = False
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -641,14 +665,10 @@ class Tensor(_TensorLike):
                                                    self._dtype.name)
 
   def __hash__(self):
-    # Necessary to support Python's collection membership operators
-    return id(self)
-
-  def __eq__(self, other):
-    # Necessary to support Python's collection membership operators
-
-    # NOTE(taylorrobie): equivalent to: id(self) == id(other)
-    return self is other
+    if Tensor._USE_EQUALITY and executing_eagerly_outside_functions():
+      raise TypeError("Tensor is unhashable if Tensor equality is enabled.")
+    else:
+      return id(self)
 
   def __copy__(self):
     # TODO(b/77597810): get rid of Tensor copies.
