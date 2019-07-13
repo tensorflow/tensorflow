@@ -226,6 +226,12 @@ class SliceAggregator(Aggregator):
 
     # In the special case of single batch inference, no copy is needed.
     if batch_end - batch_start == self.num_samples_or_steps:
+      if self.num_samples_or_steps != batch_element.shape[0]:
+        raise ValueError(
+            'Mismatch between expected batch size and model output batch size. '
+            'Output shape = {}, expected output shape = shape {}'.format(
+                batch_element.shape, self.results.shape))
+
       self.results = batch_element
       return
 
