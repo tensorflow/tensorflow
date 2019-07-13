@@ -18,6 +18,7 @@ py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":ast_edits",
         "//tensorflow/python:client_testlib",
@@ -37,6 +38,7 @@ py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":tf_upgrade",
         "//tensorflow/python:client_testlib",
@@ -83,6 +85,7 @@ py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":tf_upgrade_v2",
         "//tensorflow:tensorflow_py",

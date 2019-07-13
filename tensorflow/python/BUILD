@@ -1265,6 +1265,7 @@ cuda_py_tests(
     ],
     shard_count = 10,
     tags = [
+        "no_oss",
         "noasan",
         "optonly",
     ],
@@ -4551,6 +4552,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["no_oss"],
 )
 
 cuda_py_test(
