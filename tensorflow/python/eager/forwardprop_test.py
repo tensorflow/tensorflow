@@ -22,7 +22,6 @@ import weakref
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
@@ -33,7 +32,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -76,10 +74,7 @@ def _grad(f, argnums=0):
     with backprop.GradientTape() as tape:
       tape.watch(params)
       primals_out = f(*params)
-    return tape.gradient(
-        primals_out,
-        params[argnums],
-        unconnected_gradients=UnconnectedGradients.ZERO)
+    return tape.gradient(primals_out, params[argnums])
 
   return _f
 
@@ -98,8 +93,8 @@ def _test_gradients(testcase,
                     atol=1e-6):
   """Tests forward/backward jacobians of `f`'s [0, `order`)-order gradients."""
   if order < 1:
-    raise ValueError(
-        "`order` should be a positive integer, got '{}'.".format(order))
+    raise ValueError("`order` should be a positive integer, got '{}'."
+                     .format(order))
   if order > 1:
     _test_gradients(
         testcase=testcase,
@@ -121,60 +116,6 @@ def _test_gradients(testcase,
 
 
 class ForwardpropTest(test.TestCase):
-
-  def testForwardGradientFunction(self):
-    add_outputs = (constant_op.constant(4.),)
-    vp, = forwardprop._forward_gradient(
-        op_name="Add",
-        attr_tuple=(),
-        inputs=(constant_op.constant(1.), constant_op.constant(3.)),
-        outputs=add_outputs,
-        tangents=(
-            constant_op.constant(1.),
-            constant_op.constant(5.),
-        ))
-    self.assertAllClose(1. + 5., self.evaluate(vp))
-
-    mul_outputs = (constant_op.constant([20.]),)
-    vp, = forwardprop._forward_gradient(
-        op_name="Mul",
-        attr_tuple=(),
-        inputs=(constant_op.constant([4.]), constant_op.constant([5.])),
-        outputs=mul_outputs,
-        tangents=(
-            constant_op.constant([2.]),
-            constant_op.constant([3.]),
-        ))
-    self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
-
-  def testForwardGradientFunctionUsedByAccumulatorForOps(self):
-    previous_fn = forwardprop._forward_gradient
-    try:
-      with forwardprop.ForwardGradientAccumulator() as acc:
-        x = constant_op.constant(1.)
-        acc.watch(x, 2.)
-        y = x + x
-        pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(
-            lambda *args, **kwargs: [constant_op.constant(-15.)])
-        z = x + x
-      self.assertAllClose(4., acc.jvp(y))
-      self.assertAllClose(-15., acc.jvp(z))
-    finally:
-      pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(previous_fn)
-
-  @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testFunctionCacheLimited(self):
-    # Every time this test is executed, it will create a slightly larger Tensor
-    # and push it through Add's gradient. Since we check for new pyobjects after
-    # the warmup, retracing each time without cleaning up old traces fails the
-    # test. It works because of experimental_relax_shapes.
-    execution_count = getattr(self, "_execution_count", 0)
-    self._execution_count = execution_count + 1
-    x = array_ops.zeros([execution_count])
-    with forwardprop.ForwardGradientAccumulator() as acc:
-      acc.watch(x, array_ops.ones_like(x))
-      y = x + x
-    self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
@@ -210,14 +151,14 @@ class ForwardpropTest(test.TestCase):
       self.assertIsNone(derived_tensor_weak())
       self.assertIsNone(derived_tensor_grad_weak())
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_tensors
   def testJVPManual(self):
     primal, tangent = _jvp(math_ops.sin, (constant_op.constant(0.1),),
                            (constant_op.constant(0.2),))
     self.assertAllClose(math_ops.sin(0.1), primal)
     self.assertAllClose(math_ops.cos(0.1) * 0.2, tangent)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_tensors
   def testNumericHigherOrder(self):
 
     def f(x):
@@ -228,7 +169,7 @@ class ForwardpropTest(test.TestCase):
     _test_gradients(
         self, f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])], order=3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_tensors
   def testCustomGradient(self):
 
     @custom_gradient.custom_gradient
@@ -241,7 +182,7 @@ class ForwardpropTest(test.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_tensors
   def testCustomGradientRecomputeGrad(self):
 
     @custom_gradient.recompute_grad
@@ -316,7 +257,7 @@ class ForwardpropTest(test.TestCase):
     tangents = constant_op.constant([3., 4., 5.])
     _hvp(fun, (primals,), (tangents,))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_tensors
   def testHVPCorrectness(self):
 
     def fun(x):
@@ -344,7 +285,6 @@ class ForwardpropTest(test.TestCase):
     self.assertAllClose(backback_hvp, forwardback_hvp_function)
 
 
-if __name__ == "__main__":
-  # TODO(allenl): Also test with 1.x-style graph mode.
+if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()

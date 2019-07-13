@@ -21,83 +21,13 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import backprop
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import execute
-
 from tensorflow.python.framework import ops
-
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-# TODO(allenl): experimental_relax_shapes for gradients which rely on static
-# shape information may be underspecialized. We may want hand-written forward
-# implementations.
-@def_function.function(experimental_relax_shapes=True)
-def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
-  """Computes a Jacobian-vector product for an op.
-
-  Note that this function would be wasteful if executed eagerly. It runs the
-  backward gradient function and throws away the result just to record its
-  operations on a GradientTape. These unused ops are pruned away when this
-  function is traced.
-
-  Args:
-    op_name: A string, the type of operation being executed.
-    attr_tuple: Attributes of the operation.
-    inputs: A flat list of input Tensors to the operation.
-    outputs: A flat list of output Tensors from the operation.
-    tangents: A flat list of Tensors, same shape as `inputs`.
-
-  Returns:
-    A flat list of tangents corresponding to `outputs`.
-  """
-  float_inputs = []
-  float_indices = []
-  nontrivial_tangents = []
-  for input_index, tensor in enumerate(inputs):
-    if tensor.dtype.is_floating:
-      float_inputs.append(tensor)
-      float_indices.append(input_index)
-      nontrivial_tangents.append(tangents[input_index])
-
-  with backprop.GradientTape() as transpose_tape:
-    with backprop.GradientTape() as backfunc_tape:
-      backfunc_tape.watch(float_inputs)
-      execute.record_gradient(op_name, inputs, attr_tuple, outputs,
-                              "forward_op_replay")
-
-    forwardprop_aids = []
-    float_outputs = []
-    nontrivial_output_indices = []
-    for output_index, output in enumerate(outputs):
-      if output.dtype.is_floating:
-        forwardprop_aids.append(
-            array_ops.ones_like(output, name="unused_forwardprop_aid"))
-        float_outputs.append(output)
-        nontrivial_output_indices.append(output_index)
-
-    transpose_tape.watch(forwardprop_aids)
-    grads = backfunc_tape.gradient(
-        float_outputs,
-        float_inputs,
-        forwardprop_aids,
-        unconnected_gradients=UnconnectedGradients.ZERO)
-  nontrivial_output_tangents = transpose_tape.gradient(
-      grads, forwardprop_aids, output_gradients=nontrivial_tangents)
-  output_tangents = [None] * len(outputs)
-  for index, tangent in zip(nontrivial_output_indices,
-                            nontrivial_output_tangents):
-    output_tangents[index] = tangent
-  return output_tangents
-
-
-pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(_forward_gradient)
-
-
+# TODO(allenl): Special-case op gradients and tf.functions to avoid unnecessary
+# evaluation of gradient functions.
 class ForwardGradientAccumulator(object):
   """Computes Jacobian-vector products using forward-mode autodiff.
 
