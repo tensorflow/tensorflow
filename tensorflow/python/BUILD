@@ -113,6 +113,7 @@ py_library(
         ":cudnn_rnn_ops_gen",
         ":errors",
         ":framework",
+        ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":functional_ops",
         ":gradient_checker",
@@ -1324,6 +1325,39 @@ py_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY2AND3",
     deps = [":framework_test_lib"],
+)
+
+py_library(
+    name = "framework_combinations",
+    srcs = ["framework/combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+        ":framework_test_combinations_lib",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "framework_test_combinations_lib",
+    srcs = ["framework/test_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "test_combinations_test",
+    srcs = ["framework/test_combinations_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_combinations_lib",
+        "//tensorflow/python/eager:test",
+    ],
 )
 
 py_library(
@@ -6706,8 +6740,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":framework_combinations",
         ":tf2",
-        "//tensorflow/python/distribute:combinations",
     ],
 )
 

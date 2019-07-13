@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for some testing utils from strategy_test_lib."""
+"""Tests generating test combinations."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +22,7 @@ from collections import OrderedDict
 
 from absl.testing import parameterized
 
-from tensorflow.python.distribute import test_combinations as combinations
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.eager import test
 
 
