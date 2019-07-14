@@ -425,6 +425,11 @@ def : Pat<(ILLegalOpD), (LegalOpA Test_LegalizerEnum_Failure)>;
 def : Pat<(ILLegalOpC), (ILLegalOpE), [], (addBenefit 10)>;
 def : Pat<(ILLegalOpE), (LegalOpA Test_LegalizerEnum_Success)>;
 
+// Check that patterns use the most up-to-date value when being replaced.
+def TestRewriteOp : TEST_Op<"rewrite">,
+  Arguments<(ins AnyType:$input)>, Results<(outs AnyType:$res)>;
+def : Pat<(TestRewriteOp $input), (replaceWithValue $input)>;
+
 //===----------------------------------------------------------------------===//
 // Test Type Legalization
 //===----------------------------------------------------------------------===//

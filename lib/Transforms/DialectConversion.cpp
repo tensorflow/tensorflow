@@ -431,7 +431,8 @@ struct DialectConversionRewriter final : public PatternRewriter {
     // Apply all of the rewrites replacements requested during conversion.
     for (auto &repl : replacements) {
       for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
-        repl.op->getResult(i)->replaceAllUsesWith(repl.newValues[i]);
+        repl.op->getResult(i)->replaceAllUsesWith(
+            mapping.lookupOrDefault(repl.newValues[i]));
 
       // if this operation defines any regions, drop any pending argument
       // rewrites.

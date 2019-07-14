@@ -91,3 +91,11 @@ func @dropped_input_in_use(%arg: i16, %arg2: i64) {
   // CHECK-NEXT: "work"{{.*}} : (i16)
   "work"(%arg) : (i16) -> ()
 }
+
+// CHECK-LABEL: func @up_to_date_replacement
+func @up_to_date_replacement(%arg: i8) -> i8 {
+  // CHECK-NEXT: return
+  %repl_1 = "test.rewrite"(%arg) : (i8) -> i8
+  %repl_2 = "test.rewrite"(%repl_1) : (i8) -> i8
+  return %repl_2 : i8
+}
