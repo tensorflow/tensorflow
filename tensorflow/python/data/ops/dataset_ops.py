@@ -1165,7 +1165,20 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     some but not all Python code.
 
     2) Use `tf.py_function`, which allows you to write arbitrary Python code but
-    will generally result in worse performance than 1).
+    will generally result in worse performance than 1). For example:
+    
+    ```python
+    d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+    
+    # transform a string tensor to upper case string using a Python function
+    def upper_case_fn(t: tf.Tensor) -> str:
+        return t.numpy().decode('utf-8').upper()
+    
+    result = d.map(lambda x: tf.py_function(func=upper_case_fn,
+                                            inp=[x], Tout=tf.string))
+    # list(result) == [<tf.Tensor: id=.., shape=(), dtype=string, numpy=b'HELLO'>,
+    #                  <tf.Tensor: id=.., shape=(), dtype=string, numpy=b'WORLD'>]
+    ```
 
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
