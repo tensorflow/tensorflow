@@ -586,21 +586,6 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(Module* module, llvm::TargetMachi
   std::string hsaco_path = tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
 
   std::error_code ec;
-  SmallString<128> path;
-
-  // inject IR
-  std::string inject_ir_path = tensorflow::io::JoinPath(".", ir_filename);
-  if (llvm::sys::fs::exists(inject_ir_path)) {
-    LOG(INFO) << "use inject_ir_path: " << inject_ir_path << "\n";
-  }
-
-  // inject ISA
-  bool inject_isa = false;
-  std::string inject_isabin_path = tensorflow::io::JoinPath(".", isabin_filename);
-  if (llvm::sys::fs::exists(inject_isabin_path)) {
-    LOG(INFO) << "use inject_isa_path: " << inject_isabin_path << "\n";
-    inject_isa = true;
-  }
 
   // dump LLVM IR
   std::unique_ptr<llvm::raw_fd_ostream> ir_fs(new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
@@ -626,10 +611,11 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(Module* module, llvm::TargetMachi
                                       llvm::TargetMachine::CGFT_ObjectFile);
   codegen_passes.run(*module);
   isabin_fs->flush();
-  const char* lld_path_value = "/opt/rocm/hcc/bin";
-  StringRef lld_path = lld_path_value;
 
-  auto lld_program = llvm::sys::findProgramByName("ld.lld",lld_path);
+  // Locate lld
+  std::string lld_path =
+      tensorflow::io::JoinPath(tensorflow::ROCmRoot(), "hcc/bin");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld", lld_path);
   if (!lld_program) {
     LOG(FATAL) << "unable to find ld.lld in PATH: "
                << lld_program.getError().message();
@@ -643,11 +629,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(Module* module, llvm::TargetMachi
     llvm_ir::AsStringRef("-o"),
     llvm_ir::AsStringRef("hsaco_path"),
   };
-  if (inject_isa) {
-    lld_args[4] = llvm_ir::AsStringRef(inject_isabin_path.c_str());
-  } else {
-    lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
-  }
+  lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
   lld_args[6] = llvm_ir::AsStringRef(hsaco_path.c_str());
 
   std::string error_message;
