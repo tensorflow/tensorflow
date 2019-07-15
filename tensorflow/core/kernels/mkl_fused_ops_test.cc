@@ -657,6 +657,10 @@ public:
     CommonTestUtilities<quint8> conv_comp;
     conv_comp.ConvertAndCompareIntegral(dtype, output, output_layout, expected);
 
+    // TODO(wenxi): For now, we rely on internal performance tests to
+    // determine if filter data is being cached and reused.
+    // However, we still need to add a check here to determine if this is
+    // still the case by inspecting the contents of the persistent tensor.
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare output to expected results
