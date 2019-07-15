@@ -141,9 +141,9 @@ SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder &b,
   return res;
 }
 
-// Returns all the operands of `linalgOp` that are not views.
-// Asserts that these operands are value types to allow transformations like
-// tiling to just use the values when cloning `linalgOp`.
+/// Returns all the operands of `linalgOp` that are not views.
+/// Asserts that these operands are value types to allow transformations like
+/// tiling to just use the values when cloning `linalgOp`.
 SmallVector<Value *, 4>
 mlir::linalg::getAssumedNonViewOperands(LinalgOp linalgOp) {
   auto *op = linalgOp.getOperation();

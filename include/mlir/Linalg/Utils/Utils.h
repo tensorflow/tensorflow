@@ -74,9 +74,9 @@ private:
 
 namespace linalg {
 
-// Returns the linearized list of all view dimensions in a linalgOp. Applying
-// the inverse, concatenated loopToOperandRangeMaps to this list allows the
-// derivation of loop ranges for any linalgOp.
+/// Returns the linearized list of all view dimensions in a linalgOp. Applying
+/// the inverse, concatenated loopToOperandRangeMaps to this list allows the
+/// derivation of loop ranges for any linalgOp.
 SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp);
 
 /// Returns the values obtained by applying `map` to the list of values.
@@ -133,9 +133,9 @@ llvm::SmallVector<PromotionInfo, 8> promoteLinalgViews(OpBuilder &b,
                                                        ArrayRef<Value *> views,
                                                        OperationFolder &folder);
 
-// Returns all the operands of `linalgOp` that are not views.
-// Asserts that these operands are value types to allow transformations like
-// tiling to just use the values when cloning `linalgOp`.
+/// Returns all the operands of `linalgOp` that are not views.
+/// Asserts that these operands are value types to allow transformations like
+/// tiling to just use the values when cloning `linalgOp`.
 llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
 
 } // namespace linalg
