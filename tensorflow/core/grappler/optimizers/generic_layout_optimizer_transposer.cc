@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -64,8 +65,7 @@ constexpr char kOpConst[] = "Const";
 constexpr char kReshape[] = "Reshape";
 constexpr char kReshapeConst[] = "ReshapeConst";
 constexpr char kGPU[] = "GPU";
-constexpr char kNHWC[] = "NHWC";
-constexpr char kNCHW[] = "NCHW";
+constexpr int kRank = 4;
 
 inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format,
@@ -145,6 +145,17 @@ bool IsHostMemory(const NodeDef& node, int output_port) {
   return false;
 }
 
+std::vector<int> GetDimensionIndicesFromLabel(
+    const absl::flat_hash_map<char, int>& dim_indices,
+    absl::Span<const char> labels) {
+  std::vector<int> indices;
+  indices.reserve(labels.size());
+  for (const auto& label : labels) {
+    indices.push_back(dim_indices.at(label));
+  }
+  return indices;
+}
+
 }  // namespace
 
 // TransposeContext.
@@ -171,11 +182,13 @@ Status TransposeContext::InitializeTransposeContext(
     context->virtual_placer =
         absl::make_unique<const VirtualPlacer>(cluster->GetDevices());
   }
+  context->target_device = string(target_device);
   context->src_format = string(src_format);
   context->dst_format = string(dst_format);
-  context->target_device = string(target_device);
-  context->src_to_dst = GetPermutation(src_format, dst_format);
-  context->dst_to_src = GetPermutation(dst_format, src_format);
+  context->src_dim_indices = GetDimensionIndices(src_format);
+  context->dst_dim_indices = GetDimensionIndices(dst_format);
+  context->src_to_dst = GetPermutation(context->src_dim_indices, dst_format);
+  context->dst_to_src = GetPermutation(context->dst_dim_indices, src_format);
   return Status::OK();
 }
 
@@ -1198,39 +1211,57 @@ bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
   return false;
 }
 
-bool ReduceTransposer::IsAlongAxis(const utils::MutableNodeView& axis_node,
-                                   absl::Span<const int> axis) {
-  if (!IsConstant(*axis_node.node())) {
+bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
+                                   absl::Span<const int> axis, int rank) {
+  if (tensor.dims() != 1 || tensor.dim_size(0) != axis.size()) {
     return false;
   }
-  const auto* value_attr = axis_node.GetAttr(kAttrValue);
-  if (value_attr != nullptr) {
-    Tensor tensor;
-    if (!tensor.FromProto(value_attr->tensor())) {
-      LOG(ERROR) << "Failed to parse TensorProto.";
+  for (int i = 0; i < axis.size(); ++i) {
+    int local_axis = tensor.flat<int>()(i);
+    if (local_axis < 0) {
+      local_axis += rank;
     }
-    if (tensor.dims() == 1 && tensor.dim_size(0) == axis.size()) {
-      bool along_axis = true;
-      for (int i = 0; i < axis.size(); i++) {
-        along_axis = along_axis && (tensor.flat<int>()(i) == axis[i]);
+    bool along_axis = false;
+    for (int dim : axis) {
+      if (local_axis == dim) {
+        along_axis = true;
+        break;
       }
-      if (along_axis) return true;
+    }
+    if (!along_axis) {
+      return false;
     }
   }
-  return false;
+  return true;
 }
 
 bool ReduceTransposer::IsReduceAxisSupported(
     const TransposeContext& context, const utils::MutableNodeView& node) {
+  if (KeepDims(node)) {
+    return true;
+  }
   const auto& regular_fanin_1 = node.GetRegularFanin(1);
   auto* axis_node = regular_fanin_1.node_view();
-  // TODO(lyandy): Generalize this for other data format conversions.
-  return KeepDims(node) ||
-         (context.src_format == kNHWC && context.dst_format == kNCHW &&
-          (IsAlongAxis(*axis_node, {0, 1, 2, 3}) ||
-           IsAlongAxis(*axis_node, {1, 2, 3}) ||
-           IsAlongAxis(*axis_node, {0, 1, 2}) ||
-           IsAlongAxis(*axis_node, {1, 2}) || IsAlongAxis(*axis_node, {3})));
+  if (!IsConstant(*axis_node->node())) {
+    return false;
+  }
+  const auto* value_attr = axis_node->GetAttr(kAttrValue);
+  if (value_attr == nullptr) {
+    return false;
+  }
+  Tensor tensor;
+  if (!tensor.FromProto(value_attr->tensor())) {
+    LOG(ERROR) << "Failed to parse TensorProto.";
+    return false;
+  }
+  auto indices = [&context](absl::Span<const char> labels) {
+    return GetDimensionIndicesFromLabel(context.src_dim_indices, labels);
+  };
+  return IsAlongAxis(tensor, indices({'N', 'H', 'W', 'C'}), kRank) ||
+         IsAlongAxis(tensor, indices({'H', 'W', 'C'}), kRank) ||
+         IsAlongAxis(tensor, indices({'N', 'H', 'W'}), kRank) ||
+         IsAlongAxis(tensor, indices({'H', 'W'}), kRank) ||
+         IsAlongAxis(tensor, indices({'C'}), kRank);
 }
 
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
@@ -1373,53 +1404,67 @@ Status SplitVTransposer::TransposeNode(TransposeContext* context,
 }
 
 bool SqueezeTransposer::IsInputConvertible(
-    const utils::MutableNodeView& node) const {
+    const TransposeContext& context, const utils::MutableNodeView& node) const {
   const auto& regular_fanin_0 = node.GetRegularFanin(0);
   auto* regular_fanin_0_node = regular_fanin_0.node_view();
   const auto* output_shape_attr =
       regular_fanin_0_node->GetAttr(kAttrOutputShape);
   if (output_shape_attr != nullptr) {
     auto& shape = output_shape_attr->list().shape(regular_fanin_0.index());
-    if (shape.dim_size() != 4) {
+    if (shape.dim_size() != kRank) {
       return false;
     }
-    if (shape.dim(1).size() == 1 && shape.dim(2).size() == 1) {
+    const int height_dim = context.src_dim_indices.at('H');
+    const int width_dim = context.src_dim_indices.at('W');
+    if (shape.dim(height_dim).size() == 1 && shape.dim(width_dim).size() == 1) {
       return true;
     }
   }
   return false;
 }
 
-bool SqueezeTransposer::IsAlongAxis(const utils::MutableNodeView& node,
-                                    absl::Span<const int> axis) const {
-  const auto* squeeze_dims_attr = node.GetAttr(kAttrSqueezeDims);
-  if (squeeze_dims_attr != nullptr) {
-    auto& list = squeeze_dims_attr->list();
-    // If list is empty, Squeeze op will squeeze all dimensions of size 1.
-    if (list.i_size() == 0) return true;
-    if (list.i_size() == axis.size()) {
-      bool along_axis = true;
-      for (int i = 0; i < axis.size(); i++) {
-        along_axis = along_axis && (list.i(i) == axis[i]);
+bool SqueezeTransposer::IsAlongAxis(const AttrValue& attr,
+                                    absl::Span<const int> axis,
+                                    int rank) const {
+  const auto& list = attr.list();
+  // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+  if (list.i_size() == 0) {
+    return true;
+  } else if (list.i_size() != axis.size()) {
+    return false;
+  }
+  for (int i = 0; i < axis.size(); ++i) {
+    int local_axis = list.i(i);
+    if (local_axis < 0) {
+      local_axis += rank;
+    }
+    bool along_axis = false;
+    for (int dim : axis) {
+      if (local_axis == dim) {
+        along_axis = true;
+        break;
       }
-      if (along_axis) return true;
+    }
+    if (!along_axis) {
+      return false;
     }
   }
-  return false;
-}
-
-bool SqueezeTransposer::IsAlongHW(const utils::MutableNodeView& node) const {
-  return IsAlongAxis(node, {1, 2});
-}
-
-bool SqueezeTransposer::IsAlongNHW(const utils::MutableNodeView& node) const {
-  return IsAlongAxis(node, {0, 1, 2});
+  return true;
 }
 
 bool SqueezeTransposer::IsDimsSupported(
-    const utils::MutableNodeView& node) const {
-  return (IsFanoutPortRankN(node, 0, 2) && IsAlongHW(node)) ||
-         (IsFanoutPortRankN(node, 0, 1) && IsAlongNHW(node));
+    const TransposeContext& context, const utils::MutableNodeView& node) const {
+  auto indices = [&context](absl::Span<const char> labels) {
+    return GetDimensionIndicesFromLabel(context.src_dim_indices, labels);
+  };
+  const auto* squeeze_dims_attr = node.GetAttr(kAttrSqueezeDims);
+  if (squeeze_dims_attr == nullptr) {
+    return false;
+  }
+  return (IsFanoutPortRankN(node, 0, 2) &&
+          IsAlongAxis(*squeeze_dims_attr, indices({'H', 'W'}), kRank)) ||
+         (IsFanoutPortRankN(node, 0, 1) &&
+          IsAlongAxis(*squeeze_dims_attr, indices({'N', 'H', 'W'}), kRank));
 }
 
 Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
@@ -1428,28 +1473,40 @@ Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
   if (squeeze_dims_attr == nullptr) {
     return errors::InvalidArgument("Missing attribute ", kAttrSqueezeDims);
   }
-  AttrValue squeeze_dims_copy(*squeeze_dims_attr);
-  if (squeeze_dims_copy.list().i_size() == 2) {
-    squeeze_dims_copy.mutable_list()->set_i(0, 2);
-    squeeze_dims_copy.mutable_list()->set_i(1, 3);
-  } else if (squeeze_dims_copy.list().i_size() == 3) {
-    squeeze_dims_copy.mutable_list()->set_i(1, 2);
-    squeeze_dims_copy.mutable_list()->set_i(2, 3);
+  const int max_num_squeeze_dim = context->src_format.length() - 1;
+  const int min_squeeze_dim = -(max_num_squeeze_dim + 1);
+  std::vector<int> squeeze_dims_mapped;
+  const int squeeze_dims_size = squeeze_dims_attr->list().i_size();
+  squeeze_dims_mapped.reserve(squeeze_dims_size);
+  for (int i = 0; i < squeeze_dims_size; ++i) {
+    int dim = squeeze_dims_attr->list().i(i);
+    if (dim < min_squeeze_dim || dim >= max_num_squeeze_dim) {
+      return errors::InvalidArgument(
+          "Attribute '", kAttrSqueezeDims, "' contains out of range index '",
+          dim, "', index must be between [", min_squeeze_dim, ", ",
+          max_num_squeeze_dim, ")");
+    }
+    if (dim < 0) {
+      dim += max_num_squeeze_dim;
+    }
+    squeeze_dims_mapped.push_back(context->dst_to_src[dim]);
+  }
+  std::sort(squeeze_dims_mapped.begin(), squeeze_dims_mapped.end());
+  AttrValue squeeze_dims;
+  squeeze_dims.mutable_list()->mutable_i()->Reserve(squeeze_dims_size);
+  for (const auto& dim : squeeze_dims_mapped) {
+    squeeze_dims.mutable_list()->mutable_i()->Add(dim);
   }
   context->graph_view->GetMutationBuilder()->AddOrUpdateNodeAttr(
-      node, kAttrSqueezeDims, squeeze_dims_copy);
+      node, kAttrSqueezeDims, squeeze_dims);
   return Status::OK();
 }
 
 Status SqueezeTransposer::TransposeNode(TransposeContext* context,
                                         utils::MutableNodeView* node) {
   DCHECK(IsSqueeze(*node->node()));
-  // TODO(lyandy): Generalize this for other data format conversions.
-  if (context->src_format != kNHWC || context->dst_format != kNCHW) {
-    return Status::OK();
-  }
-  if (!ShouldProcess(*context, *node) || !IsDimsSupported(*node) ||
-      !IsInputConvertible(*node) ||
+  if (!ShouldProcess(*context, *node) || !IsDimsSupported(*context, *node) ||
+      !IsInputConvertible(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1769,27 +1826,33 @@ bool IsDataFormatOp(const utils::MutableNodeView& node) {
   return op == kOpDataFormatDimMap || op == kOpDataFormatVecPermute;
 }
 
-std::vector<int> GetPermutation(absl::string_view src_format,
-                                absl::string_view dst_format) {
+absl::flat_hash_map<char, int> GetDimensionIndices(
+    absl::string_view data_format) {
+  const int size = data_format.size();
+  absl::flat_hash_map<char, int> index;
+  index.reserve(size);
+  for (int i = 0; i < size; i++) {
+    index[data_format[i]] = i;
+  }
+  return index;
+}
+
+std::vector<int> GetPermutation(
+    const absl::flat_hash_map<char, int>& src_dim_indices,
+    absl::string_view dst_format) {
   // Generate permutation for transformation between src and dst format.
   // Example:
   // src = NWHC, dst = NCWH
   // index = { N:0 W:1 H:2 C:3 }
   // permutation = [0, 3, 1, 2]
-  DCHECK(src_format.size() == dst_format.size())
-      << "src format \"" << src_format
-      << "\" is not compatible with dst format \"" << dst_format << "\".";
-  std::vector<int> permuataion;
-  const int size = src_format.size();
-  absl::flat_hash_map<char, int> index;
+  DCHECK(src_dim_indices.size() == dst_format.size());
+  std::vector<int> permutation;
+  const int size = dst_format.size();
+  permutation.reserve(size);
   for (int i = 0; i < size; i++) {
-    index[src_format[i]] = i;
+    permutation.push_back(src_dim_indices.at(dst_format[i]));
   }
-  permuataion.reserve(size);
-  for (int i = 0; i < size; i++) {
-    permuataion.push_back(index[dst_format[i]]);
-  }
-  return permuataion;
+  return permutation;
 }
 
 }  // namespace grappler

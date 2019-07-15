@@ -3875,8 +3875,15 @@ TEST(PermutationTest, PermutesString) {
 
 TEST(PermutationTest, GetNHWCToNCHWPermutation) {
   string src_format = "NHWC";
+  absl::flat_hash_map<char, int> src_dim_indices =
+      GetDimensionIndices(src_format);
+  EXPECT_EQ(src_dim_indices.size(), 4);
+  EXPECT_EQ(src_dim_indices['N'], 0);
+  EXPECT_EQ(src_dim_indices['H'], 1);
+  EXPECT_EQ(src_dim_indices['W'], 2);
+  EXPECT_EQ(src_dim_indices['C'], 3);
   string dst_format = "NCHW";
-  std::vector<int> permutation = GetPermutation(src_format, dst_format);
+  std::vector<int> permutation = GetPermutation(src_dim_indices, dst_format);
   ASSERT_EQ(permutation.size(), 4);
   EXPECT_EQ(permutation[0], 0);
   EXPECT_EQ(permutation[1], 3);
@@ -3886,8 +3893,15 @@ TEST(PermutationTest, GetNHWCToNCHWPermutation) {
 
 TEST(PermutationTest, GetNCHWToNHWCPermutation) {
   string src_format = "NCHW";
+  absl::flat_hash_map<char, int> src_dim_indices =
+      GetDimensionIndices(src_format);
+  EXPECT_EQ(src_dim_indices.size(), 4);
+  EXPECT_EQ(src_dim_indices['N'], 0);
+  EXPECT_EQ(src_dim_indices['C'], 1);
+  EXPECT_EQ(src_dim_indices['H'], 2);
+  EXPECT_EQ(src_dim_indices['W'], 3);
   string dst_format = "NHWC";
-  std::vector<int> permutation = GetPermutation(src_format, dst_format);
+  std::vector<int> permutation = GetPermutation(src_dim_indices, dst_format);
   ASSERT_EQ(permutation.size(), 4);
   EXPECT_EQ(permutation[0], 0);
   EXPECT_EQ(permutation[1], 2);
