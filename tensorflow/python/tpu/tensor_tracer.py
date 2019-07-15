@@ -789,27 +789,24 @@ class TensorTracer(object):
     Returns:
       The Op to flush the cache to file.
     """
-    def _make_flush_fun(replica_id):
-      """Makes a function for flushing the cache for the given replica."""
 
-      def _fun():
-        """A function that flushes the cache to a file."""
+    def _flush_fun(cache, replica_id):
+      """Flushes the cache to a file corresponding to replica_id."""
 
-        def _flush_fun(cache):
+      def _f(file_index):
+        """Generates a func that flushes the cache to a file."""
+        def _print_cache():
           """Flushes the cache to a file."""
-
-          if isinstance(replica_id, str):
-            replica_id_str = replica_id
-          else:
-            replica_id_str = '%d'%replica_id
+          replica_str = ('%d' % file_index)
           if self._parameters.trace_dir:
             output_path = (os.path.join(self._parameters.trace_dir,
                                         _COMPACT_TRACE_FILE_PREFIX)
-                           + replica_id_str)
+                           + replica_str)
             output_stream = _OUTPUT_STREAM_ESCAPE + output_path
           else:
             output_stream = sys.stderr
-          new_step_line = _REPLICA_ID_TAG + replica_id_str
+
+          new_step_line = _REPLICA_ID_TAG + replica_str
           print_op = logging_ops.print_v2(
               new_step_line, '\n',
               cache, '\n',
@@ -817,37 +814,35 @@ class TensorTracer(object):
               output_stream=output_stream)
           with ops.control_dependencies([print_op]):
             return constant_op.constant(0).op
+        return _print_cache
 
-        cache = _get_tensor_values_cache(graph)
-        if on_tpu:
-          flush_op = tpu.outside_compilation(_flush_fun, cache.value())
-        else:
-          flush_op = _flush_fun(cache.value())
-        with ops.control_dependencies([flush_op]):
-          reset_value = constant_op.constant(_COMPACT_TRACE_ENTRY_INIT_VALUE,
-                                             dtype=cache.dtype,
-                                             shape=cache.shape)
-          assign_op = state_ops.assign(cache, reset_value).op
-          with ops.control_dependencies([assign_op]):
-            return flush_op.outputs[0]
+      def _eq(file_index):
+        return math_ops.equal(replica_id, file_index)
 
-      return _fun
+      flush_op_cases = {}
+      for i in range(num_replicas):
+        flush_op_cases[_eq(i)] = _f(i)
+      # Each replica needs to determine where to write their output.
+      # To do this, we check if replica_id is 0, then 1, ..., and then
+      # num_replicas - 1 statically; and return the corresponding static file
+      # name. We cannot simply set the file name in python, as replica_id is
+      # only known during tf runtime, and we cannot create dynamic filenames.
+      return control_flow_ops.case(flush_op_cases, exclusive=True)
 
-    def _f(replica_id):
-      return _make_flush_fun(replica_id)
-    def _eq(x):
-      return math_ops.equal(x, self._replica_id)
-    def _do_nothing():
-      return constant_op.constant(0)
+    cache = _get_tensor_values_cache(graph)
+    if on_tpu:
+      flush_op = tpu.outside_compilation(_flush_fun,
+                                         cache.value(), self._replica_id)
+    else:
+      flush_op = _flush_fun(cache.value(), self._replica_id)
 
-    flush_ops = []
-    for replica in range(num_replicas):
-      op = control_flow_ops.cond(
-          _eq(replica),
-          _f(replica),
-          _do_nothing).op
-      flush_ops.append(op)
-    return flush_ops
+    with ops.control_dependencies([flush_op]):
+      reset_value = constant_op.constant(_COMPACT_TRACE_ENTRY_INIT_VALUE,
+                                         dtype=cache.dtype,
+                                         shape=cache.shape)
+      assign_op = state_ops.assign(cache, reset_value).op
+      with ops.control_dependencies([assign_op]):
+        return constant_op.constant(0).op
 
   def _flush_tensor_values_cache(self, graph, tensor_fetches, op_fetches,
                                  on_tpu):
@@ -866,10 +861,11 @@ class TensorTracer(object):
     # ops are executed before flushing trace results.
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
-      flush_cache_op_list = self._generate_flush_cache_op(
+      flush_cache_op = self._generate_flush_cache_op(
           graph, self._tt_config.num_replicas, on_tpu)
+
       return control_flow_ops.tuple(tensor_fetches,
-                                    control_inputs=flush_cache_op_list)
+                                    control_inputs=[flush_cache_op])
 
   def _process_tensor_fetches(self, tensor_fetches):
     """Check that tensor_fetches is not empty and have valid tensors."""
@@ -1142,10 +1138,6 @@ class TensorTracer(object):
             num_replicas // self._tt_config.num_replicas_per_host +
             (num_replicas % self._tt_config.num_replicas_per_host > 0))
 
-    if self._tt_config.num_replicas_per_host > 8:
-      # Checks for the assumption in _generate_flush_cache_op().
-      raise RuntimeError('num_replicas_per_host (%d) is '
-                         'greater than 8'%self._tt_config.num_replicas_per_host)
     if self._parameters.graph_dump_path:
       graph_io.write_graph(graph, self._parameters.graph_dump_path,
                            'graph_before_tt.pbtxt')
