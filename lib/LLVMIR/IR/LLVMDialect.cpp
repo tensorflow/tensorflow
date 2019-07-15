@@ -23,6 +23,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/StandardTypes.h"
 
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Attributes.h"
