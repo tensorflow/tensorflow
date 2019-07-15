@@ -778,12 +778,12 @@ class TensorTracer(object):
                                  tensor_trace_order, tensor_trace_points)
     return tensor_trace_order
 
-  def _generate_flush_cache_op(self, graph, start_replica, on_tpu):
+  def _generate_flush_cache_op(self, graph, num_replicas, on_tpu):
     """Generates an Op that will flush the cache to file.
 
     Args:
       graph: the graph of Ops
-      start_replica: the ID of the first replica being flushed by this Op.
+      num_replicas: total number of replicas.
       on_tpu: if the graph is executed on TPU.
 
     Returns:
@@ -840,18 +840,14 @@ class TensorTracer(object):
     def _do_nothing():
       return constant_op.constant(0)
 
-    return control_flow_ops.case({\
-                                  _eq(start_replica): _f(start_replica), \
-                                  _eq(start_replica+1): _f(start_replica+1), \
-                                  _eq(start_replica+2): _f(start_replica+2), \
-                                  _eq(start_replica+3): _f(start_replica+3), \
-                                  _eq(start_replica+4): _f(start_replica+4), \
-                                  _eq(start_replica+5): _f(start_replica+5), \
-                                  _eq(start_replica+6): _f(start_replica+6), \
-                                  _eq(start_replica+7): _f(start_replica+7), \
-    },
-                                 default=_do_nothing,
-                                 exclusive=True).op
+    flush_ops = []
+    for replica in range(num_replicas):
+      op = control_flow_ops.cond(
+          _eq(replica),
+          _f(replica),
+          _do_nothing).op
+      flush_ops.append(op)
+    return flush_ops
 
   def _flush_tensor_values_cache(self, graph, tensor_fetches, op_fetches,
                                  on_tpu):
@@ -870,11 +866,8 @@ class TensorTracer(object):
     # ops are executed before flushing trace results.
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
-      flush_cache_op_list = []
-      for host in range(self._tt_config.num_hosts):
-        start_replica = host * 8
-        flush_op = self._generate_flush_cache_op(graph, start_replica, on_tpu)
-        flush_cache_op_list.append(flush_op)
+      flush_cache_op_list = self._generate_flush_cache_op(
+          graph, self._tt_config.num_replicas, on_tpu)
       return control_flow_ops.tuple(tensor_fetches,
                                     control_inputs=flush_cache_op_list)
 
