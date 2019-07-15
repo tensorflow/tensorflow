@@ -29,6 +29,7 @@ add_dependencies(MLIRTransforms MLIRStandardOpsIncGen)
 target_link_libraries(MLIRTransforms
   MLIRAffineOps
   MLIRAnalysis
+  MLIRLoopOps
   MLIRPass
   MLIRTransformUtils
   MLIRVectorOps

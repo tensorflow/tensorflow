@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -45,9 +45,9 @@ public:
   void runOnFunction() override {
     FuncOp func = getFunction();
 
-    func.walk<ForOp>([this](ForOp op) {
+    func.walk<loop::ForOp>([this](loop::ForOp op) {
       // Ignore nested loops.
-      if (op.getContainingRegion()->getParentOfType<ForOp>())
+      if (op.getContainingRegion()->getParentOfType<loop::ForOp>())
         return;
       extractFixedOuterLoops(op, sizes);
     });

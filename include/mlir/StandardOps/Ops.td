@@ -609,52 +609,6 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-// TODO(ntv): Default generated builder creates IR that does not verify. Atm it
-// is the responsibility of each caller to call ensureStdTerminator on the
-// then and else regions.
-def IfOp : Std_Op<"if"> {
-  let summary = "if-then-else operation";
-  let description = [{
-    The "std.if" operation represents an if-then-else construct for
-    conditionally executing two regions of code. The operand to an if operation
-    is a boolean value. The operation produces no results. For example:
-
-       if %b  {
-         ...
-       } else {
-         ...
-       }
-
-    The 'else' block is optional, and may be omitted. For
-    example:
-
-       if %b  {
-         ...
-       }
-  }];
-  let arguments = (ins I1:$condition);
-  let regions = (region SizedRegion<1>:$thenRegion, AnyRegion:$elseRegion);
-
-  let skipDefaultBuilders = 1;
-  let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
-              "Value *cond, bool withElseRegion">
-  ];
-
-  let extraClassDeclaration = [{
-    OpBuilder getThenBodyBuilder() {
-      assert(!thenRegion().empty() && "Unexpected empty 'then' region.");
-      Block &body = thenRegion().front();
-      return OpBuilder(&body, std::prev(body.end()));
-    }
-    OpBuilder getElseBodyBuilder() {
-      assert(!elseRegion().empty() && "Unexpected empty 'else' region.");
-      Block &body = elseRegion().front();
-      return OpBuilder(&body, std::prev(body.end()));
-    }
-  }];
-}
-
 def IndexCastOp : CastOp<"index_cast">, Arguments<(ins AnyType:$in)> {
   let summary = "cast between index and integer types";
   let description = [{
@@ -670,48 +624,6 @@ def IndexCastOp : CastOp<"index_cast">, Arguments<(ins AnyType:$in)> {
   }];
 
   let hasFolder = 0;
-}
-
-def ForOp : Std_Op<"for"> {
-  let summary = "for operation";
-  let description = [{
-    The "std.for" operation represents a loop nest taking 3 SSA value as
-    operands that represent the lower bound, upper bound and step respectively.
-    The operation defines an SSA value for its induction variable. It has one
-    region capturing the loop body. The induction variable is represented as an
-    argument of this region. This SSA value always has type index, which is the
-    size of the machine word. The step is a value of type index, required to be
-    positive.
-    The lower and upper bounds specify a half-open range: the range includes the
-    lower bound but does not include the upper bound.
-
-    The body region must contain exactly one block that terminates with
-    "std.terminator".  Calling ForOp::build will create such region and insert 
-    the terminator, so will the parsing even in cases when it is absent from the
-    custom format. For example:
-
-       for %iv = %lb to %ub step %step {
-         ... // body
-       }
-  }];
-  let arguments = (ins Index:$lowerBound, Index:$upperBound, Index:$step);
-  let regions = (region SizedRegion<1>:$region);
-
-  let skipDefaultBuilders = 1;
-  let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
-              "Value *lowerBound, Value *upperBound, Value *step">
-  ];
-
-  let extraClassDeclaration = [{
-    Block *body() { return &region().front(); }
-    Value *getInductionVar() { return body()->getArgument(0); }
-    OpBuilder getBodyBuilder() {
-      return OpBuilder(body(), std::prev(body()->end()));
-    }
-    void setLowerBound(Value *bound) { getOperation()->setOperand(0, bound); }
-    void setUpperBound(Value *bound) { getOperation()->setOperand(1, bound); }
-  }];
 }
 
 def LoadOp : Std_Op<"load"> {
@@ -965,26 +877,6 @@ def TensorCastOp : CastOp<"tensor_cast"> {
     /// The result of a tensor_cast is always a tensor.
     TensorType getType() { return getResult()->getType().cast<TensorType>(); }
   }];
-}
-
-def TerminatorOp :
-    Std_Op<"terminator", [NativeOpTrait<"IsTerminator">]> {
-  let summary = "cf terminator operation";
-  let description = [{
-    "std.terminator" is a special terminator operation for blocks inside
-    std loops. It terminates the region. This operation does _not_ have a custom
-    syntax. However, `std` control operations omit the terminator in their 
-    custom syntax for brevity.
-
-       std.terminator
-  }];
-
-  // No custom parsing/printing form.
-  let parser = ?;
-  let printer = ?;
-
-  // Fully specified by traits.
-  let verifier = ?;
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {

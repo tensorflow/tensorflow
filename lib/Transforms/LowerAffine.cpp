@@ -22,6 +22,7 @@
 
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -302,7 +303,7 @@ public:
   virtual PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   PatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<TerminatorOp>(op);
+    rewriter.replaceOpWithNewOp<loop::TerminatorOp>(op);
     return matchSuccess();
   }
 };
@@ -320,7 +321,7 @@ public:
     Value *lowerBound = lowerAffineLowerBound(affineForOp, rewriter);
     Value *upperBound = lowerAffineUpperBound(affineForOp, rewriter);
     Value *step = rewriter.create<ConstantIndexOp>(loc, affineForOp.getStep());
-    auto f = rewriter.create<ForOp>(loc, lowerBound, upperBound, step);
+    auto f = rewriter.create<loop::ForOp>(loc, lowerBound, upperBound, step);
     f.region().getBlocks().clear();
     rewriter.inlineRegionBefore(affineForOp.getRegion(), f.region(),
                                 f.region().end());
@@ -367,7 +368,7 @@ public:
                 : rewriter.create<ConstantIntOp>(loc, /*value=*/1, /*width=*/1);
 
     bool hasElseRegion = !affineIfOp.getElseBlocks().empty();
-    auto ifOp = rewriter.create<IfOp>(loc, cond, hasElseRegion);
+    auto ifOp = rewriter.create<loop::IfOp>(loc, cond, hasElseRegion);
     rewriter.inlineRegionBefore(affineIfOp.getThenBlocks(),
                                 &ifOp.thenRegion().back());
     ifOp.thenRegion().back().erase();
@@ -539,6 +540,7 @@ LogicalResult mlir::lowerAffineConstructs(FuncOp function) {
                      AffineTerminatorLowering>::build(patterns,
                                                       function.getContext());
   ConversionTarget target(*function.getContext());
+  target.addLegalDialect<loop::LoopOpsDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   return applyConversionPatterns(function, target, std::move(patterns));
 }

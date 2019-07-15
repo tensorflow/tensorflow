@@ -12,7 +12,7 @@
 //  CHECK-NEXT:  ^bb3:   // pred: ^bb1
 //  CHECK-NEXT:    return
 func @simple_std_for_loop(%arg0 : index, %arg1 : index, %arg2 : index) {
-  for %i0 = %arg0 to %arg1 step %arg2 {
+  loop.for %i0 = %arg0 to %arg1 step %arg2 {
     %c1 = constant 1 : index
   }
   return
@@ -39,9 +39,9 @@ func @simple_std_for_loop(%arg0 : index, %arg1 : index, %arg2 : index) {
 //  CHECK-NEXT:  ^bb6:   // pred: ^bb1
 //  CHECK-NEXT:    return
 func @simple_std_2_for_loops(%arg0 : index, %arg1 : index, %arg2 : index) {
-  for %i0 = %arg0 to %arg1 step %arg2 {
+  loop.for %i0 = %arg0 to %arg1 step %arg2 {
     %c1 = constant 1 : index
-    for %i1 = %arg0 to %arg1 step %arg2 {
+    loop.for %i1 = %arg0 to %arg1 step %arg2 {
       %c1_0 = constant 1 : index
     }
   }
@@ -56,7 +56,7 @@ func @simple_std_2_for_loops(%arg0 : index, %arg1 : index, %arg2 : index) {
 //  CHECK-NEXT:   ^bb2:   // 2 preds: ^bb0, ^bb1
 //  CHECK-NEXT:     return
 func @simple_std_if(%arg0: i1) {
-  if %arg0 {
+  loop.if %arg0 {
     %c1 = constant 1 : index
   }
   return
@@ -73,7 +73,7 @@ func @simple_std_if(%arg0: i1) {
 //  CHECK-NEXT:   ^bb3:   // 2 preds: ^bb1, ^bb2
 //  CHECK-NEXT:     return
 func @simple_std_if_else(%arg0: i1) {
-  if %arg0 {
+  loop.if %arg0 {
     %c1 = constant 1 : index
   } else {
     %c1_0 = constant 1 : index
@@ -97,9 +97,9 @@ func @simple_std_if_else(%arg0: i1) {
 //  CHECK-NEXT: ^bb5:   // 2 preds: ^bb0, ^bb4
 //  CHECK-NEXT:   return
 func @simple_std_2_ifs(%arg0: i1) {
-  if %arg0 {
+  loop.if %arg0 {
     %c1 = constant 1 : index
-    if %arg0 {
+    loop.if %arg0 {
       %c1_0 = constant 1 : index
     } else {
       %c1_1 = constant 1 : index
@@ -134,11 +134,11 @@ func @simple_std_2_ifs(%arg0: i1) {
 //  CHECK-NEXT:     return
 //  CHECK-NEXT: }
 func @simple_std_for_loop_with_2_ifs(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : i1) {
-  for %i0 = %arg0 to %arg1 step %arg2 {
+  loop.for %i0 = %arg0 to %arg1 step %arg2 {
     %c1 = constant 1 : index
-    if %arg3 {
+    loop.if %arg3 {
       %c1_0 = constant 1 : index
-      if %arg3 {
+      loop.if %arg3 {
         %c1_1 = constant 1 : index
       } else {
         %c1_2 = constant 1 : index

@@ -25,6 +25,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -792,12 +793,12 @@ SmallVector<AffineForOp, 8> mlir::tile(ArrayRef<AffineForOp> forOps,
 // min(%i_j + %s_j * sizes[j], %ub_j) with the original step.  No verification
 // of `forOps` being suitable for tiling is performed, this function only
 // applies the transformation.
-static void tile(MutableArrayRef<ForOp> forOps, ArrayRef<Value *> sizes) {
+static void tile(MutableArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes) {
   assert(sizes.size() >= forOps.size() && "insufficient number of tile sizes");
   if (sizes.empty() || forOps.empty())
     return;
 
-  ForOp rootForOp = forOps.front();
+  loop::ForOp rootForOp = forOps.front();
   OpBuilder builder(rootForOp);
 
   // Compute new steps for the outer loops.
@@ -810,11 +811,11 @@ static void tile(MutableArrayRef<ForOp> forOps, ArrayRef<Value *> sizes) {
   }
 
   // Create new outer loops nested one into another.
-  SmallVector<ForOp, 4> outerForOps;
+  SmallVector<loop::ForOp, 4> outerForOps;
   for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
     auto outerForOp =
-        builder.create<ForOp>(forOps[i].getLoc(), forOps[i].lowerBound(),
-                              forOps[i].upperBound(), newSteps[i]);
+        builder.create<loop::ForOp>(forOps[i].getLoc(), forOps[i].lowerBound(),
+                                    forOps[i].upperBound(), newSteps[i]);
     builder.setInsertionPointToStart(outerForOp.body());
     outerForOps.push_back(outerForOp);
   }
@@ -843,10 +844,10 @@ static void tile(MutableArrayRef<ForOp> forOps, ArrayRef<Value *> sizes) {
   }
 }
 
-void mlir::tile(ForOp rootForOp, ArrayRef<Value *> sizes) {
+void mlir::tile(loop::ForOp rootForOp, ArrayRef<Value *> sizes) {
   // Collect prefectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
-  SmallVector<ForOp, 4> forOps;
+  SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());
   getPerfectlyNestedLoopsImpl(forOps, rootForOp, sizes.size());
   if (forOps.size() < sizes.size())
@@ -879,10 +880,11 @@ static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
   return builder.create<DivISOp>(loc, sum, divisor);
 }
 
-void mlir::extractFixedOuterLoops(ForOp rootForOp, ArrayRef<int64_t> sizes) {
+void mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
+                                  ArrayRef<int64_t> sizes) {
   // Collect prefectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
-  SmallVector<ForOp, 4> forOps;
+  SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());
   getPerfectlyNestedLoopsImpl(forOps, rootForOp, sizes.size());
   if (forOps.size() < sizes.size())

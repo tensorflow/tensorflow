@@ -7,6 +7,7 @@ add_llvm_library(MLIRControlFlowToCFG
 add_dependencies(
   MLIRControlFlowToCFG
 
+  MLIRLoopOps
   MLIRTransforms
   LLVMCore
   LLVMSupport
@@ -14,6 +15,7 @@ add_dependencies(
 target_link_libraries(
   MLIRControlFlowToCFG
 
+  MLIRLoopOps
   MLIRTransforms
   LLVMCore
   LLVMSupport

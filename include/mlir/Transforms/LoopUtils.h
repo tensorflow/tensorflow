@@ -30,10 +30,13 @@
 namespace mlir {
 class AffineMap;
 class AffineForOp;
-class ForOp;
 class FuncOp;
 class OpBuilder;
 class Value;
+
+namespace loop {
+class ForOp;
+} // end namespace loop
 
 /// Unrolls this for operation completely if the trip count is known to be
 /// constant. Returns failure otherwise.
@@ -144,12 +147,12 @@ SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
 /// (parametric) sizes. Sizes are expected to be strictly positive values at
 /// runtime.  If more sizes than loops provided, discard the trailing values in
 /// sizes.  Assumes the loop nest is permutable.
-void tile(ForOp rootForOp, ArrayRef<Value *> sizes);
+void tile(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
 
 /// Tile a nest of standard for loops rooted at `rootForOp` by finding such
 /// parametric tile sizes that the outer loops have a fixed number of iterations
 /// as defined in `sizes`.
-void extractFixedOuterLoops(ForOp rootFOrOp, ArrayRef<int64_t> sizes);
+void extractFixedOuterLoops(loop::ForOp rootFOrOp, ArrayRef<int64_t> sizes);
 
 } // end namespace mlir
 

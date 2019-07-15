@@ -35,9 +35,9 @@ func @foo(%arg0: memref<?x?xf32>) {
   // TILE_74:     %[[step2:.*]] = muli %c2, %[[size2]]
 
   // Updated outer loop(s) use new steps.
-  // COMMON:  for %[[i:.*]] = %c2 to %c44 step %[[step]]
-  // TILE_74: for %[[j:.*]] = %c1 to %c44 step %[[step2]]
-  for %i = %c2 to %c44 step %c1 {
+  // COMMON: loop.for %[[i:.*]] = %c2 to %c44 step %[[step]]
+  // TILE_74:loop.for %[[j:.*]] = %c1 to %c44 step %[[step2]]
+ loop.for %i = %c2 to %c44 step %c1 {
     // Upper bound for the inner loop min(%i + %step, %c44).
     // COMMON:      %[[stepped:.*]] = addi %[[i]], %[[step]]
     // COMMON-NEXT: cmpi "slt", %c44, %[[stepped]]
@@ -48,14 +48,14 @@ func @foo(%arg0: memref<?x?xf32>) {
     // TILE_74-NEXT: %[[ub2:.*]] = select {{.*}}, %c44, %[[stepped2]]
 
     // Created inner loop.
-    // COMMON: for %[[ii:.*]] = %[[i]] to %[[ub:.*]] step %c1
+    // COMMON:loop.for %[[ii:.*]] = %[[i]] to %[[ub:.*]] step %c1
 
     // This loop is not modified in TILE_7 case.
-    // TILE_7:  for %[[j:.*]] = %c1 to %c44 step %c2
+    // TILE_7: loop.for %[[j:.*]] = %c1 to %c44 step %c2
     //
     // But is modified in TILE_74 case.
-    // TILE_74: for %[[jj:.*]] = %[[j]] to %[[ub2]] step %c2
-    for %j = %c1 to %c44 step %c2 {
+    // TILE_74:loop.for %[[jj:.*]] = %[[j]] to %[[ub2]] step %c2
+   loop.for %j = %c1 to %c44 step %c2 {
       // The right iterator are used.
       // TILE_7:  load %arg0[%[[ii]], %[[j]]]
       // TILE_74: load %arg0[%[[ii]], %[[jj]]]

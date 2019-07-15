@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -38,6 +39,7 @@
 #include "llvm/IR/Type.h"
 
 using namespace mlir;
+using namespace mlir::loop;
 
 namespace {
 
@@ -272,14 +274,8 @@ LogicalResult mlir::lowerControlFlow(FuncOp func) {
   OwningRewritePatternList patterns;
   RewriteListBuilder<ForLowering, IfLowering, TerminatorLowering>::build(
       patterns, func.getContext());
-  struct PartialConversionTarget : public ConversionTarget {
-    PartialConversionTarget(MLIRContext &context) : ConversionTarget(context) {}
-    bool isDynamicallyLegal(Operation *op) const override {
-      return !isa<ForOp>(op) && !isa<IfOp>(op) && !isa<TerminatorOp>(op);
-    }
-  };
-  PartialConversionTarget target(*func.getContext());
-  target.addDynamicallyLegalDialect<StandardOpsDialect>();
+  ConversionTarget target(*func.getContext());
+  target.addLegalDialect<StandardOpsDialect>();
   return applyConversionPatterns(func, target, std::move(patterns));
 }
 

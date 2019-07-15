@@ -1,4 +1,4 @@
-//===- ConvertControlFlowToCFG.h - Pass entrypoint --------------*- C++ -*-===//
+//===- DialectRegistration.cpp - Register loop dialect --------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,20 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
-#define MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
+#include "mlir/Dialect/LoopOps/LoopOps.h"
+using namespace mlir;
 
-namespace mlir {
-class FuncOp;
-struct LogicalResult;
-class ModulePassBase;
-
-/// Lowers loop.for, loop.if and loop.terminator ops to CFG.
-LogicalResult lowerControlFlow(FuncOp func);
-
-/// Creates a pass to convert loop.for, loop.if and loop.terminator ops to CFG.
-ModulePassBase *createConvertToCFGPass();
-
-} // namespace mlir
-
-#endif // MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
+// Static initialization for loop dialect registration.
+static DialectRegistration<loop::LoopOpsDialect> LoopOps;
