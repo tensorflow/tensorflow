@@ -867,11 +867,9 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
-    ]
-    + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-    ])
-    + if_rocm_is_configured([
+    ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]),
 )

@@ -515,8 +515,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-    ]
-    + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         ":cusolver_context",
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
@@ -524,8 +523,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "@local_config_cuda//cuda:cuda_headers",
-    ])
-    + if_rocm_is_configured([
+    ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -995,7 +993,7 @@ cc_library(
     hdrs = [
         "gpu_compiler.h",
     ] + if_cuda_is_configured([
-        "nvptx_compiler.h"
+        "nvptx_compiler.h",
     ]) + if_rocm_is_configured([
         # ROCM TODO: enable in the subsequent PR.
         #"amdgpu_compiler.h"
