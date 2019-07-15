@@ -1084,6 +1084,14 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBitcast(
+    const Shape& shape, HloInstruction* operand) {
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kBitcast, shape));
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64> dimensions_to_reduce,
