@@ -1295,7 +1295,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "topk_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["topk_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
