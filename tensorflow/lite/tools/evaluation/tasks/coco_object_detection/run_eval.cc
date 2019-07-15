@@ -73,7 +73,7 @@ bool EvaluateModel(const std::string& model_file_path,
   if (eval.Init() != kTfLiteOk) return false;
 
   const int step = image_paths.size() / 100;
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < image_paths.size(); ++i) {
     if (step > 1 && i % step == 0) {
       LOG(INFO) << "Finished: " << i / step << "%";
     }
