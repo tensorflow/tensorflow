@@ -14,9 +14,9 @@ py_test(
     name = "k8s_tensorflow_test",
     srcs = ["k8s_tensorflow_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":k8s_tensorflow_lib",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_oss"],
 )
