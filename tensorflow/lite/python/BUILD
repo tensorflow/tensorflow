@@ -29,6 +29,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/137568139): enable after this is fixed.
+        "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
