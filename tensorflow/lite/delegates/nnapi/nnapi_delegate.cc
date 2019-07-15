@@ -1263,8 +1263,9 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinL2Normalization: {
         if (version == 1) {
+          const auto& input = context->tensors[node->inputs->data[0]];
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
-              !IsFloatOperator(context, node)) {
+              (!IsFloatOperator(context, node) || input.dims->size != 4)) {
             return nullptr;
           }
           auto builtin =
