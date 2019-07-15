@@ -1377,7 +1377,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     For example:
 
-    - `tf.data.Dataset.from_tensor_slices((range(4), range(4)).window(2)`
+    - `tf.data.Dataset.from_tensor_slices((range(4), range(4))).window(2)`
       produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
     - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
       produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
