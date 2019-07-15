@@ -506,21 +506,25 @@ public:
 
 } // end namespace
 
-LogicalResult mlir::lowerAffineConstructs(FuncOp function) {
-  OwningRewritePatternList patterns;
+void mlir::populateAffineToStdConversionPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *ctx) {
   RewriteListBuilder<AffineApplyLowering, AffineDmaStartLowering,
                      AffineDmaWaitLowering, AffineLoadLowering,
                      AffineStoreLowering, AffineForLowering, AffineIfLowering,
-                     AffineTerminatorLowering>::build(patterns,
-                                                      function.getContext());
-  ConversionTarget target(*function.getContext());
-  target.addLegalDialect<loop::LoopOpsDialect, StandardOpsDialect>();
-  return applyConversionPatterns(function, target, std::move(patterns));
+                     AffineTerminatorLowering>::build(patterns, ctx);
 }
 
 namespace {
 class LowerAffinePass : public FunctionPass<LowerAffinePass> {
-  void runOnFunction() override { lowerAffineConstructs(getFunction()); }
+  void runOnFunction() override {
+    OwningRewritePatternList patterns;
+    populateAffineToStdConversionPatterns(patterns, &getContext());
+    ConversionTarget target(getContext());
+    target.addLegalDialect<loop::LoopOpsDialect, StandardOpsDialect>();
+    if (failed(applyConversionPatterns(getFunction(), target,
+                                       std::move(patterns))))
+      signalPassFailure();
+  }
 };
 } // namespace
 

@@ -1052,10 +1052,6 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
       return signalPassFailure();
 
     ModuleOp m = getModule();
-    for (auto func : m.getOps<FuncOp>())
-      if (failed(mlir::lowerControlFlow(func)))
-        signalPassFailure();
-
     LLVM::ensureDistinctSuccessors(m);
     std::unique_ptr<LLVMTypeConverter> typeConverter =
         typeConverterMaker(&getContext());
@@ -1063,6 +1059,7 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
       return signalPassFailure();
 
     OwningRewritePatternList patterns;
+    populateLoopToStdConversionPatterns(patterns, m.getContext());
     patternListFiller(*typeConverter, patterns);
 
     ConversionTarget target(getContext());

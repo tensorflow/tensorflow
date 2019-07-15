@@ -19,15 +19,20 @@
 #define MLIR_TRANSFORMS_LOWERAFFINE_H
 
 #include "mlir/Support/LLVM.h"
+#include <vector>
 
 namespace mlir {
 class AffineExpr;
 class AffineForOp;
-class FuncOp;
 class Location;
 struct LogicalResult;
+class MLIRContext;
 class OpBuilder;
+class RewritePattern;
 class Value;
+
+// Owning list of rewriting patterns.
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 
 /// Emit code that computes the given affine expression using standard
 /// arithmetic operations applied to the provided dimension and symbol values.
@@ -35,9 +40,11 @@ Value *expandAffineExpr(OpBuilder &builder, Location loc, AffineExpr expr,
                         ArrayRef<Value *> dimValues,
                         ArrayRef<Value *> symbolValues);
 
-/// Convert from the Affine dialect to the Standard dialect, in particular
-/// convert structured affine control flow into CFG branch-based control flow.
-LogicalResult lowerAffineConstructs(FuncOp function);
+/// Collect a set of patterns to convert from the Affine dialect to the Standard
+/// dialect, in particular convert structured affine control flow into CFG
+/// branch-based control flow.
+void populateAffineToStdConversionPatterns(OwningRewritePatternList &patterns,
+                                           MLIRContext *ctx);
 
 /// Emit code that computes the lower bound of the given affine loop using
 /// standard arithmetic operations.

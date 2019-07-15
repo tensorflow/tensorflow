@@ -43,8 +43,8 @@ using namespace mlir::loop;
 
 namespace {
 
-struct ControlFlowToCFGPass : public ModulePass<ControlFlowToCFGPass> {
-  void runOnModule() override;
+struct ControlFlowToCFGPass : public FunctionPass<ControlFlowToCFGPass> {
+  void runOnFunction() override;
 };
 
 // Create a CFG subgraph for the loop around its body blocks (if the body
@@ -270,22 +270,23 @@ IfLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   return matchSuccess();
 }
 
-LogicalResult mlir::lowerControlFlow(FuncOp func) {
-  OwningRewritePatternList patterns;
+void mlir::populateLoopToStdConversionPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *ctx) {
   RewriteListBuilder<ForLowering, IfLowering, TerminatorLowering>::build(
-      patterns, func.getContext());
-  ConversionTarget target(*func.getContext());
+      patterns, ctx);
+}
+
+void ControlFlowToCFGPass::runOnFunction() {
+  OwningRewritePatternList patterns;
+  populateLoopToStdConversionPatterns(patterns, &getContext());
+  ConversionTarget target(getContext());
   target.addLegalDialect<StandardOpsDialect>();
-  return applyConversionPatterns(func, target, std::move(patterns));
+  if (failed(
+          applyConversionPatterns(getFunction(), target, std::move(patterns))))
+    signalPassFailure();
 }
 
-void ControlFlowToCFGPass::runOnModule() {
-  for (auto func : getModule().getOps<FuncOp>())
-    if (failed(mlir::lowerControlFlow(func)))
-      return signalPassFailure();
-}
-
-ModulePassBase *mlir::createConvertToCFGPass() {
+FunctionPassBase *mlir::createConvertToCFGPass() {
   return new ControlFlowToCFGPass();
 }
 

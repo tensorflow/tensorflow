@@ -148,18 +148,12 @@ static void populateLinalg3ToLLVMConversionPatterns(
 }
 
 LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {
-  // Remove affine constructs.
-  for (auto func : module.getOps<FuncOp>()) {
-    if (failed(lowerAffineConstructs(func)))
-      return failure();
-    if (failed(mlir::lowerControlFlow(func)))
-      return failure();
-  }
-
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
   LinalgTypeConverter converter(module.getContext());
   OwningRewritePatternList patterns;
+  populateAffineToStdConversionPatterns(patterns, module.getContext());
+  populateLoopToStdConversionPatterns(patterns, module.getContext());
   populateStdToLLVMConversionPatterns(converter, patterns);
   populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
   populateLinalg3ToLLVMConversionPatterns(patterns, module.getContext());

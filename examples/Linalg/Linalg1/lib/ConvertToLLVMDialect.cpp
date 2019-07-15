@@ -410,27 +410,19 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 } // end anonymous namespace
 
 LogicalResult linalg::convertToLLVM(mlir::ModuleOp module) {
-  for (auto func : module.getOps<FuncOp>()) {
-    if (failed(mlir::lowerAffineConstructs(func)))
-      return failure();
-    if (failed(mlir::lowerControlFlow(func)))
-      return failure();
-  }
-
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
   LinalgTypeConverter converter(module.getContext());
   OwningRewritePatternList patterns;
+  populateAffineToStdConversionPatterns(patterns, module.getContext());
+  populateLoopToStdConversionPatterns(patterns, module.getContext());
   populateStdToLLVMConversionPatterns(converter, patterns);
   populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
 
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
-  if (failed(applyConversionPatterns(module, target, converter,
-                                     std::move(patterns))))
-    return failure();
-
-  return success();
+  return applyConversionPatterns(module, target, converter,
+                                 std::move(patterns));
 }
 
 namespace {

@@ -806,13 +806,12 @@ void LowerLinalgToLLVMPass::runOnModule() {
   for (auto f : module.getOps<FuncOp>()) {
     lowerLinalgSubViewOps(f);
     lowerLinalgForToCFG(f);
-    if (failed(lowerAffineConstructs(f)))
-      signalPassFailure();
   }
 
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;
   LinalgTypeConverter converter(&getContext());
+  populateAffineToStdConversionPatterns(patterns, &getContext());
   populateStdToLLVMConversionPatterns(converter, patterns);
   populateLinalgToLLVMConversionPatterns(converter, patterns, &getContext());
 

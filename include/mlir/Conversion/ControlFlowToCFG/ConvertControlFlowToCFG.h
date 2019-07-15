@@ -18,16 +18,27 @@
 #ifndef MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
 #define MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
 
+#include <memory>
+#include <vector>
+
 namespace mlir {
 class FuncOp;
+class FunctionPassBase;
 struct LogicalResult;
-class ModulePassBase;
+class MLIRContext;
+class RewritePattern;
 
-/// Lowers loop.for, loop.if and loop.terminator ops to CFG.
-LogicalResult lowerControlFlow(FuncOp func);
+// Owning list of rewriting patterns.
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+
+/// Collect a set of patterns to lower from loop.for, loop.if, and
+/// loop.terminator to CFG operations within the Standard dialect, in particular
+/// convert structured control flow into CFG branch-based control flow.
+void populateLoopToStdConversionPatterns(OwningRewritePatternList &patterns,
+                                         MLIRContext *ctx);
 
 /// Creates a pass to convert loop.for, loop.if and loop.terminator ops to CFG.
-ModulePassBase *createConvertToCFGPass();
+FunctionPassBase *createConvertToCFGPass();
 
 } // namespace mlir
 
