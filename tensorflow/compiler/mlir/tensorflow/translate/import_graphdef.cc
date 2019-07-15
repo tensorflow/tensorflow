@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -1313,6 +1314,8 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
   TF_ASSIGN_OR_RETURN(auto func_type,
                       importer.InferMainFunctionType(&arg_nodes, &ret_nodes));
 
+  // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
+  // tf.versions) shared by importer and exporter in a centralized place.
   // Record the input and output mapping.
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
   if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
@@ -1330,6 +1333,23 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
 
     attrs.push_back(b.getNamedAttr("tf.entry_function",
                                    b.getDictionaryAttr({inputs, outputs})));
+  }
+
+  // Record version info.
+  if (importer.graph_versions_) {
+    mlir::Builder b(context);
+    auto producer = b.getNamedAttr(
+        "producer", b.getI32IntegerAttr(importer.graph_versions_->producer()));
+    auto min_consumer = b.getNamedAttr(
+        "min_consumer",
+        b.getI32IntegerAttr(importer.graph_versions_->min_consumer()));
+    auto bad_consumers = b.getNamedAttr(
+        "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
+                             importer.graph_versions_->bad_consumers().begin(),
+                             importer.graph_versions_->bad_consumers().end())));
+    module->setAttr("tf.versions",
+                    b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
+                        {producer, min_consumer, bad_consumers})));
   }
 
   TF_RETURN_IF_ERROR(
