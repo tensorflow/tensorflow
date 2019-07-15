@@ -2284,8 +2284,8 @@ TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive1) {
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(MatMul);D(Zeta);E(BiasAddGrad)|"
-            "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A(Input);B(Input);C(_MklMatMul);D(Zeta);E(BiasAddGrad)"
+            "|A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // Check that we never rewrite BiasAddGrad.
