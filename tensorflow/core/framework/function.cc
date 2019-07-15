@@ -1453,11 +1453,11 @@ namespace {
 
 constexpr char kApiImplements[] = "api_implements";
 
-absl::flat_hash_set<string> ReachableFunctions(
+std::set<string> ReachableFunctions(
     const FunctionLibraryDefinition& flib,
     const protobuf::RepeatedPtrField<NodeDef>& nodes) {
   // Functions that are reachable from the graph.
-  absl::flat_hash_set<string> reachable_funcs;
+  std::set<string> reachable_funcs;
 
   // For any functions, if it has attribute "api_implements" =
   // "some_interface" and it is reachable, then it means any other
@@ -1547,7 +1547,7 @@ absl::flat_hash_set<string> ReachableFunctions(
 FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
     const FunctionLibraryDefinition& flib,
     const protobuf::RepeatedPtrField<NodeDef>& nodes) {
-  absl::flat_hash_set<string> reachable_funcs = ReachableFunctions(flib, nodes);
+  std::set<string> reachable_funcs = ReachableFunctions(flib, nodes);
 
   FunctionLibraryDefinition reachable_flib(flib.default_registry(),
                                            FunctionDefLibrary());
