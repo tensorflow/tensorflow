@@ -586,11 +586,10 @@ func @testSoftmax(tensor<8x16xf32>) -> tensor<8x16xf32> {
 // -----
 
 // Test invalid tf.Softmax
-func @testSoftmax(tensor<8x8x8xf32>) -> tensor<8x8x8xf32> {
-^bb0(%arg0: tensor<8x8x8xf32>):
-  // expected-error @+1 {{requires operand to be 2D tensor}}
-  %0 = "tf.Softmax"(%arg0) {T = "tfdtype$DT_FLOAT"} : (tensor<8x8x8xf32>) -> tensor<8x8x8xf32>
-  return %0 : tensor<8x8x8xf32>
+func @testSoftmax(%arg0 : tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{requires operand to have rank at least 1}}
+  %0 = "tf.Softmax"(%arg0) {T = "tfdtype$DT_FLOAT"} : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
 }
 
 // -----

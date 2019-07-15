@@ -1878,5 +1878,51 @@ TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
               ::testing::ElementsAre(0, 50));
 }
 
+TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {
+  // Create a fusion node which uses the reshape of a parameter twice.  Because
+  // it's the same reshape, this counts as UseKind::kUsePermutingElements, which
+  // is exposed publicly as "does not reuse this operand".
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  f {
+    p = f32[3,2] parameter(0)
+    r = f32[2,3] reshape(p)
+    x = f32[2,3] multiply(r, r)
+    y = f32[2,3] add(r, r)
+    ROOT sum = f32[2,3] add(x, y)
+  }
+  ENTRY test {
+    p = f32[3,2] parameter(0)
+    ROOT fusion = f32[2,3] fusion(p), calls=f, kind=kLoop
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(root->ReusesOperandElements(0));
+}
+
+TEST_F(HloInstructionTest, ReuseMultipleReshapesOfFusionParameter) {
+  // Create a fusion node which uses two different reshapes of a parameter
+  // twice.  Because they're not the same reshapes, this counts as
+  // UseKind::kUsePermutingElements, which is exposed publicly as "does reuse
+  // this operand".
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  f {
+    p = f32[3,2] parameter(0)
+    r1 = f32[2,3] reshape(p)
+    r2 = f32[6,1] reshape(p)
+    ROOT result = (f32[2,3], f32[6,1]) tuple(r1, r2)
+  }
+  ENTRY test {
+    p = f32[3,2] parameter(0)
+    ROOT fusion = (f32[2,3], f32[6,1]) fusion(p), calls=f, kind=kLoop
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->ReusesOperandElements(0));
+}
+
 }  // namespace
 }  // namespace xla

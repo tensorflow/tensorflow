@@ -1246,6 +1246,27 @@ class TrainingTest(keras_parameterized.TestCase):
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_batch_dimension(self):
+
+    def custom_reshape(inputs):
+      return keras.backend.reshape(inputs, (-1, 8, 8, 3))
+
+    layer_1 = keras.layers.Lambda(custom_reshape)
+    layer_2 = keras.layers.Conv2D(32, (3, 3))
+
+    model = testing_utils.get_model_from_layers([layer_1, layer_2],
+                                                input_shape=(8, 8, 6))
+    model.compile('sgd', loss='mse')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'Mismatch between expected batch size and model output batch size. '
+        r'Output shape = \(20, 6, 6, 32\), expected output shape = '
+        r'shape \(10, 6, 6, 32\)'):
+      model.predict(np.ones((10, 8, 8, 6)), batch_size=10)
+
   @keras_parameterized.run_all_keras_modes
   def test_invalid_loss(self):
     num_classes = 5

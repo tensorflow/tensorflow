@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -121,9 +120,8 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
                                const ConsumerCallback& done) {
   // Check the incarnation in the request matches the current device
   // incarnation of the producer.
-  string local_device_name = DeviceNameUtils::LocalName(device_name);
   Device* device;
-  Status consumebuf_status = dev_mgr_->LookupDevice(local_device_name, &device);
+  Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
   if (consumebuf_status.ok() &&
       device->attributes().incarnation() != device_incarnation) {
     consumebuf_status = errors::FailedPrecondition(

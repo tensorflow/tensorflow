@@ -113,6 +113,21 @@ def _flatten_first_two_dims(x):
 PFOR_CONFIG_ARG = "pfor_config"
 
 
+def _is_under_xla_context():
+  """Check if we are currently inside an XLA compile context."""
+  g = ops.get_default_graph()
+  while g is not None:
+    control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    while control_flow_context is not None:
+      if control_flow_context.IsXLAContext():
+        return True
+      else:
+        control_flow_context = control_flow_context.outer_context
+    # If g is a FuncGraph, get its outer_graph.
+    g = getattr(g, "outer_graph", None)
+  return False
+
+
 def pfor(loop_fn, iters, parallel_iterations=None):
   """Equivalent to running `loop_fn` `iters` times and stacking the outputs.
 
@@ -162,13 +177,10 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   """
   def f():
     return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
-  control_flow_context = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
-  if (context.executing_eagerly() or
-      (control_flow_context is not None and
-       control_flow_context.IsXLAContext())):
+  if context.executing_eagerly() or _is_under_xla_context():
     f = function.defun(f)
   return f()
 

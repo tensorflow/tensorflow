@@ -265,11 +265,18 @@ class BatchMatMulBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
   dtypes_to_test = [np.float16, np.float32, np.float64, np.complex64,
                     np.complex128, np.int32]
   if test.is_built_with_rocm():
     # rocBLAS in ROCm stack does not support GEMM for complex types
     dtypes_to_test = [np.float16, np.float32, np.float64, np.int32]
+=======
+  dtypes_to_test = [np.float16, np.float32, np.float64, np.int32]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
+>>>>>>> upstream/master
   for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:

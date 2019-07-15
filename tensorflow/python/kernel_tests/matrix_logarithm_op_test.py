@@ -60,10 +60,15 @@ class LogarithmOpTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testNonsymmetric(self):
+<<<<<<< HEAD
     
     if test.is_built_with_rocm():
       self.skipTest("rocBLAS GEMM for complex datatype is not yet supported in ROCm")
       
+=======
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+>>>>>>> upstream/master
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
@@ -78,10 +83,15 @@ class LogarithmOpTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testSymmetricPositiveDefinite(self):
+<<<<<<< HEAD
     
     if test.is_built_with_rocm():
       self.skipTest("rocBLAS GEMM for complex datatype is not yet supported in ROCm")
       
+=======
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+>>>>>>> upstream/master
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
@@ -116,10 +126,15 @@ class LogarithmOpTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex64(self):
+<<<<<<< HEAD
     
     if test.is_built_with_rocm():
       self.skipTest("rocBLAS GEMM for complex datatype is not yet supported in ROCm")
       
+=======
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+>>>>>>> upstream/master
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
       for size in 8, 31, 32:
@@ -131,10 +146,15 @@ class LogarithmOpTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex128(self):
+<<<<<<< HEAD
     
     if test.is_built_with_rocm():
       self.skipTest("rocBLAS GEMM for complex datatype is not yet supported in ROCm")
       
+=======
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+>>>>>>> upstream/master
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
       for size in 8, 31, 32:

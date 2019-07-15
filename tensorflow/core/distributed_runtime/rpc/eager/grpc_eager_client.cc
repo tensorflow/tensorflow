@@ -64,7 +64,7 @@ class GrpcEagerClient : public EagerClient {
       enqueue_dispatchers_.erase(request->context_id());
     } else {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
-                 << " does not seems to exist.";
+                 << " does not seem to exist.";
     }
   }
 

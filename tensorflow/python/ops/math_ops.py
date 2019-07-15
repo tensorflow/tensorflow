@@ -1275,6 +1275,28 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+def tensor_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    return gen_math_ops.equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is other
+
+
+def tensor_not_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    return gen_math_ops.not_equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is not other
+
+
+ops.Tensor._override_operator("__eq__", tensor_equals)
+ops.Tensor._override_operator("__ne__", tensor_not_equals)
+
+
 @tf_export("range")
 def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
@@ -2789,6 +2811,22 @@ def _calc_mat_mul_flops(graph, node):
     k = int(a_shape[0])
   else:
     k = int(a_shape[1])
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (k * output_count * 2))
+
+
+@ops.RegisterStatistics("BatchMatMul", "flops")
+def _calc_batch_mat_mul_flops(graph, node):
+  """Calculates the compute resources needed for BatchMatMul."""
+  transpose_a = node.attr["transpose_a"].b
+  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  a_shape.assert_is_fully_defined()
+  if transpose_a:
+    k = int(a_shape[-2])
+  else:
+    k = int(a_shape[-1])
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())

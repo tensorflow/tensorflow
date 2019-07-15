@@ -303,16 +303,14 @@ versions {
 # CHECK-NEXT:   %3:4 = "_tf.While"(%1#0, %2#0, %0#0) {T = ["tfdtype$DT_INT32", "tfdtype$DT_INT32", "tfdtype$DT_INT32"], _lower_using_switch_merge = true, body = @while_body_60, cond = @while_cond_50, device = "", name = "while", output_shapes = ["tfshape$", "tfshape$", "tfshape$"], parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, !_tf.control)
 # CHECK-NEXT:   return %3#2 : tensor<i32>
 # CHECK-NEXT: }
-# CHECK-EMPTY:
-# CHECK-NEXT: func @while_body_60(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
+# CHECK: func @while_body_60(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
 # CHECK-NEXT:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Add/y", value = dense<1> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
 # CHECK-NEXT:   %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "add_1/y", value = dense<1> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
 # CHECK-NEXT:   %2:2 = "_tf.Add"(%arg2, %0#0) {T = "tfdtype$DT_INT32", device = "", name = "Add"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:   %3:2 = "_tf.Add"(%arg0, %1#0) {T = "tfdtype$DT_INT32", device = "", name = "add_1"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control)
 # CHECK-NEXT:   return %3#0, %arg1, %2#0 : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>
 # CHECK-NEXT: }
-# CHECK-EMPTY:
-# CHECK-NEXT: func @while_cond_50(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>) -> tensor<*xi1> {
+# CHECK: func @while_cond_50(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>) -> tensor<*xi1> {
 # CHECK-NEXT:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Less/y", value = dense<10> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
 # CHECK-NEXT:   %1:2 = "_tf.Less"(%arg2, %0#0) {T = "tfdtype$DT_INT32", device = "", name = "Less"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi1>, !_tf.control)
 # CHECK-NEXT:   return %1#0 : tensor<*xi1>

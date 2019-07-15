@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,7 +41,7 @@ Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
     return InvalidArgumentError("Padding is bigger than kernel.");
   }
 
-  std::vector<UniformParameter> parameters = {
+  std::vector<Variable> parameters = {
       {"input_data_0_h", input->tensor.shape.h},
       {"input_data_0_w", input->tensor.shape.w},
       {"stride", int2(attr.strides.w, attr.strides.h)},
@@ -100,7 +101,7 @@ Status GenerateAveragePoolingCode(const Pooling2DAttributes& attr,
                                   GeneratedCode* generated_code) {
   auto input = ctx.graph->FindInputs(ctx.node->id)[0];
 
-  std::vector<UniformParameter> parameters = {
+  std::vector<Variable> parameters = {
       {"input_data_0_h", input->tensor.shape.h},
       {"input_data_0_w", input->tensor.shape.w},
       {"stride", int2(attr.strides.w, attr.strides.h)},

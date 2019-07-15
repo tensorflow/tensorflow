@@ -236,6 +236,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_gpu",  # TODO(b/131773093): Re-enable.
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     xla_enable_strict_auto_jit = True,
@@ -1705,6 +1706,7 @@ cuda_py_test(
     tags = [
         # TODO(b/134600611): Re-enable this test.
         "notap",
+        "no_oss",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -3510,6 +3512,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = [
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

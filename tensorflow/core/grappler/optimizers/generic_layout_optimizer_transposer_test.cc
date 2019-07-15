@@ -150,7 +150,7 @@ Status CreateSimpleFusedBatchNorm(GraphDef* graph,
   return scope.ToGraphDef(graph);
 }
 
-Status CreateSimpleMaxPoolGrad(GraphDef* graph) {
+Status CreateSimpleMaxPoolGrad(GraphDef* graph, bool use_grad_grad) {
   Scope scope = Scope::NewRootScope();
   auto input =
       ops::RandomUniform(scope.WithOpName("orig_input"),
@@ -158,13 +158,23 @@ Status CreateSimpleMaxPoolGrad(GraphDef* graph) {
   auto output_data = ops::RandomUniform(
       scope.WithOpName("orig_output"),
       {kBatchSize, kOutHeight, kOutWidth, kDepthIn}, DT_FLOAT);
-  auto output_grad = ops::RandomUniform(
-      scope.WithOpName("grad"), {kBatchSize, kOutHeight, kOutWidth, kDepthIn},
-      DT_FLOAT);
-  auto maxpool_grad = ops::internal::MaxPoolGrad(
-      scope.WithOpName("maxpool_grad").WithDevice("/device:GPU:0"), input,
-      output_data, output_grad, {1, kKernel, kKernel, 1},
-      {1, kStride1, kStride1, 1}, "VALID");
+  auto output_grad =
+      ops::RandomUniform(scope.WithOpName("grad"),
+                         {kBatchSize, use_grad_grad ? kHeight : kOutHeight,
+                          use_grad_grad ? kWidth : kOutWidth, kDepthIn},
+                         DT_FLOAT);
+  Output maxpool_grad;
+  if (use_grad_grad) {
+    maxpool_grad = ops::MaxPoolGradGrad(
+        scope.WithOpName("maxpool_grad").WithDevice("/device:GPU:0"), input,
+        output_data, output_grad, {1, kKernel, kKernel, 1},
+        {1, kStride1, kStride1, 1}, "VALID");
+  } else {
+    maxpool_grad = ops::internal::MaxPoolGrad(
+        scope.WithOpName("maxpool_grad").WithDevice("/device:GPU:0"), input,
+        output_data, output_grad, {1, kKernel, kKernel, 1},
+        {1, kStride1, kStride1, 1}, "VALID");
+  }
 
   auto output = ops::Identity(scope.WithOpName("output"), maxpool_grad);
 
@@ -731,51 +741,53 @@ TEST_F(TransposerTest, MaxPoolGradTransposerTest) {
 #if !GOOGLE_CUDA
   GTEST_SKIP() << "CUDA is not enabled";
 #endif  // !GOOGLE_CUDA
-  GrapplerItem item;
-  TransposeContext context;
-  TF_ASSERT_OK(CreateSimpleMaxPoolGrad(&item.graph));
-  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
+  for (bool use_grad_grad : {false, true}) {
+    GrapplerItem item;
+    TransposeContext context;
+    TF_ASSERT_OK(CreateSimpleMaxPoolGrad(&item.graph, use_grad_grad));
+    TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+        item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
-  MaxPoolGradTransposer transposer;
-  auto* maxpool_grad = context.graph_view->GetNode("maxpool_grad");
-  ASSERT_NE(maxpool_grad, nullptr);
-  TF_ASSERT_OK(transposer.TransposeNode(&context, maxpool_grad));
+    MaxPoolGradTransposer transposer;
+    auto* maxpool_grad = context.graph_view->GetNode("maxpool_grad");
+    ASSERT_NE(maxpool_grad, nullptr);
+    TF_ASSERT_OK(transposer.TransposeNode(&context, maxpool_grad));
 
-  auto* input_transpose_node1 = context.graph_view->GetNode(
-      "maxpool_grad-0-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(input_transpose_node1, nullptr);
-  ASSERT_EQ(input_transpose_node1->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(input_transpose_node1, 0, "orig_input", 0);
+    auto* input_transpose_node1 = context.graph_view->GetNode(
+        "maxpool_grad-0-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(input_transpose_node1, nullptr);
+    ASSERT_EQ(input_transpose_node1->NumRegularFanins(), 2);
+    VerifyRegularFaninMatch(input_transpose_node1, 0, "orig_input", 0);
 
-  auto* input_transpose_node2 = context.graph_view->GetNode(
-      "maxpool_grad-1-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(input_transpose_node2, nullptr);
-  ASSERT_EQ(input_transpose_node2->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(input_transpose_node2, 0, "orig_output", 0);
+    auto* input_transpose_node2 = context.graph_view->GetNode(
+        "maxpool_grad-1-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(input_transpose_node2, nullptr);
+    ASSERT_EQ(input_transpose_node2->NumRegularFanins(), 2);
+    VerifyRegularFaninMatch(input_transpose_node2, 0, "orig_output", 0);
 
-  auto* input_transpose_node3 = context.graph_view->GetNode(
-      "maxpool_grad-2-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(input_transpose_node3, nullptr);
-  ASSERT_EQ(input_transpose_node3->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(input_transpose_node3, 0, "grad", 0);
+    auto* input_transpose_node3 = context.graph_view->GetNode(
+        "maxpool_grad-2-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(input_transpose_node3, nullptr);
+    ASSERT_EQ(input_transpose_node3->NumRegularFanins(), 2);
+    VerifyRegularFaninMatch(input_transpose_node3, 0, "grad", 0);
 
-  auto* updated_maxpool_grad = context.graph_view->GetNode("maxpool_grad");
-  VerifyDataFormatAttributeMatch(updated_maxpool_grad, kDstFormat);
-  ASSERT_EQ(updated_maxpool_grad->NumRegularFanins(), 3);
-  VerifyRegularFaninMatch(updated_maxpool_grad, 0,
-                          input_transpose_node1->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpool_grad, 1,
-                          input_transpose_node2->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpool_grad, 2,
-                          input_transpose_node3->GetName(), 0);
+    auto* updated_maxpool_grad = context.graph_view->GetNode("maxpool_grad");
+    VerifyDataFormatAttributeMatch(updated_maxpool_grad, kDstFormat);
+    ASSERT_EQ(updated_maxpool_grad->NumRegularFanins(), 3);
+    VerifyRegularFaninMatch(updated_maxpool_grad, 0,
+                            input_transpose_node1->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpool_grad, 1,
+                            input_transpose_node2->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpool_grad, 2,
+                            input_transpose_node3->GetName(), 0);
 
-  auto* output_transpose_node = context.graph_view->GetNode(
-      "maxpool_grad-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
-  ASSERT_NE(output_transpose_node, nullptr);
-  ASSERT_EQ(output_transpose_node->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(output_transpose_node, 0,
-                          updated_maxpool_grad->GetName(), 0);
+    auto* output_transpose_node = context.graph_view->GetNode(
+        "maxpool_grad-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+    ASSERT_NE(output_transpose_node, nullptr);
+    ASSERT_EQ(output_transpose_node->NumRegularFanins(), 2);
+    VerifyRegularFaninMatch(output_transpose_node, 0,
+                            updated_maxpool_grad->GetName(), 0);
+  }
 }
 
 TEST_F(TransposerTest, BiasAddGradTransposerTest) {
@@ -2153,71 +2165,83 @@ TEST_F(TransposerTest, MaxPoolGradV2Transposer) {
 #if !GOOGLE_CUDA
   GTEST_SKIP() << "CUDA is not enabled";
 #endif  // !GOOGLE_CUDA
-  GrapplerItem item;
-  Scope scope = Scope::NewRootScope();
-  auto orig_input =
-      ops::RandomUniform(scope.WithOpName("orig_input"),
-                         {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
-  auto orig_output =
-      ops::RandomUniform(scope.WithOpName("orig_output"),
-                         {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
-  auto grad =
-      ops::RandomUniform(scope.WithOpName("grad_input"),
-                         {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
-  auto ksize = ops::Const(scope.WithOpName("ksize"), {1, kKernel, kKernel, 1});
-  auto strides =
-      ops::Const(scope.WithOpName("strides"), {1, kKernel, kKernel, 1});
-  auto maxpoolgrad_op = ops::MaxPoolGradV2(
-      scope.WithOpName("maxpoolgradv2").WithDevice("/device:GPU:0"), orig_input,
-      orig_output, grad, ksize, strides, "VALID");
-  auto z = ops::Identity(scope.WithOpName("z"), maxpoolgrad_op);
-  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
-  TransposeContext context;
-  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
+  for (bool use_grad_grad : {false, true}) {
+    GrapplerItem item;
+    Scope scope = Scope::NewRootScope();
+    auto orig_input =
+        ops::RandomUniform(scope.WithOpName("orig_input"),
+                           {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
+    auto orig_output =
+        ops::RandomUniform(scope.WithOpName("orig_output"),
+                           {kBatchSize, use_grad_grad ? kOutHeight : kHeight,
+                            use_grad_grad ? kOutWidth : kWidth, kDepthIn},
+                           DT_FLOAT);
+    auto grad =
+        ops::RandomUniform(scope.WithOpName("grad_input"),
+                           {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
+    auto ksize =
+        ops::Const(scope.WithOpName("ksize"), {1, kKernel, kKernel, 1});
+    auto strides =
+        ops::Const(scope.WithOpName("strides"), {1, kKernel, kKernel, 1});
+    Output maxpoolgrad_op;
+    if (use_grad_grad) {
+      maxpoolgrad_op = ops::MaxPoolGradGradV2(
+          scope.WithOpName("maxpoolgradv2").WithDevice("/device:GPU:0"),
+          orig_input, orig_output, grad, ksize, strides, "VALID");
+    } else {
+      maxpoolgrad_op = ops::MaxPoolGradV2(
+          scope.WithOpName("maxpoolgradv2").WithDevice("/device:GPU:0"),
+          orig_input, orig_output, grad, ksize, strides, "VALID");
+    }
+    auto z = ops::Identity(scope.WithOpName("z"), maxpoolgrad_op);
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    TransposeContext context;
+    TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+        item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
-  MaxPoolGradV2Transposer maxpoolgrad_transposer;
-  auto* maxpoolgrad = context.graph_view->GetNode("maxpoolgradv2");
-  ASSERT_NE(maxpoolgrad, nullptr);
-  TF_ASSERT_OK(maxpoolgrad_transposer.TransposeNode(&context, maxpoolgrad));
+    MaxPoolGradV2Transposer maxpoolgrad_transposer;
+    auto* maxpoolgrad = context.graph_view->GetNode("maxpoolgradv2");
+    ASSERT_NE(maxpoolgrad, nullptr);
+    TF_ASSERT_OK(maxpoolgrad_transposer.TransposeNode(&context, maxpoolgrad));
 
-  auto* orig_input_transpose_node = context.graph_view->GetNode(
-      "maxpoolgradv2-0-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(orig_input_transpose_node, nullptr);
-  auto* orig_output_transpose_node = context.graph_view->GetNode(
-      "maxpoolgradv2-1-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(orig_output_transpose_node, nullptr);
-  auto* grad_input_transpose_node = context.graph_view->GetNode(
-      "maxpoolgradv2-2-TransposeNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(grad_input_transpose_node, nullptr);
-  auto* size_node = context.graph_view->GetNode(
-      "maxpoolgradv2-3-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(size_node, nullptr);
-  auto* stride_node = context.graph_view->GetNode(
-      "maxpoolgradv2-4-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
-  ASSERT_NE(stride_node, nullptr);
+    auto* orig_input_transpose_node = context.graph_view->GetNode(
+        "maxpoolgradv2-0-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(orig_input_transpose_node, nullptr);
+    auto* orig_output_transpose_node = context.graph_view->GetNode(
+        "maxpoolgradv2-1-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(orig_output_transpose_node, nullptr);
+    auto* grad_input_transpose_node = context.graph_view->GetNode(
+        "maxpoolgradv2-2-TransposeNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(grad_input_transpose_node, nullptr);
+    auto* size_node = context.graph_view->GetNode(
+        "maxpoolgradv2-3-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(size_node, nullptr);
+    auto* stride_node = context.graph_view->GetNode(
+        "maxpoolgradv2-4-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+    ASSERT_NE(stride_node, nullptr);
 
-  auto* updated_maxpoolgrad = context.graph_view->GetNode("maxpoolgradv2");
-  ASSERT_NE(updated_maxpoolgrad, nullptr);
-  ASSERT_EQ(updated_maxpoolgrad->NumRegularFanins(), 5);
-  VerifyRegularFaninMatch(updated_maxpoolgrad, 0,
-                          orig_input_transpose_node->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpoolgrad, 1,
-                          orig_output_transpose_node->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpoolgrad, 2,
-                          grad_input_transpose_node->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpoolgrad, 3, size_node->GetName(), 0);
-  VerifyRegularFaninMatch(updated_maxpoolgrad, 4, stride_node->GetName(), 0);
+    auto* updated_maxpoolgrad = context.graph_view->GetNode("maxpoolgradv2");
+    ASSERT_NE(updated_maxpoolgrad, nullptr);
+    ASSERT_EQ(updated_maxpoolgrad->NumRegularFanins(), 5);
+    VerifyRegularFaninMatch(updated_maxpoolgrad, 0,
+                            orig_input_transpose_node->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpoolgrad, 1,
+                            orig_output_transpose_node->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpoolgrad, 2,
+                            grad_input_transpose_node->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpoolgrad, 3, size_node->GetName(), 0);
+    VerifyRegularFaninMatch(updated_maxpoolgrad, 4, stride_node->GetName(), 0);
 
-  auto* output_transpose_node = context.graph_view->GetNode(
-      "maxpoolgradv2-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
-  ASSERT_NE(output_transpose_node, nullptr);
+    auto* output_transpose_node = context.graph_view->GetNode(
+        "maxpoolgradv2-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+    ASSERT_NE(output_transpose_node, nullptr);
 
-  auto* z_output_node = context.graph_view->GetNode("z");
-  ASSERT_NE(z_output_node, nullptr);
-  ASSERT_EQ(z_output_node->NumRegularFanins(), 1);
-  VerifyRegularFaninMatch(z_output_node, 0, output_transpose_node->GetName(),
-                          0);
+    auto* z_output_node = context.graph_view->GetNode("z");
+    ASSERT_NE(z_output_node, nullptr);
+    ASSERT_EQ(z_output_node->NumRegularFanins(), 1);
+    VerifyRegularFaninMatch(z_output_node, 0, output_transpose_node->GetName(),
+                            0);
+  }
 }
 
 TEST_F(TransposerTest, BinaryOpTransposerAdd) {
@@ -3219,9 +3243,9 @@ TEST_F(TransposerTest, StridedSliceTransposer) {
 
   auto attrs = ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7);
 
-  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
-  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
-  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2, 1}, {4});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3, 1}, {4});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1, 1}, {4});
 
   auto strided_slice_op = ops::StridedSlice(
       scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
@@ -3309,9 +3333,9 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
   auto attrs =
       ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7).EllipsisMask(0x2);
 
-  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
-  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
-  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2, 1}, {4});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3, 1}, {4});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1, 1}, {4});
 
   auto strided_slice_op = ops::StridedSlice(
       scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
@@ -3342,6 +3366,90 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
   VerifyRegularFaninMatch(updated_stridedslice_node, 1, "begin", 0);
   VerifyRegularFaninMatch(updated_stridedslice_node, 2, "end", 0);
   VerifyRegularFaninMatch(updated_stridedslice_node, 3, "strides", 0);
+
+  auto* z_output_node = context.graph_view->GetNode("z");
+  ASSERT_NE(z_output_node, nullptr);
+  ASSERT_EQ(z_output_node->NumRegularFanins(), 1);
+  VerifyRegularFaninMatch(z_output_node, 0,
+                          updated_stridedslice_node->GetName(), 0);
+}
+
+TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
+#if !GOOGLE_CUDA
+  GTEST_SKIP() << "CUDA is not enabled";
+#endif  // !GOOGLE_CUDA
+  GrapplerItem item;
+  Scope scope = Scope::NewRootScope();
+
+  auto input =
+      ops::RandomUniform(scope.WithOpName("input"),
+                         {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
+  auto filter =
+      ops::RandomUniform(scope.WithOpName("filter"),
+                         {kHeight, kWidth, kDepthIn, kDepthOut}, DT_FLOAT);
+  Output conv2d = ops::Conv2D(
+      scope.WithOpName("conv2d").WithDevice("/device:GPU:0"), input, filter,
+      {1, 2, 4, 1}, "SAME", ops::Conv2D::DataFormat(kSrcFormat));
+
+  auto attrs = ops::StridedSlice::Attrs().BeginMask(0xB).EndMask(0x7);
+
+  auto begin = ops::Const(scope.WithOpName("begin"), {2, 0, 2}, {3});
+  auto end = ops::Const(scope.WithOpName("end"), {34, 4, 3}, {3});
+  auto strides = ops::Const(scope.WithOpName("strides"), {7, 2, 1}, {3});
+
+  auto strided_slice_op = ops::StridedSlice(
+      scope.WithOpName("stridedslice").WithDevice("/device:GPU:0"), conv2d,
+      begin, end, strides, attrs);
+  auto z = ops::Identity(scope.WithOpName("z"), strided_slice_op);
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  TransposeContext context;
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
+
+  DefaultLayoutSensitiveOpTransposer conv2d_transposer;
+  auto* c2d = context.graph_view->GetNode("conv2d");
+  ASSERT_NE(c2d, nullptr);
+  TF_ASSERT_OK(conv2d_transposer.TransposeNode(&context, c2d));
+
+  StridedSliceTransposer stridedslice_transposer;
+  auto* stridedslice = context.graph_view->GetNode("stridedslice");
+  ASSERT_NE(stridedslice, nullptr);
+  TF_ASSERT_OK(stridedslice_transposer.TransposeNode(&context, stridedslice));
+
+  auto* input_transpose_node = context.graph_view->GetNode(
+      "stridedslice-0-TransposeNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(input_transpose_node, nullptr);
+
+  auto* begin_node = context.graph_view->GetNode(
+      "stridedslice-1-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(begin_node, nullptr);
+  auto* end_node = context.graph_view->GetNode(
+      "stridedslice-2-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(end_node, nullptr);
+  auto* strides_node = context.graph_view->GetNode(
+      "stridedslice-3-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
+  ASSERT_EQ(strides_node, nullptr);
+
+  auto* updated_stridedslice_node = context.graph_view->GetNode("stridedslice");
+  ASSERT_NE(updated_stridedslice_node, nullptr);
+  ASSERT_EQ(updated_stridedslice_node->NumRegularFanins(), 4);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 0,
+                          "conv2d-0-0-TransposeNCHWToNHWC-LayoutOptimizer", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 1, "begin", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 2, "end", 0);
+  VerifyRegularFaninMatch(updated_stridedslice_node, 3, "strides", 0);
+  const auto* begin_mask_attr =
+      updated_stridedslice_node->GetAttr("begin_mask");
+  ASSERT_NE(begin_mask_attr, nullptr);
+  EXPECT_EQ(begin_mask_attr->i(), 0xB);
+  const auto* end_mask_attr = updated_stridedslice_node->GetAttr("end_mask");
+  ASSERT_NE(end_mask_attr, nullptr);
+  EXPECT_EQ(end_mask_attr->i(), 0x7);
+
+  auto* output_transpose_node = context.graph_view->GetNode(
+      "stridedslice-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+  ASSERT_EQ(output_transpose_node, nullptr);
 
   auto* z_output_node = context.graph_view->GetNode("z");
   ASSERT_NE(z_output_node, nullptr);

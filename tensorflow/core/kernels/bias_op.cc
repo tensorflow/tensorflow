@@ -275,7 +275,7 @@ class BiasGradOp : public OpKernel {
       using AccumT = typename AccumulatorType<T>::type;
       if (data_format_ == FORMAT_NCHW) {
         const functor::ReduceMiddleDimensions<
-            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>,
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>,
             Eigen::internal::SumReducer<T>>
             redux;
         Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
@@ -284,7 +284,7 @@ class BiasGradOp : public OpKernel {
               output, 1);
       } else {
         const functor::ReduceOuterDimensions<
-            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>>
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>>
             redux;
 
         Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,

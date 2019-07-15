@@ -35,7 +35,6 @@ namespace TFControlFlow {
 FunctionPassBase *CreateRaiseTFControlFlowPass();
 
 }  // namespace TFControlFlow
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_

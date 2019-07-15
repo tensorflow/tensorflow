@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/egl_context.h"
 
+#include <cstring>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
@@ -54,7 +56,7 @@ Status CreateContext(EGLDisplay display, EGLContext shared_context,
 }
 
 bool HasExtension(EGLDisplay display, const char* name) {
-  return strstr(eglQueryString(display, EGL_EXTENSIONS), name);
+  return std::strstr(eglQueryString(display, EGL_EXTENSIONS), name);
 }
 
 }  // namespace

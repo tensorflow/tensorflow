@@ -1443,10 +1443,16 @@ class PoolingTest(test.TestCase):
       return
 
     # The functionality associated with TF_ENABLE_NANPROP is currently
+<<<<<<< HEAD
     # not supported on the ROCm platform, due to MIOpen never supports
     # the Nan propagation related field before. This means in-determinism
     # when there is Nan in the input. For details please refer to
     # discussion at https://github.com/ROCmSoftwarePlatform/tensorflow-upstream/pull/381
+=======
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+>>>>>>> upstream/master
     if test.is_built_with_rocm():
       return
 
@@ -1530,10 +1536,16 @@ class PoolingTest(test.TestCase):
       return
 
     # The functionality associated with TF_ENABLE_NANPROP is currently
+<<<<<<< HEAD
     # not supported on the ROCm platform, due to MIOpen never supports
     # the Nan propagation related field before. This means in-determinism
     # when there is Nan in the input. For details please refer to
     # discussion at https://github.com/ROCmSoftwarePlatform/tensorflow-upstream/pull/381
+=======
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+>>>>>>> upstream/master
     if test.is_built_with_rocm():
       return
 

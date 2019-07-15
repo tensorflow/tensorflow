@@ -191,6 +191,50 @@ class ForwardpropTest(test.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testHigherOrderPureForward(self):
+
+    def _forwardgrad(f):
+      def _compute_forwardgrad(primal):
+        tangent = constant_op.constant(1.)
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(primal, tangent)
+          primal_out = f(primal)
+        return acc.jvp(primal_out)
+      return _compute_forwardgrad
+
+    def _forward(x):
+      return x ** 3.5
+
+    f = _forward
+    primal = constant_op.constant(1.1)
+    for expected in [1.1 ** 3.5,
+                     3.5 * 1.1 ** 2.5,
+                     3.5 * 2.5 * 1.1 ** 1.5,
+                     3.5 * 2.5 * 1.5 * 1.1 ** 0.5,
+                     3.5 * 2.5 * 1.5 * 0.5 * 1.1 ** -0.5]:
+      self.assertAllClose(expected, f(primal))
+      f = _forwardgrad(f)
+
+  def testFunctionGradPureForward(self):
+
+    @def_function.function
+    def f(x):
+      return x ** 3.5
+
+    primal = constant_op.constant(1.1)
+    with forwardprop.ForwardGradientAccumulator() as outer_acc:
+      outer_acc.watch(primal, constant_op.constant(1.))
+      with forwardprop.ForwardGradientAccumulator() as acc:
+        acc.watch(primal, constant_op.constant(1.))
+        primal_out = f(primal)
+    inner_jvp = acc.jvp(primal_out)
+    outer_jvp = outer_acc.jvp(inner_jvp)
+    self.assertAllClose(1.1 ** 3.5, primal_out)
+    self.assertAllClose(3.5 * 1.1 ** 2.5, inner_jvp)
+    self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
+    self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+
   def testFunctionGrad(self):
 
     @def_function.function
@@ -201,8 +245,7 @@ class ForwardpropTest(test.TestCase):
         self,
         f,
         [constant_op.constant([1., 2.])],
-        # TODO(allenl): figure out why functions aren't N times differentiable
-        order=1)
+        order=3)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testHVPMemory(self):

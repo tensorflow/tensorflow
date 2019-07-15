@@ -105,8 +105,10 @@ retained with length 1.
 
 // In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
 // of function arguments.
+// Note: NoSideEffect trait is not added intentionally to preserve the captured
+// attributes even if the input is unused.
 def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [NoSideEffect, SameOperandsAndResultType]> {
+    [SameOperandsAndResultType]> {
   let summary = "PlaceholderInput op";
 
   let description = [{
@@ -143,6 +145,51 @@ Inserts a placeholder for a tensor that will be always fed.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
+  let summary = "List of the given size with empty elements.";
+
+  let description = [{
+element_shape: the shape of the future elements of the list
+num_elements: the number of elements to reserve
+handle: the output list
+element_dtype: the desired type of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$element_shape,
+    I32Tensor:$num_elements
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    if (handle_dtype().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result variant type");
+    }
+
+    return Verify(*this);
+  }];
+
+  DerivedTypeAttr element_dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(element_type());">;
+
+  let extraClassDeclaration = [{
+    // Returns type of the TensorList element produced by this op.
+    TensorType element_type() { return handle_dtype().getSubtypes()[0]; }
+
+    // Returns data type of the result handle. Returned type contains type of
+    // the TensorList element as a subtype.
+    VariantType handle_dtype() {
+      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
+    }
+  }];
 }
 
 #endif // TF_OPS

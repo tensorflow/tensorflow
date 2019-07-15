@@ -240,13 +240,20 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [dtypes_lib.complex64, dtypes_lib.complex128]
   for compute_v in True, False:
+<<<<<<< HEAD
     dtypes_to_test = (dtypes_lib.float32, dtypes_lib.float64,
                       dtypes_lib.complex64, dtypes_lib.complex128)
     if test.is_built_with_rocm():
       # rocBLAS library on ROCm stack doesn't properly support fp16 and
       # complex numbers yet
       dtypes_to_test = (dtypes_lib.float32, dtypes_lib.float64)
+=======
+>>>>>>> upstream/master
     for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):

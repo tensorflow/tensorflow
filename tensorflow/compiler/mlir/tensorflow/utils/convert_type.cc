@@ -46,19 +46,15 @@ Status ConvertDataType(const DataType& dtype, Builder builder, Type* type) {
       *type = builder.getIntegerType(1);
       return Status::OK();
     case DT_INT8:
-    case DT_UINT8:
       *type = builder.getIntegerType(8);
       return Status::OK();
     case DT_INT16:
-    case DT_UINT16:
       *type = builder.getIntegerType(16);
       return Status::OK();
     case DT_INT32:
-    case DT_UINT32:
       *type = builder.getIntegerType(32);
       return Status::OK();
     case DT_INT64:
-    case DT_UINT64:
       *type = builder.getIntegerType(64);
       return Status::OK();
     case DT_BFLOAT16:

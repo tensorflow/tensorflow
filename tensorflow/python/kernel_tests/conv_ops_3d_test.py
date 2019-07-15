@@ -32,6 +32,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 def GetTestConfigs():
@@ -220,7 +221,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D1x1x1Filter2x1x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 3, 6, 1, 1],
           filter_in_sizes=[1, 1, 1, 1, 1],
@@ -245,7 +246,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2Filter1x2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 4, 6, 3, 1],
           filter_in_sizes=[2, 2, 2, 1, 1],

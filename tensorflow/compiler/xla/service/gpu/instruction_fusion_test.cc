@@ -581,5 +581,62 @@ TEST_F(InstructionFusionTest, FuseReverse) {
               op::Reverse(op::Add(op::Parameter(), op::Parameter())));
 }
 
+TEST_F(InstructionFusionTest, GpuIsExpensiveF32) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, one));
+  HloInstruction* rem = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kRemainder, param0, one));
+
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rem));
+}
+
+TEST_F(InstructionFusionTest, GpuIsExpensiveS32) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0s32, "param0"));
+
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0s32, HloOpcode::kDivide, param0, one));
+  HloInstruction* rem = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0s32, HloOpcode::kRemainder, param0, one));
+
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rem));
+}
+
+TEST_F(InstructionFusionTest, GpuIsExpensiveBroadcastS32) {
+  auto m = CreateNewVerifiedModule();
+  Shape r1s32 = ShapeUtil::MakeShape(S32, {10});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1s32, "param0"));
+
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* one_broad =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(r1s32, one, {}));
+
+  HloInstruction* div = builder.AddInstruction(HloInstruction::CreateBinary(
+      r1s32, HloOpcode::kDivide, param0, one_broad));
+  HloInstruction* rem = builder.AddInstruction(HloInstruction::CreateBinary(
+      r1s32, HloOpcode::kRemainder, param0, one_broad));
+
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rem));
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -257,6 +257,25 @@ def numpy_text(tensor, is_repr=False):
   return text
 
 
+def enable_tensor_equality():
+  """Compare Tensors with element-wise comparison and thus be unhashable.
+
+  Comparing tensors with element-wise allows comparisons such as
+  tf.Variable(1.0) == 1.0. Element-wise equality implies that tensors are
+  unhashable. Thus tensors can no longer be directly used in sets or as a key in
+  a dictionary.
+  """
+  Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
+
+
+def disable_tensor_equality():
+  """Compare Tensors by their id and be hashable.
+
+  This is a legacy behaviour of TensorFlow and is highly discouraged.
+  """
+  Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
+
 @tf_export("Tensor")
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
@@ -318,6 +337,8 @@ class Tensor(_TensorLike):
       "__le__",
       "__gt__",
       "__ge__",
+      "__ne__",
+      "__eq__",
       "__and__",
       "__rand__",
       "__or__",
@@ -334,6 +355,9 @@ class Tensor(_TensorLike):
       "__matmul__",
       "__rmatmul__"
   }
+
+  # Whether to allow hashing or numpy-style equality
+  _USE_EQUALITY = False
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -641,14 +665,10 @@ class Tensor(_TensorLike):
                                                    self._dtype.name)
 
   def __hash__(self):
-    # Necessary to support Python's collection membership operators
-    return id(self)
-
-  def __eq__(self, other):
-    # Necessary to support Python's collection membership operators
-
-    # NOTE(taylorrobie): equivalent to: id(self) == id(other)
-    return self is other
+    if Tensor._USE_EQUALITY and executing_eagerly_outside_functions():
+      raise TypeError("Tensor is unhashable if Tensor equality is enabled.")
+    else:
+      return id(self)
 
   def __copy__(self):
     # TODO(b/77597810): get rid of Tensor copies.
@@ -1157,6 +1177,9 @@ def internal_convert_to_tensor(value,
           (dtype.name, value.dtype.name, value))
     return value
 
+  if preferred_dtype is not None:
+    preferred_dtype = dtypes.as_dtype(preferred_dtype)
+
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
@@ -1165,18 +1188,15 @@ def internal_convert_to_tensor(value,
       try:
         ret = conversion_func(
             value, dtype=preferred_dtype, name=name, as_ref=as_ref)
-      except (TypeError, ValueError, errors.UnimplementedError,
-              errors.InvalidArgumentError):
+      except (TypeError, ValueError):
         # Could not coerce the conversion to use the preferred dtype.
-        ret = None
-
-      if ret is not None and ret is not NotImplemented:
-        if (ret.dtype.base_dtype !=
-            dtypes.as_dtype(preferred_dtype).base_dtype):
+        pass
+      else:
+        if (ret is not NotImplemented and
+            ret.dtype.base_dtype != preferred_dtype.base_dtype):
           raise TypeError("convert_to_tensor did not convert to "
                           "the preferred dtype: %s vs %s " %
-                          (ret.dtype.base_dtype,
-                           dtypes.as_dtype(preferred_dtype).base_dtype))
+                          (ret.dtype.base_dtype, preferred_dtype.base_dtype))
 
     if ret is None:
       ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
@@ -4122,7 +4142,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-    op = _op_to_colocate_with(op)
+    op = _op_to_colocate_with(op, self)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -4897,6 +4917,48 @@ class Graph(object):
   @_global_distribute_strategy_scope.setter
   def _global_distribute_strategy_scope(self, distribute_strategy_scope):
     self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
+
+  @property
+  def _auto_cast_variable_read_dtype(self):
+    """The dtype that instances of `AutoCastVariable` will be casted to.
+
+    This is None if `AutoCastVariables` should not be casted.
+
+    See `AutoCastVariable` for more information.
+
+    Returns:
+      The dtype that instances of `AutoCastVariable` will be casted to.
+    """
+    if not hasattr(self._thread_local, "_auto_cast_variable_read_dtype"):
+      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
+    return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
+
+  @_auto_cast_variable_read_dtype.setter
+  def _auto_cast_variable_read_dtype(self, _auto_cast_variable_read_dtype):
+    self._thread_local._auto_cast_variable_read_dtype = (  # pylint: disable=protected-access
+        _auto_cast_variable_read_dtype)
+
+  @tf_contextlib.contextmanager
+  def _enable_auto_casting_variables(self, dtype):
+    """Context manager to automatically cast AutoCastVariables.
+
+    If an AutoCastVariable `var` is used under this context manager, it will be
+    casted to `dtype` before being used.
+
+    See `AutoCastVariable` for more information.
+
+    Args:
+      dtype: The dtype that AutoCastVariables should be casted to.
+
+    Yields:
+      Nothing.
+    """
+    prev_read_dtype = self._auto_cast_variable_read_dtype
+    try:
+      self._auto_cast_variable_read_dtype = dtype
+      yield
+    finally:
+      self._auto_cast_variable_read_dtype = prev_read_dtype
 
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
@@ -6384,7 +6446,7 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
                   (op.name, dtype, name, as_ref))
 
 
-def _op_to_colocate_with(v):
+def _op_to_colocate_with(v, graph):
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
     return None
@@ -6403,7 +6465,10 @@ def _op_to_colocate_with(v):
   # import dependency is acceptable.
   if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
       v.handle.op, Operation):
-    return v.handle.op
+    if graph.building_function:
+      return graph.capture(v.handle).op
+    else:
+      return v.handle.op
   return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
 
 

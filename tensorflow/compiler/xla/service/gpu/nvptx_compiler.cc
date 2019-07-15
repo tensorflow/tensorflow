@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -493,11 +492,11 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
-
 }  // namespace
 
 NVPTXCompiler::NVPTXCompiler()
     : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
+<<<<<<< HEAD
                         .getPointerSize(0 /* default address space */)),
       platform_id_(se::cuda::kCudaPlatformId) {}
 
@@ -505,6 +504,9 @@ NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
     : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(platform_id) {}
+=======
+                        .getPointerSize(0 /* default address space */)) {}
+>>>>>>> upstream/master
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

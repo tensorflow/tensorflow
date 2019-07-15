@@ -108,7 +108,7 @@ class OptimizerV2(trackable.Trackable):
   opt = tf.keras.optimizers.SGD(learning_rate=0.1)
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Dense(num_hidden, activation='relu'))
-  model.add(tf.keras.layers.Dense(num_classes, activation='sigmoid')
+  model.add(tf.keras.layers.Dense(num_classes, activation='sigmoid'))
   loss_fn = lambda: tf.keras.losses.mse(model(input), output)
   var_list_fn = lambda: model.trainable_weights
   for input, output in data:

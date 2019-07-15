@@ -106,25 +106,11 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool HostCallback(Stream *stream,
                     std::function<port::Status()> callback) override;
 
-  port::Status AllocateEvent(Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status DeallocateEvent(Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status RecordEvent(Stream *stream, Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status WaitForEvent(Stream *stream, Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  Event::Status PollForEventStatus(Event *event) override {
-    return Event::Status::kError;
-  }
+  port::Status AllocateEvent(Event *event) override;
+  port::Status DeallocateEvent(Event *event) override;
+  port::Status RecordEvent(Stream *stream, Event *event) override;
+  port::Status WaitForEvent(Stream *stream, Event *event) override;
+  Event::Status PollForEventStatus(Event *event) override;
 
   bool AllocateStream(Stream *stream) override;
   void DeallocateStream(Stream *stream) override;
@@ -190,10 +176,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
   rng::RngSupport *CreateRng() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
-    LOG(WARNING) << "Events not currently supported by HostExecutor.";
-    return nullptr;
-  }
+      override;
 
   std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
       override {

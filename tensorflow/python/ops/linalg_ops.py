@@ -605,7 +605,7 @@ def norm(tensor,
         perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
-                    array_ops.where(math_ops.equal(perm_before, i))),
+                    array_ops.where_v2(math_ops.equal(perm_before, i))),
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(

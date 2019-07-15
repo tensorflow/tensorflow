@@ -36,9 +36,9 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
   Examples:
 
   ```python
-  >>> tf.strings.to_bytes('hello')
+  >>> tf.strings.bytes_split('hello')
   ['h', 'e', 'l', 'l', 'o']
-  >>> tf.strings.to_bytes(['hello', '123'])
+  >>> tf.strings.bytes_split(['hello', '123'])
   <RaggedTensor [['h', 'e', 'l', 'l', 'o'], ['1', '2', '3']]>
   ```
 
@@ -53,7 +53,7 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `RaggedTensor` of rank `N+1`: the bytes that make up the soruce strings.
+    A `RaggedTensor` of rank `N+1`: the bytes that make up the source strings.
   """
   with ops.name_scope(name, "StringsByteSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(input,

@@ -312,7 +312,7 @@ class Beta(distribution.Distribution):
           name="nan")
       is_defined = math_ops.logical_and(self.concentration1 > 1.,
                                         self.concentration0 > 1.)
-      return array_ops.where(is_defined, mode, nan)
+      return array_ops.where_v2(is_defined, mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], dtype=self.dtype),

@@ -365,12 +365,20 @@ class SVDBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [np.float32, np.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for compute_uv in False, True:
     for full_matrices in False, True:
+<<<<<<< HEAD
       # rocBLAS on ROCm stack doesn't support complex64 and complex128 types
       dtypes = ([np.float32, np.float64] +
                 [np.complex64, np.complex128] * (not test.is_built_with_rocm()))
       for dtype in dtypes:
+=======
+      for dtype in dtypes_to_test:
+>>>>>>> upstream/master
         for rows in 1, 2, 5, 10, 32, 100:
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
@@ -385,10 +393,15 @@ if __name__ == "__main__":
                                        compute_uv, full_matrices))
   for compute_uv in False, True:
     for full_matrices in False, True:
+<<<<<<< HEAD
       # rocBLAS on ROCm stack doesn't support complex64 and complex128 types
       dtypes = ([np.float32, np.float64] +
                 [np.complex64, np.complex128] * (not compute_uv)
                                               * (not test.is_built_with_rocm()))
+=======
+      dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
+                (not compute_uv) * (not test.is_built_with_rocm()))
+>>>>>>> upstream/master
       for dtype in dtypes:
         mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:
