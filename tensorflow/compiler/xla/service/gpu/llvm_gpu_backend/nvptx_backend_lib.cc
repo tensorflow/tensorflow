@@ -64,14 +64,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace amdgpu {
+namespace {
 
 // Inline threshold value to use in LLVM AMDGPU backend.
 const int kAMDGPUInlineThreshold = 0x100000;
-
-}  // namespace amdgpu
-
-namespace nvptx {
 
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
@@ -104,10 +100,6 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   }
   return absl::StrCat("sm_", sm_version);
 }
-
-}  // namespace nvptx
-
-namespace {
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
@@ -216,9 +208,6 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   outfile.keep();
 }
 
-}  // namespace
-
-namespace nvptx {
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
 StatusOr<string> EmitModuleToPTX(Module* module,
@@ -243,9 +232,6 @@ StatusOr<string> EmitModuleToPTX(Module* module,
   return ptx;
 }
 
-}  // namespace nvptx
-
-namespace {
 // LLVM has an extensive flags mechanism of its own, which is only accessible
 // through the command line. Internal libraries within LLVM register parsers for
 // flags, with no other way to configure them except pass these flags.
@@ -305,10 +291,6 @@ Status LinkWithBitcodeVector(llvm::Module* module,
   return Status::OK();
 }
 
-}  // namespace
-
-namespace nvptx {
-
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 std::pair<int, int> compute_capability,
@@ -358,29 +340,24 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
-    llvm::Triple target_triple, GpuVersion gpu_version,
+    llvm::Triple target_triple, std::pair<int, int> compute_capability,
     const HloModuleConfig& hlo_module_config) {
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
-  return GetTargetMachine(
-      target_triple, GetSmName(absl::get<std::pair<int, int>>(gpu_version)),
-      hlo_module_config, "+ptx60");
+  return GetTargetMachine(target_triple, GetSmName(compute_capability),
+                          hlo_module_config, "+ptx60");
 }
 
-}  // namespace nvptx
-
-namespace {
 using TargetModuleLinker = std::function<Status(
     llvm::Module*, GpuVersion, const HloModuleConfig&, const string&)>;
-using GetLLVMTargetMachine = std::function<std::unique_ptr<llvm::TargetMachine>(
-    llvm::Triple, GpuVersion, const HloModuleConfig&)>;
 
-StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
-    llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
-    const string& device_bitcode_dir_path, TargetModuleLinker module_linker,
-    const string& default_target_triple,
-    GetLLVMTargetMachine get_llvm_target_machine, int inline_threshold) {
+Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
+                             const HloModuleConfig& hlo_module_config,
+                             const string& device_bitcode_dir_path,
+                             TargetModuleLinker module_linker,
+                             llvm::Triple default_target_triple,
+                             llvm::TargetMachine* target_machine,
+                             int inline_threshold) {
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
                                    device_bitcode_dir_path));
 
@@ -397,11 +374,8 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::UnknownArch) {
     LOG(WARNING) << "target triple not found in the module";
-    target_triple = llvm::Triple(default_target_triple);
+    target_triple = default_target_triple;
   }
-
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      get_llvm_target_machine(target_triple, gpu_version, hlo_module_config);
 
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
@@ -431,7 +405,7 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
 
   // Add optimization passes, and set inliner threshold.
   AddOptimizationPasses(opt_level,
-                        /*size_level=*/0, target_machine.get(), &module_passes,
+                        /*size_level=*/0, target_machine, &module_passes,
                         &function_passes, inline_threshold);
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
@@ -459,12 +433,9 @@ StatusOr<std::unique_ptr<llvm::TargetMachine>> LinkAndOptimizeModule(
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return std::move(target_machine);
+  return Status::OK();
 }
 
-}  // namespace
-
-namespace nvptx {
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
 void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
@@ -511,6 +482,10 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   InitializePasses(registry);
 }
 
+}  // namespace
+
+namespace nvptx {
+
 StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
@@ -533,20 +508,30 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
       return string();
     }
 
-    TF_ASSIGN_OR_RETURN(
-        target_machine,
-        LinkAndOptimizeModule(module, gpu_version, hlo_module_config,
-                              libdevice_dir_path, NVPTXTargetModuleLinker,
-                              "nvptx64-unknown-unknown", NVPTXGetTargetMachine,
-                              kDefaultInlineThreshold));
-    TF_ASSIGN_OR_RETURN(ptx, EmitModuleToPTX(module, target_machine.get()));
+    auto compute_capability = absl::get_if<std::pair<int, int>>(&gpu_version);
+    if (compute_capability) {
+      llvm::Triple target_triple("nvptx64-unknown-unknown");
+      // Construct LLVM TargetMachine for NVPTX.
+      std::unique_ptr<llvm::TargetMachine> target_machine =
+          NVPTXGetTargetMachine(target_triple, *compute_capability,
+                                hlo_module_config);
+
+      // Link with libdeivce, and optimize the LLVM module.
+      TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+          module, gpu_version, hlo_module_config, libdevice_dir_path,
+          NVPTXTargetModuleLinker, target_triple,
+          target_machine.get(), kDefaultInlineThreshold));
+
+      // Lower optimize LLVM module to PTX.
+      TF_ASSIGN_OR_RETURN(ptx, EmitModuleToPTX(module, target_machine.get()));
+    }
   }
   return ptx;
 }
 
 }  // namespace nvptx
 
-namespace amdgpu {
+namespace {
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
 static std::vector<string> GetROCDLPaths(int amdgpu_version,
@@ -590,21 +575,21 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  TF_RETURN_IF_ERROR(amdgpu::LinkROCDLIfNecessary(
-      module, absl::get<int>(gpu_version), device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, absl::get<int>(gpu_version),
+                                          device_bitcode_dir_path));
 
   return Status::OK();
 }
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
-    llvm::Triple target_triple, GpuVersion gpu_version,
+    llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
-  return std::move(GetTargetMachine(
-      target_triple, absl::StrCat("gfx", absl::get<int>(gpu_version)),
-      hlo_module_config, "-code-object-v3"));
+  return std::move(GetTargetMachine(target_triple,
+                                    absl::StrCat("gfx", amdgpu_version),
+                                    hlo_module_config, "-code-object-v3"));
 }
 
-}  // namespace amdgpu
+}  // namespace
 
 }  // namespace gpu
 }  // namespace xla
