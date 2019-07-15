@@ -22,7 +22,6 @@
 
 namespace mlir {
 
-class FuncOp;
 class PatternRewriter;
 
 //===----------------------------------------------------------------------===//
@@ -417,11 +416,13 @@ private:
   OwningRewritePatternList patterns;
 };
 
-/// Rewrite the specified function by repeatedly applying the highest benefit
-/// patterns in a greedy work-list driven manner. Return true if no more
-/// patterns can be matched in the result function.
+/// Rewrite the regions of the specified operation, which must be isolated from
+/// above, by repeatedly applying the highest benefit patterns in a greedy
+/// work-list driven manner. Return true if no more patterns can be matched in
+/// the result operation regions.
+/// Note: This does not apply patterns to the top-level operation itself.
 ///
-bool applyPatternsGreedily(FuncOp fn, OwningRewritePatternList &&patterns);
+bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &&patterns);
 
 /// Helper class to create a list of rewrite patterns given a list of their
 /// types and a list of attributes perfect-forwarded to each of the conversion
