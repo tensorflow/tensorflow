@@ -71,7 +71,7 @@ class StratifiedSampleTest(test.TestCase):
                                      probs, batch_size, init_probs)
 
     # Data must be list, not singleton tensor.
-    with self.assertRaises(TypeError):
+    with self.assertRaises(NotImplementedError):
       sampling_ops.stratified_sample(
           array_ops.zeros([1, 3]), label, probs, batch_size, init_probs)
 
