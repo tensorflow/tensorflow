@@ -683,7 +683,8 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     return Status::OK();
   }
   const NodeDef* node_def = node->node();
-  if ((IsConv2D(*node_def) || IsFusedBatchNorm(*node_def)) &&
+  if ((node_def->op() == "BiasAdd" || IsConv2D(*node_def) ||
+       IsFusedBatchNorm(*node_def)) &&
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
