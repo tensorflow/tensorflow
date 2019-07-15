@@ -104,8 +104,5 @@ def gen_api_init_files(
         ),
         srcs = srcs,
         tools = [":" + api_gen_binary_target],
-        visibility = [
-            "//tensorflow:__pkg__",
-            "//tensorflow/tools/api/tests:__pkg__",
-        ],
+        visibility = ["//visibility:public"],
     )

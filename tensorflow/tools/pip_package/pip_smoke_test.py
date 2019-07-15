@@ -137,7 +137,8 @@ def main():
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+      ["bazel", "cquery", "--incompatible_package_name_is_a_function=false",
+       PY_TEST_QUERY_EXPRESSION])
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   tf_py_test_dependencies_list = [
       x.split()[0] for x in tf_py_test_dependencies.strip().split("\n")
