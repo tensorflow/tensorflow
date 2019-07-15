@@ -361,7 +361,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                              const HloModuleConfig& hlo_module_config,
                              const string& device_bitcode_dir_path,
                              TargetModuleLinker module_linker,
-                             const string& default_target_triple,
+                             llvm::Triple default_target_triple,
                              llvm::TargetMachine* target_machine,
                              int inline_threshold) {
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
@@ -380,7 +380,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::UnknownArch) {
     LOG(WARNING) << "target triple not found in the module";
-    target_triple = llvm::Triple(default_target_triple);
+    target_triple = default_target_triple;
   }
 
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
@@ -514,19 +514,19 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
       return string();
     }
 
-    auto compute_capability = absl::get_if<std::pair<int, int>>(gpu_version);
+    auto compute_capability = absl::get_if<std::pair<int, int>>(&gpu_version);
     if (compute_capability) {
+      llvm::Triple target_triple("nvptx64-unknown-unknown");
       // Construct LLVM TargetMachine for NVPTX.
-      TF_ASSIGN_OR_RETURN(
-          target_machine,
-          NVPTXGetTargetMachine("nvptx64-unknown-unknown", *compute_capability,
-                                hlo_module_config));
+      std::unique_ptr<llvm::TargetMachine> target_machine =
+          NVPTXGetTargetMachine(target_triple, *compute_capability,
+                                hlo_module_config);
 
       // Link with libdeivce, and optimize the LLVM module.
       TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
           module, gpu_version, hlo_module_config, libdevice_dir_path,
-          NVPTXTargetModuleLinker, "nvptx64-unknown-unknown",
-          target_machine.get(), kDefaultInlineThreshold));
+          NVPTXTargetModuleLinker, target_triple, target_machine.get(),
+          kDefaultInlineThreshold));
 
       // Lower optimize LLVM module to PTX.
       TF_ASSIGN_OR_RETURN(ptx, EmitModuleToPTX(module, target_machine.get()));
@@ -620,9 +620,9 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   isabin_fs->flush();
 
   // Locate lld
-  std::string lld_path =
-      tensorflow::io::JoinPath(tensorflow::ROCmRoot(), "hcc/bin");
-  auto lld_program = llvm::sys::findProgramByName("ld.lld", lld_path);
+  // ROCM TODO: change to tensorflow::ROCmRoot() after ROCm-Device-Libs PR.
+  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
     LOG(FATAL) << "unable to find ld.lld in PATH: "
                << lld_program.getError().message();
@@ -716,19 +716,19 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto amdgpu_version = absl::get_if<int>(gpu_version);
+    auto amdgpu_version = absl::get_if<int>(&gpu_version);
     if (amdgpu_version) {
+      llvm::Triple target_triple("amdgcn--amdhsa-amdgiz");
       // Construct LLVM TargetMachine for AMDGPU.
-      TF_ASSIGN_OR_RETURN(
-          target_machine,
-          AMDGPUGetTargetMachine("amdgcn--amdhsa-amdgiz", *amdgpu_version,
-                                 hlo_module_config));
+      std::unique_ptr<llvm::TargetMachine> target_machine =
+          AMDGPUGetTargetMachine(target_triple, *amdgpu_version,
+                                 hlo_module_config);
 
       // Link with ROCm-Device-Libs, and optimize the LLVM module.
       TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
           module, gpu_version, hlo_module_config, rocdl_dir_path,
-          AMDGPUTargetModuleLinker, "amdgcn--amdhsa-amdgiz",
-          target_machine.get(), kAMDGPUInlineThreshold));
+          AMDGPUTargetModuleLinker, target_triple, target_machine.get(),
+          kAMDGPUInlineThreshold));
 
       // Lower optimize LLVM module to HSA code object.
       TF_ASSIGN_OR_RETURN(hsaco,
