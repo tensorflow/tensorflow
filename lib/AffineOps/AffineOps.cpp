@@ -39,7 +39,10 @@ using llvm::dbgs;
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<AffineApplyOp, AffineDmaStartOp, AffineDmaWaitOp, AffineForOp,
-                AffineIfOp, AffineLoadOp, AffineStoreOp, AffineTerminatorOp>();
+                AffineIfOp, AffineLoadOp, AffineStoreOp,
+#define GET_OP_LIST
+#include "mlir/AffineOps/AffineOps.cpp.inc"
+                >();
 }
 
 /// A utility function to check if a given region is attached to a function.
@@ -1762,3 +1765,6 @@ void AffineStoreOp::getCanonicalizationPatterns(
   results.push_back(
       llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
+
+#define GET_OP_CLASSES
+#include "mlir/AffineOps/AffineOps.cpp.inc"

@@ -609,23 +609,6 @@ public:
   void print(OpAsmPrinter *p);
 };
 
-/// Affine terminator is a special terminator operation for blocks inside affine
-/// loops and branches. It unconditionally transmits the control flow to the
-/// successor of the operation enclosing the region.
-///
-/// This operation does _not_ have a custom syntax. However, affine control
-/// operations omit the terminator in their custom syntax for brevity.
-class AffineTerminatorOp
-    : public Op<AffineTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                OpTrait::IsTerminator> {
-public:
-  using Op::Op;
-
-  static void build(Builder *, OperationState *) {}
-
-  static StringRef getOperationName() { return "affine.terminator"; }
-};
-
 /// The "affine.load" op reads an element from a memref, where the index
 /// for each memref dimension is an affine expression of loop induction
 /// variables and symbols. The output of 'affine.load' is a new value with the
@@ -789,6 +772,9 @@ AffineApplyOp makeComposedAffineApply(OpBuilder &b, Location loc, AffineMap map,
 /// argument.
 void fullyComposeAffineMapAndOperands(AffineMap *map,
                                       llvm::SmallVectorImpl<Value *> *operands);
+
+#define GET_OP_CLASSES
+#include "mlir/AffineOps/AffineOps.h.inc"
 
 } // end namespace mlir
 
