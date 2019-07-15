@@ -281,29 +281,50 @@ class KerasLayerTest(keras_parameterized.TestCase):
         # which is  1 - 1 * 2**-14
         self.assertEqual(self.evaluate(layer.v), 1 - 2 ** -14)
 
-  @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
-  def test_checkpointing_layer_weights(self, strategy_fn):
-    x = constant_op.constant([1.], dtype=dtypes.float16)
-    with strategy_fn().scope():
-      with policy.policy_scope('infer_float32_vars'):
-        layer = AddLayer(assert_type=dtypes.float16)
-        layer.build(())
+  def _test_checkpointing_layer_weights(
+      self, strategy_fn, mixed_prec_when_saving, mixed_prec_when_loading):
+    # In this test, we potentially save with mixed precision enabled and load
+    # with mixed precision disabled, or vice versa. This is possible because
+    # variables are float32 regardless of whether mixed precision is enabled.
+    save_policy = 'infer_float32_vars' if mixed_prec_when_saving else 'infer'
+    load_policy = 'infer_float32_vars' if mixed_prec_when_loading else 'infer'
+    save_input_dtype = 'float16' if mixed_prec_when_saving else 'float32'
+    load_input_dtype = 'float16' if mixed_prec_when_loading else 'float32'
 
+    # Create a layer and save a checkpoint.
+    x = constant_op.constant([1.], dtype=save_input_dtype)
+    with strategy_fn().scope():
+      with policy.policy_scope(save_policy):
+        layer = AddLayer(assert_type=save_input_dtype)
+        layer.build(())
     layer.set_weights([np.array(100.)])
     self.assertEqual(self.evaluate(layer(x)), 101.)
-
     checkpoint = trackable_utils.Checkpoint(layer=layer)
     prefix = os.path.join(self.get_temp_dir(), 'ckpt')
     save_path = checkpoint.save(prefix)
 
+    # Create a new layer and restore the checkpoint.
+    x = constant_op.constant([1.], dtype=load_input_dtype)
+    with strategy_fn().scope():
+      with policy.policy_scope(load_policy):
+        layer = AddLayer(assert_type=load_input_dtype)
+        layer.build(())
     layer.set_weights([np.array(200.)])
     self.assertEqual(self.evaluate(layer(x)), 201.)
+    checkpoint = trackable_utils.Checkpoint(layer=layer)
     checkpoint.restore(save_path).assert_consumed().run_restore_ops()
     self.assertEqual(layer.get_weights(), [100.])
     self.assertEqual(self.evaluate(layer(x)), 101.)
-    # TODO(reedwm): Allow layers to be saved without using mixed precision, and
-    # restored with mixed precision? Or vice versa?
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_checkpointing_layer_weights(self, strategy_fn):
+    self._test_checkpointing_layer_weights(
+        strategy_fn, mixed_prec_when_saving=True, mixed_prec_when_loading=True)
+    self._test_checkpointing_layer_weights(
+        strategy_fn, mixed_prec_when_saving=True, mixed_prec_when_loading=False)
+    self._test_checkpointing_layer_weights(
+        strategy_fn, mixed_prec_when_saving=False, mixed_prec_when_loading=True)
 
 
 class KerasModelTest(keras_parameterized.TestCase):
