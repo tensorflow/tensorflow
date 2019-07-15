@@ -890,9 +890,19 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   // Stop the tape from recording
   pop_backward_tape.release()();
 
+  if (grad.size() != in_grads.size()) {
+    return tensorflow::errors::Internal("Wrong number of gradients returned.");
+  }
+
   std::vector<int64> targets;
+  std::vector<Gradient*> used_in_grads;
+  // We may end up with slightly fewer elements than we reserve, but grad.size()
+  // should be a reasonably tight upper bound.
+  targets.reserve(grad.size());
+  used_in_grads.reserve(grad.size());
   std::unordered_map<int64, TapeTensor> sources_that_are_targets;
-  for (Gradient* grad_tensor : grad) {
+  for (int grad_index = 0; grad_index < grad.size(); ++grad_index) {
+    Gradient* grad_tensor = grad[grad_index];
     if (grad_tensor != nullptr) {
       int64 tensor_id = vspace_.TensorId(grad_tensor);
       targets.push_back(tensor_id);
@@ -900,23 +910,18 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
         sources_that_are_targets.emplace(
             tensor_id, vspace_.TapeTensorFromGradient(grad_tensor));
       }
-    }
-  }
-  if (targets.size() > in_grads.size()) {
-    return tensorflow::errors::Internal("Too many gradients returned.");
-  }
-
-  for (int target_index = 0; target_index < targets.size(); ++target_index) {
-    Gradient* in_grad = in_grads[target_index];
-    Gradient* grad_tensor = grad[target_index];
-    if (grad_tensor != nullptr && in_grad != nullptr) {
-      // ComputeGradient steals a reference
-      vspace_.MarkAsResult(in_grad);
+      Gradient* in_grad = in_grads[grad_index];
+      if (in_grad != nullptr) {
+        // ComputeGradient steals a reference
+        vspace_.MarkAsResult(in_grad);
+      }
+      used_in_grads.push_back(in_grad);
     }
   }
 
   return tape->ComputeGradient(vspace_, targets, sources,
-                               sources_that_are_targets, in_grads, out_grads);
+                               sources_that_are_targets, used_in_grads,
+                               out_grads);
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>

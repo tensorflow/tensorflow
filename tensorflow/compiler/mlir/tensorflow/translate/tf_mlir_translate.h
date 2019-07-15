@@ -27,7 +27,7 @@ namespace tensorflow {
 // Converts a TensorFlow GraphDef stored in the file with the given
 // `input_filename` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
-std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
+mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -37,7 +37,7 @@ std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
-std::unique_ptr<mlir::Module> GraphdefToSplattedMlirTranslateFunction(
+mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,

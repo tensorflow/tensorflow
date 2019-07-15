@@ -143,6 +143,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x);
 
+  virtual StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
+                                                llvm::Value* operand_value);
+
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
 

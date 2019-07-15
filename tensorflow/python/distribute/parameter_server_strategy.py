@@ -250,9 +250,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         num_gpus = context.num_gpus()
       else:
         num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
-        # Save the num_gpus_per_worker for configure method which is used by the
-        # contrib version.
-        self._num_gpus_per_worker = num_gpus
+      # Save the num_gpus_per_worker for configure method which is used by the
+      # contrib version.
+      self._num_gpus_per_worker = num_gpus
 
       compute_devices = device_util.local_devices_from_num_gpus(num_gpus)
 

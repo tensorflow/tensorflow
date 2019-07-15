@@ -72,7 +72,7 @@ bool IsCPUDevice(const Device* d) {
 
 // Givens the 'call', prepares the token and inputs as a python tuple
 // that is appropriate for calling the trampoline.
-Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
+Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
   int64 n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
@@ -82,10 +82,10 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
     PyObject* arg = nullptr;
     const Tensor& t = call->ins[i];
     if (call->eager) {
-      TFE_TensorHandle* handle;
+      TensorHandle* handle;
       TF_RETURN_IF_ERROR(
-          TFE_TensorHandle::CreateLocalHandle(t, device, &handle));
-      arg = EagerTensorFromHandle(handle);
+          TensorHandle::CreateLocalHandle(t, device, ctx, &handle));
+      arg = EagerTensorFromHandle(new TFE_TensorHandle(handle));
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -170,9 +170,18 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     return errors::InvalidArgument(
         "Missing py trampoline. Most likely, it is a link error.");
   }
+
   // Prepare the argument.
   PyObject* args = nullptr;
-  TF_RETURN_IF_ERROR(MakeArgTuple(call, &args));
+  if (call->eager) {
+    // See FuncRegistry._ctx.
+    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+        PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
+    CHECK_NE(ctx, nullptr);
+    TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
+  } else {
+    TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));
+  }
   CHECK(args);
 
   // Invokes the trampoline.

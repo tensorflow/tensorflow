@@ -290,9 +290,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
                         ScanDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("ScanDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalScanDataset");
 
 }  // namespace

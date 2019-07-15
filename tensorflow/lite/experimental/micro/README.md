@@ -10,7 +10,7 @@ detection model, takes up a total of 22KB.
 ## Table of Contents
 
 -   [Getting Started](#getting-started)
-
+    *   [Examples](#examples)
     *   [Getting Started with Portable Reference Code](#getting-started-with-portable-reference-code)
     *   [Building Portable Reference Code using Make](#building-portable-reference-code-using-make)
     *   [Building for the "Blue Pill" STM32F103 using Make](#building-for-the-blue-pill-stm32f103-using-make)
@@ -38,6 +38,32 @@ detection model, takes up a total of 22KB.
     *   [Implementing More Optimizations](#implementing-more-optimizations)
 
 # Getting Started
+
+## Examples
+
+The fastest way to learn how TensorFlow Lite for Microcontrollers works is by
+exploring and running our examples, which include application code and trained
+TensorFlow models.
+
+The following examples are available:
+
+- [hello_world](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world)
+  * Uses a very simple model, trained to reproduce a sine wave, to control an
+    LED or animation
+  * Application code for Arduino, SparkFun Edge, and STM32F746
+  * Colab walkthrough of model training and conversion
+
+- [micro_speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech)
+  * Uses a 20kb model to recognize keywords in spoken audio
+  * Application code for Arduino, SparkFun Edge, and STM32F746
+  * Python scripts for model training and conversion
+
+- [micro_vision](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_vision)
+  * Uses a 250kb model to recognize presence or absence of a person in images
+    captured by a camera
+  * Application code for SparkFun Edge
+
+## Pre-generated Project Files
 
 One of the challenges of embedded software development is that there are a lot
 of different architectures, devices, operating systems, and build systems. We
@@ -501,7 +527,7 @@ auto-generated for any target you can compile using the main Make system, using
 a command like this:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="disco_f746ng" generate_micro_speech_mbed_project
 ```
 
 This will create a folder in

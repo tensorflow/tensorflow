@@ -909,9 +909,8 @@ class Network(base_layer.Layer):
     }
     node_conversion_map = {}
     for layer in self.layers:
-      if issubclass(layer.__class__, Network):
-        # Networks start with a pre-existing node
-        # linking their input to output.
+      if issubclass(layer.__class__, Network) and layer._is_graph_network:
+        # Networks start with a pre-existing node linking their input to output.
         kept_nodes = 1
       else:
         kept_nodes = 0

@@ -22,6 +22,68 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+string ToString(CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZLIB:
+      return "ZLIB";
+    case CompressionType::GZIP:
+      return "GZIP";
+    case CompressionType::RAW:
+      return "RAW";
+    case CompressionType::UNCOMPRESSED:
+      return "";
+  }
+}
+
+io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZLIB:
+      return io::ZlibCompressionOptions::DEFAULT();
+    case CompressionType::GZIP:
+      return io::ZlibCompressionOptions::GZIP();
+    case CompressionType::RAW:
+      return io::ZlibCompressionOptions::RAW();
+    case CompressionType::UNCOMPRESSED:
+      LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
+                   << ToString(compression_type);
+      return io::ZlibCompressionOptions::DEFAULT();
+  }
+}
+
+Status WriteDataToFile(const string& filename, const char* data) {
+  return WriteDataToFile(filename, data, CompressionParams());
+}
+
+Status WriteDataToFile(const string& filename, const char* data,
+                       const CompressionParams& params) {
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> file_writer;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
+  if (params.compression_type == CompressionType::UNCOMPRESSED) {
+    TF_RETURN_IF_ERROR(file_writer->Append(data));
+  } else if (params.compression_type == CompressionType::ZLIB ||
+             params.compression_type == CompressionType::GZIP ||
+             params.compression_type == CompressionType::RAW) {
+    auto zlib_compression_options =
+        GetZlibCompressionOptions(params.compression_type);
+    io::ZlibOutputBuffer out(file_writer.get(), params.input_buffer_size,
+                             params.output_buffer_size,
+                             zlib_compression_options);
+    TF_RETURN_IF_ERROR(out.Init());
+    TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Close());
+  } else {
+    return tensorflow::errors::InvalidArgument(
+        "Unsupported compression_type: ", ToString(params.compression_type));
+  }
+
+  TF_RETURN_IF_ERROR(file_writer->Flush());
+  TF_RETURN_IF_ERROR(file_writer->Close());
+
+  return Status::OK();
+}
+
 template <typename T>
 Status IsEqual(const Tensor& t1, const Tensor& t2) {
   if (t1.dtype() != t2.dtype()) {

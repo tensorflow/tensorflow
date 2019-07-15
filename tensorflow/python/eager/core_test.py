@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import pickle
 import threading
@@ -31,6 +32,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -62,7 +64,129 @@ def current_device():
   return constant_op.constant(1.).device
 
 
+def configure_virtual_cpus():
+  cpus = config.list_physical_devices('CPU')
+  # Set 2 virtual CPUs
+  config.set_virtual_device_configuration(cpus[0], [
+      context.VirtualDeviceConfiguration(),
+      context.VirtualDeviceConfiguration()
+  ])
+
+
 class TFETest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(TFETest, self).setUp()
+    configure_virtual_cpus()
+
+  def _test_hashable(self, a, b, hashable):
+    if hashable:
+      self.assertIsInstance(b, collections.Hashable)
+      self.assertLen(set([a, b]), 2)
+    else:
+      # TODO(gjn): Figure out how to make this work for tf.Tensor
+      # self.assertNotIsInstance(b, collections.Hashable)
+      with self.assertRaisesRegexp(TypeError, 'unhashable'):
+        set([a, b])
+
+  def testEquality(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    def _v1_check(a, b):
+      self.assertEqual(a, a)
+      self.assertIs(a, a)
+      self.assertNotEqual(a, 1.0)
+      self.assertIsNot(a, 1.0)
+      self.assertNotEqual(a, b)
+      self.assertIsNot(a, b)
+
+    def _v2_check(a, b):
+      self.assertEqual(a, a)
+      self.assertIs(a, a)
+      self.assertEqual(a, 1.0)
+      self.assertIsNot(a, 1.0)
+      self.assertEqual(a, b)
+      self.assertIsNot(a, b)
+
+    constant_a = constant_op.constant(1.0)
+    constant_b = constant_op.constant(1.0)
+
+    ops.disable_tensor_equality()
+    self._test_hashable(constant_a, constant_b, True)
+    _v1_check(constant_a, constant_b)
+    ops.enable_tensor_equality()
+    _v2_check(constant_a, constant_b)
+    self._test_hashable(constant_a, constant_b, False)
+
+    variable_a = variables.Variable(1.0)
+    variable_b = variables.Variable(1.0)
+
+    ops.disable_tensor_equality()
+    _v1_check(variable_a, variable_b)
+    self._test_hashable(variable_a, variable_b, True)
+    ops.enable_tensor_equality()
+    _v2_check(variable_a, variable_b)
+    self._test_hashable(variable_a, variable_b, True)
+
+    if default:
+      ops.enable_tensor_equality()
+    else:
+      ops.disable_tensor_equality()
+
+    # We only test numpy behaviour in v2 mode since we'd like to match that.
+    numpy_a = np.array(1.0)
+    numpy_b = np.array(1.0)
+    _v2_check(numpy_a, numpy_b)
+    self._test_hashable(numpy_a, numpy_b, False)
+
+  def testEqualityNan(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    def _v1_check(a, b):
+      self.assertEqual(a, a)
+      self.assertIs(a, a)
+      self.assertNotEqual(a, float('nan'))
+      self.assertIsNot(a, float('nan'))
+      self.assertNotEqual(a, b)
+      self.assertIsNot(a, b)
+
+    def _v2_check(a, b):
+      self.assertNotEqual(a, a)
+      self.assertIs(a, a)
+      self.assertNotEqual(a, float('nan'))
+      self.assertIsNot(a, float('nan'))
+      self.assertNotEqual(a, b)
+      self.assertIsNot(a, b)
+
+    constant_a = constant_op.constant(float('nan'))
+    constant_b = constant_op.constant(float('nan'))
+
+    ops.disable_tensor_equality()
+    self._test_hashable(constant_a, constant_b, True)
+    _v1_check(constant_a, constant_b)
+    ops.enable_tensor_equality()
+    _v2_check(constant_a, constant_b)
+    self._test_hashable(constant_a, constant_b, False)
+
+    variable_a = variables.Variable(float('nan'))
+    variable_b = variables.Variable(float('nan'))
+
+    ops.disable_tensor_equality()
+    _v1_check(variable_a, variable_b)
+    self._test_hashable(variable_a, variable_b, True)
+    ops.enable_tensor_equality()
+    _v2_check(variable_a, variable_b)
+    self._test_hashable(variable_a, variable_b, True)
+
+    if default:
+      ops.enable_tensor_equality()
+    else:
+      ops.disable_tensor_equality()
+
+    numpy_a = np.array(float('nan'))
+    numpy_b = np.array(float('nan'))
+    _v2_check(numpy_a, numpy_b)
+    self._test_hashable(numpy_a, numpy_b, False)
 
   def testContext(self):
     ctx = context.Context()
@@ -129,6 +253,13 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                      cpu_stats.device)
     self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
+
+  def testMultiCpuPlacement(self):
+    with ops.device('cpu:1'):
+      x = constant_op.constant(1.0)
+    y = array_ops.identity(x)
+    self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:CPU:1')
+    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
   def testShouldCopy(self):
@@ -758,6 +889,10 @@ class SendRecvTest(test_util.TensorFlowTestCase):
                'recv_device', device_name,
                'client_terminated', False))[0]
 
+  def setUp(self):
+    super(SendRecvTest, self).setUp()
+    configure_virtual_cpus()
+
   def testBasic(self):
     t0 = constant_op.constant(1.0)
     t1 = constant_op.constant(2.0)
@@ -788,6 +923,10 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
 
 class EagerTensorCacheTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(EagerTensorCacheTest, self).setUp()
+    configure_virtual_cpus()
 
   def testCacheSkipsTensorsTooLarge(self):
     cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)

@@ -16,38 +16,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 
-#include <functional>
-#include <memory>
-#include <string>
-
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-namespace mlir {
-class Module;
-class Operation;
-}  // namespace mlir
-
 namespace tensorflow {
-class ExporterConfigs;
-class Graph;
-class GraphDef;
-class NodeDef;
-
 using stream_executor::port::StatusOr;
 
 // Given an MLIR module, returns a GraphDef.
 StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::Module& module, const ExporterConfigs& configs);
+    mlir::ModuleOp module, const ExporterConfigs& configs);
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library.
 stream_executor::port::Status ConvertMlirToGraph(
-    mlir::Module& module, const ExporterConfigs& confs,
+    mlir::ModuleOp module, const ExporterConfigs& confs,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def);
 }  // namespace tensorflow
 

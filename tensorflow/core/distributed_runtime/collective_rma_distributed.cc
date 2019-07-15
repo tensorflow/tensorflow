@@ -37,16 +37,17 @@ class RecvBufCall : public CancellableCall {
               DeviceContext* to_device_ctx,
               const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
               const DeviceLocality& client_locality,
-              const DeviceLocality& server_locality,
+              const DeviceAttributes& server_attributes,
               CancellationManager* cancel_mgr, WorkerCacheInterface* wc)
       : CancellableCall(cancel_mgr, peer_task, wc) {
     req_.set_step_id(step_id);
     req_.set_buf_rendezvous_key(key);
     *req_.mutable_client_locality() = client_locality;
-    *req_.mutable_server_locality() = server_locality;
+    *req_.mutable_server_locality() = server_attributes.locality();
     req_.set_num_bytes(to_tensor->TotalBytes());
     req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
+    req_.set_src_incarnation(server_attributes.incarnation());
     req_.set_dst_device(to_device->name());
     req_.set_request_id(GetUniqueRequestId());
   }
@@ -157,25 +158,26 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     done(s);
   };
 
-  // Logic to execute once we have the device locality for the server-side
+  // Logic to execute once we have the device attributes for the server-side
   // device.
-  auto dev_locality_callback = [this, state, peer_device, peer_task, key,
-                                to_device, to_device_ctx, to_alloc_attr,
-                                to_tensor, client_locality,
-                                recv_buf_callback](const Status& s) {
+  auto dev_attributes_callback = [this, state, peer_device, peer_task, key,
+                                  to_device, to_device_ctx, to_alloc_attr,
+                                  to_tensor, client_locality,
+                                  recv_buf_callback](const Status& s) {
     if (!s.ok()) {
       recv_buf_callback(s);
     } else {
       state->call.reset(new RecvBufCall(
           step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
-          to_alloc_attr, to_tensor, client_locality,
-          state->server_attributes.locality(), &cancel_mgr_, worker_cache_));
+          to_alloc_attr, to_tensor, client_locality, state->server_attributes,
+          &cancel_mgr_, worker_cache_));
       state->call->Start(recv_buf_callback);
     }
   };
 
-  dev_resolver_->GetDeviceAttributesAsync(
-      peer_device, peer_task, &state->server_attributes, dev_locality_callback);
+  dev_resolver_->GetDeviceAttributesAsync(peer_device, peer_task,
+                                          &state->server_attributes,
+                                          dev_attributes_callback);
 }
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {

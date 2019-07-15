@@ -16,65 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
 
+#include "tensorflow/core/kernels/eigen_convolution_helpers.h"
+
 // Note this header is used in both TF and TFLite.
 namespace Eigen {
 
 namespace internal {
-
-// TensorEvaluatorHasPartialPacket<TensorEvaluatorType, PacketType, IndexType>
-// provides `value` that is true if TensorEvaluatorType has `PacketType
-// partialPacket<PacketType>(IndexType, unpacket_traits<PacketType>::mask_t)
-// const` and if the PacketType supports masked load.
-//
-// Partial packets are used to:
-//
-// 1) Split the packet over two columns and use partial loads for each
-//    individual part before combining them to get the required packet. This
-//    class is used to pick the correct implementation of loadPacketStandard
-//    function below.
-//
-// 2) Finalize packing of columns in gemm_pack_colmajor after processing
-//    vectorized part with full packets (see eigen_spatiual_convolutions.h).
-template <typename TensorEvaluatorType, typename PacketType, typename IndexType>
-class TensorEvaluatorHasPartialPacket {
- public:
-  template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
-  static auto functionExistsSfinae(
-      typename std::enable_if<
-          unpacket_traits<PacketT>::masked_load_available &&
-          std::is_same<PacketT,
-                       decltype(std::declval<const TensorEvaluatorT>()
-                                    .template partialPacket<PacketT>(
-                                        std::declval<IndexT>(),
-                                        std::declval<typename unpacket_traits<
-                                            PacketT>::mask_t>()))>::value>::
-          type*) -> std::true_type;
-
-  template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
-  static auto functionExistsSfinae(...) -> std::false_type;
-
-  typedef decltype(
-      functionExistsSfinae<TensorEvaluatorType, PacketType, IndexType>(
-          nullptr)) status;
-
-  static const bool value = status::value;
-};
-
-// Compute a mask for loading/storing coefficients in/from a packet in a
-// [from, to) range. If the mask bit is 1, element will be loaded/stored.
-template <typename Packet>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-    typename std::enable_if<unpacket_traits<Packet>::masked_load_available,
-                            typename unpacket_traits<Packet>::mask_t>::type
-    mask(int from, int to) {
-  const Index packet_size = internal::unpacket_traits<Packet>::size;
-  eigen_assert(0 <= from && to <= (packet_size + 1) && from < to);
-
-  using Mask = typename internal::unpacket_traits<Packet>::mask_t;
-  const Mask mask_max = std::numeric_limits<Mask>::max();
-
-  return (mask_max >> (packet_size - to)) ^ (mask_max >> (packet_size - from));
-}
 
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see

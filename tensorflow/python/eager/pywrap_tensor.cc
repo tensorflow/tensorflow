@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -55,7 +56,7 @@ TFE_Context* GetContext(PyObject* ctx) {
 // Convert a Python numpy.ndarray object to a TFE_TensorHandle.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
-TFE_TensorHandle* NumpyToTensorHandle(PyObject* obj) {
+TFE_TensorHandle* NumpyToTFE_TensorHandle(PyObject* obj) {
   tensorflow::TensorHandle* handle;
   tensorflow::Tensor t;
   auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
@@ -65,7 +66,7 @@ TFE_TensorHandle* NumpyToTensorHandle(PyObject* obj) {
   if (!cppstatus.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
-                        "Failed to convert numpy ndarray to a Tensor (",
+                        "Failed to convert a NumPy array to a Tensor (",
                         cppstatus.error_message(), ").")
                         .c_str());
     return nullptr;
@@ -76,51 +77,28 @@ TFE_TensorHandle* NumpyToTensorHandle(PyObject* obj) {
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
-PyObject* TensorHandleToNumpy(TFE_TensorHandle* handle) {
-  auto status = tensorflow::make_safe(TF_NewStatus());
-  const tensorflow::Tensor* t =
-      TFE_TensorHandleUnderlyingTensorInHostMemory(handle, status.get());
-  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
-    // TODO(slebedev): emit a better error message if a Tensor is on GPU?
+PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
+  if (TFE_TensorHandleDataType(handle) == TF_RESOURCE) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Cannot convert a Tensor of dtype resource to a NumPy array.");
     return nullptr;
   }
 
-  // HACK(slebedev): The following explains why TensorToNdarray never
-  // reuses the storage.
-  //
-  // TF_TensorToPyArray copies the storage unless its
-  // refcount is 1. For DT_STRING and DT_RESOURCE TF_TensorFromTensor
-  // has to copy so the refcount of the original storage is unchanged.
-  // However, if the storage can be reused by TF_TensorFromTensor its
-  // refcount is +1'd and hence TF_TensorToPyArray no longer can reuse it.
-  //
-  // Here we attempt a direct conversion without an intermediate TF_Tensor
-  // and fall-back to the slow path on failure.
-  PyObject* ret = nullptr;
-  if (t->dtype() != tensorflow::DT_STRING &&
-      t->dtype() != tensorflow::DT_RESOURCE) {
-    tensorflow::gtl::InlinedVector<npy_intp, 4> dims(t->dims());
-    for (int d = 0; d < t->dims(); ++d) {
-      dims[d] = t->dim_size(d);
-    }
-
-    auto* copy = new tensorflow::Tensor(*t);
-    char* data = const_cast<char*>(copy->tensor_data().data());
-    if (tensorflow::ArrayFromMemory(
-            dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
-            &ret)
-            .ok()) {
-      return ret;
-    }
+  auto tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
   }
 
-  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
-  if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
+  PyObject* ret = nullptr;
+  auto cppstatus =
+      tensorflow::TF_TensorToMaybeAliasedPyArray(std::move(tensor), &ret);
+  tensorflow::Set_TF_Status_from_Status(status, cppstatus);
+  if (TF_GetCode(status) != TF_OK) {
     Py_XDECREF(ret);
     return nullptr;
-  } else {
-    return ret;
   }
+  CHECK_NE(ret, nullptr);
+  return ret;
 }
 
 TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
@@ -292,7 +270,7 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
           desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
       safe_value = tensorflow::make_safe(
           PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY | NPY_ARRAY_FORCECAST, nullptr));
+                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
       if (PyErr_Occurred()) return nullptr;
       if (safe_value == nullptr) {
         PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
@@ -300,7 +278,7 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
       }
       value = safe_value.get();
     }
-    return NumpyToTensorHandle(value);
+    return NumpyToTFE_TensorHandle(value);
   } else {
     tensorflow::TensorHandle* handle;
     tensorflow::Tensor t;
@@ -679,10 +657,15 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 // other.
 // Note that if `self` is not on CPU, we raise an Exception.
 static PyObject* EagerTensor_numpy(EagerTensor* self) {
-  PyObject* ret = TensorHandleToNumpy(self->handle);
-  return (ret == nullptr)
-             ? nullptr
-             : PyArray_Return(reinterpret_cast<PyArrayObject*>(ret));
+  auto* py_array = TFE_TensorHandleToNumpy(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    Py_XDECREF(py_array);
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  } else {
+    return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
+  }
 }
 
 // Getter `device`.
@@ -763,33 +746,20 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
     return -1;
   }
 
-  auto status = tensorflow::make_safe(TF_NewStatus());
-  TFE_TensorHandle* handle =
-      TFE_TensorHandleMaybeCopyToHostCPU(self->handle, status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
-    PyErr_SetString(PyExc_BufferError,
-                    tensorflow::strings::StrCat("Error copying tensor to CPU:",
-                                                TF_Message(status.get()))
-                        .c_str());
-    return -1;
-  }
-
   // TensorHandleToNumpy is zero-copy for everything but DT_RESOURCE and
   // DT_STRING so the following is only slightly slower than a NumPy-free
   // implementation.
-  auto py_array = tensorflow::make_safe(TensorHandleToNumpy(handle));
-  if (py_array == nullptr ||
-      PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
+  auto py_array = tensorflow::make_safe(
+      TFE_TensorHandleToNumpy(self->handle, self->status));
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_BufferError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
     return -1;
   }
-
+  if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
+    return -1;
+  }
   view->readonly = 1;
-
-  int num_dims = TFE_TensorHandleNumDims(handle, status.get());
-  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_BufferError)) {
-    return -1;
-  }
-  DCHECK(view->ndim == num_dims);
   return 0;
 }
 

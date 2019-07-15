@@ -507,9 +507,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
+                        GroupByWindowDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByWindowDataset").Device(DEVICE_CPU),
     GroupByWindowDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByWindowDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByWindowDataset");
 
 }  // namespace

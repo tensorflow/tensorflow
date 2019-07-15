@@ -30,14 +30,14 @@ namespace {
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
-// making the quantizaton rule for some operations in the quantization-awre
+// making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
 struct PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
   void runOnFunction() override;
 };
 
 void PrepareQuantizePass::runOnFunction() {
-  ApplyQuantizationParamsPropagation(&getFunction());
+  ApplyQuantizationParamsPropagation(getFunction());
 }
 
 }  // namespace

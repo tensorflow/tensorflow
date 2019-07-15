@@ -49,6 +49,15 @@ For the remainder of this document:
 
 Graph functions are usually also converted, unless specified otherwise.
 
+### Safe behavior
+
+The semantics described below can be summarized as:
+
+ 1. code should either produce the same results as running it in Eager mode, or
+   fail with error.
+ 2. TF 1.* graph code should produce the same graph as running it directly in
+   graph mode.
+
 ### Python semantics
 
 In general, AutoGraph does not change the semantics of error-free Python.

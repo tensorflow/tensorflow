@@ -128,9 +128,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
   TF_RETURN_IF_ERROR(AssertGraphDefIsUnclustered(graphdef));
 
   OptimizationPassRunner runner;
-  TF_RETURN_IF_ERROR(
-      runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                             OptimizerOptions_GlobalJitLevel_ON_2));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
   TF_RETURN_IF_ERROR(runner.AddCpus(32));
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 
@@ -211,9 +209,7 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
       ReadTextProto(Env::Default(), string(graph_def_path), &graph_def));
 
   OptimizationPassRunner runner;
-  TF_RETURN_IF_ERROR(
-      runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                             OptimizerOptions_GlobalJitLevel_ON_2));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
   TF_RETURN_IF_ERROR(runner.AddCpus(32));
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 

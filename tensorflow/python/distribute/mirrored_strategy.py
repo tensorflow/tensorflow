@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Class MirroredStrategy implementing DistributionStrategy."""
+"""Class MirroredStrategy implementing tf.distribute.Strategy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -326,7 +326,7 @@ def all_local_devices(num_gpus=None):
   return device_util.local_devices_from_num_gpus(num_gpus)
 
 
-def _all_devices():
+def all_devices():
   devices = []
   tfconfig = TFConfigClusterResolver()
   if tfconfig.cluster_spec().as_dict():
@@ -375,12 +375,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
     if devices is None:
-      devices = _all_devices()
-    if not devices:
-      raise ValueError("Got an empty `devices` list. Please make sure the "
-                       "`devices` you pass in is not empty.")
+      devices = all_devices()
+    assert devices, ("Got an empty `devices` list and unable to recognize "
+                     "any local devices.")
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
+
+    # TODO(b/128995245): Enable last partial batch support in graph mode.
+    if ops.executing_eagerly_outside_functions():
+      self.experimental_enable_get_next_as_optional = True
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -399,8 +402,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._local_mode = True
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
-    self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
-        devices)
+    self._inferred_cross_device_ops = None if self._cross_device_ops else (
+        cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
 
   def _initialize_multi_worker(self, devices):

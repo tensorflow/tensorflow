@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -641,18 +642,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                                 FDiv(imag_num, denom));
     }
     case HloOpcode::kAbs: {
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
-                                          {sum_sq->getType()}, b_);
+      return EmitComplexAbs(component_type, operand_value);
     }
     case HloOpcode::kSign: {  // Sign(c) = c / |c|
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, b_);
+      TF_ASSIGN_OR_RETURN(auto cplx_abs,
+                          EmitComplexAbs(component_type, operand_value));
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = FCmpOEQ(cplx_abs, zero);
@@ -761,6 +755,30 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
   }
 }
 
+// Using sqrt(a^2 + b^2) can cause overflow errors. Therefore we can use
+// sqrt(a^2 + b^2) = sqrt(a^2 * (1 + b^2/a^2))
+//                 = |a| * sqrt(1 + (b/a)^2)
+// With the assumption that |a| >= |b|
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  auto real = EmitExtractReal(operand_value);
+  auto imag = EmitExtractImag(operand_value);
+  auto abs_real = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real},
+                                               {real->getType()}, b_);
+  auto abs_imag = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag},
+                                               {imag->getType()}, b_);
+  auto max = EmitFloatMax(abs_real, abs_imag);
+  auto min = EmitFloatMin(abs_real, abs_imag);
+
+  auto div = FDiv(min, max);
+  auto div_sq = FMul(div, div);
+  auto one = llvm::ConstantFP::get(max->getType(), 1);
+  TF_ASSIGN_OR_RETURN(auto sqrt, EmitSqrt(prim_type, FAdd(one, div_sq)));
+
+  auto zero = llvm::ConstantFP::get(max->getType(), 0);
+  return Select(FCmpOEQ(max, zero), zero, FMul(max, sqrt));
+}
+
 // (a+bi)^(c+di) =
 //    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
 //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
@@ -817,29 +835,119 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
           FAdd(FMul(EmitExtractReal(lhs_value), EmitExtractImag(rhs_value)),
                FMul(EmitExtractImag(lhs_value), EmitExtractReal(rhs_value))));
     case HloOpcode::kDivide: {
-      // (a+bi) / (c+di) = ((a+bi)(c-di)) / ((c+di)(c-di))
-      // = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
-      auto rhs_sum_sq =
-          FAdd(FMul(EmitExtractReal(rhs_value), EmitExtractReal(rhs_value)),
-               FMul(EmitExtractImag(rhs_value), EmitExtractImag(rhs_value)));
-      auto type = rhs_sum_sq->getType();
+      // Division of complex numbers is implemented here, taking into account
+      // over/underflow, NaN and Inf values.
+      auto a_r = EmitExtractReal(lhs_value);
+      auto a_i = EmitExtractImag(lhs_value);
+      auto b_r = EmitExtractReal(rhs_value);
+      auto b_i = EmitExtractImag(rhs_value);
+      auto type = a_r->getType();
+
+      // Smith's algorithm to divide complex numbers. It is just a bit smarter
+      // way to compute the following formula:
+      //  (a_r + a_i * i) / (b_r + b_i * i)
+      //    = (a_r + a_i * i) (b_r - b_i * i) / ((b_r + b_i * i)(b_r - b_i * i))
+      //    = ((a_r * b_r + a_i * b_i) + (a_i * b_r - a_r * b_i) * i) / ||b||^2
+      //
+      // Depending on whether |b_r| < |b_i| we compute either
+      //   b_r_b_i_ratio = b_r / b_i
+      //   b_r_b_i_denom = b_i + b_r * b_r_b_i_ratio
+      //   c_r = (a_r * b_r_b_i_ratio + a_i ) / b_r_b_i_denom
+      //   c_i = (a_i * b_r_b_i_ratio - a_r ) / b_r_b_i_denom
+      //
+      // or
+      //
+      //   b_i_b_r_ratio = b_i / b_r
+      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_denom
+      //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
+      //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
+      //
+      // See https://dl.acm.org/citation.cfm?id=368661 for more details.
+      auto b_r_b_i_ratio = FDiv(b_r, b_i);
+      auto b_r_b_i_denom = FAdd(b_i, FMul(b_r_b_i_ratio, b_r));
+      auto b_i_b_r_ratio = FDiv(b_i, b_r);
+      auto b_i_b_r_denom = FAdd(b_r, FMul(b_i_b_r_ratio, b_i));
+
+      auto b_r_lt_b_i = FCmpOLT(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_));
+      auto c_r = Select(
+          b_r_lt_b_i, FDiv(FAdd(FMul(b_r_b_i_ratio, a_r), a_i), b_r_b_i_denom),
+          FDiv(FAdd(FMul(b_i_b_r_ratio, a_i), a_r), b_i_b_r_denom));
+      auto c_i = Select(
+          b_r_lt_b_i, FDiv(FSub(FMul(b_r_b_i_ratio, a_i), a_r), b_r_b_i_denom),
+          FDiv(FSub(a_i, FMul(b_i_b_r_ratio, a_r)), b_i_b_r_denom));
+      auto result = EmitComposeComplex(op, c_r, c_i);
+
+      // Consider corner cases, if the result is (NaN, NaN).
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(rhs_sum_sq, zero);
-      auto real_inf_or_nan = FDiv(EmitExtractReal(lhs_value), zero);
-      auto imag_inf_or_nan = FDiv(EmitExtractImag(lhs_value), zero);
-      return Select(
-          oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
+      auto one = llvm::ConstantFP::get(type, 1.0);
+      auto inf = llvm::ConstantFP::getInfinity(type);
+
+      // Case 1. Zero denominator.
+      auto zero_denominator =
+          And(And(FCmpOEQ(b_r, zero), FCmpOEQ(b_i, zero)),
+              Or(Neg(FCmpONE(a_r, zero)), Neg(FCmpONE(a_i, zero))));
+      auto inf_with_sign_of_c = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {inf, a_r}, {type}, b_);
+      auto zero_denominator_result = EmitComposeComplex(
+          op, FMul(inf_with_sign_of_c, a_r), FMul(inf_with_sign_of_c, a_i));
+
+      // Case 2. Infinite numerator, finite denominator.
+      auto b_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                inf);
+      auto b_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_),
+                                inf);
+      auto inf_num_finite_denom = And(Or(FCmpOEQ(a_r, inf), FCmpOEQ(a_i, inf)),
+                                      And(b_r_finite, b_i_finite));
+
+      auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_r, inf), one, zero), a_r}, {type}, b_);
+      auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_i, inf), one, zero), a_i}, {type}, b_);
+      auto inf_num_finite_denom_result =
           EmitComposeComplex(op,
-                             FDiv(FAdd(FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq),
-                             FDiv(FSub(FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq)));
+                             FMul(inf, FAdd(FMul(a_r_inf_with_sign, b_r),
+                                            FMul(a_i_inf_with_sign, b_i))),
+                             FMul(inf, FSub(FMul(a_i_inf_with_sign, b_r),
+                                            FMul(a_r_inf_with_sign, b_i))));
+
+      // Case 3. Finite numerator, infinite denominator.
+      auto a_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_r}, {type}, b_),
+                                inf);
+      auto a_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_i}, {type}, b_),
+                                inf);
+      auto finite_num_inf_denom = And(Or(FCmpOEQ(b_r, inf), FCmpOEQ(b_i, inf)),
+                                      And(a_r_finite, a_i_finite));
+
+      auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_r, inf), one, zero), b_r}, {type}, b_);
+      auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_i, inf), one, zero), b_i}, {type}, b_);
+      auto finite_num_inf_denom_result =
+          EmitComposeComplex(op,
+                             FMul(zero, FAdd(FMul(a_r, b_r_inf_with_sign),
+                                             FMul(a_i, b_i_inf_with_sign))),
+                             FMul(zero, FSub(FMul(a_i, b_r_inf_with_sign),
+                                             FMul(a_r, b_i_inf_with_sign))));
+
+      auto c_nan = And(FCmpUNO(c_r, zero), FCmpUNO(c_i, zero));
+      return Select(
+          c_nan,
+          Select(zero_denominator, zero_denominator_result,
+                 Select(inf_num_finite_denom, inf_num_finite_denom_result,
+                        Select(finite_num_inf_denom,
+                               finite_num_inf_denom_result, result))),
+          result);
     }
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
@@ -1863,8 +1971,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (primitive_util::IsIntegralType(component_element_type) ||
-            component_element_type == PRED) {
+        if (primitive_util::IsIntegralType(component_element_type)) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),

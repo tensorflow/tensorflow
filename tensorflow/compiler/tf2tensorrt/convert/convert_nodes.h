@@ -587,9 +587,11 @@ class Converter {
 };
 
 // Return OK if the broadcast scheme is supported and compute the shapes after
-// broadcasting.
+// broadcasting. check_feasibility can be set to false in cases where dimensions
+// do not need to match exactly (as in the case of BatchMatMulV2).
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
+                            const bool check_feasibility,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 

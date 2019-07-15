@@ -82,8 +82,7 @@ class TensorHandle : public core::RefCounted {
   TensorHandle(std::unique_ptr<RemoteTensorHandleData> t, DataType dtype,
                Device* d, Device* resource_device, EagerContext* ctx);
   TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
-               DataType dtype, Device* d, Device* resource_device,
-               EagerContext* ctx);
+               DataType dtype, Device* device, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
  public:
@@ -112,8 +111,11 @@ class TensorHandle : public core::RefCounted {
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                            eager::EagerClient* eager_client,
                                            uint64 context_id, DataType dtype,
-                                           Device* d, Device* resource_device,
-                                           EagerContext* ctx, TensorHandle** h);
+                                           Device* device, EagerContext* ctx,
+                                           TensorHandle** h);
+  static Status CreateUnshapedRemoteHandle(
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, DataType dtype,
+      Device* device, EagerContext* ctx, TensorHandle** h);
 #endif  // IS_MOBILE_PLATFORM
 
   // Symbolic tensor constructor.
@@ -125,9 +127,11 @@ class TensorHandle : public core::RefCounted {
 
   Status TensorValue(tensorflow::TensorValue* t);
 
-  tensorflow::Device* device() const { return device_; }
-  tensorflow::Device* op_device() const { return op_device_; }
-  tensorflow::Device* resource_device() const { return resource_device_; }
+  Device* device() const { return device_; }
+  Device* op_device() const { return op_device_; }
+  Device* resource_device() const { return resource_device_; }
+
+  Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
 
@@ -137,8 +141,9 @@ class TensorHandle : public core::RefCounted {
 
 #if !defined(IS_MOBILE_PLATFORM)
   bool HasRemoteMirror(Device* d);
-  // TODO(gjn): Add Unshaped remote mirrors once EagerRemoteSendTensor supports
-  // async execution and EagerRemoteExecute is mirror-aware.
+
+  Status AddUnshapedRemoteMirror(
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
   Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
@@ -150,7 +155,7 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  Status SetRemoteShape(const TensorShape& shape);
+  Status SetRemoteShape(const TensorShape& shape, tensorflow::Device* d);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
@@ -169,12 +174,14 @@ class TensorHandle : public core::RefCounted {
                       tensorflow::Tensor* output);
 
   // Warning: can return nullptr for CPU tensors.
+  // TODO(b/136608821): Move away from nullptr
   EagerContext* Context() { return ctx_; }
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
   const DataType dtype;
 
+  // TODO(b/136608821): Move away from nullptr
   bool OnHostCPU() const {
     return device_ == nullptr ||
            (ctx_ != nullptr && ctx_->HostCPU() == device_);
@@ -197,7 +204,7 @@ class TensorHandle : public core::RefCounted {
   // done and the handle is "ready".
   Status WaitReady();
 
-  // TODO(ashankar): device_ == nullptr iff local CPU
+  // TODO(b/136608821): device_ == nullptr iff local CPU
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
   // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
@@ -220,6 +227,13 @@ class TensorHandle : public core::RefCounted {
 
 #if !defined(IS_MOBILE_PLATFORM)
   mutable mutex remote_mirrors_mutex_;
+  // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
+  // Consider replacing the unshaped_remote_mirrors_ map with something more
+  // efficient.
+  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+      unshaped_remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
+  // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
+  // a fixed size map.
   std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
       remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
 

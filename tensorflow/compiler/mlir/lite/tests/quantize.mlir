@@ -114,7 +114,7 @@ func @QuantizeSoftmax(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>)
   return %1 : tensor<1x6x6x16xf32>
 
 // CHECK: %0 = "tfl.softmax"(%arg0)
-// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03:-128>>) -> tensor<1x6x6x16xf32>
+// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<1x6x6x16xf32>
 // CHECK: return %1 : tensor<1x6x6x16xf32>
 }
 
@@ -129,4 +129,42 @@ func @QuantizeAdd(tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:1
 
 // CHECK: %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>, tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>)
 // CHECK: return %0 : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
+}
+
+// CHECK-LABEL: QuantizeConcat
+func @QuantizeConcat(tensor<2xf32>, tensor<2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>> {
+^bb0(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>):
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+  return %1 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+
+// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %1 = "tfl.quantize"(%arg0) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %2 = "tfl.concatenation"(%1, %0) {axis = 0 : i32, fused_activation_function = "NONE"}
+// CHECK: return %2 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+}
+
+// CHECK-LABEL: QuantizeConcatRequantize
+func @QuantizeConcatRequantize(tensor<2x!quant.uniform<u8:f32, 2.0:128>>, tensor<2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 0.1:128>> {
+^bb0(%arg0: tensor<2x!quant.uniform<u8:f32, 2.0:128>>, %arg1: tensor<2xf32>):
+  %1 = "tfl.dequantize"(%arg0) : (tensor<2x!quant.uniform<u8:f32, 2.0:128>>) -> tensor<2xf32>
+  %2 = "tfl.concatenation"(%1, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+  return %3 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+
+// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %1 = "tfl.concatenation"(%arg0, %0) {axis = 0 : i32, fused_activation_function = "NONE"}
+// CHECK: return %1 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
+}
+
+// CHECK-LABEL: QuantizeMaxPool2D
+func @QuantizeMaxPool2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x1x1x16xf32> {
+^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.max_pool_2d"(%0) {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
+  return %1 : tensor<1x1x1x16xf32>
+
+// CHECK: %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x1x1x16x!quant.uniform<u8:f32, 7.812500e-03:128>>
+// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x1x1x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x1x1x16xf32>
+// CHECK: return %1 : tensor<1x1x1x16xf32>
 }

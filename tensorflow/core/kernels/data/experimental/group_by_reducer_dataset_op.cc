@@ -412,9 +412,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByReducerDataset").Device(DEVICE_CPU),
+                        GroupByReducerDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByReducerDataset").Device(DEVICE_CPU),
     GroupByReducerDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByReducerDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByReducerDataset");
 
 }  // namespace

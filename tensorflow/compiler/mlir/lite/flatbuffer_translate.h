@@ -32,7 +32,7 @@ namespace tflite {
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the
 // serialized flatbuffer into the string.
-bool MlirToFlatBufferTranslateFunction(mlir::Module *module,
+bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        std::string *serialized_flatbuffer,
                                        bool emit_builtin_tflite_ops,
                                        bool emit_select_tf_ops,

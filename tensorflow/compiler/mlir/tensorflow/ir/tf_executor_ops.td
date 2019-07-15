@@ -52,6 +52,9 @@ def TfExecutor_Dialect : Dialect {
 // Control type.
 def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">;
 
+// Token type.
+def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow Executor Type Constraint
 //===----------------------------------------------------------------------===//
@@ -247,25 +250,6 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
     TfeControlType: $control
   );
 
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands = {}",
-    [{
-      assert(operands.size() >= 2 && "tf_executor.Switch builder expects at "
-             "least two operands");
-      return build(builder, result, operands[0], operands[1], operands.drop_front(2));
-    }]>,
-    OpBuilder<
-    "Builder *builder, OperationState *result, Value *data, Value *predicate, ArrayRef<Value *> controls = {}",
-    [{
-      Type dataTy = data->getType();
-      Type controlTy = ControlType::get(builder->getContext());
-      result->types = { dataTy, dataTy, controlTy };
-      result->operands.push_back(data);
-      result->operands.push_back(predicate);
-      result->operands.insert(result->operands.end(), controls.begin(), controls.end());
-    }]>
-   ];
-
    let verifier = ?;
 }
 
@@ -308,7 +292,6 @@ def TfExecutor_SwitchNOp :
     Variadic<AnyType>:$outputs,
     TfeControlType: $control
   );
-
 }
 
 def TfExecutor_MergeOp : TfExecutor_Op<"Merge", [NoSideEffect, ControlOperandsAfterAllData]> {
@@ -343,18 +326,6 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge", [NoSideEffect, ControlOperandsAf
     TensorOf<[I32]>:$valueIndex,
     TfeControlType:$control
   );
-
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands",
-    [{
-      assert(operands.size() >= 1 && "tf_executor.Merge builder expects at "
-             "least one operand");
-      Type data_type = operands[0]->getType();
-      Type control_type = ControlType::get(builder->getContext());
-      result->types = { data_type, builder->getIntegerType(32), control_type};
-      result->operands.append(operands.begin(), operands.end());
-    }]>
-   ];
 }
 
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
@@ -405,19 +376,238 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
   );
 
   let verifier = ?;
+}
+
+def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [NoSideEffect]> {
+  let summary = [{
+    The "tf_executor.NextIteration.Source" is paired with a
+    "tf_executor.NextIteration.sink" to represent NextIteration op in
+    Tensorflow.
+  }];
+
+  let description = [{
+    Tensorflow NextIteration operation forwards its input to the next iteration
+    of a while loop. Each loop variable needs its own NextIteration op.
+
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    In the TF executor dialect, the NextIteration op is broken into
+    tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
+    NextIteration is a back-edge in Tensorflow graph, which would form a data
+    flow cycle if expressed naively in a basic block.
+    tf_executor.NextIteration.source takes no input but returns results while
+    tf_executor.NextIteration.sink takes input but doesn't return anything. When
+    optimizing these ops, they are paired by token and considered as a single
+    op.
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("NextIteration")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+      %value, %token, %ctl = tf_executor.NextIteration.Source : tensor<*xi32>
+      tf_executor.NextIteration.sink [%token] (%value) : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    Variadic<TfeControlType>:$controlInputs
+  );
+
+  let results = (outs
+    AnyType:$output,
+    // The NextIteration.Source operation returns an extra token consumed by the sink.
+    TfeTokenType:$token,
+    TfeControlType:$control
+  );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands",
+    "Builder *builder, OperationState *result, Type result_type, "
+    "ArrayRef<Value *> control_inputs = {}, ArrayRef<NamedAttribute> attributes = {}",
     [{
-      assert(operands.size() >= 1 && "tf_executor.Enter builder "
-             "expects at least one operand");
-      result->operands.append(operands.begin(), operands.end());
-
+      Type token_type = TokenType::get(builder->getContext());
       Type control_type = ControlType::get(builder->getContext());
-      result->types.push_back(operands[0]->getType());
-      result->types.push_back(control_type);
+      result->types = { result_type, token_type, control_type };
+      result->operands.append(control_inputs.begin(), control_inputs.end());
+      result->attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+}
+
+
+def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink"> {
+  let summary = [{
+    The "tf_executor.NextIteration.Sink" is paired with a
+    "tf_executor.NextIteration.source" to represent NextIteration op in
+    Tensorflow.
+  }];
+
+  let description = [{
+    Tensorflow NextIteration operation forwards its input to the next iteration
+    of a while loop. Each loop variable needs its own NextIteration op.
+
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    In the TF executor dialect, the NextIteration op is broken into
+    tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
+    NextIteration is a back-edge in Tensorflow graph, which would form a data
+    flow cycle if expressed naively in a basic block.
+    tf_executor.NextIteration.source takes no input but returns results while
+    tf_executor.NextIteration.sink takes input but doesn't return anything. When
+    optimizing these ops, they are paired by token and considered as a single
+    op.
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("NextIteration")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+      %value, %token, %ctl = tf_executor.NextIteration.Source : tensor<*xi32>
+      tf_executor.NextIteration.sink [%token] (%value) : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    // The NextIteration.Sink operation consumes the token produced by the source.
+    TfeTokenType:$token,
+    AnyType:$input,
+    // Optional extra control inputs.
+    Variadic<TfeControlType>:$controlInputs
+  );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *token, "
+    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    [{
+      assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
+             "expects at least one operand");
+      result->operands.push_back(token);
+      result->operands.insert(result->operands.end(), operands.begin(),
+                              operands.end());
+      result->attributes.append(attributes.begin(), attributes.end());
+    }]>
+   ];
+}
+
+def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
+    [NoSideEffect,
+     PredOpTrait<"data operand must be broadcastable to result",
+                 TCOpIsBroadcastableToRes<0, 0>>]>{
+
+  let summary = [{
+    The "tf_executor.Exit" operation forwards a value from an while loop to its
+    consumer outside of loop. Each returned tensor needs its own
+    tf_executor.Exit.
+  }];
+
+  let description = [{
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("Exit")
+       .Input("data: T")
+       .Output("output: T")
+       .Attr("T: type")
+
+    For example:
+     %1:2 = tf_executor.Exit %0#0 {T: "tfdtype$DT_INT32"} : tensor<*xi32>
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    AnyType:$data,
+    Variadic<TfeControlType>:$controlInputs
+  );
+
+  let results = (outs
+    AnyType:$output,
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
+}
+
+def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger", [NoSideEffect]> {
+  let summary = [{
+    The `tf_executor.ControlTrigger` operation is similar to a no-op except that
+    it always produces a valid output even when inputs are dead.
+  }];
+
+  let description = [{
+    Its primary use so far is in the scheduling of recvs, where we add
+    ControlTrigger nodes and use them to trigger recvs. We allow ControlTrigger
+    nodes to be enabled by dead nodes.
+  }];
+
+  let arguments = (ins
+    Variadic<TfeControlType>:$controlInputs
+  );
+  let results = (outs
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, "
+    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    [{
+      assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
+             "expects at least one operand");
+      result->operands.insert(result->operands.end(), operands.begin(),
+                              operands.end());
+      Type control_type = ControlType::get(builder->getContext());
+      result->types = {control_type};
+      result->attributes.append(attributes.begin(), attributes.end());
+    }]>
+   ];
+}
+
+def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond", [NoSideEffect]> {
+  let summary = [{
+    The "tf_executor.LoopCond" operation forwards a boolean value as loop
+    condition of Tensorflow while loops.
+  }];
+
+  let description = [{
+    More details can be found in Tensorflow Control Flow white paper:
+    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+
+    This is defined in Tensorflow as:
+
+    REGISTER_OP("LoopCond")
+       .Input("input: bool")
+       .Output("output: bool")
+
+    For example:
+      %5:2 = tf_executor.LoopCond %4#0 {name: "while/LoopCond"}
+
+    Note: Additional result corresponds to the control output.
+  }];
+
+  let arguments = (ins
+    TensorOf<[I1]>:$input,
+    Variadic<TfeControlType>:$controlInputs
+  );
+  let results = (outs
+    TensorOf<[I1]>:$output,
+    TfeControlType:$control
+  );
+
+  let verifier = ?;
 }
 
 #endif // TF_EXECUTOR_DIALECT

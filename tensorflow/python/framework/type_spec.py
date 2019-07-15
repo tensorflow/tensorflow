@@ -41,8 +41,7 @@ ops = LazyLoader(
     "tensorflow.python.framework.ops")
 
 
-# TODO(b/133606651) Deprecate the tf.data.experimental.Structure endpoint.
-@tf_export("TypeSpec", "data.experimental.Structure")
+@tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 @six.add_metaclass(abc.ABCMeta)
 class TypeSpec(object):
   """Specifies a TensorFlow value type.
@@ -497,7 +496,7 @@ def _type_spec_from_value(value):
   # type spec that captures the type accurately (unlike the `convert_to_tensor`
   # fallback).
   if isinstance(value, list) and value:
-    subspecs = [type_spec_from_value(v) for v in value]
+    subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
       merged_subspec = subspecs[0]
       try:

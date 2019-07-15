@@ -72,7 +72,7 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   connect_to_cluster(cluster_spec)
 
 
-# TODO(cjfj): Export this function?
+@tf_export("config.experimental_connect_to_cluster")
 def connect_to_cluster(
     cluster_spec_or_resolver,
     job_name="localhost",

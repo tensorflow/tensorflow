@@ -4932,7 +4932,8 @@ inline void Slice(const tflite::SliceParams& op_params,
     for (int in_h = start_h; in_h < stop_h; ++in_h) {
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         const int len = stop_d - start_d;
-        writer->WriteN(Offset(ext_shape, in_b, in_h, in_w, start_d), len);
+        if (len > 0)
+          writer->WriteN(Offset(ext_shape, in_b, in_h, in_w, start_d), len);
       }
     }
   }
@@ -5526,126 +5527,225 @@ inline void SaturateAndStore(int16x8_t src, std::int8_t* dst) {
 }
 #endif
 
-template <typename QuantizedType>
+template <typename T>
 inline void HardSwish(const HardSwishParams& params,
-                      const RuntimeShape& input_shape,
-                      const QuantizedType* input_data,
-                      const RuntimeShape& output_shape,
-                      QuantizedType* output_data) {
+                      const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("HardSwish/Quantized");
-  // Goal: (x * relu6(x+3))/6
-  const int size = MatchingFlatSize(input_shape, output_shape);
-  const int32_t extra_input_shift = params.clip_input_shift;
-  const auto in_zero_point = params.input_zero_point;
-  const auto three_in = params.three_input;
-  const auto six_in = params.six_input;
-  const auto real_shift = params.shift;
-  const auto scale = params.scale;
-  const auto offset = params.output_offset;
+
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
   int i = 0;
-#ifdef USE_NEON
-  const int16x8_t extra_input_shift_vec = vdupq_n_s16(extra_input_shift);
-  const int16x8_t three_in_vec = vdupq_n_s16(three_in);
-  const int16x8_t six_in_vec = vdupq_n_s16(six_in);
-  // The quantization params of this op are designed around a reference
-  // implementation that performs plain integer multiplication, not
-  // fixed-point multiplication. The 16-bit fixed-point multiplications
-  // that we use here, vqrdmulhq_s16, differ from that by an (rounding)
-  // right shift by 15 bits. So in terms of scale and leaving aside
-  // accuracy considerations, we could simply compensate for that by
-  // adding 15 to real_shift. Doing so results in approximately correct results,
-  // but there is high inaccuracy in the low bits. That is because unlike
-  // the integer multiplications done in the reference code, our fixed-point
-  // multiplication are destructive of low bits. In order to have accurate
-  // enough results, we move some of that bit-shifting from being applied to
-  // the result to being applied to one of the operands of these fixed-point
-  // multiplications, before the information in the low bits is destroyed.
-  // Fortunately, one of the operands is by construction smaller than 2^8
-  // in absolute value, so it's safe to left-shift it by 7 bits.
-  static constexpr int left_shift_on_scaled_input = 7;
-  // We now adjust the tweak to real_shift accordingly: instead of adding 15,
-  // we only add (15 - left_shift_on_scaled_input).
-  const int16x8_t real_shift_vec =
-      vdupq_n_s16(15 - left_shift_on_scaled_input + real_shift);
-  const int16x8_t scale_vec = vdupq_n_s16((scale + (1 << 15)) >> 16);
-  const int16x8_t offset_vec = vdupq_n_s16(offset);
-  const int16x8_t zero = vdupq_n_s16(0);
-  for (; i <= size - 32; i += 32) {
+  // This code heavily uses NEON saturating left shifts (vqshl*) with shift
+  // amounts that can be zero, in which case we rely on the correct behavior
+  // of a left shift by zero returning just its first operand unmodified.
+  // Unfortunately, the Intel arm_neon_sse.h implementation of vqshl* is
+  // buggy in the case of zero shift amounts, see b/137199585. That is why
+  // this NEON code path is restricted to true ARM NEON, excluding
+  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implemenation of saturating
+  // left shifts is slow scalar code, so there may not be much benefit in
+  // running that over just plain reference code.
+  //
+  // TODO(b/137199585): revisit when this is fixed.
+#ifdef __ARM_NEON
+  const int16x8_t positive_reluish_multiplier_exponent_minus_one =
+      vdupq_n_s16(std::max(0, params.reluish_multiplier_exponent - 1));
+  const int16x8_t positive_reluish_multiplier_exponent_last_bit =
+      vdupq_n_s16(params.reluish_multiplier_exponent > 0 ? 1 : 0);
+  const int16x8_t negative_reluish_multiplier_exponent =
+      vdupq_n_s16(std::min(0, params.reluish_multiplier_exponent));
+  const int16x8_t constant_32767 = vdupq_n_s16(32767);
+  const int16x8_t output_multiplier_exponent =
+      vdupq_n_s16(params.output_multiplier_exponent);
+  const int16x8_t output_zero_point = vdupq_n_s16(params.output_zero_point);
+  // 4x unrolled version of the below NEON loop. Read that first.
+  for (; i <= flat_size - 32; i += 32) {
     using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
-    int16x8x2_t in_0_1 =
-        Load16AndSubtractZeroPoint(input_data + i + 0, in_zero_point);
-    int16x8x2_t in_2_3 =
-        Load16AndSubtractZeroPoint(input_data + i + 16, in_zero_point);
-    int16x8_t in_reluish_0 = vshlq_s16(in_0_1.val[0], extra_input_shift_vec);
-    int16x8_t in_reluish_1 = vshlq_s16(in_0_1.val[1], extra_input_shift_vec);
-    int16x8_t in_reluish_2 = vshlq_s16(in_2_3.val[0], extra_input_shift_vec);
-    int16x8_t in_reluish_3 = vshlq_s16(in_2_3.val[1], extra_input_shift_vec);
-    in_reluish_0 = vaddq_s16(in_reluish_0, three_in_vec);
-    in_reluish_1 = vaddq_s16(in_reluish_1, three_in_vec);
-    in_reluish_2 = vaddq_s16(in_reluish_2, three_in_vec);
-    in_reluish_3 = vaddq_s16(in_reluish_3, three_in_vec);
-    in_reluish_0 = vminq_s16(in_reluish_0, six_in_vec);
-    in_reluish_1 = vminq_s16(in_reluish_1, six_in_vec);
-    in_reluish_2 = vminq_s16(in_reluish_2, six_in_vec);
-    in_reluish_3 = vminq_s16(in_reluish_3, six_in_vec);
-    in_reluish_0 = vmaxq_s16(in_reluish_0, zero);
-    in_reluish_1 = vmaxq_s16(in_reluish_1, zero);
-    in_reluish_2 = vmaxq_s16(in_reluish_2, zero);
-    in_reluish_3 = vmaxq_s16(in_reluish_3, zero);
-    int16x8_t in_scaled_0 = vqrdmulhq_s16(
-        vshlq_n_s16(in_0_1.val[0], left_shift_on_scaled_input), scale_vec);
-    int16x8_t in_scaled_1 = vqrdmulhq_s16(
-        vshlq_n_s16(in_0_1.val[1], left_shift_on_scaled_input), scale_vec);
-    int16x8_t in_scaled_2 = vqrdmulhq_s16(
-        vshlq_n_s16(in_2_3.val[0], left_shift_on_scaled_input), scale_vec);
-    int16x8_t in_scaled_3 = vqrdmulhq_s16(
-        vshlq_n_s16(in_2_3.val[1], left_shift_on_scaled_input), scale_vec);
-    int16x8_t product_0 = vqrdmulhq_s16(in_scaled_0, in_reluish_0);
-    int16x8_t product_1 = vqrdmulhq_s16(in_scaled_1, in_reluish_1);
-    int16x8_t product_2 = vqrdmulhq_s16(in_scaled_2, in_reluish_2);
-    int16x8_t product_3 = vqrdmulhq_s16(in_scaled_3, in_reluish_3);
-    product_0 = vrshlq_s16(product_0, real_shift_vec);
-    product_1 = vrshlq_s16(product_1, real_shift_vec);
-    product_2 = vrshlq_s16(product_2, real_shift_vec);
-    product_3 = vrshlq_s16(product_3, real_shift_vec);
-    SaturateAndStore(vaddq_s16(product_0, offset_vec), output_data + i + 0);
-    SaturateAndStore(vaddq_s16(product_1, offset_vec), output_data + i + 8);
-    SaturateAndStore(vaddq_s16(product_2, offset_vec), output_data + i + 16);
-    SaturateAndStore(vaddq_s16(product_3, offset_vec), output_data + i + 24);
+    const int16x8x2_t input_value_0_1 =
+        Load16AndSubtractZeroPoint(input_data + i, params.input_zero_point);
+    const int16x8x2_t input_value_2_3 = Load16AndSubtractZeroPoint(
+        input_data + i + 16, params.input_zero_point);
+    const int16x8_t input_value_on_hires_input_scale_0 =
+        vshlq_n_s16(input_value_0_1.val[0], 7);
+    const int16x8_t input_value_on_hires_input_scale_1 =
+        vshlq_n_s16(input_value_0_1.val[1], 7);
+    const int16x8_t input_value_on_hires_input_scale_2 =
+        vshlq_n_s16(input_value_2_3.val[0], 7);
+    const int16x8_t input_value_on_hires_input_scale_3 =
+        vshlq_n_s16(input_value_2_3.val[1], 7);
+    const int16x8_t input_value_on_preshift_output_scale_0 =
+        vqrdmulhq_n_s16(input_value_on_hires_input_scale_0,
+                        params.output_multiplier_fixedpoint_int16);
+    const int16x8_t input_value_on_preshift_output_scale_1 =
+        vqrdmulhq_n_s16(input_value_on_hires_input_scale_1,
+                        params.output_multiplier_fixedpoint_int16);
+    const int16x8_t input_value_on_preshift_output_scale_2 =
+        vqrdmulhq_n_s16(input_value_on_hires_input_scale_2,
+                        params.output_multiplier_fixedpoint_int16);
+    const int16x8_t input_value_on_preshift_output_scale_3 =
+        vqrdmulhq_n_s16(input_value_on_hires_input_scale_3,
+                        params.output_multiplier_fixedpoint_int16);
+    int16x8_t reluish_value_0 = input_value_on_hires_input_scale_0;
+    int16x8_t reluish_value_1 = input_value_on_hires_input_scale_1;
+    int16x8_t reluish_value_2 = input_value_on_hires_input_scale_2;
+    int16x8_t reluish_value_3 = input_value_on_hires_input_scale_3;
+    reluish_value_0 = vqshlq_s16(
+        reluish_value_0, positive_reluish_multiplier_exponent_minus_one);
+    reluish_value_1 = vqshlq_s16(
+        reluish_value_1, positive_reluish_multiplier_exponent_minus_one);
+    reluish_value_2 = vqshlq_s16(
+        reluish_value_2, positive_reluish_multiplier_exponent_minus_one);
+    reluish_value_3 = vqshlq_s16(
+        reluish_value_3, positive_reluish_multiplier_exponent_minus_one);
+    reluish_value_0 = vqrdmulhq_n_s16(
+        reluish_value_0, params.reluish_multiplier_fixedpoint_int16);
+    reluish_value_1 = vqrdmulhq_n_s16(
+        reluish_value_1, params.reluish_multiplier_fixedpoint_int16);
+    reluish_value_2 = vqrdmulhq_n_s16(
+        reluish_value_2, params.reluish_multiplier_fixedpoint_int16);
+    reluish_value_3 = vqrdmulhq_n_s16(
+        reluish_value_3, params.reluish_multiplier_fixedpoint_int16);
+    reluish_value_0 = vqshlq_s16(reluish_value_0,
+                                 positive_reluish_multiplier_exponent_last_bit);
+    reluish_value_1 = vqshlq_s16(reluish_value_1,
+                                 positive_reluish_multiplier_exponent_last_bit);
+    reluish_value_2 = vqshlq_s16(reluish_value_2,
+                                 positive_reluish_multiplier_exponent_last_bit);
+    reluish_value_3 = vqshlq_s16(reluish_value_3,
+                                 positive_reluish_multiplier_exponent_last_bit);
+    reluish_value_0 =
+        vrshlq_s16(reluish_value_0, negative_reluish_multiplier_exponent);
+    reluish_value_1 =
+        vrshlq_s16(reluish_value_1, negative_reluish_multiplier_exponent);
+    reluish_value_2 =
+        vrshlq_s16(reluish_value_2, negative_reluish_multiplier_exponent);
+    reluish_value_3 =
+        vrshlq_s16(reluish_value_3, negative_reluish_multiplier_exponent);
+    reluish_value_0 = vrhaddq_s16(reluish_value_0, constant_32767);
+    reluish_value_1 = vrhaddq_s16(reluish_value_1, constant_32767);
+    reluish_value_2 = vrhaddq_s16(reluish_value_2, constant_32767);
+    reluish_value_3 = vrhaddq_s16(reluish_value_3, constant_32767);
+    const int16x8_t preshift_output_value_0 =
+        vqdmulhq_s16(reluish_value_0, input_value_on_preshift_output_scale_0);
+    const int16x8_t preshift_output_value_1 =
+        vqdmulhq_s16(reluish_value_1, input_value_on_preshift_output_scale_1);
+    const int16x8_t preshift_output_value_2 =
+        vqdmulhq_s16(reluish_value_2, input_value_on_preshift_output_scale_2);
+    const int16x8_t preshift_output_value_3 =
+        vqdmulhq_s16(reluish_value_3, input_value_on_preshift_output_scale_3);
+    int16x8_t output_value_0 =
+        vrshlq_s16(preshift_output_value_0, output_multiplier_exponent);
+    int16x8_t output_value_1 =
+        vrshlq_s16(preshift_output_value_1, output_multiplier_exponent);
+    int16x8_t output_value_2 =
+        vrshlq_s16(preshift_output_value_2, output_multiplier_exponent);
+    int16x8_t output_value_3 =
+        vrshlq_s16(preshift_output_value_3, output_multiplier_exponent);
+    output_value_0 = vaddq_s16(output_value_0, output_zero_point);
+    output_value_1 = vaddq_s16(output_value_1, output_zero_point);
+    output_value_2 = vaddq_s16(output_value_2, output_zero_point);
+    output_value_3 = vaddq_s16(output_value_3, output_zero_point);
+    SaturateAndStore(output_value_0, output_data + i);
+    SaturateAndStore(output_value_1, output_data + i + 8);
+    SaturateAndStore(output_value_2, output_data + i + 16);
+    SaturateAndStore(output_value_3, output_data + i + 24);
   }
-  for (; i <= size - 8; i += 8) {
+  // NEON version of reference_ops::HardSwish. Read that first.
+  for (; i <= flat_size - 8; i += 8) {
     using cpu_backend_gemm::detail::Load8AndSubtractZeroPoint;
-    // See comments in the float NEON HardSwish implementation.
-    int16x8_t in = Load8AndSubtractZeroPoint(input_data + i, in_zero_point);
-    int16x8_t in_reluish = vshlq_s16(in, extra_input_shift_vec);
-    in_reluish = vaddq_s16(in_reluish, three_in_vec);
-    in_reluish = vminq_s16(in_reluish, six_in_vec);
-    in_reluish = vmaxq_s16(zero, in_reluish);
-    int16x8_t in_scaled =
-        vqrdmulhq_s16(vshlq_n_s16(in, left_shift_on_scaled_input), scale_vec);
-    int16x8_t product = vqrdmulhq_s16(in_scaled, in_reluish);
-    product = vrshlq_s16(product, real_shift_vec);
-    SaturateAndStore(vaddq_s16(product, offset_vec), output_data + i);
+    const int16x8_t input_value =
+        Load8AndSubtractZeroPoint(input_data + i, params.input_zero_point);
+    const int16x8_t input_value_on_hires_input_scale =
+        vshlq_n_s16(input_value, 7);
+    const int16x8_t input_value_on_preshift_output_scale =
+        vqrdmulhq_n_s16(input_value_on_hires_input_scale,
+                        params.output_multiplier_fixedpoint_int16);
+    int16x8_t reluish_value = input_value_on_hires_input_scale;
+    reluish_value = vqshlq_s16(reluish_value,
+                               positive_reluish_multiplier_exponent_minus_one);
+    reluish_value = vqrdmulhq_n_s16(reluish_value,
+                                    params.reluish_multiplier_fixedpoint_int16);
+    reluish_value = vqshlq_s16(reluish_value,
+                               positive_reluish_multiplier_exponent_last_bit);
+    reluish_value =
+        vrshlq_s16(reluish_value, negative_reluish_multiplier_exponent);
+    reluish_value = vrhaddq_s16(reluish_value, constant_32767);
+    const int16x8_t preshift_output_value =
+        vqdmulhq_s16(reluish_value, input_value_on_preshift_output_scale);
+    int16x8_t output_value =
+        vrshlq_s16(preshift_output_value, output_multiplier_exponent);
+    output_value = vaddq_s16(output_value, output_zero_point);
+    SaturateAndStore(output_value, output_data + i);
   }
 #endif
-  for (; i < size; i++) {
-    int32_t v = static_cast<int32>(input_data[i]);
-    v -= in_zero_point;  // Make zeros - zero again!
-
-    // Computes x + 3 in input * 2^extra_input_shift scale.
-    //
-    // Note: three_in is in that scale already.
-    const int32_t v3 = (v << extra_input_shift) + three_in;
-
-    // Computes hard-swish up to a final scale
-    v *= std::min(six_in, std::max(0, v3));
-
-    // this converts from x * relu6(x+3) in input into x * relu6(x+3) / 6
-    // in output scale.
-    v = MultiplyByQuantizedMultiplierSmallerThanOneExp(v, scale, real_shift);
-    v += offset;
-    output_data[i] = reference_ops::Saturate<QuantizedType>(v);
+  // TODO(b/137208495): revisit when unit tests cover reference code.
+  // Fall back to reference_ops::HardSwish. In general we have preferred
+  // to duplicate such scalar code rather than call reference code to handle
+  // leftovers, thinking that code duplication was not a big concern.
+  // However, most of our unit tests happen to test only optimized code,
+  // and the quantized HardSwish implementation is nontrivial enough that
+  // I really want test coverage for the reference code.
+  if (i < flat_size) {
+    const RuntimeShape leftover_shape{flat_size - i};
+    reference_ops::HardSwish(params, leftover_shape, input_data + i,
+                             leftover_shape, output_data + i);
   }
+}
+
+template <typename T>
+inline void IntegerExponentPow(const ArithmeticParams& params,
+                               const RuntimeShape& unextended_base_shape,
+                               const T* base_data, const int exponent,
+                               const RuntimeShape& unextended_output_shape,
+                               T* output_data) {
+  TFLITE_DCHECK_GE(exponent, 1);
+  if (exponent == 1) {
+    // copy data over.
+    std::memcpy(output_data, base_data,
+                unextended_base_shape.FlatSize() * sizeof(T));
+  } else {
+    IntegerExponentPow(params, unextended_base_shape, base_data, exponent / 2,
+                       unextended_output_shape, output_data);
+    Mul(params, unextended_base_shape, output_data, unextended_base_shape,
+        output_data, unextended_output_shape, output_data);
+    if (exponent % 2 == 1) {
+      Mul(params, unextended_base_shape, base_data, unextended_base_shape,
+          output_data, unextended_output_shape, output_data);
+    }
+  }
+}
+
+template <typename T>
+inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
+                           const T* input1_data,
+                           const RuntimeShape& unextended_input2_shape,
+                           const T* input2_data,
+                           const RuntimeShape& unextended_output_shape,
+                           T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PowBroadcast");
+
+  if (unextended_input2_shape.FlatSize() == 1) {
+    static const float epsilon = 1e-5;
+    const T exponent = input2_data[0];
+    const int int_exponent = static_cast<int>(std::round(exponent));
+    if ((std::abs(input2_data[0] - int_exponent) < epsilon) &&
+        (int_exponent >= 1)) {
+      ArithmeticParams params;
+      if (std::is_same<T, float>::value) {
+        params.float_activation_max = std::numeric_limits<float>::max();
+        params.float_activation_min = std::numeric_limits<float>::lowest();
+      } else if (std::is_same<T, int>::value) {
+        params.quantized_activation_max = std::numeric_limits<int>::max();
+        params.quantized_activation_min = std::numeric_limits<int>::lowest();
+      }
+      IntegerExponentPow(params, unextended_input1_shape, input1_data,
+                         int_exponent, unextended_output_shape, output_data);
+      return;
+    }
+  }
+  reference_ops::BroadcastPow4DSlow(unextended_input1_shape, input1_data,
+                                    unextended_input2_shape, input2_data,
+                                    unextended_output_shape, output_data);
 }
 
 }  // namespace optimized_ops

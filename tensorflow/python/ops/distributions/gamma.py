@@ -267,7 +267,7 @@ class Gamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 1., mode, nan)
+      return array_ops.where_v2(self.concentration > 1., mode, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

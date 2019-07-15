@@ -61,14 +61,15 @@ void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
 
 MicroInterpreter::MicroInterpreter(const Model* model,
                                    const OpResolver& op_resolver,
-                                   SimpleTensorAllocator* tensor_allocator,
+                                   uint8_t* tensor_arena,
+                                   size_t tensor_arena_size,
                                    ErrorReporter* error_reporter)
     : model_(model),
       op_resolver_(op_resolver),
-      tensor_allocator_(tensor_allocator),
       error_reporter_(error_reporter),
-      initialization_status_(kTfLiteOk),
-      context_() {
+      context_(),
+      allocator_(&context_, model_, tensor_arena, tensor_arena_size,
+                 error_reporter_) {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -79,10 +80,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   tensors_ = subgraph_->tensors();
   operators_ = subgraph_->operators();
 
-  context_.tensors_size = tensors_->size();
-  context_.tensors =
-      reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
-          sizeof(TfLiteTensor) * context_.tensors_size, 4));
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
@@ -109,6 +106,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
         CorrectTensorEndianness(thisTensor);
     }
   }
+        
+  initialization_status_ = kTfLiteOk;
 }
 
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
@@ -145,76 +144,13 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
   }
 }
 
-TfLiteStatus MicroInterpreter::AllocateInputAndActTensors() {
-  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
-      model_->buffers();
-  for (int i = 0; i < subgraph_->inputs()->size(); ++i) {
-    const int tensor_index = subgraph_->inputs()->Get(i);
-    const auto* tensor = tensors_->Get(tensor_index);
-    const TfLiteStatus status = tensor_allocator_->AllocateTensor(
-        *tensor, 0, operators_->size(), buffers, error_reporter_,
-        &context_.tensors[tensor_index]);
-    if (status != kTfLiteOk) {
-      return status;
-    }
-  }
-
-  int* first_created = reinterpret_cast<int*>(tensor_allocator_->AllocateMemory(
-      sizeof(int) * tensors_->size(), sizeof(int)));
-  int* last_used = reinterpret_cast<int*>(tensor_allocator_->AllocateMemory(
-      sizeof(int) * tensors_->size(), sizeof(int)));
-  for (int i = 0; i < tensors_->size(); ++i) {
-    first_created[i] = -1;
-    last_used[i] = -1;
-  }
-
-  for (int i = (operators_->size() - 1); i >= 0; --i) {
-    const auto* op = operators_->Get(i);
-    for (int n = 0; n < op->inputs()->size(); ++n) {
-      const int tensor_index = op->inputs()->Get(n);
-      if ((last_used[tensor_index] == -1) || (last_used[tensor_index] < i)) {
-        last_used[tensor_index] = i;
-      }
-    }
-    for (int n = 0; n < op->outputs()->size(); ++n) {
-      const int tensor_index = op->outputs()->Get(n);
-      const int create_before = i;
-      int destroy_after = last_used[tensor_index];
-      if (destroy_after == -1) {
-        destroy_after = operators_->size();
-      }
-      const auto* tensor = tensors_->Get(tensor_index);
-      if (!tensor->is_variable()) {
-        const TfLiteStatus status = tensor_allocator_->AllocateTensor(
-            *tensor, create_before, destroy_after, buffers, error_reporter_,
-            &context_.tensors[tensor_index]);
-        if (status != kTfLiteOk) {
-          return status;
-        }
-        first_created[tensor_index] = i;
-      }
-    }
-  }
-
-  for (int i = 0; i < tensors_->size(); ++i) {
-    const auto* tensor = tensors_->Get(i);
-    const bool is_read_only = (first_created[i] == -1) && (last_used[i] != -1);
-    if (tensor->is_variable() || is_read_only) {
-      const TfLiteStatus status = tensor_allocator_->AllocateTensor(
-          *tensor, 0, operators_->size(), buffers, error_reporter_,
-          &context_.tensors[i]);
-      if (status != kTfLiteOk) {
-        return status;
-      }
-    }
-  }
-
-  return kTfLiteOk;
+TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
+                                                         size_t input_index) {
+  return allocator_.RegisterPreallocatedInput(buffer, input_index);
 }
 
-TfLiteStatus MicroInterpreter::AllocateTemporaryTensors() {
-  // TBD(wangtz) : Implement this method.
-  return kTfLiteOk;
+TfLiteStatus MicroInterpreter::AllocateTensors() {
+  return allocator_.AllocateTensors();
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {

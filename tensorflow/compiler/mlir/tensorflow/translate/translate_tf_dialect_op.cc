@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -21,54 +22,58 @@ limitations under the License.
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
-static mlir::Operation* ExtractOnlyOp(mlir::Module* module) {
-  mlir::Function* fn = module->getNamedFunction("main");
+namespace mlir {
+static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
+  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
   if (!fn) return nullptr;
 
-  if (fn->getBlocks().size() != 1) return nullptr;
+  if (fn.getBlocks().size() != 1) return nullptr;
 
   // Here, modules with exactly two operations in the only basic block are
   // supported. The last operation should be a terminator operation and the
   // other operation is the operation of interest.
-  auto& block = fn->getBlocks().front();
+  auto& block = fn.getBlocks().front();
   if (block.getOperations().size() != 2) return nullptr;
   if (!block.back().isKnownTerminator()) return nullptr;
 
   return &block.front();
 }
 
-static bool MlirToTfNodeDef(mlir::Module* module, llvm::StringRef filename) {
-  auto* context = module->getContext();
+static LogicalResult MlirToTfNodeDef(ModuleOp module,
+                                     llvm::StringRef filename) {
+  auto* context = module.getContext();
 
-  auto file = mlir::openOutputFile(filename);
+  auto file = openOutputFile(filename);
   if (!file) {
-    mlir::emitError(mlir::UnknownLoc::get(context))
+    emitError(UnknownLoc::get(context))
         << "failed to open output file " << filename;
-    return true;
+    return failure();
   }
 
-  mlir::Operation* op = ExtractOnlyOp(module);
+  Operation* op = ExtractOnlyOp(module);
   if (!op) {
-    mlir::emitError(mlir::UnknownLoc::get(context),
-                    "modules with exactly one op other than terminator in a "
-                    "'main' function's "
-                    "only block are supported");
-    return true;
+    emitError(UnknownLoc::get(context),
+              "modules with exactly one op other than terminator in a "
+              "'main' function's "
+              "only block are supported");
+    return failure();
   }
 
   auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(op, "node_name");
   if (!node_def_or.ok()) {
     op->emitError("failed to convert to TF NodeDef:")
         << node_def_or.status().ToString();
-    return true;
+    return failure();
   }
 
   file->os() << node_def_or.ValueOrDie()->DebugString();
   file->keep();
-  return false;
+  return success();
 }
 
 // Test only translation to convert a simple MLIR module with a single TF
 // dialect op to NodeDef.
-static mlir::TranslateFromMLIRRegistration registration(
+static TranslateFromMLIRRegistration translate_from_mlir_registration(
     "test-only-mlir-to-tf-nodedef", MlirToTfNodeDef);
+
+}  // namespace mlir

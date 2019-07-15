@@ -2176,14 +2176,12 @@ versions {
 # CHECK:         %73:2 = "_tf.mul_2_Da30D05wlPU0"(%58#0, %72#0, %47#1) {_tpu_replicate = "cluster", device = "", name = "while/mul_2_Da30D05wlPU"} : (tensor<*xf32>, tensor<*xf32>, !_tf.control) -> (tensor<*xf32>, !_tf.control)
 # CHECK:         return
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
 # CHECK:       func @less_than_5_If8q4vKg9jA0(%arg0: tensor<*xf32>) -> tensor<*xi1>
 # CHECK-NEXT:    attributes  {tf._noinline = true} {
 # CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "Less/y", value = dense<5.000000e+00> : tensor<f32>} : () -> (tensor<f32>, !_tf.control)
 # CHECK-NEXT:    %1:2 = "_tf.Less"(%arg0, %0#0) {T = "tfdtype$DT_FLOAT", device = "", name = "Less"} : (tensor<*xf32>, tensor<f32>) -> (tensor<*xi1>, !_tf.control)
 # CHECK-NEXT:    return %1#0 : tensor<*xi1>
 # CHECK-NEXT:  }
-# CHECK-EMPTY:
 # CHECK:       func @mul_2_Da30D05wlPU0(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
 # CHECK-NEXT:    attributes  {tf._noinline = true} {
 # CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "mul/y", value = dense<2.000000e+00> : tensor<1x1xf32>} : () -> (tensor<1x1xf32>, !_tf.control)

@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayerV1
+from tensorflow.python.keras.engine.base_preprocessing_layer_v1 import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import normalization
 
 
-class Normalization(normalization.Normalization, CombinerPreprocessingLayerV1):
+class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
   pass

@@ -25,11 +25,9 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import state_ops
 
 
 class PreprocessingLayer(Layer):
@@ -142,7 +140,9 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = self._combiner.restore(self._restore_updates())
 
     if not isinstance(data, (dataset_ops.DatasetV2, np.ndarray)):
-      raise ValueError('adapt() requires a Dataset or a Numpy array as input.')
+      raise ValueError(
+          'adapt() requires a Dataset or a Numpy array as input, got {}'.format(
+              type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
       # Validate the datasets to try and ensure we haven't been passed one with
@@ -211,58 +211,6 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     with ops.init_scope():
       for var_name, value in updates.items():
         self.state_variables[var_name].assign(value)
-
-
-# TODO(momernick): Move this into another module.
-class CombinerPreprocessingLayerV1(CombinerPreprocessingLayer):
-  """V1-compatible CombinerPreprocessingLayer.
-
-  This class overrides several methods of the CombinerPreprocessingLayer to
-  make it compatible with V1 execution. End users should not need to worry about
-  the implementation details here; Keras will export the appropriate class under
-  the 'CombinerPreprocessingLayer' symbol. (Users should not directly
-  instantiate engine.base_preprocessing_layer.CombinerPreprocessingLayer/V1).
-
-  When creating a subclass of PreprocessingLayer, you can create a V1-compatible
-  subclass as follows:
-
-  class MyProcLayerV1(MyProcLayer, CombinerPreprocessingLayerV1):
-    pass
-
-  This is only necessary for internal classes, since any class that inherits
-  from tf.keras.[...].CombinerPreprocessingLayer will get the right symbol.
-  """
-
-  def _restore_updates(self):
-    """Recreates a dict of updates from the layer's weights."""
-    data_dict = {}
-    for name, var in self.state_variables.items():
-      data_dict[name] = K.get_session().run(var)
-    return data_dict
-
-  def _dataset_is_infinite(self, dataset):
-    """True if the passed dataset is infinite."""
-    dataset_size = K.get_session().run(cardinality.cardinality(dataset))
-    return dataset_size == cardinality.INFINITE
-
-  def _get_dataset_iterator(self, dataset):
-    """Gets an iterator from a tf.data.Dataset."""
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    session = K.get_session()
-    next_element = iterator.get_next()
-    return lambda: session.run(next_element)
-
-  def _set_state_variables(self, updates):
-    """Directly update the internal state of this Layer. V1 compatible."""
-    # TODO(momernick): Do we need to do any more input sanitization?
-    if not self.built:
-      raise RuntimeError('_set_state_variables() must be called after build().')
-
-    assignments = []
-    for var_name, value in updates.items():
-      assignments.append(
-          state_ops.assign(self.state_variables[var_name], value))
-    K.get_session().run(assignments)
 
 
 class Combiner(object):

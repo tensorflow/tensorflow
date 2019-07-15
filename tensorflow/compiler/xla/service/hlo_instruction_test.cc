@@ -949,7 +949,7 @@ ENTRY entry (param: f32[]) -> (f32[], f32[], f32[]) {
  }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto* root = module->entry_computation()->root_instruction();
   auto* t1 = root->operand(0);
@@ -1188,7 +1188,8 @@ TEST_F(HloInstructionTest, FuseInstructionKeepsInstruction) {
     mul = f32[32,32]{1,0} multiply(p2, p3)
     ROOT add = f32[32,32]{1,0} fusion(mul, c1), kind=kLoop, calls=fused_add
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloString));
   HloInstruction* fused_add = module->entry_computation()->root_instruction();
   HloInstruction* mul = fused_add->mutable_operand(0);
   EXPECT_EQ(1, mul->user_count());
@@ -1215,7 +1216,8 @@ TEST_F(HloInstructionTest, FuseInstructionIntoMultiOutputKeepsInstruction) {
     add = f32[32,32]{1,0} fusion(mul, c1), kind=kLoop, calls=fused_add
     ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(mul, add)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloString));
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* mul = root->mutable_operand(0);
   HloInstruction* fused_add = root->mutable_operand(1);
@@ -1732,7 +1734,7 @@ ENTRY entry (param: s32[]) -> s32[] {
   // Check that deep clones really deep clones every instruction and
   // computations, without leaving dangling pointers to the old module.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   std::unique_ptr<HloModule> clone = module->Clone();
   for (HloComputation* computation : clone->computations()) {
     EXPECT_EQ(computation->parent(), clone.get());
@@ -1851,7 +1853,8 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
     ROOT conv = f32[1,2,1] convolution(arg0, arg1), window={size=1},
       dim_labels=b0f_0io->b0f, operand_precision={high,default}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloString));
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
@@ -1866,12 +1869,59 @@ TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
   ENTRY test {
     ROOT iota = f32[100] iota(), iota_dimension=1, outer_dimension_partitions={0, 50}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kHloString));
   auto* iota = module->entry_computation()->root_instruction();
 
   auto clone = iota->Clone();
   EXPECT_THAT(clone->outer_dimension_partitions(),
               ::testing::ElementsAre(0, 50));
+}
+
+TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {
+  // Create a fusion node which uses the reshape of a parameter twice.  Because
+  // it's the same reshape, this counts as UseKind::kUsePermutingElements, which
+  // is exposed publicly as "does not reuse this operand".
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  f {
+    p = f32[3,2] parameter(0)
+    r = f32[2,3] reshape(p)
+    x = f32[2,3] multiply(r, r)
+    y = f32[2,3] add(r, r)
+    ROOT sum = f32[2,3] add(x, y)
+  }
+  ENTRY test {
+    p = f32[3,2] parameter(0)
+    ROOT fusion = f32[2,3] fusion(p), calls=f, kind=kLoop
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(root->ReusesOperandElements(0));
+}
+
+TEST_F(HloInstructionTest, ReuseMultipleReshapesOfFusionParameter) {
+  // Create a fusion node which uses two different reshapes of a parameter
+  // twice.  Because they're not the same reshapes, this counts as
+  // UseKind::kUsePermutingElements, which is exposed publicly as "does reuse
+  // this operand".
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  f {
+    p = f32[3,2] parameter(0)
+    r1 = f32[2,3] reshape(p)
+    r2 = f32[6,1] reshape(p)
+    ROOT result = (f32[2,3], f32[6,1]) tuple(r1, r2)
+  }
+  ENTRY test {
+    p = f32[3,2] parameter(0)
+    ROOT fusion = (f32[2,3], f32[6,1]) fusion(p), calls=f, kind=kLoop
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->ReusesOperandElements(0));
 }
 
 }  // namespace

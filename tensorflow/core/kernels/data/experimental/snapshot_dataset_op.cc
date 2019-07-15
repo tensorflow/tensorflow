@@ -91,12 +91,7 @@ class SnapshotWriter {
 
     TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
 
-    // TODO(frankchn): Remove after ZlibOutputBuffer Cord support is added.
-    if (compression_type_.empty()) {
-      return dest_->Append(data);
-    } else {
-      return dest_->Append(data.ToString());
-    }
+    return dest_->Append(data);
   }
 #endif  // PLATFORM_GOOGLE
 
@@ -414,39 +409,43 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
         hash_dir_ = absl::StrCat(dataset()->dir_, "/", dataset()->graph_hash_);
-
-        experimental::SnapshotMetadataRecord metadata;
-        Status s = ReadMetadataFile(hash_dir_, &metadata);
-        state_ = DetermineOpState(s, metadata,
-                                  dataset()->pending_snapshot_expiry_seconds_);
-
-        switch (state_) {
-          case WRITER:
-            iterator_ = absl::make_unique<SnapshotWriterIterator>(
-                SnapshotWriterIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")},
-                hash_dir_);
-            break;
-          case READER:
-            iterator_ = absl::make_unique<SnapshotReaderIterator>(
-                SnapshotReaderIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")},
-                hash_dir_, metadata);
-            break;
-          case PASSTHROUGH:
-            iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
-                SnapshotPassthroughIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")});
-            break;
-        }
-
-        return iterator_->Initialize(ctx);
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        mutex_lock l(mu_);
+        if (iterator_ == nullptr) {
+          experimental::SnapshotMetadataRecord metadata;
+          Status s = ReadMetadataFile(hash_dir_, &metadata);
+          state_ = DetermineOpState(
+              s, metadata, dataset()->pending_snapshot_expiry_seconds_);
+
+          switch (state_) {
+            case WRITER:
+              iterator_ = absl::make_unique<SnapshotWriterIterator>(
+                  SnapshotWriterIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")},
+                  hash_dir_);
+              break;
+            case READER:
+              iterator_ = absl::make_unique<SnapshotReaderIterator>(
+                  SnapshotReaderIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")},
+                  hash_dir_, metadata);
+              break;
+            case PASSTHROUGH:
+              iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
+                  SnapshotPassthroughIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")});
+              break;
+          }
+          TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
+        }
+
         return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
@@ -735,10 +734,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_;
       };
 
-      string hash_dir_;
-      SnapshotMode state_;
+      string hash_dir_ GUARDED_BY(mu_);
+      SnapshotMode state_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
 
-      std::unique_ptr<IteratorBase> iterator_;
+      mutex mu_;
     };
 
     const DatasetBase* const input_;

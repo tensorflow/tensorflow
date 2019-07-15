@@ -695,6 +695,14 @@ void SetOpAttrWithDefaults(
   }
 }
 
+PyObject* GetPythonObjectFromInt(int num) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_FromLong(num);
+#else
+  return PyInt_FromLong(num);
+#endif
+}
+
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
 PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
@@ -1359,14 +1367,57 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   return tape_set.get();
 }
 
-tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>*
-GetAccumulatorSet() {
-  thread_local std::unique_ptr<
-      tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>>
-      accumulator_set{nullptr};
+// A linked hash set, where iteration is in insertion order.
+//
+// Nested accumulators rely on op recording happening in insertion order, so an
+// unordered data structure like CompactPointerSet is not suitable. Outer
+// accumulators need to observe operations first so they know to watch the inner
+// accumulator's jvp computation.
+//
+// Not thread safe.
+class AccumulatorSet {
+ public:
+  void insert(TFE_Py_ForwardAccumulator* element) {
+    if (map_.find(element) != map_.end()) {
+      return;
+    }
+    ListType::iterator it = ordered_.insert(ordered_.end(), element);
+    map_.insert(std::make_pair(element, it));
+  }
+
+  void erase(TFE_Py_ForwardAccumulator* element) {
+    MapType::iterator existing = map_.find(element);
+    if (existing == map_.end()) {
+      return;
+    }
+    ListType::iterator list_position = existing->second;
+    map_.erase(existing);
+    ordered_.erase(list_position);
+  }
+
+  bool empty() const { return ordered_.empty(); }
+
+ private:
+  typedef std::list<TFE_Py_ForwardAccumulator*> ListType;
+  typedef tensorflow::gtl::FlatMap<TFE_Py_ForwardAccumulator*,
+                                   ListType::iterator>
+      MapType;
+
+ public:
+  typedef ListType::const_iterator const_iterator;
+  const_iterator begin() const { return ordered_.begin(); }
+
+  const_iterator end() const { return ordered_.end(); }
+
+ private:
+  MapType map_;
+  ListType ordered_;
+};
+
+AccumulatorSet* GetAccumulatorSet() {
+  thread_local std::unique_ptr<AccumulatorSet> accumulator_set{nullptr};
   if (accumulator_set == nullptr) {
-    accumulator_set.reset(
-        new tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>);
+    accumulator_set.reset(new AccumulatorSet);
   }
   return accumulator_set.get();
 }
@@ -1377,12 +1428,10 @@ inline bool HasTape() { return !GetTapeSet()->empty() || HasAccumulator(); }
 
 // A safe copy of a set, used for tapes and accumulators. The copy is not
 // affected by other python threads changing the set of active tapes.
-template <typename MemberType>
+template <typename ContainerType>
 class SafeSetCopy {
  public:
-  explicit SafeSetCopy(
-      const tensorflow::gtl::CompactPointerSet<MemberType*>& to_copy)
-      : set_copy_(to_copy) {
+  explicit SafeSetCopy(const ContainerType& to_copy) : set_copy_(to_copy) {
     for (auto* member : set_copy_) {
       Py_INCREF(member);
     }
@@ -1394,31 +1443,29 @@ class SafeSetCopy {
     }
   }
 
-  typename tensorflow::gtl::CompactPointerSet<MemberType*>::const_iterator
-  begin() const {
+  typename ContainerType::const_iterator begin() const {
     return set_copy_.begin();
   }
 
-  typename tensorflow::gtl::CompactPointerSet<MemberType*>::const_iterator end()
-      const {
-    return set_copy_.end();
-  }
+  typename ContainerType::const_iterator end() const { return set_copy_.end(); }
 
   bool empty() const { return set_copy_.empty(); }
 
  private:
-  tensorflow::gtl::CompactPointerSet<MemberType*> set_copy_;
+  ContainerType set_copy_;
 };
 
-class SafeTapeSet : public SafeSetCopy<TFE_Py_Tape> {
+class SafeTapeSet
+    : public SafeSetCopy<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>> {
  public:
-  SafeTapeSet() : SafeSetCopy<TFE_Py_Tape>(*GetTapeSet()) {}
+  SafeTapeSet()
+      : SafeSetCopy<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>(
+            *GetTapeSet()) {}
 };
 
-class SafeAccumulatorSet : public SafeSetCopy<TFE_Py_ForwardAccumulator> {
+class SafeAccumulatorSet : public SafeSetCopy<AccumulatorSet> {
  public:
-  SafeAccumulatorSet()
-      : SafeSetCopy<TFE_Py_ForwardAccumulator>(*GetAccumulatorSet()) {}
+  SafeAccumulatorSet() : SafeSetCopy<AccumulatorSet>(*GetAccumulatorSet()) {}
 };
 
 bool* ThreadTapeIsStopped() {
@@ -1500,33 +1547,51 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   return tensor_ids;
 }
 
-PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
+// Fill `tensor_ids` and `dtypes` from `tensors`, none of which may be
+// null. Returns true on success and false on a Python exception.
+bool TensorShapesAndDtypes(PyObject* tensors,
+                           std::vector<tensorflow::int64>* tensor_ids,
+                           std::vector<tensorflow::DataType>* dtypes) {
+  tensorflow::Safe_PyObjectPtr seq(
+      PySequence_Fast(tensors, "expected a sequence"));
+  if (seq == nullptr) {
+    return false;
+  }
+  int len = PySequence_Fast_GET_SIZE(seq.get());
+  tensor_ids->reserve(len);
+  dtypes->reserve(len);
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq.get(), i);
+    tensor_ids->push_back(FastTensorId(item));
+    dtypes->push_back(FastTensorDtype(item));
+  }
+  return true;
+}
+
+bool TapeCouldPossiblyRecord(PyObject* tensors) {
   if (tensors == Py_None) {
-    Py_RETURN_FALSE;
+    return false;
   }
   if (*ThreadTapeIsStopped()) {
-    Py_RETURN_FALSE;
+    return false;
   }
   if (!HasTape()) {
+    return false;
+  }
+  return true;
+}
+
+PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
+  if (!TapeCouldPossiblyRecord(tensors)) {
     Py_RETURN_FALSE;
   }
-  PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
-  if (seq == nullptr) {
-    return nullptr;
-  }
-  int len = PySequence_Fast_GET_SIZE(seq);
   // TODO(apassos) consider not building a list and changing the API to check
   // each tensor individually.
   std::vector<tensorflow::int64> tensor_ids;
   std::vector<tensorflow::DataType> dtypes;
-  tensor_ids.reserve(len);
-  dtypes.reserve(len);
-  for (int i = 0; i < len; ++i) {
-    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
-    tensor_ids.push_back(FastTensorId(item));
-    dtypes.push_back(FastTensorDtype(item));
+  if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
+    return nullptr;
   }
-  Py_DECREF(seq);
   auto tape_set = *GetTapeSet();
   for (TFE_Py_Tape* tape : tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
@@ -1541,6 +1606,53 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   }
 
   Py_RETURN_FALSE;
+}
+
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
+  if (!TapeCouldPossiblyRecord(tensors)) {
+    return GetPythonObjectFromInt(0);
+  }
+  std::vector<tensorflow::int64> tensor_ids;
+  std::vector<tensorflow::DataType> dtypes;
+  if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
+    return nullptr;
+  }
+
+  // If there is a persistent tape watching, or if there are multiple tapes
+  // watching, we'll return immediately indicating that higher-order tape
+  // gradients are possible.
+  bool some_tape_watching = false;
+  auto tape_set = *GetTapeSet();
+  for (TFE_Py_Tape* tape : tape_set) {
+    if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
+      if (tape->tape->IsPersistent() || some_tape_watching) {
+        // Either this is the second tape watching, or this tape is persistent:
+        // higher-order gradients are possible.
+        return GetPythonObjectFromInt(2);
+      }
+      some_tape_watching = true;
+    }
+  }
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    if (accumulator->accumulator->ShouldRecord(tensor_ids, dtypes)) {
+      if (some_tape_watching) {
+        // This is the second tape watching: higher-order gradients are
+        // possible. Note that there's no equivalent of persistence for
+        // forward-mode.
+        return GetPythonObjectFromInt(2);
+      }
+      some_tape_watching = true;
+    }
+  }
+  if (some_tape_watching) {
+    // There's exactly one non-persistent tape. The user can request first-order
+    // gradients but won't be able to get higher-order tape gradients.
+    return GetPythonObjectFromInt(1);
+  } else {
+    // There are no tapes. The user can't request tape gradients.
+    return GetPythonObjectFromInt(0);
+  }
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
@@ -1994,14 +2106,6 @@ PyObject* GetPythonObjectFromString(const char* s) {
   return PyUnicode_FromString(s);
 #else
   return PyBytes_FromString(s);
-#endif
-}
-
-PyObject* GetPythonObjectFromInt(int num) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_FromLong(num);
-#else
-  return PyInt_FromLong(num);
 #endif
 }
 
@@ -2663,6 +2767,16 @@ bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
 
     return false;
   }
+  if (PyArray_Check(seq) &&
+      PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)) != 1) {
+    PyErr_SetString(PyExc_ValueError,
+                    Printf("expected a sequence for attr %s, got an ndarray "
+                           "with rank %d instead",
+                           attr_name.data(),
+                           PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
+                        .data());
+    return false;
+  }
   return true;
 }
 
@@ -2922,15 +3036,20 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       if (!RaiseIfNotPySequence(input, input_arg.type_list_attr())) {
         return nullptr;
       }
+      tensorflow::Safe_PyObjectPtr fast_input(
+          PySequence_Fast(input, "Could not parse sequence."));
+      if (fast_input.get() == nullptr) {
+        return nullptr;
+      }
       const string& attr_name = input_arg.type_list_attr();
-      Py_ssize_t len = PySequence_Fast_GET_SIZE(input);
+      Py_ssize_t len = PySequence_Fast_GET_SIZE(fast_input.get());
       tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
       PyObject* py_attr_value = nullptr;
       if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
       }
       for (Py_ssize_t j = 0; j < len; j++) {
-        PyObject* py_input = PySequence_Fast_GET_ITEM(input, j);
+        PyObject* py_input = PySequence_Fast_GET_ITEM(fast_input.get(), j);
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
         if (!ConvertToTensor(
                 op_exec_info, py_input, &py_eager_tensor,

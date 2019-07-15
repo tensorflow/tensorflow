@@ -2204,8 +2204,10 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
     }
   }
 
-  SymbolicShapeRefiner refiner(graph_view, fed_ports,
-                               aggressive_shape_inference);
+  // Heap-allocate SymbolicShapeRefiner in order to not consume a large amount
+  // of stack space.
+  auto refiner = absl::make_unique<SymbolicShapeRefiner>(
+      graph_view, fed_ports, aggressive_shape_inference);
 
   TopoQueue new_shapes(topo_order);
   // Also seed the propagation of shapes in the fanout of primary inputs.
@@ -2218,14 +2220,14 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
   }
   // Propagate shapes normally.
   TF_RETURN_IF_ERROR(
-      PropagateShapes(&refiner, &new_shapes, resource_handles, num_loops));
+      PropagateShapes(refiner.get(), &new_shapes, resource_handles, num_loops));
 
   // Track shapes globally across the graph.
   std::unique_ptr<SymbolicShapeManager> shape_manager =
       absl::make_unique<SymbolicShapeManager>();
   bool found_error = false;
   for (const NodeDef& node : item_.graph.node()) {
-    auto node_ctx = refiner.GetContext(&node);
+    auto node_ctx = refiner->GetContext(&node);
     if (!node_ctx) {
       continue;
     }
@@ -2257,7 +2259,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
 
   for (const NodeDef& node : item_.graph.node()) {
     VLOG(3) << "Filling in graph properties for node: " << node.name();
-    auto ctx = refiner.GetNodeContext(&node);
+    auto ctx = refiner->GetNodeContext(&node);
     if (!ctx) {
       continue;
     }

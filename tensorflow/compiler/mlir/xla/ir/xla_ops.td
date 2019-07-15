@@ -298,8 +298,8 @@ def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
 
   let arguments = (ins
     Variadic<XLA_TensorOrTuple>:$val,
-    FunctionAttr:$cond,
-    FunctionAttr:$body
+    SymbolRefAttr:$cond,
+    SymbolRefAttr:$body
   );
 
   let results = (outs Variadic<XLA_TensorOrTuple>:$res);
@@ -320,7 +320,7 @@ def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]> {
 
   let arguments = (ins
     Variadic<XLA_TensorOrTuple>:$operands_and_init,
-    FunctionAttr:$computation,
+    SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );
 
@@ -374,11 +374,11 @@ def XLA_TupleOp : XLA_Op<"tuple", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 
 // These mirror the XLA PrecisionConfig proto enum.
-def XLA_PRECISION_DEFAULT : EnumAttrCase<"DEFAULT">;
-def XLA_PRECISION_HIGH    : EnumAttrCase<"HIGH">;
-def XLA_PRECISION_HIGHEST : EnumAttrCase<"HIGHEST">;
+def XLA_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
+def XLA_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
+def XLA_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
 
-def XLA_PrecisionAttr : EnumAttr<"Precision",
+def XLA_PrecisionAttr : StrEnumAttr<"Precision",
     "XLA precision for an operand. Has backend specific meaning.",
     [XLA_PRECISION_DEFAULT,  XLA_PRECISION_HIGH, XLA_PRECISION_HIGHEST]>;
 
@@ -392,14 +392,14 @@ def XLA_PrecisionConfigAttr:
 //===----------------------------------------------------------------------===//
 
 // These mirror the XLA ComparisonDirection enum.
-def XLA_COMPARISON_DIRECTION_EQ : EnumAttrCase<"EQ">;
-def XLA_COMPARISON_DIRECTION_NE : EnumAttrCase<"NE">;
-def XLA_COMPARISON_DIRECTION_GE : EnumAttrCase<"GE">;
-def XLA_COMPARISON_DIRECTION_GT : EnumAttrCase<"GT">;
-def XLA_COMPARISON_DIRECTION_LE : EnumAttrCase<"LE">;
-def XLA_COMPARISON_DIRECTION_LT : EnumAttrCase<"LT">;
+def XLA_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
+def XLA_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
+def XLA_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
+def XLA_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
+def XLA_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
+def XLA_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
 
-def XLA_ComparisonDirectionAttr : EnumAttr<"ComparisonDirection",
+def XLA_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
     "Which comparison operation to perform.",
     [
       XLA_COMPARISON_DIRECTION_EQ,

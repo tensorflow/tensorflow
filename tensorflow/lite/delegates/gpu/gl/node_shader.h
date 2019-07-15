@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler_options.h"
 #include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -58,7 +58,7 @@ enum class IOStructure {
 
 struct GeneratedCode {
   // A list of parameters to be set as uniform or hardcoded in a shader.
-  std::vector<UniformParameter> parameters;
+  std::vector<Variable> parameters;
 
   // A list of objects to bind before shader could be executed.
   std::vector<std::pair<std::string, Object>> objects;

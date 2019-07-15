@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -129,9 +129,9 @@ class CpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<se::OwningDeviceMemory> buffers);
 
-  // Returns the points-to set of the root instruction of the entry
-  // computation. Uses points-to analysis from buffer assignment.
-  const PointsToSet& GetRootPointsToSet() const;
+  // Returns the instruction value set of the root instruction of the entry
+  // computation. Uses dataflow analysis from buffer assignment.
+  const InstructionValueSet& GetRootValueSet() const;
 
   // The JIT containing compiled modules.
   const std::unique_ptr<SimpleOrcJIT> jit_;

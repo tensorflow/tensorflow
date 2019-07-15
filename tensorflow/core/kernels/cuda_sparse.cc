@@ -249,6 +249,133 @@ static inline Status GtsvStridedBatchImpl(SparseFn op,
 
 TF_CALL_LAPACK_TYPES(GTSV_STRIDED_BATCH_INSTANCE);
 
+template <typename Scalar, typename SparseFn>
+static inline Status Gtsv2Impl(SparseFn op, cusparseHandle_t cusparse_handle,
+                               int m, int n, const Scalar* dl, const Scalar* d,
+                               const Scalar* du, Scalar* B, int ldb,
+                               void* pBuffer) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
+                                 AsCudaComplex(d), AsCudaComplex(du),
+                                 AsCudaComplex(B), ldb, pBuffer));
+  return Status::OK();
+}
+
+#define GTSV2_INSTANCE(Scalar, sparse_prefix)                                  \
+  template <>                                                                  \
+  Status CudaSparse::Gtsv2<Scalar>(int m, int n, const Scalar* dl,             \
+                                   const Scalar* d, const Scalar* du,          \
+                                   Scalar* B, int ldb, void* pBuffer) const {  \
+    DCHECK(initialized_);                                                      \
+    return Gtsv2Impl(SPARSE_FN(gtsv2, sparse_prefix), *cusparse_handle_, m, n, \
+                     dl, d, du, B, ldb, pBuffer);                              \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_INSTANCE);
+
+#define GTSV2_NO_PIVOT_INSTANCE(Scalar, sparse_prefix)                     \
+  template <>                                                              \
+  Status CudaSparse::Gtsv2NoPivot<Scalar>(                                 \
+      int m, int n, const Scalar* dl, const Scalar* d, const Scalar* du,   \
+      Scalar* B, int ldb, void* pBuffer) const {                           \
+    DCHECK(initialized_);                                                  \
+    return Gtsv2Impl(SPARSE_FN(gtsv2_nopivot, sparse_prefix),              \
+                     *cusparse_handle_, m, n, dl, d, du, B, ldb, pBuffer); \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_NO_PIVOT_INSTANCE);
+
+template <typename Scalar, typename SparseFn>
+static inline Status Gtsv2BufferSizeExtImpl(SparseFn op,
+                                            cusparseHandle_t cusparse_handle,
+                                            int m, int n, const Scalar* dl,
+                                            const Scalar* d, const Scalar* du,
+                                            const Scalar* B, int ldb,
+                                            size_t* bufferSizeInBytes) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
+                                 AsCudaComplex(d), AsCudaComplex(du),
+                                 AsCudaComplex(B), ldb, bufferSizeInBytes));
+  return Status::OK();
+}
+
+#define GTSV2_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix)                    \
+  template <>                                                                \
+  Status CudaSparse::Gtsv2BufferSizeExt<Scalar>(                             \
+      int m, int n, const Scalar* dl, const Scalar* d, const Scalar* du,     \
+      const Scalar* B, int ldb, size_t* bufferSizeInBytes) const {           \
+    DCHECK(initialized_);                                                    \
+    return Gtsv2BufferSizeExtImpl(                                           \
+        SPARSE_FN(gtsv2_bufferSizeExt, sparse_prefix), *cusparse_handle_, m, \
+        n, dl, d, du, B, ldb, bufferSizeInBytes);                            \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_BUFFER_SIZE_INSTANCE);
+
+#define GTSV2_NO_PIVOT_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix)       \
+  template <>                                                            \
+  Status CudaSparse::Gtsv2NoPivotBufferSizeExt<Scalar>(                  \
+      int m, int n, const Scalar* dl, const Scalar* d, const Scalar* du, \
+      const Scalar* B, int ldb, size_t* bufferSizeInBytes) const {       \
+    DCHECK(initialized_);                                                \
+    return Gtsv2BufferSizeExtImpl(                                       \
+        SPARSE_FN(gtsv2_nopivot_bufferSizeExt, sparse_prefix),           \
+        *cusparse_handle_, m, n, dl, d, du, B, ldb, bufferSizeInBytes);  \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_NO_PIVOT_BUFFER_SIZE_INSTANCE);
+
+template <typename Scalar, typename SparseFn>
+static inline Status Gtsv2StridedBatchImpl(SparseFn op,
+                                           cusparseHandle_t cusparse_handle,
+                                           int m, const Scalar* dl,
+                                           const Scalar* d, const Scalar* du,
+                                           Scalar* x, int batchCount,
+                                           int batchStride, void* pBuffer) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(
+      cusparse_handle, m, AsCudaComplex(dl), AsCudaComplex(d),
+      AsCudaComplex(du), AsCudaComplex(x), batchCount, batchStride, pBuffer));
+  return Status::OK();
+}
+
+#define GTSV2_STRIDED_BATCH_INSTANCE(Scalar, sparse_prefix)                   \
+  template <>                                                                 \
+  Status CudaSparse::Gtsv2StridedBatch<Scalar>(                               \
+      int m, const Scalar* dl, const Scalar* d, const Scalar* du, Scalar* x,  \
+      int batchCount, int batchStride, void* pBuffer) const {                 \
+    DCHECK(initialized_);                                                     \
+    return Gtsv2StridedBatchImpl(SPARSE_FN(gtsv2StridedBatch, sparse_prefix), \
+                                 *cusparse_handle_, m, dl, d, du, x,          \
+                                 batchCount, batchStride, pBuffer);           \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_STRIDED_BATCH_INSTANCE);
+
+template <typename Scalar, typename SparseFn>
+static inline Status Gtsv2StridedBatchBufferSizeImpl(
+    SparseFn op, cusparseHandle_t cusparse_handle, int m, const Scalar* dl,
+    const Scalar* d, const Scalar* du, const Scalar* x, int batchCount,
+    int batchStride, size_t* bufferSizeInBytes) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, AsCudaComplex(dl),
+                                 AsCudaComplex(d), AsCudaComplex(du),
+                                 AsCudaComplex(x), batchCount, batchStride,
+                                 bufferSizeInBytes));
+  return Status::OK();
+}
+
+#define GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix) \
+  template <>                                                           \
+  Status CudaSparse::Gtsv2StridedBatchBufferSizeExt<Scalar>(            \
+      int m, const Scalar* dl, const Scalar* d, const Scalar* du,       \
+      const Scalar* x, int batchCount, int batchStride,                 \
+      size_t* bufferSizeInBytes) const {                                \
+    DCHECK(initialized_);                                               \
+    return Gtsv2StridedBatchBufferSizeImpl(                             \
+        SPARSE_FN(gtsv2StridedBatch_bufferSizeExt, sparse_prefix),      \
+        *cusparse_handle_, m, dl, d, du, x, batchCount, batchStride,    \
+        bufferSizeInBytes);                                             \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE);
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

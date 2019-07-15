@@ -565,23 +565,12 @@ HeapSimulator::HeapSimulator(
       options_(options),
       schedule_(schedule),
       memory_by_computation_(memory_by_computation) {
-  for (const BufferValueFlatSet& value_set : options.must_alias_sets) {
-    auto group = std::make_shared<SharedGroup>();
-    group->refcount = 0;
-    VLOG(2) << "Shared buffers:";
-    for (const BufferValue* buffer_value : value_set) {
-      VLOG(2) << "    " << buffer_value->ToString();
-      shared_buffers_.emplace(buffer_value, group);
-      // Refcounts are not incremented here as buffers are shared but not
-      // referenced yet.
-    }
-  }
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
 HeapSimulator::~HeapSimulator() {}
 
-bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
+bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
   // Buffers for constants are ignored unless the alloc_constants option is
   // set. Also ignore buffers that we're not meant to assign.
   //
@@ -595,7 +584,7 @@ bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
 }
 
 // Alloc always calls the underlying heap algorithm.
-void HeapSimulator::Alloc(const BufferValue* buffer,
+void HeapSimulator::Alloc(const HloValue* buffer,
                           const HloInstruction* instruction) {
   CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
@@ -614,7 +603,7 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 // buffers whose group liveness has expired.  Shared group liveness is tracked
 // by maintaining a refcount; the Free call on the last buffer in the group
 // causes Free to be called on the underlying algorithm.
-void HeapSimulator::Free(const BufferValue* buffer,
+void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
   const int64 size = size_fn_(*buffer);
   algorithm_->Free(buffer, size);
@@ -627,8 +616,7 @@ void HeapSimulator::Free(const BufferValue* buffer,
 // to Alloc.  The 'shared' buffer must be a previously allocated or shared
 // buffer. Both 'buffer' and 'shared' will be associated with the same
 // SharedGroup.
-void HeapSimulator::ShareBuffer(const BufferValue* buffer,
-                                const BufferValue* shared,
+void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
   algorithm_->ShareWith(buffer, shared, size_fn_(*shared));
   no_fragmentation_stats_->ShareWith(buffer, shared, size_fn_(*shared));
@@ -661,9 +649,9 @@ HeapSimulator::Result HeapSimulator::Finish() {
 }
 
 void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
-                                   const BufferValue* buffer,
+                                   const HloValue* buffer,
                                    const HloInstruction* instruction,
-                                   const BufferValue* share_with_canonical) {
+                                   const HloValue* share_with_canonical) {
   HeapSimulatorTrace::Event* event = debug_trace_.add_events();
   event->set_kind(kind);
   event->set_buffer_id(buffer->id());
@@ -677,7 +665,7 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
+void NoFragmentationStatsHeap::Alloc(const HloValue* buffer, int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
@@ -712,7 +700,7 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
 }
 
-void NoFragmentationStatsHeap::Free(const BufferValue* buffer, int64 size) {
+void NoFragmentationStatsHeap::Free(const HloValue* buffer, int64 size) {
   current_heap_size_ -= size;
 }
 
@@ -724,7 +712,7 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
-void GlobalDecreasingSizeBestFitHeap::Alloc(const BufferValue* buffer,
+void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
@@ -738,8 +726,8 @@ void GlobalDecreasingSizeBestFitHeap::Alloc(const BufferValue* buffer,
   ++current_time_;
 }
 
-void GlobalDecreasingSizeBestFitHeap::ShareWith(const BufferValue* buffer,
-                                                const BufferValue* share_with,
+void GlobalDecreasingSizeBestFitHeap::ShareWith(const HloValue* buffer,
+                                                const HloValue* share_with,
                                                 int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
@@ -754,15 +742,15 @@ void GlobalDecreasingSizeBestFitHeap::ShareWith(const BufferValue* buffer,
   ++current_time_;
 }
 
-absl::flat_hash_set<const BufferValue*>
+absl::flat_hash_set<const HloValue*>
 GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations(
     const BufferInterval& interval) const {
-  absl::flat_hash_set<const BufferValue*> result;
+  absl::flat_hash_set<const HloValue*> result;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
     const BufferInterval* item = worklist.back();
     worklist.pop_back();
-    for (const BufferValue* buffer_colocated : item->colocations) {
+    for (const HloValue* buffer_colocated : item->colocations) {
       result.insert(buffer_colocated);
       worklist.push_back(&buffer_intervals_.at(buffer_colocated));
     }
@@ -771,8 +759,7 @@ GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations(
   return result;
 }
 
-void GlobalDecreasingSizeBestFitHeap::Free(const BufferValue* buffer,
-                                           int64 size) {
+void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     return;
