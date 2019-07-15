@@ -442,20 +442,34 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
 
+  // Copies the function named `func` from `other` to this
+  // FunctionLibraryDefinition.
+  // REQUIRES: `this->default_registry() == other.default_registry()`.
+  // Returns OK on success, or error otherwise. This is a no-op if a function
+  // name `func` already exists in this function library, and has the same
+  // implementation as in `other`. If the implementations conflict, an invalid
+  // argument error is returned.
+  Status CopyFunctionDefFrom(const string& func,
+                             const FunctionLibraryDefinition& other)
+      LOCKS_EXCLUDED(mu_);
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
     explicit FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
-    FunctionDef fdef;
-    OpRegistrationData op_registration_data;
+    const FunctionDef fdef;
+    const OpRegistrationData op_registration_data;
   };
 
-  const FunctionDef* FindHelper(const string& func) const
-      SHARED_LOCKS_REQUIRED(mu_);
+  std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
+      const string& func) const SHARED_LOCKS_REQUIRED(mu_);
   string FindGradientHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
+
+  Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
+                   bool* added) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
@@ -485,7 +499,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   mutable mutex mu_;
   const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+  gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
 };
