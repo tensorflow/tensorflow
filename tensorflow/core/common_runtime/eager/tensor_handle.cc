@@ -209,25 +209,29 @@ TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
 }
 
 Status TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, eager::EagerClient* eager_client,
-    uint64 context_id, DataType dtype, Device* d, Device* resource_device,
-    EagerContext* ctx, TensorHandle** h) {
-  DCHECK(dtype == DT_RESOURCE ? resource_device != nullptr
-                              : resource_device == nullptr);
+    std::unique_ptr<UnshapedRemoteTensorHandleData> t, DataType dtype,
+    Device* d, EagerContext* ctx, TensorHandle** h) {
+  *h = new TensorHandle(std::move(t), dtype, d, ctx);
 
+  return Status::OK();
+}
+
+Status TensorHandle::CreateUnshapedRemoteHandle(
+    int64 op_id, int32 output_num, eager::EagerClient* eager_client,
+    uint64 context_id, DataType dtype, Device* device, EagerContext* ctx,
+    TensorHandle** h) {
   *h = new TensorHandle(absl::make_unique<UnshapedRemoteTensorHandleData>(
                             op_id, output_num, eager_client, context_id, ctx),
-                        dtype, d, resource_device, ctx);
+                        dtype, device, ctx);
   return Status::OK();
 }
 
 TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
-                           DataType dtype, Device* d, Device* resource_device,
-                           EagerContext* ctx)
+                           DataType dtype, Device* device, EagerContext* ctx)
     : dtype(dtype),
-      device_(d),
-      op_device_(d),
-      resource_device_(resource_device),
+      device_(device),
+      op_device_(device),
+      resource_device_(dtype == DT_RESOURCE ? device : nullptr),
       remote_op_id_(t->op_id()),
       remote_output_num_(t->output_num()),
       remote_eager_client_(t->eager_client()),
@@ -303,11 +307,18 @@ Status TensorHandle::NumElements(int64* num_elements) {
 Status TensorHandle::RemoteAddress(Device* d, int64* op_id,
                                    int32* output_num) const {
   if (d != device_) {
-    mutex_lock l(remote_mirrors_mutex_);
+    tf_shared_lock l(remote_mirrors_mutex_);
     auto mirror = remote_mirrors_.find(d);
     if (mirror != remote_mirrors_.end()) {
       *op_id = mirror->second->op_id();
       *output_num = mirror->second->output_num();
+      return Status::OK();
+    }
+
+    auto unshaped_mirror = unshaped_remote_mirrors_.find(d);
+    if (unshaped_mirror != unshaped_remote_mirrors_.end()) {
+      *op_id = unshaped_mirror->second->op_id();
+      *output_num = unshaped_mirror->second->output_num();
       return Status::OK();
     }
 
@@ -321,13 +332,34 @@ Status TensorHandle::RemoteAddress(Device* d, int64* op_id,
 }
 
 bool TensorHandle::HasRemoteMirror(Device* d) {
-  mutex_lock l(remote_mirrors_mutex_);
+  tf_shared_lock l(remote_mirrors_mutex_);
   auto mirror = remote_mirrors_.find(d);
   if (mirror != remote_mirrors_.end()) {
     return true;
   }
 
+  auto unshaped_mirror = unshaped_remote_mirrors_.find(d);
+  if (unshaped_mirror != unshaped_remote_mirrors_.end()) {
+    return true;
+  }
+
   return false;
+}
+
+Status TensorHandle::AddUnshapedRemoteMirror(
+    std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
+  mutex_lock l(remote_mirrors_mutex_);
+  if (remote_mirrors_.find(d) != remote_mirrors_.end()) {
+    return errors::Internal("Attempted to duplicate a remote mirror.");
+  }
+
+  auto ret = unshaped_remote_mirrors_.insert(std::make_pair(d, std::move(t)));
+  if (!ret.second) {
+    return errors::Internal(
+        "Attempted to duplicate an unshaped remote mirror.");
+  }
+
+  return Status::OK();
 }
 
 Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
@@ -341,7 +373,33 @@ Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
   return Status::OK();
 }
 
-Status TensorHandle::SetRemoteShape(const TensorShape& shape) {
+Status TensorHandle::SetRemoteShape(const TensorShape& shape,
+                                    tensorflow::Device* d) {
+  VLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d;
+
+  if (d != device_) {
+    mutex_lock l(remote_mirrors_mutex_);
+    if (remote_mirrors_.find(d) != remote_mirrors_.end()) {
+      return errors::Internal(
+          "Attempted to set remote shape for existing mirror.");
+    }
+
+    auto elem = unshaped_remote_mirrors_.find(d);
+    if (elem == unshaped_remote_mirrors_.end()) {
+      return errors::Internal(
+          "Attempted to set remote shape for non-waiting mirror.");
+    }
+
+    auto& data = elem->second;
+    data->ReleaseRemoteTensorHandle();
+    remote_mirrors_[d] = absl::make_unique<RemoteTensorHandleData>(
+        data->op_id(), data->output_num(), shape, data->eager_client(),
+        data->context_id(), data->ctx());
+    unshaped_remote_mirrors_.erase(elem);
+
+    return Status::OK();
+  }
+
   DCHECK(is_remote_) << "SeRemoteShape is only called on remote handles.";
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetRemoteShape is only called on non-ready handles.";
@@ -365,6 +423,12 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetTensor is only called on non-ready handles.";
 
+  VLOG(3) << "SetTensor on TensorHandle: " << this;
+
+  if (tensor.dtype() == DT_RESOURCE) {
+    auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
+    handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
+  }
   tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
   is_poisoned_ = Status::OK();
   is_ready_notification_.Notify();

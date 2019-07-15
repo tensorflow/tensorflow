@@ -29,6 +29,7 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
   """Test for Constant broadcasting in TF-TRT."""
 
   def GraphFn(self, x):
+    """Return the expected graph to convert."""
     dtype = x.dtype
     filt1 = constant_op.constant(
         0.3, shape=(3, 3, 2, 1), dtype=dtype, name='filt1')

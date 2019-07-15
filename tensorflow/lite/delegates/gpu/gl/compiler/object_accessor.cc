@@ -360,9 +360,37 @@ struct TextureSamplerTypeGetter {
     return (*this)(uint2());
   }
 
-  std::string operator()(const uint2&) const { return "sampler2D"; }
+  std::string operator()(const uint2&) const {
+    switch (type) {
+      case DataType::FLOAT16:
+      case DataType::FLOAT32:
+        return "sampler2D";
+      case DataType::INT32:
+      case DataType::INT16:
+        return "isampler2D";
+      case DataType::UINT32:
+      case DataType::UINT16:
+        return "usampler2D";
+      default:
+        return "unknown_sampler2D";
+    }
+  }
 
-  std::string operator()(const uint3&) const { return "sampler2DArray"; }
+  std::string operator()(const uint3&) const {
+    switch (type) {
+      case DataType::FLOAT16:
+      case DataType::FLOAT32:
+        return "sampler2DArray";
+      case DataType::INT32:
+      case DataType::INT16:
+        return "isampler2DArray";
+      case DataType::UINT32:
+      case DataType::UINT16:
+        return "usampler2DArray";
+      default:
+        return "unknown_sampler2DArray";
+    }
+  }
 
   DataType type;
 };

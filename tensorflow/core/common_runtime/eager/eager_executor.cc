@@ -17,17 +17,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-EagerNode::EagerNode(tensorflow::uint64 id) : id_(id) {}
-
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   thread_done_ = true;
   nodes_pending_.notify_all();
-}
-
-tensorflow::uint64 EagerExecutor::NextId() {
-  tensorflow::mutex_lock l(next_id_mutex_);
-  return next_id_++;
 }
 
 void EagerExecutor::EnableAsync() {
@@ -39,62 +32,46 @@ void EagerExecutor::EnableAsync() {
   }
 }
 
-void EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  DCHECK(thread_) << "EnableAsync should have been called before Add";
-  if (!status_.ok()) {
-    // node will be automatically deleted
-    return;
-  }
-  int64 qlen = node_queue_.size();
-  if (qlen > 0) {
-    if (node_queue_.back()->Id() >= node->Id()) {
-      status_ = tensorflow::errors::InvalidArgument(
-          "Inserting EagerNode with non-increasing ids:",
-          node_queue_.back()->Id(), " vs ", node->Id());
-      // node will be automatically deleted
-      return;
-    }
-    node_queue_.push(std::move(node));
-  } else {
-    node_queue_.push(std::move(node));
-    nodes_pending_.notify_all();
-  }
-}
+Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
+  Status status;
 
-tensorflow::Status EagerExecutor::WaitFor(tensorflow::uint64 node_id) {
-  return WaitImpl(false, node_id);
+  // If we are unable to add the node to the queue, we must call Abort. However,
+  // we want to do that outside of the scope of the lock since the Abort may
+  // try to call EagerExecutor::Add()
+  {
+    tensorflow::mutex_lock l(node_queue_mutex_);
+    DCHECK(thread_) << "EnableAsync should have been called before Add";
+    status = status_;
+    if (status.ok()) {
+      node_queue_.push(std::move(node));
+
+      // If there were no previous nodes pending, wake the run thread to start
+      // processing requests again.
+      if (node_queue_.size() == 1) {
+        nodes_pending_.notify_all();
+      }
+
+      return Status::OK();
+    }
+  }
+
+  // Node needs to be aborted since it was not added to the queue
+  node->Abort(status);
+  return status;
 }
 
 tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {
-  return WaitImpl(true, 0);
-}
-
-tensorflow::Status EagerExecutor::WaitImpl(bool wait_all,
-                                           tensorflow::uint64 node_id) {
   tensorflow::condition_variable cond;
   tensorflow::mutex_lock l(node_queue_mutex_);
   // Don't wait if an error is already set.
   if (!status_.ok()) return status_;
   if (node_queue_.empty()) return tensorflow::Status::OK();
-  if (wait_all) {
-    node_id = node_queue_.back()->Id();
-  } else if (node_id < node_queue_.front()->Id()) {
-    // Note that we are relying on the ops being dispatched sequentially from
-    // the queue.
-    return tensorflow::Status::OK();
-  }
-  node_done_notifications_.insert(std::make_pair(node_id, &cond));
+  EagerNode* last_node = node_queue_.back().get();
+  node_done_notifications_.insert(std::make_pair(last_node, &cond));
   cond.wait(l);
   // Note that we could be woken up if an error occurs, even though the node has
   // not actually executed.
   return status_;
-}
-
-bool EagerExecutor::IsQueued(uint64 node_id) const {
-  tf_shared_lock l(node_queue_mutex_);
-  // Note that we are relying on the ops being dispatched sequentially from
-  return node_id > last_node_id_;
 }
 
 void EagerExecutor::ClearError() {
@@ -125,9 +102,6 @@ void EagerExecutor::Run() {
       // Obtain raw pointer since we don't want to remove from the queue until
       // the node has been run.
       curr_node = node_queue_.front().get();
-      // We update the last_node_id_ before calling Run() to ensure the value
-      // is updated before the response callback.
-      last_node_id_ = curr_node->Id();
     }
     tensorflow::Status status = curr_node->Run();
     const bool ok = status.ok();
@@ -151,10 +125,9 @@ void EagerExecutor::Run() {
       // Note that we notify all waiting threads in case an error has occurred.
       // These calling threads are responsible for checking status_ before
       // proceeding.
-      const auto range =
-          ok ? node_done_notifications_.equal_range(last_node_id_)
-             : make_pair(node_done_notifications_.begin(),
-                         node_done_notifications_.end());
+      const auto range = ok ? node_done_notifications_.equal_range(curr_node)
+                            : make_pair(node_done_notifications_.begin(),
+                                        node_done_notifications_.end());
       for (auto it = range.first; it != range.second; ++it) {
         it->second->notify_all();
       }

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -180,7 +181,7 @@ GlProgram& GlProgram::operator=(GlProgram&& program) {
 
 GlProgram::~GlProgram() { Invalidate(); }
 
-Status GlProgram::SetParameter(const UniformParameter& param) {
+Status GlProgram::SetParameter(const Variable& param) {
   GLint uniform_location;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetUniformLocation, &uniform_location,
                                      id_, param.name.c_str()));

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
@@ -158,6 +159,50 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f);
 
+// Optionally override device assignment for nodes added to the graph for
+// inlined functions:
+// (1) Identity nodes added in place of function input arguments.
+// (2) Identity nodes added in place of function return values.
+// (3) Special NoOp nodes that enforce side-effects execution order.
+// (4) All nodes inside function body specified in FunctionDef.
+class InlinedFunctionBodyPlacer {
+ public:
+  virtual ~InlinedFunctionBodyPlacer() = default;
+
+  virtual absl::optional<string> InputNodeDevice(int input_index) const = 0;
+  virtual absl::optional<string> OutputNodeDevice(int output_index) const = 0;
+  virtual absl::optional<string> ControlNodeDevice() const = 0;
+  virtual absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const = 0;
+
+  // Place input nodes on the same device as the corresponding caller input
+  // node. Do not specify any placement for all other nodes.
+  static std::unique_ptr<InlinedFunctionBodyPlacer> DefaultPlacer(
+      const Graph& graph, const Node& caller);
+
+  // Place all nodes on the same device as caller node.
+  static std::unique_ptr<InlinedFunctionBodyPlacer> SingleDevicePlacer(
+      const Graph& graph, const Node& caller);
+
+  // Place input nodes on the same device as the corresponding caller input
+  // node. Do not place output node. Place control nodes on the same device as
+  // caller node. For all function body nodes overrides job, replica and task
+  // parts of the device assignment to match function caller node.
+  static std::unique_ptr<InlinedFunctionBodyPlacer> MultiDevicePlacer(
+      const Graph& graph, const Node& caller);
+
+  using Factory = std::function<std::unique_ptr<InlinedFunctionBodyPlacer>(
+      const Graph&, const Node&)>;
+
+  struct Config {
+    string name;
+    Factory get;
+  };
+
+  static Config Default() { return {"default", DefaultPlacer}; }
+  static Config SingleDevice() { return {"single_device", SingleDevicePlacer}; }
+  static Config MultiDevice() { return {"multi_device", MultiDevicePlacer}; }
+};
+
 struct InlineFunctionBodyOptions {
   // All nodes that have incoming control edge *from* the function call node,
   // will be forwarded to the "output control node". There are two options for
@@ -198,16 +243,6 @@ struct InlineFunctionBodyOptions {
   bool disable_inlining = false;
   // Ignore '_noinline' function attribute.
   bool ignore_noinline = false;
-  // If 'true' function inlining will override explicitly specified devices
-  // inside function body with the caller node device.
-  bool override_device = false;
-  // If 'true' function inlining will fill an empty device annotation inside
-  // function body with the caller node device.
-  // TODO(ezhulenev): Remove this flag. This is mostly legacy-compatibility
-  // mode. We should never explicitly define devices when we inline multi-device
-  // functions. However we do that in 'lower_function_call_op.cc' and
-  // 'function_optimizer' for now.
-  bool initialize_empty_device = false;
   // If 'true' function inlining will inline functions in implementation
   // selection group. Normally those functions should not be inlined; they will
   // be handled by Grappler.
@@ -219,6 +254,19 @@ struct InlineFunctionBodyOptions {
   // Control returns were added to Tensorflow v2 with automatic control
   // dependencies tracking in Eager mode.
   OutputControlSource output_control_src = OutputControlSource::kDataOutputs;
+  // Inlined function body placer decides what requested device assignments
+  // should be added to the nodes added to the graph. See documentation above
+  // for available strategies.
+  InlinedFunctionBodyPlacer::Config inlined_function_body_placer =
+      InlinedFunctionBodyPlacer::Default();
+  // If true, frame names in the function body will be
+  // made unique in the resulting graph (e.g. by prepending a unique prefix).
+  // NOTE(mrry): Only set this option to false when there is a single function
+  // call in the graph (e.g. when making a remote function call via
+  // ClusterFunctionLibraryRuntime). This option is provided because the graph
+  // partitioner generates frame names that must remain unmodified across all
+  // partitions of a multi-device function.
+  bool uniquify_frame_names = true;
 
   // A human-readable debug string for this options.
   string DebugString() const;

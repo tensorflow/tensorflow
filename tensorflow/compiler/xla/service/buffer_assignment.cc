@@ -656,7 +656,7 @@ Status BufferAssignment::ComputeSummaryStats() {
   for (const auto& computation : module_->computations()) {
     if (!computation->IsFusionComputation()) {
       const HloInstructionSequence* sequence =
-          liveness_->hlo_ordering().SequentialOrder(*computation);
+          hlo_ordering().SequentialOrder(*computation);
       if (sequence == nullptr) {
         schedule_complete = false;
       } else {
@@ -833,7 +833,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     const HloValue& assigned_buffer =
         *CHECK_NOTNULL(dynamic_cast<const HloValue*>(buffer_offset_size.first));
     for (const HloValue* new_value : hlo_buffer.values()) {
-      if (assignment->liveness().hlo_ordering().MayInterfere(
+      if (assignment->hlo_ordering().MayInterfere(
               assigned_buffer, *new_value, assignment->dataflow_analysis())) {
         VLOG(4) << "Can't assign: assignee " << assigned_buffer
                 << " may interfere with " << new_value;
@@ -917,7 +917,7 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
 
       for (const HloValue* instruction_value : instruction_buffer.values()) {
         for (const HloValue* operand_value : operand_buffer.values()) {
-          if (assignment->liveness().hlo_ordering().MayInterfere(
+          if (assignment->hlo_ordering().MayInterfere(
                   *instruction_value, *operand_value,
                   assignment->dataflow_analysis())) {
             interfere = true;
@@ -1047,8 +1047,7 @@ Status BufferAssigner::AssignSingleHloBuffer(
     for (const HloValue* hlo_value : hlo_buffer->values()) {
       HloComputation* computation = hlo_value->instruction()->parent();
       const bool has_sequential_order =
-          assignment->liveness().hlo_ordering().SequentialOrder(*computation) !=
-          nullptr;
+          assignment->hlo_ordering().SequentialOrder(*computation) != nullptr;
       all_computations_have_sequential_order &= has_sequential_order;
     }
 
@@ -1125,10 +1124,9 @@ Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  const BufferLiveness& liveness = assignment->liveness();
   for (const HloComputation* computation : computations) {
     const bool has_sequential_order =
-        liveness.hlo_ordering().SequentialOrder(*computation) != nullptr;
+        assignment->hlo_ordering().SequentialOrder(*computation) != nullptr;
     if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
       // Every sequential computation must get an entry in the
       // buffers_to_assign_sequentially map, even if we end up with an empty
@@ -1197,7 +1195,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // Run the sequence of instructions through the heap simulator.  The
   // heuristic that seems to give the best results is lazy-best-fit, with all
   // runs of alloc / free calls sorted in decreasing size order.
-  const HloOrdering& hlo_ordering = assignment->liveness().hlo_ordering();
+  const HloOrdering& hlo_ordering = assignment->hlo_ordering();
 
   // Returns a heap algorithm that chooses the best result from several
   // algorithms.
@@ -1392,9 +1390,6 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
-                      BufferLiveness::Run(module, std::move(hlo_ordering)));
-
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
@@ -1408,11 +1403,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // Can't use absl::make_unique because BufferAssignment constructor is
   // private.
   std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
-      module, std::move(liveness), std::move(buffer_size),
+      module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), std::move(alias_analysis)));
 
-  TF_RETURN_IF_ERROR(colorer_(&assignment->alias_analysis(),
-                              assignment->liveness().hlo_ordering()));
+  TF_RETURN_IF_ERROR(
+      colorer_(&assignment->alias_analysis(), assignment->hlo_ordering()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3,
                  assignment->alias_analysis().dataflow_analysis().ToString());

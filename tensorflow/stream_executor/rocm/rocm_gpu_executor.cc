@@ -110,6 +110,7 @@ GpuExecutor::~GpuExecutor() {
   if (context_ != nullptr) {
     GpuDriver::DestroyContext(context_);
   }
+  CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
 }
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
@@ -136,7 +137,19 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
 }
 
 void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
-  LOG(FATAL) << "Feature not supported on ROCM platform (UnloadKernel)";
+  VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
+
+  absl::MutexLock lock{&in_memory_modules_mu_};
+  auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
+  if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
+    VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
+            << " has never been loaded.";
+    return;  // We've never seen this kernel.
+  }
+  VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
+          << " has loaded GPU code " << gpu_binary_it->second;
+  UnloadGpuBinary(gpu_binary_it->second);
+  kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
 port::Status GpuExecutor::Init(int device_ordinal,
@@ -244,8 +257,8 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
         LOG(ERROR) << "failed to load HSACO\n";
         return false;
       }
-      in_memory_modules_[hsaco] = module;
     }
+    kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
     LOG(WARNING) << "no method of loading ROCM kernel provided";
     return false;
@@ -401,6 +414,7 @@ bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
       return false;
     }
     module_refcount = 1;
+    in_memory_modules_[hsaco] = *module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
             << " as module " << *module;
   } else {
@@ -765,29 +779,6 @@ bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
 bool GpuExecutor::GetSymbol(const string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
-  {  // give limited scope to lock
-    absl::MutexLock lock{&disk_modules_mu_};
-    for (auto& it : disk_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to lock
-    absl::MutexLock lock{&in_memory_modules_mu_};
-    for (auto& it : in_memory_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to lock
     absl::MutexLock lock{&in_memory_modules_mu_};
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
@@ -806,7 +797,6 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
         return true;
       }
     }
-  }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
   return false;

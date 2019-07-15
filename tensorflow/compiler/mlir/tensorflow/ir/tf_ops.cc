@@ -67,6 +67,28 @@ static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
   return true;
 }
 
+// Returns true if the given `value` has at least the specified rank or has
+// unranked type.
+static inline bool HasRankAtLeast(Value *value, int64_t rank) {
+  auto type = value->getType();
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
+    return ranked_type.getRank() >= rank;
+  return type.isa<UnrankedTensorType>();
+}
+// Returns true if the given pair of TensorFlow types can be cast to one
+// another. In other words, a single run-time value is legal for both the types.
+// For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
+bool AreCastCompatible(Type a, Type b) {
+  if (TensorCastOp::areCastCompatible(a, b)) return true;
+
+  // Variant types may optionally contain subtypes information that need not
+  // match.  It is also not possible to compare subtypes for compatibility as
+  // their interpretation depends on the ops operating on them.  So, accept all
+  // pairs of variant types.
+  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
+         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
+}
+
 //===----------------------------------------------------------------------===//
 // AddOp
 //===----------------------------------------------------------------------===//
@@ -261,18 +283,18 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
-  auto thenAttr = getAttrOfType<FunctionAttr>("then_branch");
+  auto thenAttr = getAttrOfType<SymbolRefAttr>("then_branch");
   if (!thenAttr) return emitOpError("requires then_branch attribute");
 
-  auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
+  auto elseAttr = getAttrOfType<SymbolRefAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
-  auto module = getParentOfType<Module>();
-  auto thenFn = module.getNamedFunction(thenAttr.getValue());
+  auto module = getParentOfType<ModuleOp>();
+  auto thenFn = module.lookupSymbol<FuncOp>(thenAttr.getValue());
   if (!thenFn)
     return emitOpError("then_branch refers to an undefined function : ")
            << thenAttr;
-  auto elseFn = module.getNamedFunction(elseAttr.getValue());
+  auto elseFn = module.lookupSymbol<FuncOp>(elseAttr.getValue());
   if (!elseFn)
     return emitOpError("else_branch refers to an undefined function : ")
            << elseAttr;
@@ -290,14 +312,14 @@ LogicalResult IfOp::verify() {
   for (unsigned i = 0; i < expectedNumInputs; ++i) {
     auto operandType = getOperand(i + 1)->getType().cast<TensorType>();
     auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(operandType, thenInputType))
+    if (!AreCastCompatible(operandType, thenInputType))
       return emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
                         thenInputType, operandType, i));
 
     auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(operandType, elseInputType))
+    if (!AreCastCompatible(operandType, elseInputType))
       return emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
@@ -305,7 +327,7 @@ LogicalResult IfOp::verify() {
 
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
-    if (!TensorCastOp::areCastCompatible(thenInputType, elseInputType))
+    if (!AreCastCompatible(thenInputType, elseInputType))
       return emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
           thenInputType, elseInputType, i));
@@ -321,14 +343,14 @@ LogicalResult IfOp::verify() {
   for (unsigned i = 0; i < expectedNumResults; ++i) {
     auto resultType = getResult(i)->getType().cast<TensorType>();
     auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(thenResultType, resultType))
+    if (!AreCastCompatible(thenResultType, resultType))
       return emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
                         thenResultType, resultType, i));
 
     auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
-    if (!TensorCastOp::areCastCompatible(elseResultType, resultType))
+    if (!AreCastCompatible(elseResultType, resultType))
       return emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
@@ -613,9 +635,9 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SoftmaxOp op) {
-  if (!IsOfRankOrUnranked(op.logits(), 2))
-    return op.emitOpError("requires operand to be 2D tensor");
-
+  if (!HasRankAtLeast(op.logits(), 1)) {
+    return op.emitOpError("requires operand to have rank at least 1");
+  }
   return success();
 }
 
@@ -713,20 +735,20 @@ void TruncateDivOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 LogicalResult WhileOp::verify() {
-  auto condAttr = getAttrOfType<FunctionAttr>("cond");
+  auto condAttr = getAttrOfType<SymbolRefAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
-  auto module = getParentOfType<Module>();
-  auto condFn = module.getNamedFunction(condAttr.getValue());
+  auto module = getParentOfType<ModuleOp>();
+  auto condFn = module.lookupSymbol<FuncOp>(condAttr.getValue());
   auto condFuncType = condFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
     return emitOpError("requires cond function to have exactly one result");
 
-  auto bodyAttr = getAttrOfType<FunctionAttr>("body");
+  auto bodyAttr = getAttrOfType<SymbolRefAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
-  auto bodyFn = module.getNamedFunction(bodyAttr.getValue());
+  auto bodyFn = module.lookupSymbol<FuncOp>(bodyAttr.getValue());
   auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(getOperandTypes());
@@ -783,7 +805,7 @@ LogicalResult WhileOp::verify() {
         auto aType = a.second[idx];
         auto bType = b.second[idx];
 
-        if (!TensorCastOp::areCastCompatible(aType, bType))
+        if (!AreCastCompatible(aType, bType))
           return emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
               a.first, aType, b.first, bType, idx));

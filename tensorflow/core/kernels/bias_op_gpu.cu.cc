@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -53,7 +53,7 @@ struct AccumulatorType<Eigen::half> {
 template <typename T>
 __global__ void BiasNHWCKernel(int32 nthreads, const T* input, const T* bias,
                                T* output, int32 bias_size) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 bias_offset = index % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
@@ -62,7 +62,7 @@ __global__ void BiasNHWCKernel(int32 nthreads, const T* input, const T* bias,
 template <typename T>
 __global__ void BiasNCHWKernel(int32 nthreads, const T* input, const T* bias,
                                T* output, int32 bias_size, int32 image_size) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 index2 = index / image_size;
     int32 bias_offset = index2 % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
@@ -99,9 +99,9 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
 template <typename T>
 __global__ void BiasGradNHWC_Naive(int32 nthreads, const T* output_backprop,
                                    T* bias_backprop, int32 bias_size) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 bias_offset = index % bias_size;
-    CudaAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
+    GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
 }
 
@@ -110,14 +110,13 @@ template <typename T>
 __global__ void BiasGradNCHW_Naive(int32 nthreads, const T* output_backprop,
                                    T* bias_backprop, int32 bias_size,
                                    int32 image_size) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int32 index2 = index / image_size;
     int32 bias_offset = index2 % bias_size;
-    CudaAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
+    GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
 }
 
-extern __shared__ char s_buf[];
 
 template <typename T>
 __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
@@ -134,12 +133,12 @@ __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
   for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
        index += blockDim.x * gridDim.x) {
     int32 bias_offset = index % bias_size;
-    CudaAtomicAdd(s_data + bias_offset, AccT(ldg(output_backprop + index)));
+    GpuAtomicAdd(s_data + bias_offset, AccT(ldg(output_backprop + index)));
   }
   __syncthreads();
 
   for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
-    CudaAtomicAdd(bias_backprop + index, T(s_data[index]));
+    GpuAtomicAdd(bias_backprop + index, T(s_data[index]));
   }
 }
 
@@ -175,21 +174,34 @@ __global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
   // Write the accumulated sum in this thread to the shared memory. Each thread
   // shifts their write location to avoid bank conflict.
   int bias_offset = threadIdx.x % 32;
-  CudaAtomicAdd(s_data + bias_offset, sum);
+  GpuAtomicAdd(s_data + bias_offset, sum);
   __syncthreads();
 
   // Accumulate the results in the shared memory into the first element.
   // No syncthreads is needed since this is only in the same warp.
   int32 thread_index = threadIdx.x;
+#if GOOGLE_CUDA
   if (thread_index < 32) {
     AccT data = s_data[thread_index];
     for (int32 delta = warpSize / 2; delta > 0; delta /= 2) {
-      data += CudaShuffleXorSync(kCudaWarpAll, data, delta);
+      data += GpuShuffleXorSync(kCudaWarpAll, data, delta);
     }
     if (thread_index == 0) {
-      CudaAtomicAdd(bias_backprop + bias_index, T(data));
+      GpuAtomicAdd(bias_backprop + bias_index, T(data));
     }
   }
+#elif TENSORFLOW_USE_ROCM
+  if (thread_index < 16) s_data[thread_index] += s_data[thread_index + 16];
+  if (thread_index < 8) s_data[thread_index] += s_data[thread_index + 8];
+  if (thread_index < 4) s_data[thread_index] += s_data[thread_index + 4];
+  if (thread_index < 2) s_data[thread_index] += s_data[thread_index + 2];
+  if (thread_index < 1) s_data[thread_index] += s_data[thread_index + 1];
+
+  // The first thread writes out the accumulated result to the global location.
+  if (thread_index == 0) {
+    GpuAtomicAdd(bias_backprop + bias_index, T(s_data[0]));
+  }
+#endif
 }
 
 template <typename T>
@@ -252,8 +264,8 @@ void BiasGradGPU<T>::DoRowReduction(OpKernelContext* context, T* output,
                                     const T* input, int rows, int cols) {
   typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
   Constants<GPUDevice> constants;
-  cub::Sum op;
-  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+  gpuprim::Sum op;
+  functor::ReduceImpl<T, gpuprim::Sum, T*, const T*, ReductionAxes>(
       context, output, input, 2, rows, cols, 1, 1, constants.kOne, op);
 }
 
@@ -262,8 +274,8 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
                                     const T* input, int rows, int cols) {
   typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
   Constants<GPUDevice> constants;
-  cub::Sum op;
-  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+  gpuprim::Sum op;
+  functor::ReduceImpl<T, gpuprim::Sum, T*, const T*, ReductionAxes>(
       context, output, input, 2, rows, cols, 1, 1, constants.kZero, op);
 }
 
@@ -275,4 +287,4 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

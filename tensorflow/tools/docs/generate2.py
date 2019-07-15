@@ -150,6 +150,16 @@ _raw_ops_doc = textwrap.dedent("""\n
 
 if LooseVersion(tf.__version__) < LooseVersion('2'):
   tf.raw_ops.__doc__ = _raw_ops_doc
+  tf.contrib.__doc__ = """
+    Contrib module containing volatile or experimental code.
+
+    Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
+    of its submodules have been integrated into TensorFlow core, or spun-off into
+    other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
+    [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
+    on how to upgrade see the
+    [Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+    """
 else:
   tf.raw_ops.__doc__ += _raw_ops_doc
 

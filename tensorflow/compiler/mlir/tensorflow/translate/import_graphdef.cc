@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -86,7 +87,7 @@ class Importer {
 
   explicit Importer(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::Module module,
+      const NodeSpecs& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : module_(module),
         context_(module.getContext()),
@@ -158,8 +159,8 @@ class Importer {
     return ::tensorflow::ConvertTensorProto(value, builder_.get());
   }
 
-  // Converts func name in graphdef to mlir::FunctionAttribute.
-  StatusOr<mlir::FunctionAttr> ConvertFunctionCallName(
+  // Converts func name in graphdef to mlir::SymbolRefAttribute.
+  StatusOr<mlir::SymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
@@ -262,7 +263,7 @@ class Importer {
   using NodeValueMap = absl::flat_hash_map<int, mlir::Operation*>;
 
   std::unique_ptr<mlir::OpBuilder> builder_;
-  mlir::Module module_;
+  mlir::ModuleOp module_;
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
@@ -611,12 +612,12 @@ Status Importer::ConvertFunctionCallAttribute(
   return Status::OK();
 }
 
-StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
+StatusOr<mlir::SymbolRefAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_.getNamedFunction(mlir_func_name);
-  return builder_->getFunctionAttr(func);
+  auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
+  return builder_->getSymbolRefAttr(func);
 }
 
 StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
@@ -715,14 +716,21 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
     attributes.push_back(builder_->getNamedAttr(attr_name, attr));
   }
 
+  // Checks opdef stateful attribute and import that as Function Attribute
+  if (func_def->signature().is_stateful()) {
+    auto stateful_str = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+    attributes.push_back(
+        builder_->getNamedAttr(stateful_str, builder_->getUnitAttr()));
+  }
+
   // Checks for an associated custom gradient function. Adds it to the attribute
   // list of this function.
   auto grad_func_name = func_lib.FindGradient(func_name);
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_.getNamedFunction(mlir_grad_func_name);
-    auto gradient_attr = builder_->getFunctionAttr(grad_func);
+    auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
+    auto gradient_attr = builder_->getSymbolRefAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
   }
@@ -1151,13 +1159,13 @@ Status Importer::Convert(llvm::StringRef func_name,
                          const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                          llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
-  auto function = mlir::Function::create(mlir::UnknownLoc::get(context_),
-                                         func_name, func_type, attrs);
+  auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
+                                       func_name, func_type, attrs);
 
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
-  auto* bb = builder_->createBlock();
+  auto* bb = builder_->createBlock(&function.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));
@@ -1291,7 +1299,8 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const NodeSpecs& specs) {
-  mlir::OwningModuleRef module = mlir::Module::create(context);
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   Importer importer(flib_def, debug_info, specs, module.get(),
                     &tf_name_to_mlir_name);

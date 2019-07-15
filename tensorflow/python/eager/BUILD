@@ -508,6 +508,7 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":forwardprop",
         ":function",
         ":test",
         ":profiler",
@@ -640,7 +641,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     additional_deps = [

@@ -40809,7 +40809,7 @@ func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.Data
 //
 // Note that this routine only supports wildcard characters in the
 // basename portion of the pattern, not in the directory portion.
-// Note also that the order of filenames returned can be non-deterministic.
+// Note also that the order of filenames returned is deterministic.
 //
 // Arguments:
 //	pattern: Shell wildcard pattern(s). Scalar or vector of type string.

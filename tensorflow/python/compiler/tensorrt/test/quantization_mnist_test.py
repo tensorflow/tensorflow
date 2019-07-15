@@ -55,6 +55,7 @@ OUTPUT_NODE_NAME = 'output'
 
 
 class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
+  """Testing usage of quantization ranges inserted in graph."""
 
   def _BuildGraph(self, x):
 
@@ -239,7 +240,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       if mode == ModeKeys.EVAL:
         return EstimatorSpec(
             mode, loss=loss, eval_metric_ops={'accuracy': accuracy})
-      elif mode == ModeKeys.TRAIN:
+      if mode == ModeKeys.TRAIN:
         optimizer = AdamOptimizer(learning_rate=1e-2)
         train_op = optimizer.minimize(loss, global_step=get_global_step())
         return EstimatorSpec(mode, loss=loss, train_op=train_op)

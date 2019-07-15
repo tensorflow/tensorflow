@@ -273,6 +273,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return FPCast(fast_tanh, value->getType());
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
+                            {EmitExtractReal(value), EmitExtractImag(value)},
+                            {prim_type, prim_type}, prim_type);
+}
+
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,

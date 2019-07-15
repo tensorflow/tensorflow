@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -440,11 +439,6 @@ class BufferAssignment {
   bool HaveDisjointSlices(const HloInstruction* hlo_a,
                           const HloInstruction* hlo_b) const;
 
-  // Returns the underlying points-to analysis used for this assignment.
-  const TuplePointsToAnalysis& points_to_analysis() const {
-    return liveness_->points_to_analysis();
-  }
-
   const HloDataflowAnalysis& dataflow_analysis() const {
     return alias_analysis_->dataflow_analysis();
   }
@@ -452,7 +446,7 @@ class BufferAssignment {
   HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
 
   // Returns the BufferLiveness object used to construct this assignment.
-  const BufferLiveness& liveness() const { return *liveness_; }
+  const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
 
   string ToString() const;
   BufferAssignmentProto ToProto() const;
@@ -483,12 +477,12 @@ class BufferAssignment {
   friend class BufferAssigner;
 
   BufferAssignment(const HloModule* module,
-                   std::unique_ptr<BufferLiveness> liveness,
+                   std::unique_ptr<HloOrdering> hlo_ordering,
                    BufferValue::SizeFunction buffer_size,
                    LogicalBuffer::AlignmentFunction color_alignment,
                    std::unique_ptr<HloAliasAnalysis> alias_analysis)
       : module_(module),
-        liveness_(std::move(liveness)),
+        hlo_ordering_(std::move(hlo_ordering)),
         buffer_size_(std::move(buffer_size)),
         color_alignment_(std::move(color_alignment)),
         alias_analysis_(std::move(alias_analysis)) {}
@@ -540,7 +534,8 @@ class BufferAssignment {
       allocation_index_for_value_;
 
   const HloModule* module_;
-  const std::unique_ptr<BufferLiveness> liveness_;
+
+  const std::unique_ptr<HloOrdering> hlo_ordering_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
   BufferValue::SizeFunction buffer_size_;

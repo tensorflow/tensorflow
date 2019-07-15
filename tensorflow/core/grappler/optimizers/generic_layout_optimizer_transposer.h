@@ -139,12 +139,21 @@ class Transposer {
                               utils::MutationNewNode* added_node);
 
  protected:
-  bool IsFanoutPortDimsN(const utils::MutableNodeView& node, int port,
+  bool IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                          int n) const;
-  bool IsFanoutPortsDimsN(const utils::MutableNodeView& node,
+  bool IsFanoutPortsRankN(const utils::MutableNodeView& node,
                           absl::Span<const int> ports, int n) const;
-  bool IsFaninPortDimsN(const utils::MutableNodeView& node, int port,
+  bool IsFaninPortRankN(const utils::MutableNodeView& node, int port,
                         int n) const;
+
+  // Checks if fanin at specified port(s) has dimensions `dims` iff fanin is a
+  // Const. If fanin is not a Const, no dimensions will be checked and this will
+  // return true.
+  bool IsFaninPortDimsNIfConst(const utils::MutableNodeView& node, int port,
+                               absl::Span<const int> dims) const;
+  bool IsFaninPortsDimsNIfConst(const utils::MutableNodeView& node,
+                                absl::Span<const int> ports,
+                                absl::Span<const int> dims) const;
   bool CanProcessNode(const TransposeContext& context,
                       const utils::MutableNodeView& node) const;
   string GetDeviceName(const VirtualPlacer* virtual_placer,
@@ -190,6 +199,14 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit DefaultLayoutSensitiveOpTransposer()
       : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit AvgPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -551,6 +568,10 @@ bool IsUnaryGrad(const NodeDef& node);
 bool IsMaxPoolV2(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
+
+bool IsMaxPoolGradGradV1(const NodeDef& node);
+
+bool IsMaxPoolGradGradV2(const NodeDef& node);
 
 bool IsBinaryOp(const NodeDef& node);
 

@@ -59,4 +59,7 @@ def load_data():
     x_train = x_train.transpose(0, 2, 3, 1)
     x_test = x_test.transpose(0, 2, 3, 1)
 
+  x_test = x_test.astype(x_train.dtype)
+  y_test = y_test.astype(y_train.dtype)
+
   return (x_train, y_train), (x_test, y_test)

@@ -114,7 +114,7 @@ func @QuantizeSoftmax(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>)
   return %1 : tensor<1x6x6x16xf32>
 
 // CHECK: %0 = "tfl.softmax"(%arg0)
-// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03:-128>>) -> tensor<1x6x6x16xf32>
+// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<1x6x6x16xf32>
 // CHECK: return %1 : tensor<1x6x6x16xf32>
 }
 

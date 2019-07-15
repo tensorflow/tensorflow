@@ -318,6 +318,7 @@ const char kXlaControlDependenciesWithinXlaClusterAttrName[] =
 const char kXlaIsLiftedArgAttrName[] = "_xla_is_lifted_arg";
 const char kXlaLiftedArgOutsideCompilationAttrName[] = "_xla_lifted_arg_oc";
 const char kXlaOutsideCompilationInputsAttrName[] = "_xla_oc_inputs";
+const char kXlaIsPlaceholderForArg[] = "_xla_is_placeholder_for_arg";
 
 Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   // Perform shape inference.

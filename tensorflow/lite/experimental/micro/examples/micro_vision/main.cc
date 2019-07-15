@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.h"
@@ -46,12 +47,10 @@ int main(int argc, char* argv[]) {
   // This pulls in all the operation implementations we need.
   tflite::ops::micro::AllOpsResolver resolver;
 
-  tflite::SimpleTensorAllocator tensor_allocator(tensor_arena,
-                                                 tensor_arena_size);
-
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, resolver, &tensor_allocator,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
+  interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
   TfLiteTensor* input = interpreter.input(0);
@@ -69,12 +68,10 @@ int main(int argc, char* argv[]) {
 
     TfLiteTensor* output = interpreter.output(0);
 
-    // Log the person score and no person score.
+    // Process the inference results.
     uint8_t person_score = output->data.uint8[kPersonIndex];
     uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
-    error_reporter->Report(
-        "person data.  person score: %d, no person score: %d\n", person_score,
-        no_person_score);
+    RespondToDetection(error_reporter, person_score, no_person_score);
   }
 
   return 0;
