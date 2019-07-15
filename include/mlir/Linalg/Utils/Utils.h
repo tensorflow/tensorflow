@@ -133,6 +133,11 @@ llvm::SmallVector<PromotionInfo, 8> promoteLinalgViews(OpBuilder &b,
                                                        ArrayRef<Value *> views,
                                                        OperationFolder &folder);
 
+// Returns all the operands of `linalgOp` that are not views.
+// Asserts that these operands are value types to allow transformations like
+// tiling to just use the values when cloning `linalgOp`.
+llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
+
 } // namespace linalg
 } // namespace mlir
 

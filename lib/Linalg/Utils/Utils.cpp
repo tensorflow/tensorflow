@@ -140,3 +140,22 @@ SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder &b,
   }
   return res;
 }
+
+// Returns all the operands of `linalgOp` that are not views.
+// Asserts that these operands are value types to allow transformations like
+// tiling to just use the values when cloning `linalgOp`.
+SmallVector<Value *, 4>
+mlir::linalg::getAssumedNonViewOperands(LinalgOp linalgOp) {
+  auto *op = linalgOp.getOperation();
+  unsigned numViews = linalgOp.getNumInputsAndOutputs();
+  unsigned nOperands = op->getNumOperands() - numViews;
+  SmallVector<Value *, 4> res;
+  res.reserve(nOperands);
+  for (unsigned i = 0; i < nOperands; ++i) {
+    res.push_back(op->getOperand(numViews + i));
+    auto t = res.back()->getType();
+    assert((t.isIntOrIndexOrFloat() || t.isa<VectorType>()) &&
+           "expected scalar or vector type");
+  }
+  return res;
+}

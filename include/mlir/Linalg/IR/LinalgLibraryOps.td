@@ -66,6 +66,9 @@ LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 {}
 
 // Base Tablegen class for Linalg ops.
+// Linalg ops that correspond to library calls operate on linalg::View as their
+// first operands. These may be optionally followed by non-view operands
+// depending on the specific Linalg op.
 class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
   : Op<Linalg_Dialect, mnemonic, props> {
   let parser = [{ return parseLinalgLibraryOp(parser, result); }];

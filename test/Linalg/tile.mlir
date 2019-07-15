@@ -135,3 +135,27 @@ func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg
 //       TILE-234:    %[[b:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-234:    %[[sBi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[b]], %{{.*}}] : !linalg.view<?xf32>
 //       TILE-234:    linalg.dot(%[[sAi]], %[[sBi]], %{{.*}}) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
+
+func @fill(%arg0: !linalg.view<?x?xf32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<?x?xf32>, f32
+  return
+}
+// TILE-2-LABEL: func @fill
+//       TILE-2:   for
+//   TILE-2-NOT:   for
+//       TILE-2:   fill{{.*}} f32
+
+// TILE-02-LABEL: func @fill
+//       TILE-02:   for
+//   TILE-02-NOT:   for
+//       TILE-02:     fill{{.*}} f32
+
+// TILE-002-LABEL: func @fill
+//   TILE-002-NOT:   for
+//       TILE-002:     fill{{.*}} f32
+
+// TILE-234-LABEL: func @fill
+//       TILE-234:   for
+//       TILE-234:     for
+//   TILE-234-NOT:   for
+//       TILE-234:       fill{{.*}} f32
