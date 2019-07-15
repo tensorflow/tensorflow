@@ -383,6 +383,8 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
+    // If/when the assertion below becomes false, templatize `makeTiledViews`.
+    assert(op.getNumInputsAndOutputs() == op.getOperation()->getNumOperands());
     auto views =
         makeTiledViews(b, loc, op, ivValues, tileSizes, viewSizes, folder);
 
@@ -392,8 +394,6 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
                                                  viewsToPromote.end()),
                                 [](bool b) { return b; });
     if (!promote) {
-      auto operands = getAssumedNonViewOperands(op);
-      views.append(operands.begin(), operands.end());
       res = op.create(b, loc, views, op.getAttrs());
       return;
     }
@@ -424,8 +424,6 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
         opViews[i] = views[i];
       }
     }
-    auto operands = getAssumedNonViewOperands(op);
-    opViews.append(operands.begin(), operands.end());
     res = op.create(b, loc, opViews, op.getAttrs());
 
     // 6. Emit write-back for the promoted output views: copy the partial view.

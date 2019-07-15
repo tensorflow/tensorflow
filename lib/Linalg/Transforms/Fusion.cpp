@@ -104,8 +104,6 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     // TODO(ntv) opportunities for folding/CSE here rather than build new IR.
     clonedViews.push_back(b.create<SubViewOp>(loc, view, viewRanges));
   }
-  auto operands = getAssumedNonViewOperands(op);
-  clonedViews.append(operands.begin(), operands.end());
   return op.create(b, loc, clonedViews, op.getAttrs());
 }
 
