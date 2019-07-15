@@ -1160,6 +1160,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "optimize_dataset_op",
     srcs = ["optimize_dataset_op.cc"],
+    hdrs = ["optimize_dataset_op.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
