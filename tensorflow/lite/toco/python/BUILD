@@ -1,13 +1,13 @@
-package(default_visibility = [
-    "//tensorflow/lite:__subpackages__",
-    "//tensorflow/tools/pip_package:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
+
+package(
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
@@ -22,9 +22,13 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
     deps = [
         "//third_party/python_runtime:headers",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
@@ -41,30 +45,28 @@ cc_library(
     }),
 )
 
-tf_py_wrap_cc(
+# Compatibility stub. Remove when internal customers moved.
+py_library(
     name = "tensorflow_wrap_toco",
-    srcs = ["toco.i"],
+    srcs = ["tensorflow_wrap_toco.py"],
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
         "//research/handwriting/converters/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        ":toco_python_api",
-        "//tensorflow/lite/toco:model_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
 py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
-        ":tensorflow_wrap_toco",
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -76,11 +78,15 @@ tf_py_test(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
     ],
-    data = [
-        ":toco_from_protos",
-    ],
     tags = [
         "no_oss",
         "no_pip",
+    ],
+)
+
+exports_files(
+    ["toco.i"],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
     ],
 )

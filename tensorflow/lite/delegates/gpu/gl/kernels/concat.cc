@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -104,7 +105,7 @@ class ConcatByAnyChannel : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by channels only.
-    if (attr.axis != ::tflite::gpu::Axis::CHANNELS) {
+    if (attr.axis != Axis::CHANNELS) {
       return false;
     }
 
@@ -324,7 +325,7 @@ class FlatConcatByHeight : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by height only.
-    if (attr.axis != ::tflite::gpu::Axis::HEIGHT) {
+    if (attr.axis != Axis::HEIGHT) {
       return false;
     }
 
@@ -349,7 +350,7 @@ class FlatConcatByHeight : public NodeShader {
                       GeneratedCode* generated_code) const final {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
     std::string code;
-    std::vector<UniformParameter> params;
+    std::vector<Variable> params;
     for (int i = 0, shift = 0; i < inputs.size();
          shift += inputs[i]->tensor.shape.h, i++) {
       code += "if (";
@@ -390,7 +391,7 @@ class FlatConcatByWidth : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by width only.
-    if (attr.axis != ::tflite::gpu::Axis::WIDTH) {
+    if (attr.axis != Axis::WIDTH) {
       return false;
     }
 
@@ -415,7 +416,7 @@ class FlatConcatByWidth : public NodeShader {
                       GeneratedCode* generated_code) const final {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
     std::string code;
-    std::vector<UniformParameter> params;
+    std::vector<Variable> params;
     for (int i = 0, shift = 0; i < inputs.size();
          shift += inputs[i]->tensor.shape.w, i++) {
       code += "if (";

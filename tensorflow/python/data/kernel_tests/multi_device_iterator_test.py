@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -205,7 +206,9 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     init_op = multi_device_iterator.initializer
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config) as sess:
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 2
+    with session.Session(config=config) as sess:
       for i in range(1000):
         sess.run(init_op, feed_dict={epoch: i})
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,

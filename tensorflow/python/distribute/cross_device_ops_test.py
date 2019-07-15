@@ -32,6 +32,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import kernels
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -288,36 +289,41 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     self._testReductionAndBroadcast(cross_device_ops, devices)
 
   def testChooseAlgorithm(self):
-    device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
-                    [0, 5, 6, 7], [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6]]
-    result = cross_device_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_device_ops_lib.AllReduceCrossDeviceOps)
-    self.assertEqual(result._all_reduce_alg, "hierarchical_copy")
-    self.assertEqual(result._num_packs, 8)
+    # Not use nccl if there is any cpu device.
+    self.assertIsInstance(
+        cross_device_ops_lib.choose_the_best(["/cpu:0"]),
+        cross_device_ops_lib.ReductionToOneDevice)
 
-    # if there are only 4 devices
-    device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7]]
-    result = cross_device_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_device_ops_lib.AllReduceCrossDeviceOps)
-    self.assertEqual(result._all_reduce_alg, "nccl")
-    self.assertEqual(result._num_packs, 1)
+    # Not use nccl if requested device is not visible to TensorFlow.
+    self.assertIsInstance(
+        cross_device_ops_lib.choose_the_best(["/gpu:100"]),
+        cross_device_ops_lib.ReductionToOneDevice)
 
-    # if devices links contain each device itself
-    device_links = [[0, 1, 2, 3, 4], [0, 1, 2, 3, 5], [0, 1, 2, 3, 6],
-                    [0, 1, 2, 3, 7], [0, 4, 5, 6, 7], [1, 4, 5, 6, 7],
-                    [2, 4, 5, 6, 7], [3, 4, 5, 6, 7]]
-    result = cross_device_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_device_ops_lib.AllReduceCrossDeviceOps)
-    self.assertEqual(result._all_reduce_alg, "hierarchical_copy")
-    self.assertEqual(result._num_packs, 8)
+    if context.num_gpus() < 1:
+      return
 
-    # if not dgx1-like links
-    device_links = [[0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7], [0, 5, 6, 7],
-                    [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6], [1, 2, 3, 4]]
-    result = cross_device_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_device_ops_lib.AllReduceCrossDeviceOps)
-    self.assertEqual(result._all_reduce_alg, "nccl")
-    self.assertEqual(result._num_packs, 1)
+    devices = ["/gpu:0"]
+
+    def mock_get_registered_kernels_for_op(op):
+      if op == "NcclAllReduce":
+        return [object]
+      else:
+        return []
+
+    # Use nccl if nccl kernel is found.
+    with test.mock.patch.object(kernels, "get_registered_kernels_for_op",
+                                mock_get_registered_kernels_for_op):
+      self.assertIsInstance(
+          cross_device_ops_lib.choose_the_best(devices),
+          cross_device_ops_lib.NcclAllReduce)
+
+    # Not use nccl if nccl kernel is not found.
+    with test.mock.patch.object(kernels,
+                                "get_registered_kernels_for_op", lambda _: []):
+      self.assertIsInstance(
+          cross_device_ops_lib.choose_the_best(devices),
+          cross_device_ops_lib.ReductionToOneDevice)
+
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
@@ -440,11 +446,9 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                         use_strategy_object=False,
                         local_mode=False):
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
-        CollectiveAllReduceTest.collective_key_base,
-        instance_key_start=num_gpus * 100 +
-        CollectiveAllReduceTest.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        group_key_start=10 + CollectiveAllReduceTest.collective_key_base,
+        op_instance_key_start=100 + CollectiveAllReduceTest.collective_key_base,
+        variable_instance_key_start=10000 +
         CollectiveAllReduceTest.collective_key_base)
     if local_mode:
       if num_gpus:

@@ -308,14 +308,16 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
   });
   m.SetSize({3, 3});
   m.Invoke();
-  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                        3, 5, 6,     //
-                                        7, 9, 10,    //
-                                        9, 11, 12,   //
-                                        4, 8, 10,    //
-                                        9, 12, 14,   //
-                                        12, 14, 16,  //
-                                    })));
+  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            3, 5, 6,     //
+                                            7, 9, 10,    //
+                                            9, 11, 12,   //
+                                            4, 8, 10,    //
+                                            9, 12, 14,   //
+                                            12, 14, 16,  //
+                                        },
+                                        /*max_abs_error=*/1)));
 
   ResizeBilinearOpModel const_m({TensorType_UINT8, {2, 2, 2, 1}}, {3, 3});
   const_m.SetInput<uint8>({
@@ -325,14 +327,16 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
       12, 16  //
   });
   const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 5, 6,     //
-                                              7, 9, 10,    //
-                                              9, 11, 12,   //
-                                              4, 8, 10,    //
-                                              9, 12, 14,   //
-                                              12, 14, 16,  //
-                                          })));
+  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear(
+                                              {
+                                                  3, 5, 6,     //
+                                                  7, 9, 10,    //
+                                                  9, 11, 12,   //
+                                                  4, 8, 10,    //
+                                                  9, 12, 14,   //
+                                                  12, 14, 16,  //
+                                              },
+                                              /*max_abs_error=*/1)));
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
@@ -380,11 +384,13 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
   });
   m.SetSize({3, 3});
   m.Invoke();
-  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                        3, 4, 5, 8, 6, 10,       //
-                                        7, 9, 10, 12, 11, 14,    //
-                                        10, 12, 12, 14, 14, 16,  //
-                                    })));
+  EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            3, 4, 5, 8, 6, 10,       //
+                                            7, 9, 10, 12, 11, 14,    //
+                                            10, 12, 12, 14, 14, 16,  //
+                                        },
+                                        /*max_abs_error=*/1)));
 
   ResizeBilinearOpModel const_m({TensorType_UINT8, {1, 2, 2, 2}}, {3, 3});
   const_m.SetInput<uint8>({
@@ -392,11 +398,13 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
       10, 12, 14, 16,  //
   });
   const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 4, 5, 8, 6, 10,       //
-                                              7, 9, 10, 12, 11, 14,    //
-                                              10, 12, 12, 14, 14, 16,  //
-                                          })));
+  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear(
+                                              {
+                                                  3, 4, 5, 8, 6, 10,       //
+                                                  7, 9, 10, 12, 11, 14,    //
+                                                  10, 12, 12, 14, 14, 16,  //
+                                              },
+                                              /*max_abs_error=*/1)));
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
@@ -427,9 +435,3 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
 }
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

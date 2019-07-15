@@ -468,7 +468,7 @@ class RMSpropOptimizerTest(test.TestCase):
         learning_rate = lambda: 2.0
         rho = lambda: 0.9
         momentum = lambda: 0.0
-        epsilon = lambda: 1.0
+        epsilon = 1.0
         opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
 
         # Fetch params to validate initial values
@@ -544,15 +544,6 @@ class RMSpropOptimizerTest(test.TestCase):
       self.assertEqual(7, len(set(opt.variables())))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
-
-  def testConstructRMSpropWithEpsilonValues(self):
-    opt = rmsprop.RMSprop(epsilon=None)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-7)
-
-    opt = rmsprop.RMSprop(epsilon=1e-8)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-8)
 
 
 class SlotColocationTest(test.TestCase, parameterized.TestCase):

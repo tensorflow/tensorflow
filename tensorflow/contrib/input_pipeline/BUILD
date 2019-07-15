@@ -17,9 +17,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -79,6 +80,7 @@ py_test(
     name = "input_pipeline_ops_test",
     size = "small",
     srcs = ["python/ops/input_pipeline_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":input_pipeline_py",

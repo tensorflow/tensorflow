@@ -20,6 +20,27 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
+// Detect ARM, 32-bit or 64-bit
+#ifdef __aarch64__
+#define RUY_ARM_64
+#elif defined(__arm__)
+#define RUY_ARM_32
+#endif
+
+// Detect NEON.
+#if (defined __ARM_NEON) || (defined __ARM_NEON__)
+#define RUY_NEON
+#endif
+
+// Define 32bit ARM NEON and 64 bit ARM NEON
+#if defined(RUY_NEON) && defined(RUY_ARM_32)
+#define RUY_NEON_32
+#endif
+
+#if defined(RUY_NEON) && defined(RUY_ARM_64)
+#define RUY_NEON_64
+#endif
+
 namespace ruy {
 
 // A Path is a choice of implementation path, e.g. between reference code
@@ -44,12 +65,31 @@ namespace ruy {
 // at runtime; then, typically in dispatch.h, we internally pick one
 // specific path and from there on, internal Ruy code deals with only one
 // path.
+//
+// When a user selects a set of compiled paths, Ruy internally dispatches to the
+// "best" one, which typically means the newest optimized instructions for a
+// given base architecture (such as ARM). Higher values of this enum correspond
+// to "better" code paths within a given base architecture for which Ruy has
+// optimized code paths.
 enum class Path : std::uint8_t {
-  // Higher values have higher precedence.
+  // This is a special null value, representing the absence of any path.
   kNone = 0,
-  kReference = 0x1,    // reference code.
-  kStandardCpp = 0x2,  // Standard C++ only. No SIMD or other arch features.
+  // Reference multiplication code.
+  // The main purpose of this path is to have a very simple standalone Mul
+  // implementation to check against.
+  // This path bypasses almost all of Ruy's internal implementation details.
+  //
+  // This is intended for testing/development.
+  kReference = 0x1,
+  // Standard C++ implementation of Ruy's architecture-specific parts.
+  // Unlike Path::kReference, this path exercises most of Ruy's internal logic.
+  //
+  // This is intended for testing/development.
+  kStandardCpp = 0x2,
+  // Optimized path using a widely available subset of ARM NEON instructions.
   kNeon = 0x4,
+  // Optimized path making use of ARM NEON dot product instructions that are
+  // available on newer ARM cores.
   kNeonDotprod = 0x8,
 };
 
@@ -68,16 +108,33 @@ inline constexpr Path operator^(Path p, Path q) {
                            static_cast<std::uint32_t>(q));
 }
 
+inline constexpr Path operator~(Path p) {
+  return static_cast<Path>(~static_cast<std::uint32_t>(p));
+}
+
 inline Path GetMostSignificantPath(Path path_mask) {
   return static_cast<Path>(round_down_pot(static_cast<int>(path_mask)));
 }
 
-#ifdef __aarch64__
+// ruy::kAllPaths represents all Path's that make sense to on a given
+// base architecture.
+#ifdef __linux__
+#ifdef RUY_NEON_64
 constexpr Path kAllPaths =
     Path::kReference | Path::kStandardCpp | Path::kNeon | Path::kNeonDotprod;
+#elif defined RUY_NEON_32
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
-#endif
+#endif  // RUY_NEON_64
+#else   // __linux__
+// We don't know how to do runtime dotprod detection outside of linux for now.
+#if defined(RUY_NEON_64) || defined(RUY_NEON_32)
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
+#else
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
+#endif  // defined(RUY_NEON_64) || defined(RUY_NEON_32)
+#endif  // __linux__
 
 }  // namespace ruy
 

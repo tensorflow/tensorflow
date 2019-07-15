@@ -61,7 +61,7 @@ TEST(LabeledSamplerTest, ExplicitBucketBoundaries) {
 auto* init_sampler_without_labels =
     Sampler<0>::New({"/tensorflow/test/init_sampler_without_labels",
                      "Sampler without labels initialized as empty."},
-                    Buckets::Explicit({1.5, 2.8}));
+                    Buckets::Explicit(std::vector<double>{1.5, 2.8}));
 
 TEST(UnlabeledSamplerTest, InitializedEmpty) {
   Histogram empty;
@@ -112,7 +112,7 @@ TEST(ExponentialSamplerTest, ExponentialBucketBoundaries) {
   EqHistograms(expected, cell->value());
 }
 
-TEST(ExponentialSamplerTest, SameName) {
+TEST(ExplicitSamplerTest, SameName) {
   auto* same_sampler = Sampler<1>::New({"/tensorflow/test/sampler_with_labels",
                                         "Sampler with one label.", "MyLabel"},
                                        Buckets::Explicit({10.0, 20.0}));

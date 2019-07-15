@@ -141,29 +141,11 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
 
   // 3. DELETE LEFTOVER OPERATORS
   // ***************************************************************************
-  // Order is important. Delete the output array first, then the op, then it's
-  // redundant inputs.
-  // BatchToSpace Op
-  DeleteArrayIfUnused(bts_op->outputs[0], model);
-  std::vector<string> bts_op_inputs = bts_op->inputs;
-  model->operators.erase(FindOp(*model, bts_op));
-  DeleteArrayIfUnused(bts_op_inputs[1], model);
-  DeleteArrayIfUnused(bts_op_inputs[2], model);
-
-  // Pad Op if present
+  DeleteOpAndArrays(model, bts_op);
+  DeleteOpAndArrays(model, stb_op);
   if (has_pad_op) {
-    DeleteArrayIfUnused(pad_op->outputs[0], model);
-    std::vector<string> pad_op_inputs = pad_op->inputs;
-    model->operators.erase(FindOp(*model, pad_op));
-    DeleteArrayIfUnused(pad_op_inputs[1], model);
+    DeleteOpAndArrays(model, pad_op);
   }
-
-  // SpaceToBatch Op
-  DeleteArrayIfUnused(stb_op->outputs[0], model);
-  std::vector<string> stb_op_inputs = stb_op->inputs;
-  model->operators.erase(FindOp(*model, stb_op));
-  DeleteArrayIfUnused(stb_op_inputs[1], model);
-  DeleteArrayIfUnused(stb_op_inputs[2], model);
 
   return true;
 }

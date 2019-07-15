@@ -55,7 +55,7 @@ Args:
 
 Returns:
   True if the sequence is a not a string and is a collections.Sequence or a
-  dict or a CompositeTensor.
+  dict or a CompositeTensor or a TypeSpec (except string and TensorSpec).
 """
 %unignore tensorflow::swig::IsSequenceOrComposite;
 %noexception tensorflow::swig::IsSequenceOrComposite;
@@ -71,6 +71,18 @@ Returns:
 """
 %unignore tensorflow::swig::IsCompositeTensor;
 %noexception tensorflow::swig::IsCompositeTensor;
+
+%feature("docstring") tensorflow::swig::IsTypeSpec
+"""Returns true if its input is a `TypeSpec`, but is not a `TensorSpec`.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a `TypeSpec`, but is not a `TensorSpec`.
+"""
+%unignore tensorflow::swig::IsTypeSpec;
+%noexception tensorflow::swig::IsTypeSpec;
 
 %unignore tensorflow::swig::IsNamedtuple;
 %noexception tensorflow::swig::IsNamedtuple;

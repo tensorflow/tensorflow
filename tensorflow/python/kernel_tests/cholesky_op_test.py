@@ -29,9 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -43,10 +41,6 @@ from tensorflow.python.platform import tf_logging
 
 
 # Different gradient implementations for benchmark purposes
-def SpecializedGrad(l, grad):
-  return gen_linalg_ops.cholesky_grad(l, grad)
-
-
 def _GradWithInverseL(l, l_inverse, grad):
   middle = math_ops.matmul(l, grad, adjoint_a=True)
   middle = array_ops.matrix_set_diag(middle,
@@ -251,20 +245,6 @@ class CholeskyGradTest(test.TestCase):
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.complex128,), scalarTest=True)
 
-  def testAgainstSpecialized(self):
-    np.random.seed(0)
-    data = np.random.randn(33, 33).astype(np.float32)
-    data = np.matmul(data, data.T)
-    grad_data = np.random.randn(*data.shape).astype(np.float32)
-
-    with ops.Graph().as_default(), self.session(use_gpu=False) as s:
-      x = constant_op.constant(data, dtypes_lib.float32)
-      chol = linalg_ops.cholesky(x)
-      composite_grad = gradients_impl.gradients(chol, x, grad_data)[0]
-      specialized_grad = SpecializedGrad(chol, grad_data)
-      reference, actual = s.run([specialized_grad, composite_grad])
-    self.assertAllClose(reference, actual)
-
   def runFiniteDifferences(self,
                            shapes,
                            dtypes=(dtypes_lib.float32, dtypes_lib.float64,
@@ -403,7 +383,6 @@ class CholeskyBenchmark(test.Benchmark):
                    "/cpu:0")
     _BenchmarkGrad(TriAngSolveCompositeGrad, "composite_triangular_solve",
                    "/cpu:0")
-    _BenchmarkGrad(SpecializedGrad, "specialized", "/cpu:0")
 
 
 if __name__ == "__main__":

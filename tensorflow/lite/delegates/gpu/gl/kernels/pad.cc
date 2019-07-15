@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -46,7 +47,7 @@ class Pad : public NodeShader {
         attr.prepended.h < 0 || attr.prepended.w < 0 || attr.prepended.c < 0) {
       return UnimplementedError("Negative padding is not supported.");
     }
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
         {"prepended",

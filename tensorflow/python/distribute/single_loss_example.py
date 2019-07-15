@@ -50,26 +50,14 @@ def single_loss_example(optimizer_fn, distribution, use_bias=False,
   return single_loss_step, layer
 
 
-def minimize_loss_example(optimizer_fn,
-                          use_bias=False,
-                          use_callable_loss=True,
-                          create_optimizer_inside_model_fn=False):
+def minimize_loss_example(optimizer, use_bias=False, use_callable_loss=True):
   """Example of non-distribution-aware legacy code."""
-
-  if isinstance(optimizer_fn(), optimizer_v2.OptimizerV2):
-    # Keras optimizer v2 always uses callable loss
-    assert use_callable_loss
 
   def dataset_fn():
     dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
     # TODO(isaprykin): batch with drop_remainder causes shapes to be
     # fully defined for TPU.  Remove this when XLA supports dynamic shapes.
     return dataset.batch(1, drop_remainder=True)
-
-  # An Optimizer instance is created either outside or inside model_fn.
-  outer_optimizer = None
-  if not create_optimizer_inside_model_fn:
-    outer_optimizer = optimizer_fn()
 
   layer = core.Dense(1, use_bias=use_bias)
 
@@ -80,12 +68,9 @@ def minimize_loss_example(optimizer_fn,
       y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
       return y * y
 
-    optimizer = outer_optimizer or optimizer_fn()
-
     if isinstance(optimizer, optimizer_v2.OptimizerV2):
       return optimizer.minimize(loss_fn, lambda: layer.trainable_variables)
-
-    if use_callable_loss:
+    elif use_callable_loss:
       return optimizer.minimize(loss_fn)
     else:
       return optimizer.minimize(loss_fn())

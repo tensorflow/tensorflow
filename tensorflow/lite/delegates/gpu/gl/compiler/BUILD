@@ -1,8 +1,9 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "preprocessor",
@@ -34,7 +35,7 @@ cc_library(
     deps = [
         ":preprocessor",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
@@ -81,6 +82,7 @@ cc_test(
         ":object_accessor",
         ":parameter_accessor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/types:variant",
         "@com_google_googletest//:gtest_main",
     ],
@@ -93,7 +95,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:object",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 
@@ -112,6 +114,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:compiler_options",
         "//tensorflow/lite/delegates/gpu/gl:gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -174,7 +177,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "//tensorflow/lite/delegates/gpu/gl:object",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/strings",
     ],
 )

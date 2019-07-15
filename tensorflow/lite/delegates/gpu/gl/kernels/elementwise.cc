@@ -34,60 +34,56 @@ class ElementwiseOneArgument : public NodeShader {
                       GeneratedCode* generated_code) const final {
     std::string source;
     switch (operation_type_) {
-      case OperationType::ABS: {
+      case OperationType::ABS:
         source = "value_0 = abs(value_0);";
         break;
-      }
-      case OperationType::SIN: {
-        source = "value_0 = sin(value_0);";
-        break;
-      }
-      case OperationType::COS: {
+      case OperationType::COS:
         source = "value_0 = cos(value_0);";
         break;
-      }
-      case OperationType::LOG: {
+      case OperationType::HARD_SWISH:
+        source =
+            "value_0 *= clamp(value_0 / 6.0 + vec4(0.5), vec4(0.0), "
+            "vec4(1.0));";
+        break;
+      case OperationType::LOG:
         source = R"(
-        const float nan = normalize(vec4(0,0,0,0)).x;
-        value_0.x = value_0.x > 0.0 ? log(value_0.x) : nan;
-        value_0.y = value_0.y > 0.0 ? log(value_0.y) : nan;
-        value_0.z = value_0.z > 0.0 ? log(value_0.z) : nan;
-        value_0.w = value_0.w > 0.0 ? log(value_0.w) : nan;
-    )";
+            const float nan = normalize(vec4(0, 0, 0, 0)).x;
+            value_0.x = value_0.x > 0.0 ? log(value_0.x) : nan;
+            value_0.y = value_0.y > 0.0 ? log(value_0.y) : nan;
+            value_0.z = value_0.z > 0.0 ? log(value_0.z) : nan;
+            value_0.w = value_0.w > 0.0 ? log(value_0.w) : nan;
+        )";
         break;
-      }
-      case OperationType::SQRT: {
+      case OperationType::RSQRT:
         source = R"(
-        const float nan = normalize(vec4(0,0,0,0)).x;
-        value_0.x = value_0.x >= 0.0 ? sqrt(value_0.x) : nan;
-        value_0.y = value_0.y >= 0.0 ? sqrt(value_0.y) : nan;
-        value_0.z = value_0.z >= 0.0 ? sqrt(value_0.z) : nan;
-        value_0.w = value_0.w >= 0.0 ? sqrt(value_0.w) : nan;
-    )";
+            const float nan = normalize(vec4(0, 0, 0, 0)).x;
+            value_0.x = value_0.x >= 0.0 ? 1.0 / sqrt(value_0.x) : nan;
+            value_0.y = value_0.y >= 0.0 ? 1.0 / sqrt(value_0.y) : nan;
+            value_0.z = value_0.z >= 0.0 ? 1.0 / sqrt(value_0.z) : nan;
+            value_0.w = value_0.w >= 0.0 ? 1.0 / sqrt(value_0.w) : nan;
+        )";
         break;
-      }
-      case OperationType::RSQRT: {
-        source = R"(
-        const float nan = normalize(vec4(0,0,0,0)).x;
-        value_0.x = value_0.x >= 0.0 ? 1.0 / sqrt(value_0.x) : nan;
-        value_0.y = value_0.y >= 0.0 ? 1.0 / sqrt(value_0.y) : nan;
-        value_0.z = value_0.z >= 0.0 ? 1.0 / sqrt(value_0.z) : nan;
-        value_0.w = value_0.w >= 0.0 ? 1.0 / sqrt(value_0.w) : nan;
-    )";
-        break;
-      }
-      case OperationType::SQUARE: {
-        source = "value_0 = value_0 * value_0;";
-        break;
-      }
-      case OperationType::SIGMOID: {
+      case OperationType::SIGMOID:
         source = "value_0 = 1.0 / (1.0 + exp(-1.0 * value_0));";
         break;
-      }
-      case OperationType::TANH: {
+      case OperationType::SIN:
+        source = "value_0 = sin(value_0);";
+        break;
+      case OperationType::SQRT:
+        source = R"(
+            const float nan = normalize(vec4(0, 0, 0, 0)).x;
+            value_0.x = value_0.x >= 0.0 ? sqrt(value_0.x) : nan;
+            value_0.y = value_0.y >= 0.0 ? sqrt(value_0.y) : nan;
+            value_0.z = value_0.z >= 0.0 ? sqrt(value_0.z) : nan;
+            value_0.w = value_0.w >= 0.0 ? sqrt(value_0.w) : nan;
+        )";
+        break;
+      case OperationType::SQUARE:
+        source = "value_0 = value_0 * value_0;";
+        break;
+      case OperationType::TANH:
         source = "value_0 = tanh(value_0);";
         break;
-      }
       default:
         return InvalidArgumentError("Incorrect elementwise operation type.");
     }
@@ -183,19 +179,20 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     OperationType operation_type) {
   switch (operation_type) {
     case OperationType::ABS:
-    case OperationType::SIN:
     case OperationType::COS:
     case OperationType::LOG:
-    case OperationType::SQRT:
+    case OperationType::HARD_SWISH:
     case OperationType::RSQRT:
-    case OperationType::SQUARE:
     case OperationType::SIGMOID:
+    case OperationType::SIN:
+    case OperationType::SQRT:
+    case OperationType::SQUARE:
     case OperationType::TANH:
       return absl::make_unique<ElementwiseOneArgument>(operation_type);
-    case OperationType::SUB:
     case OperationType::DIV:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
+    case OperationType::SUB:
       return absl::make_unique<ElementwiseTwoArguments>(operation_type);
     default:
       return nullptr;

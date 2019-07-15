@@ -34,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -90,6 +90,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
 
     tflite_model = convert.toco_convert_graph_def(
         sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
+        enable_mlir_converter=False,
         inference_type=lite_constants.FLOAT)
     self.assertTrue(tflite_model)
 
@@ -126,6 +127,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         sess.graph_def,
         input_arrays_map,
         output_arrays,
+        enable_mlir_converter=False,
         inference_type=lite_constants.QUANTIZED_UINT8,
         quantized_input_stats=[(0., 1.), (0., 1.)])
     self.assertTrue(tflite_model)
@@ -171,13 +173,14 @@ class ConvertTest(test_util.TensorFlowTestCase):
           sess.graph_def,
           input_arrays_map,
           output_arrays,
+          enable_mlir_converter=False,
           inference_type=lite_constants.QUANTIZED_UINT8)
     self.assertEqual(
         "std_dev and mean must be defined when inference_input_type is "
         "QUANTIZED_UINT8.", str(error.exception))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""
 

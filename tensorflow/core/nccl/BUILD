@@ -2,12 +2,6 @@
 #   Wrap NVIDIA (https://github.com/NVIDIA/nccl) NCCL with tensorflow ops.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -15,6 +9,13 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "nccl_lib",
@@ -27,6 +28,7 @@ cc_library(
     ]),
     copts = tf_copts(),
     deps = if_cuda([
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_nccl//:nccl",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

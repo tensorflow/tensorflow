@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -152,18 +154,18 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
-  float* first_ptr = a.Allocate<float>(1024);
+  float* first_ptr = TypedAllocator::Allocate<float>(&a, 1024, {});
   a.DeallocateRaw(first_ptr);
   CheckStats(&a, 1, 0, 4096, 4096);
   for (int i = 0; i < 1024; ++i) {
     // Allocate several buffers of different sizes, and then clean them
     // all up.  We should be able to repeat this endlessly without
     // causing fragmentation and growth.
-    float* t1 = a.Allocate<float>(1024);
+    float* t1 = TypedAllocator::Allocate<float>(&a, 1024, {});
 
-    int64* t2 = a.Allocate<int64>(1048576);
-    double* t3 = a.Allocate<double>(2048);
-    float* t4 = a.Allocate<float>(10485760);
+    int64* t2 = TypedAllocator::Allocate<int64>(&a, 1048576, {});
+    double* t3 = TypedAllocator::Allocate<double>(&a, 2048, {});
+    float* t4 = TypedAllocator::Allocate<float>(&a, 10485760, {});
 
     a.DeallocateRaw(t1);
     a.DeallocateRaw(t2);
@@ -178,7 +180,7 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
   // At the end, we should have coalesced all memory into one region
   // starting at the beginning, so validate that allocating a pointer
   // starts from this region.
-  float* first_ptr_after = a.Allocate<float>(1024);
+  float* first_ptr_after = TypedAllocator::Allocate<float>(&a, 1024, {});
   EXPECT_EQ(first_ptr, first_ptr_after);
   a.DeallocateRaw(first_ptr_after);
 }
@@ -189,7 +191,7 @@ TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
       GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
       platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
-  float* ptr = a.Allocate<float>(0);
+  float* ptr = TypedAllocator::Allocate<float>(&a, 0, {});
   EXPECT_EQ(nullptr, ptr);
 }
 
@@ -208,7 +210,7 @@ TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
       GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
       platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
-  float* t1 = a.Allocate<float>(1);
+  float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
   a.DeallocateRaw(t1);
@@ -222,8 +224,8 @@ TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   // Configure a 1MiB byte limit
   GPUBFCAllocator a(sub_allocator, 1 << 20, "GPU_0_bfc");
 
-  float* first_ptr = a.Allocate<float>(1 << 6);
-  float* second_ptr = a.Allocate<float>(1 << 20);
+  float* first_ptr = TypedAllocator::Allocate<float>(&a, 1 << 6, {});
+  float* second_ptr = TypedAllocator::Allocate<float>(&a, 1 << 20, {});
 
   EXPECT_NE(nullptr, first_ptr);
   EXPECT_EQ(nullptr, second_ptr);

@@ -16,8 +16,6 @@
 
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
-
-The other part of the debugger is the stepper (c.f. stepper_cli.py).
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1440,8 +1438,7 @@ class DebugAnalyzer(object):
 
     hang += DEPTH_TEMPLATE % depth
 
-    for i in xrange(len(all_inputs)):
-      inp = all_inputs[i]
+    for i, inp in enumerate(all_inputs):
       op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
       if op_type in self._GRAPH_STRUCT_OP_TYPE_BLACKLIST:
         continue

@@ -126,23 +126,18 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
-      computation_placer_(computation_placer) {
-  // The given set of stream executors set may include invalid executors.
-  for (se::StreamExecutor* exec : stream_executors) {
-    if (exec != nullptr) {
-      stream_executors_.push_back(exec);
-    }
-  }
+      computation_placer_(computation_placer),
+      stream_executors_(stream_executors.begin(), stream_executors.end()) {
   // Create a memory allocator for the valid stream executors.
-  memory_allocator_ = absl::make_unique<StreamExecutorMemoryAllocator>(
-      platform, stream_executors);
+  memory_allocator_ = absl::make_unique<se::StreamExecutorMemoryAllocator>(
+      platform, stream_executors_);
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
-                                : tensorflow::port::NumSchedulableCPUs();
+                                : tensorflow::port::MaxParallelism();
     intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
   }
 }

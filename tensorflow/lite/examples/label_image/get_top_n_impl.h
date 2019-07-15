@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_IMPL_H_
 
 #include <algorithm>
+#include <functional>
 #include <queue>
 
 namespace tflite {

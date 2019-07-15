@@ -62,8 +62,8 @@ protocol: "grpc"
   TF_Buffer* null_result =
       TFE_GetServerDef(malformed_text_proto.c_str(), status);
   EXPECT_NE(TF_GetCode(status), TF_OK);
-  EXPECT_TRUE(tensorflow::str_util::StrContains(
-      TF_Message(status), "Invalid text proto for ServerDef"));
+  EXPECT_TRUE(absl::StrContains(TF_Message(status),
+                                "Invalid text proto for ServerDef"));
   EXPECT_EQ(null_result, nullptr);
 
   // Cleanup

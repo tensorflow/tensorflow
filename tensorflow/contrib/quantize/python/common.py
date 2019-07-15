@@ -115,7 +115,8 @@ def CreateOrGetQuantizationStep():
           dtype=dtypes.int64,
           initializer=init_ops.zeros_initializer(),
           trainable=False,
-          collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
       with g.name_scope(quantization_step_tensor.op.name + '/'):
         # We return the incremented variable tensor. Since this is used in conds
         # for quant_delay and freeze_bn_delay, it will run once per graph

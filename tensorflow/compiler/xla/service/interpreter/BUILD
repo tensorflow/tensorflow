@@ -3,9 +3,10 @@ load(
     "if_static",
 )
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "interpreter_transfer_manager",
@@ -35,6 +36,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:cholesky_expander",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -53,7 +55,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:triangular_solve_expander",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
@@ -66,8 +67,8 @@ cc_library(
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
     deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
-        ["@protobuf_archive//:protobuf"],
-        ["@protobuf_archive//:protobuf_headers"],
+        ["@com_google_protobuf//:protobuf"],
+        ["@com_google_protobuf//:protobuf_headers"],
     ),
 )
 

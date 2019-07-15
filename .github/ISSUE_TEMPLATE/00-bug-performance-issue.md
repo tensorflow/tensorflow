@@ -18,10 +18,11 @@ about: Use this template for reporting a bug or a performance issue.
 - CUDA/cuDNN version:
 - GPU model and memory:
 
-
-You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)
-You can also obtain the TensorFlow version with
-python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
+You can collect some of this information using our environment capture
+[script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)
+You can also obtain the TensorFlow version with: 1. TF 1.0: `python -c "import
+tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` 2. TF 2.0: `python -c
+"import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
 
 **Describe the current behavior**
 

@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
 #include "tensorflow/core/lib/monitoring/mobile_gauge.h"
 #else
@@ -219,7 +223,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
   static_assert(std::is_same<ValueType, int64>::value ||
                     std::is_same<ValueType, string>::value ||
                     std::is_same<ValueType, bool>::value,
-                "Gauge only allows int64 and string types.");
+                "Gauge only allows bool, int64, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

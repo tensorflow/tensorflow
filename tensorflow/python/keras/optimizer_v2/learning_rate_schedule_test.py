@@ -21,8 +21,11 @@ from __future__ import print_function
 import math
 from absl.testing import parameterized
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -117,25 +120,28 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.evaluate(x.assign(999))
     self.assertAllClose(self.evaluate(decayed_lr(x)), 0.001, 1e-6)
 
+  def testPiecewiseFunction(self, serialize):
+    del serialize
+    with context.eager_mode():
+      v = variables.Variable(1.)
+      def loss_fn():
+        return v * v
+      learning_rate = learning_rate_schedule.PiecewiseConstantDecay(
+          [1.], [1., 0.1])
+      opt = gradient_descent.SGD(learning_rate=learning_rate)
+
+      @def_function.function
+      def minimize():
+        with backprop.GradientTape() as tape:
+          loss = loss_fn()
+        g = tape.gradient(loss, [v])
+        opt.apply_gradients(list(zip(g, [v])))
+
+      minimize()
+      self.assertAllEqual(v.read_value(), -1.0)
+
   @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstantEdgeCases(self, serialize):
-    x_int = resource_variable_ops.ResourceVariable(
-        0, dtype=variables.dtypes.int32)
-    boundaries, values = [-1.0, 1.0], [1, 2, 3]
-    with self.assertRaises(ValueError):
-      decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
-          boundaries, values)
-      decayed_lr = _maybe_serialized(decayed_lr, serialize)
-      decayed_lr(x_int)
-
-    x = resource_variable_ops.ResourceVariable(0.0)
-    boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
-    with self.assertRaises(ValueError):
-      decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
-          boundaries, values)
-      decayed_lr = _maybe_serialized(decayed_lr, serialize)
-      decayed_lr(x)
-
     # Test casting boundaries from int32 to int64.
     x_int64 = resource_variable_ops.ResourceVariable(
         0, dtype=variables.dtypes.int64)

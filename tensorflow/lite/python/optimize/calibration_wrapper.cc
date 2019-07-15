@@ -61,6 +61,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;  // TODO(b/129336260): No schema type for none.
     case kTfLiteFloat32:
       return TensorType_FLOAT32;
+    case kTfLiteFloat16:
+      return TensorType_FLOAT16;
     case kTfLiteInt32:
       return TensorType_INT32;
     case kTfLiteUInt8:
@@ -186,7 +188,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
-                                            int output_py_type) {
+                                            int output_py_type,
+                                            bool allow_float) {
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -195,11 +198,11 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
   auto tflite_model = CreateMutableModel(*model_->GetModel());
-  reader_->AddCalibrationToModel(tflite_model.get());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), error_reporter_.get());
+      TfLiteTypeToSchemaType(output_type), allow_float, error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;

@@ -25,6 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 
 import numpy as np
@@ -38,8 +39,10 @@ from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -51,7 +54,9 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import server_lib
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -132,6 +137,23 @@ def make_sequential_keras_model(initializer="ones"):
   return model
 
 
+def run_benchmark(func, num_iters, execution_mode=None):
+  ctx = context.context()
+  with context.execution_mode(execution_mode):
+    # call func to maybe warm up the GPU
+    func()
+    if execution_mode == context.ASYNC:
+      ctx.async_wait()
+    start = time.time()
+    for _ in xrange(num_iters):
+      func()
+    if execution_mode == context.ASYNC:
+      ctx.async_wait()
+    end = time.time()
+
+    return end - start
+
+
 class MicroBenchmarks(test.Benchmark):
 
   def __init__(self):
@@ -145,23 +167,12 @@ class MicroBenchmarks(test.Benchmark):
     self._num_iters_100_by_784 = 30000
 
   def _run(self, func, num_iters, execution_mode=None):
-    # call func to maybe warm up the GPU
-    ctx = context.context()
-    with context.execution_mode(execution_mode):
-      func()
-      if execution_mode == context.ASYNC:
-        ctx.async_wait()
-      start = time.time()
-      for _ in xrange(num_iters):
-        func()
-      if execution_mode == context.ASYNC:
-        ctx.async_wait()
-      end = time.time()
-      mean_us = (end - start) * 1e6 / num_iters
-      self.report_benchmark(
-          iters=num_iters,
-          wall_time=mean_us,
-          extras={"examples_per_sec": num_iters / (end - start)})
+    total_time = run_benchmark(func, num_iters, execution_mode)
+    mean_us = total_time * 1e6 / num_iters
+    self.report_benchmark(
+        iters=num_iters,
+        wall_time=mean_us,
+        extras={"examples_per_sec": num_iters / total_time})
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -639,6 +650,75 @@ class MicroBenchmarks(test.Benchmark):
     self._benchmark_nested_defun_matmul(
         m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
+  def _benchmark_forwardprop_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+
+      def func():
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(m, tangent)
+          result = math_ops.matmul(m, m, transpose_b=True)
+        return result, acc.jvp(result)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def _benchmark_forwardprop_in_defun_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      @def_function.function
+      def compiled_function(x, tangent):
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(x, tangent)
+          result = math_ops.matmul(x, x, transpose_b=True)
+        return result, acc.jvp(result)
+
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+      func = lambda: compiled_function(m, tangent)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def _benchmark_forwardprop_of_defun_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+      matmul = def_function.function(math_ops.matmul)
+
+      def func():
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(m, tangent)
+          result = matmul(m, m, transpose_b=True)
+        return result, acc.jvp(result)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def benchmark_forwardprop_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_in_defun_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_of_defun_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_matmul_CPU(shape=(100, 784))
+
+  def benchmark_forwardprop_in_defun_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(100, 784))
+
+  def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
+
   def benchmark_defun_without_signature(self):
 
     def func(t1, t2, t3, t4, t5, t6, t7, t8):
@@ -925,6 +1005,26 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(fn, 10000)
 
+  def benchmark_convert_3x_list_to_tensor(self):
+    xs = [1, 2, 3]
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_convert_3x_array_to_tensor(self):
+    xs = np.array([1, 2, 3], dtype=np.int32)
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_constant_40x2_list_to_tensor(self):
+    xs = [[0] * 2] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x2_array_to_tensor(self):
+    xs = np.array([[0] * 2] * 40, dtype=np.int32)
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x_list_of_2x_arrays_to_tensor(self):
+    xs = [np.array([0] * 2, dtype=np.int32)] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):
@@ -941,6 +1041,97 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmarkFunctionWithFiveHundredResourceInputs(self):
     self._benchmarkFunctionWithResourceInputs(500, 100)
+
+
+class RemoteWorkerMicroBenchmarks(test.Benchmark):
+
+  def __init__(self):
+    # used for remote benchmarks
+    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
+    self._cached_server1 = server_lib.Server.create_local_server()
+    self._cached_server_target1 = self._cached_server1.target[len("grpc://"):]
+    self._cached_server2 = server_lib.Server.create_local_server()
+    self._cached_server_target2 = self._cached_server2.target[len("grpc://"):]
+
+  def _run(self, func, num_iters=10000, execution_mode=None):
+    total_time = run_benchmark(func, num_iters, execution_mode)
+    mean_us = total_time * 1e6 / num_iters
+    self.report_benchmark(
+        iters=num_iters,
+        wall_time=mean_us,
+        extras={"examples_per_sec": num_iters / total_time})
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_off(self):
+    remote.connect_to_remote_host(self._cached_server_target1)
+
+    x = random_ops.random_uniform((2, 2)).cpu()
+
+    @def_function.function
+    def remote_func(m):
+      return math_ops.matmul(m, m)
+
+    def func(m):
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func(m)
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+    self._run(lambda: func(x))
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_on(self):
+    remote.connect_to_remote_host(self._cached_server_target1)
+
+    x = random_ops.random_uniform((2, 2)).cpu()
+
+    @def_function.function
+    def remote_func(m):
+      return math_ops.matmul(m, m)
+
+    def func(m):
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func(m)
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+    self._run(lambda: func(x))
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_off(self):
+    remote.connect_to_remote_host(
+        [self._cached_server_target1, self._cached_server_target2])
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_func():
+      return 1.0 + v
+
+    def func():
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func()
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+    self._run(func)
+
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_on(self):
+    remote.connect_to_remote_host(
+        [self._cached_server_target1, self._cached_server_target2])
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_func():
+      return 1.0 + v
+
+    def func():
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func()
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+    self._run(func)
 
 
 if __name__ == "__main__":

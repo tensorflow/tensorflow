@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -34,6 +35,41 @@ struct RunConvOptions {
 
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
+};
+
+// Implementation struct exposed for debugging and log analysis.
+struct CudnnConvParams {
+  // Here are the fields related to cuDNN's fused convolution. The result thus
+  // is defined as:
+  //   activation(conv_result_scale * conv(x, w) +
+  //       side_input_scale * side_input + broadcast(bias))
+  //
+  // The most common fused conv is conv forward + relu/identity, for example.
+  //
+  // bias_buf is a single-dimensional array, with the length equal to the number
+  // of output features. It'll be broadcasted to the output shape in order to be
+  // added to the final results.
+  //
+  // side_input_buf, if valid, must have the same shape as the output buffer.
+  struct FusionParams {
+    se::dnn::ActivationMode mode;
+    double side_input_scale;
+    se::DeviceMemoryBase bias_buf;
+    se::DeviceMemoryBase side_input_buf;  // nullable
+  };
+
+  CudnnConvKind kind;
+  se::dnn::BatchDescriptor input_descriptor;
+  se::dnn::FilterDescriptor filter_descriptor;
+  se::dnn::BatchDescriptor output_descriptor;
+  se::DeviceMemoryBase input_buf;
+  se::DeviceMemoryBase filter_buf;
+  se::DeviceMemoryBase output_buf;
+  se::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::AlgorithmConfig algorithm;
+  double conv_result_scale;
+
+  absl::optional<FusionParams> fusion;
 };
 
 // This file contains low-level routines for running cudnn convolutions.
@@ -61,6 +97,12 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     se::DeviceMemoryBase result_buffer,
                     se::ScratchAllocator* scratch_allocator, se::Stream* stream,
                     RunConvOptions = {});
+
+// Implementation details exposed for debugging and log analysis.
+StatusOr<CudnnConvParams> GetCudnnConvParams(
+    const HloCustomCallInstruction* conv,
+    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    se::DeviceMemoryBase result_buffer);
 
 }  // namespace gpu
 }  // namespace xla

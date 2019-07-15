@@ -88,7 +88,7 @@ REGISTER_OP("TPUCompilationResult")
     .Output("output: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("TPUReplicate")
+REGISTER_OP("_TPUReplicate")
     .Attr("computation: func")
     .Attr("num_replicas: int >= 1")
     .Attr("num_cores_per_replica: int = 1")

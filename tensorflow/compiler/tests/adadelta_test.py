@@ -41,7 +41,7 @@ class AdadeltaOptimizerTest(xla_test.XLATestCase):
       all_lr = [1.0, 0.5, 0.1]
 
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         for grad in all_grad:
           for lr in all_lr:
             var0_init = [1.0, 2.0]

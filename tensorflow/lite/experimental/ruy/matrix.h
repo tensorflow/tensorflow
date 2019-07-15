@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -27,17 +28,6 @@ namespace ruy {
 // 'column-major' means that each column is contiguous in memory.
 enum class Order : std::uint8_t { kColMajor, kRowMajor };
 
-// KernelLayout describes small-scale block structure in a matrix layout.
-// The default (rows = 1, cols = 1) means no such small-scale block structure,
-// since 1x1 blocks is the same as no blocks. In that case, the overall
-// matrix layout is just the usual linear row-major or column-major layout
-// described by the other members of struct Layout.
-struct KernelLayout final {
-  Order order = Order::kColMajor;
-  std::uint8_t rows = 1;
-  std::uint8_t cols = 1;
-};
-
 // Describes the shape and storage layout of a matrix.
 struct Layout final {
   std::int32_t rows = 0;
@@ -46,10 +36,6 @@ struct Layout final {
   // in the non-contiguous direction.
   std::int32_t stride = 0;
   Order order = Order::kColMajor;
-
-  // Small scale layout shuffling, potentially departing from
-  // linear row-major or column-major storage. See KernelLayout.
-  KernelLayout kernel;
 };
 
 namespace detail {
@@ -67,8 +53,18 @@ class ConstCheckingPtr final {
   using element_type = T;
 
   // Convenience methods. Most `set` calls go through these.
-  void operator=(T* ptr) { set(ptr); }
-  void operator=(const T* ptr) { set(ptr); }
+  ConstCheckingPtr& operator=(T* ptr) {
+    set(ptr);
+    return *this;
+  }
+  ConstCheckingPtr& operator=(const T* ptr) {
+    set(ptr);
+    return *this;
+  }
+  ConstCheckingPtr& operator=(std::nullptr_t) {
+    set(static_cast<T*>(nullptr));
+    return *this;
+  }
 
   // Core accessors. These encapsulate the main logic:
   // - for `set`, the constness of the argument determines whether internal
@@ -110,16 +106,12 @@ class ConstCheckingPtr final {
 // signed or unsigned.
 template <typename Scalar>
 struct Matrix final {
-
   void operator=(const Matrix& other) {
     data = other.data;
     layout = other.layout;
     zero_point = other.zero_point;
   }
 
- private:
-
- public:
   // The underlying buffer wrapped by this matrix.
   detail::ConstCheckingPtr<Scalar> data;
   // The shape and data layout of this matrix.
@@ -127,20 +119,22 @@ struct Matrix final {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
-  // The row/column sums needed for quantized matrix multiplication when
-  // the opposite operand of the multiplication uses a non-symmetric zero
-  // point.
-  // This member is only relevant for packed matrices.
-  // Additionally, Ruy always uses 32-bit signed accumulators for quantized
-  // matrix multiplication.
-  // For floating point types, there is no quantization, so this pointer
-  // will always be null. We still need code referencing it to compile
-  // though, even if it is always branched around. Hence we use Scalar*
-  // itself as the type in that case.
-  using SumsType =
-      typename std::conditional<std::is_floating_point<Scalar>::value, Scalar,
-                                std::int32_t>::type;
-  detail::ConstCheckingPtr<SumsType> sums;
+};
+
+inline void MakeSimpleLayout(int rows, int cols, Order order, Layout* layout) {
+  layout->rows = rows;
+  layout->cols = cols;
+  layout->order = order;
+  layout->stride = order == Order::kColMajor ? rows : cols;
+}
+
+// Opaque data structure representing a pre-packed matrix, as obtained from
+// Ruy's advanced API.
+struct PrepackedMatrix {
+  void* data = nullptr;
+  std::size_t data_size = 0;
+  void* sums = nullptr;
+  std::size_t sums_size = 0;
 };
 
 template <typename StreamType, typename Scalar>
@@ -153,6 +147,19 @@ StreamType& operator<<(StreamType& stream, const Matrix<Scalar>& mat) {
   }
   return stream;
 }
+
+// Compile-time version of KernelLayout, used to declare kernel layouts in a
+// way that can be consumed by compile-time logic.
+// See how partial specializations of Kernel use it to declare their layouts.
+// The only reason why this is currently part of the public API is to
+// allow testing various layouts for the Path::kStandardCpp kernel, as a
+// testing-only feature. See Spec::StandardCppKernelLhsLayout.
+template <Order tOrder, int tRows, int tCols>
+struct FixedKernelLayout {
+  static constexpr Order kOrder = tOrder;
+  static constexpr int kRows = tRows;
+  static constexpr int kCols = tCols;
+};
 
 }  // namespace ruy
 

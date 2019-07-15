@@ -109,7 +109,7 @@ $(HOST_NSYNC_LIB) \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl -lpthread
+	HOST_LIBS += -ldl -lpthread -lrt
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -259,7 +259,7 @@ endif
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl -lpthread -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
@@ -636,7 +636,10 @@ CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
 tensorflow/c/c_api.cc \
 tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
+tensorflow/c/tf_status.cc \
 tensorflow/c/tf_status_helper.cc \
+tensorflow/c/tf_tensor.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
@@ -651,7 +654,9 @@ $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
 tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/internal/traceme_recorder.cc \
 tensorflow/core/profiler/lib/profiler_session.cc \
+tensorflow/core/profiler/lib/traceme.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -904,11 +909,15 @@ $(HOST_OBJDIR)%.pb.o: $(HOST_GENDIR)%.pb.cc
 $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
 
 # Ensures we link CoreFoundation as it is used for time library when building
-# for Mac.
-ifeq ($(TARGET),IOS)
-  ifeq ($(IOS_ARCH),X86_64)
+# for Mac and iOS
+ifeq ($(TARGET),OSX)
+  ifeq ($(HOST_ARCH),x86_64)
     HOST_LDOPTS += -framework CoreFoundation
+    LIBS += -framework CoreFoundation
   endif
+endif
+ifeq ($(TARGET),IOS)
+  HOST_LDOPTS += -framework CoreFoundation
 endif
 
 # Runs proto_text to generate C++ source files from protos.

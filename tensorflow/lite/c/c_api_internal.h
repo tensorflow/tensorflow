@@ -44,10 +44,11 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 // need. Access to the external contexts is controled by one of the
 // corresponding support files.
 typedef enum {
-  kTfLiteEigenContext = 0,     // include eigen_support.h to use.
-  kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
-  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
-  kTfLiteMaxExternalContexts = 3
+  kTfLiteEigenContext = 0,       // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
+  kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 
 struct TfLiteContext;
@@ -91,10 +92,11 @@ int TfLiteIntArrayGetSizeInBytes(int size);
 TfLiteIntArray* TfLiteIntArrayCreate(int size);
 
 // Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
-int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b);
+int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
 
 // Check if an intarray equals an array. Returns 1 if equals, 0 otherwise.
-int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]);
+int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
+                              const int b_data[]);
 
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
@@ -194,6 +196,11 @@ typedef struct {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
 
+// Half precision data type compatible with the C99 definition.
+typedef struct {
+  uint16_t data;
+} TfLiteFloat16;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -206,6 +213,7 @@ typedef enum {
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
   kTfLiteInt8 = 9,
+  kTfLiteFloat16 = 10,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -258,6 +266,8 @@ typedef union {
   int32_t* i32;
   int64_t* i64;
   float* f;
+  // Placeholder for 16b float type. Use uint16* in the pointer union for now.
+  TfLiteFloat16* f16;
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
@@ -370,6 +380,10 @@ typedef struct {
 
   // Outputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* outputs;
+
+  // intermediate tensors to this node expressed as indices into the simulator's
+  // tensors.
+  TfLiteIntArray* intermediates;
 
   // Temporary tensors uses during the computations. This usually contains no
   // tensors, but ops are allowed to change that if they need scratch space of

@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 
-#include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -31,9 +29,7 @@ class BufferComparator {
   BufferComparator(const BufferComparator&) = delete;
   BufferComparator(BufferComparator&&) = default;
 
-  static StatusOr<BufferComparator> Create(const Shape& buffer_shape,
-                                           se::StreamExecutor* stream_exec,
-                                           Compiler* compiler);
+  BufferComparator(const Shape& shape, const HloModuleConfig& config);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
@@ -44,22 +40,12 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  StatusOr<bool> CompareEqual(se::Stream* stream,
-                              DeviceMemoryAllocator* allocator,
-                              se::DeviceMemoryBase lhs,
-                              se::DeviceMemoryBase rhs);
+  StatusOr<bool> CompareEqual(se::Stream* stream, se::DeviceMemoryBase lhs,
+                              se::DeviceMemoryBase rhs) const;
 
  private:
-  BufferComparator(const Shape& shape, std::unique_ptr<Executable> exec)
-      : shape_(shape), comparator_exec_(std::move(exec)) {}
-
-  StatusOr<bool> CompareEqualImpl(se::Stream* stream,
-                                  DeviceMemoryAllocator* allocator,
-                                  se::DeviceMemoryBase lhs,
-                                  se::DeviceMemoryBase rhs);
-
   Shape shape_;
-  std::unique_ptr<Executable> comparator_exec_;
+  HloModuleConfig config_;
 };
 
 }  // namespace gpu

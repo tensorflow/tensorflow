@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_
 
+#include <cstddef>
 #include <cstdint>
 
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
-#include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
@@ -36,15 +37,29 @@ struct Kernel {};
 
 template <Path ThePath, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
-void RunKernel(
-    const Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>& kernel,
-    const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-    const Spec& spec, int start_row, int start_col, int end_row, int end_col,
-    Matrix<DstScalar>* dst) {
+void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
+                    const PackedMatrix<RhsScalar>& rhs, const Spec& spec,
+                    int start_row, int start_col, int end_row, int end_col,
+                    Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
+  Kernel kernel(tuning);
   using LhsLayout = typename Kernel::LhsLayout;
   using RhsLayout = typename Kernel::RhsLayout;
-#if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
+  // end_row and end_col may be larger than dst dimensions.
+  // that is because kernels write directly to the destination matrix, whose
+  // dimensions may not be a multiple of the kernel dimensions, and we try to
+  // keep this annoyance localized as an implementation detail in kernels,
+  // by allowing to pass rounded-up values down as far as possible.
+  // These assertions encode the contract.
+  RUY_DCHECK_LE(0, start_row);
+  RUY_DCHECK_LE(start_row, end_row);
+  RUY_DCHECK_LT(end_row, dst->layout.rows + LhsLayout::kCols);
+  RUY_DCHECK_EQ((end_row - start_row) % LhsLayout::kCols, 0);
+  RUY_DCHECK_LE(0, start_col);
+  RUY_DCHECK_LE(start_col, end_col);
+  RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
+  RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
+#if RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
@@ -56,6 +71,24 @@ void RunKernel(
   }
 #endif
 }
+
+// Main entry point for kernels.
+template <Path ThePath, typename LhsScalar, typename RhsScalar,
+          typename DstScalar, typename Spec>
+void RunKernel(Tuning tuning, const PMatrix& lhs, const PMatrix& rhs,
+               void* spec, int start_row, int start_col, int end_row,
+               int end_col, DMatrix* dst) {
+  Matrix<DstScalar> mdst = ToMatrix<DstScalar>(*dst);
+  RunKernelTyped<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>(
+      tuning, ToPackedMatrix<LhsScalar>(lhs), ToPackedMatrix<RhsScalar>(rhs),
+      *static_cast<const Spec*>(spec), start_row, start_col, end_row, end_col,
+      &mdst);
+}
+
+// The signature of RunKernel is the same, regardless of template parameters.
+using RunKernelFn =
+    decltype(RunKernel<Path::kStandardCpp, std::int8_t, std::int8_t,
+                       std::int8_t, BasicSpec<std::int32_t, std::int8_t>>);
 
 // Copied from TF Lite code.
 inline std::int32_t MultiplyByQuantizedMultiplier(
@@ -115,19 +148,36 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
   using AccumScalar = typename Spec::AccumScalar;
-  using LhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
-  using RhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using LhsLayout = typename Spec::StandardCppKernelLhsLayout;
+  using RhsLayout = typename Spec::StandardCppKernelRhsLayout;
   explicit Kernel(Tuning) {}
-  void Run(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-           const Spec& spec, int start_row, int start_col, int end_row,
-           int end_col, Matrix<DstScalar>* dst) const {
+  void Run(const PackedMatrix<LhsScalar>& lhs,
+           const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    // See the comment in RunKernelTyped. end_row may be larger than
+    // dst->layout.rows. It's the responsibility of the kernel to avoid
+    // overrunning dst boundaries, which we do here by computing
+    // clamped_end_row.
+    int clamped_end_row = std::min(end_row, dst->layout.rows);
+    int clamped_end_col = std::min(end_col, dst->layout.cols);
+    RUY_DCHECK_LE(0, start_row);
+    RUY_DCHECK_LE(start_row, clamped_end_row);
+    RUY_DCHECK_LE(clamped_end_row, dst->layout.rows);
+    RUY_DCHECK_LE(clamped_end_row, end_row);
+    RUY_DCHECK_LE(end_row - clamped_end_row, LhsLayout::kCols);
+    RUY_DCHECK_LE(0, start_col);
+    RUY_DCHECK_LE(start_col, clamped_end_col);
+    RUY_DCHECK_LE(clamped_end_col, dst->layout.cols);
+    RUY_DCHECK_LE(clamped_end_col, end_col);
+    RUY_DCHECK_LE(end_col - clamped_end_col, RhsLayout::kCols);
     gemmlowp::ScopedProfilingLabel label("Kernel (Standard Cpp)");
     const int depth = lhs.layout.rows;
-    for (int i = start_row; i < end_row; i++) {
-      for (int j = start_col; j < end_col; j++) {
+    for (int i = start_row; i < clamped_end_row; i++) {
+      for (int j = start_col; j < clamped_end_col; j++) {
         using AccumScalar = typename Spec::AccumScalar;
         AccumScalar accum = 0;
-        for (int k = 0; k < lhs.layout.rows; k++) {
+        for (int k = 0; k < depth; k++) {
           AccumScalar lhs_val = Element(lhs, k, i);
           AccumScalar rhs_val = Element(rhs, k, j);
           accum += lhs_val * rhs_val;
@@ -136,10 +186,10 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
           accum += spec.bias[i];
         }
         if (lhs.zero_point) {
-          accum -= lhs.zero_point * rhs.sums.get()[j];
+          accum -= lhs.zero_point * rhs.sums[j];
         }
         if (rhs.zero_point) {
-          accum -= rhs.zero_point * lhs.sums.get()[i];
+          accum -= rhs.zero_point * lhs.sums[i];
         }
         if (lhs.zero_point && rhs.zero_point) {
           accum += lhs.zero_point * rhs.zero_point * depth;
@@ -148,8 +198,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         accum += dst->zero_point;
         accum = std::min<AccumScalar>(accum, spec.clamp_max);
         accum = std::max<AccumScalar>(accum, spec.clamp_min);
-        relaxed_atomic_store(ElementPtr(dst, i, j),
-                             static_cast<DstScalar>(accum));
+        *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
       }
     }
   }
@@ -167,16 +216,20 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+// KernelParams are shared across 32-bit and 64-bit NEON code.
+#if ((defined RUY_NEON_64) || (defined RUY_NEON_32)) && \
+    (RUY_OPT_ENABLED(RUY_OPT_ASM))
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
 #define RUY_ASM_FLAG_HAS_RHS_SUMS 0x4
 #define RUY_ASM_FLAG_HAS_PERCHANNEL 0x8
+#define RUY_ASM_FLAG_NEEDS_LEFT_SHIFT 0x10
 
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
 #define RUY_ASM_TYPE_ID_INT16 3
+#define RUY_ASM_TYPE_ID_INT32 4
 
 template <typename DstScalar>
 struct DstTypeId {};
@@ -196,9 +249,14 @@ struct DstTypeId<std::int16_t> {
   static constexpr int kValue = RUY_ASM_TYPE_ID_INT16;
 };
 
+template <>
+struct DstTypeId<std::int32_t> {
+  static constexpr int kValue = RUY_ASM_TYPE_ID_INT32;
+};
+
 template <int LhsCols, int RhsCols>
 struct KernelParams8bit {
-  static constexpr int kMaxDstTypeSize = 2;
+  static constexpr int kMaxDstTypeSize = 4;
 
   const std::int32_t* bias;
   const std::int32_t* lhs_sums;
@@ -222,8 +280,8 @@ struct KernelParams8bit {
   std::int32_t rhs_stride;
   std::int32_t dst_stride;
   std::int32_t depth;
-  std::int16_t clamp_min;
-  std::int16_t clamp_max;
+  std::int32_t clamp_min;
+  std::int32_t clamp_max;
   std::uint8_t flags;
   std::uint8_t dst_type_id;
   const std::int32_t zero_data[LhsCols] = {0};
@@ -233,8 +291,8 @@ struct KernelParams8bit {
 };
 
 template <typename DstScalar, int LhsCols, int RhsCols>
-void MakeKernelParams8bit(const Matrix<std::int8_t>& lhs,
-                          const Matrix<std::int8_t>& rhs,
+void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
+                          const PackedMatrix<std::int8_t>& rhs,
                           const BasicSpec<std::int32_t, DstScalar>& spec,
                           int start_row, int start_col, int end_row,
                           int end_col, Matrix<DstScalar>* dst,
@@ -249,20 +307,20 @@ void MakeKernelParams8bit(const Matrix<std::int8_t>& lhs,
   RUY_DCHECK_EQ(end_row % LhsCols, 0);
   RUY_DCHECK_EQ(end_col % RhsCols, 0);
 
-  params->lhs_base_ptr = lhs.data.get() + start_row * lhs.layout.stride;
-  params->rhs_base_ptr = rhs.data.get() + start_col * rhs.layout.stride;
+  params->lhs_base_ptr = lhs.data + start_row * lhs.layout.stride;
+  params->rhs_base_ptr = rhs.data + start_col * rhs.layout.stride;
   params->flags = 0;
   params->bias = params->zero_data;
   if (spec.bias) {
     params->bias = spec.bias;
     params->flags |= RUY_ASM_FLAG_HAS_BIAS;
   }
-  if (lhs.sums.get()) {
-    params->lhs_sums = lhs.sums.get();
+  if (lhs.sums) {
+    params->lhs_sums = lhs.sums;
     params->flags |= RUY_ASM_FLAG_HAS_LHS_SUMS;
   }
-  if (rhs.sums.get()) {
-    params->rhs_sums = rhs.sums.get();
+  if (rhs.sums) {
+    params->rhs_sums = rhs.sums;
     params->flags |= RUY_ASM_FLAG_HAS_RHS_SUMS;
   }
   params->start_row = start_row;
@@ -278,10 +336,14 @@ void MakeKernelParams8bit(const Matrix<std::int8_t>& lhs,
   params->depth = depth;
   params->prod_zp_depth = lhs.zero_point * rhs.zero_point * depth;
   if (spec.multiplier_fixedpoint_perchannel) {
+    params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
     params->flags |= RUY_ASM_FLAG_HAS_PERCHANNEL;
     params->multiplier_fixedpoint = spec.multiplier_fixedpoint_perchannel;
     params->multiplier_exponent = spec.multiplier_exponent_perchannel;
   } else {
+    if (spec.multiplier_exponent > 0) {
+      params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
+    }
     params->multiplier_fixedpoint = params->multiplier_fixedpoint_buf;
     params->multiplier_exponent = params->multiplier_exponent_buf;
     for (int i = 0; i < LhsCols; i++) {
@@ -307,6 +369,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
 
+#ifdef RUY_NEON_64
 template <typename DstScalar>
 struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
               BasicSpec<std::int32_t, DstScalar>> {
@@ -314,7 +377,8 @@ struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
   using RhsLayout = FixedKernelLayout<Order::kColMajor, 16, 4>;
   Tuning tuning = Tuning::kAuto;
   explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
-  void Run(const Matrix<std::int8_t>& lhs, const Matrix<std::int8_t>& rhs,
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
            const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
            int start_col, int end_row, int end_col,
            Matrix<DstScalar>* dst) const {
@@ -336,7 +400,8 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
   using LhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
   using RhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
   explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
-  void Run(const Matrix<std::int8_t>& lhs, const Matrix<std::int8_t>& rhs,
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
            const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
            int start_col, int end_row, int end_col,
            Matrix<DstScalar>* dst) const {
@@ -350,6 +415,7 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
     }
   }
 };
+#endif
 
 template <int LhsCols, int RhsCols>
 struct KernelParamsFloat {
@@ -375,8 +441,8 @@ struct KernelParamsFloat {
 };
 
 template <int LhsCols, int RhsCols>
-inline void MakeKernelParamsFloat(const Matrix<float>& lhs,
-                                  const Matrix<float>& rhs,
+inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
+                                  const PackedMatrix<float>& rhs,
                                   const BasicSpec<float, float>& spec,
                                   int start_row, int start_col, int end_row,
                                   int end_col, Matrix<float>* dst,
@@ -389,8 +455,8 @@ inline void MakeKernelParamsFloat(const Matrix<float>& lhs,
   RUY_DCHECK_EQ(end_row % LhsCols, 0);
   RUY_DCHECK_EQ(end_col % RhsCols, 0);
 
-  params->lhs_base_ptr = lhs.data.get() + start_row * lhs.layout.stride;
-  params->rhs_base_ptr = rhs.data.get() + start_col * rhs.layout.stride;
+  params->lhs_base_ptr = lhs.data + start_row * lhs.layout.stride;
+  params->rhs_base_ptr = rhs.data + start_col * rhs.layout.stride;
   params->dst_base_ptr =
       dst->data.get() + start_col * dst->layout.stride + start_row;
 
@@ -420,15 +486,18 @@ inline void MakeKernelParamsFloat(const Matrix<float>& lhs,
 
 void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params);
 void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params);
+void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params);
 void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params);
 
+#ifdef RUY_NEON_64
+// A Float kernel for ARM64 Neon.
 template <>
 struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
   Tuning tuning = Tuning::kAuto;
   using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
   using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
   explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
-  void Run(const Matrix<float>& lhs, const Matrix<float>& rhs,
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
            const BasicSpec<float, float>& spec, int start_row, int start_col,
            int end_row, int end_col, Matrix<float>* dst) const {
     KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
@@ -441,17 +510,42 @@ struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
     }
   }
 };
+#endif
+
+#ifdef RUY_NEON_32
+// A Float kernel for ARM32 Neon.
+template <>
+struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 4>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<8, 4> params;
+
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+
+    KernelFloat32NeonOutOfOrder(params);
+  }
+};
+#endif
 
 // While the dotprod NEON extension does not concern floating-point arithmetic,
 // its presence allows us to distinguish, in the in-order tuning case, between
 // A53 and A55r1. TODO: should this be folded into tuning?
 template <>
-struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
-    : Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
+struct Kernel<Path::kNeonDotprod, float, float, float,
+              BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
   using Base =
       Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>>;
-  explicit Kernel(Tuning tuning_) : Base(tuning_) {}
-  void Run(const Matrix<float>& lhs, const Matrix<float>& rhs,
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
            const BasicSpec<float, float>& spec, int start_row, int start_col,
            int end_row, int end_col, Matrix<float>* dst) const {
     KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
@@ -465,8 +559,8 @@ struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
   }
 };
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
-
+#endif  // ((defined RUY_NEON_64) || (defined RUY_NEON_32)) &&
+        // (RUY_OPT_ENABLED(RUY_OPT_ASM)
 }  // namespace ruy
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_

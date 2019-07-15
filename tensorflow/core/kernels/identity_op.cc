@@ -45,6 +45,19 @@ REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
                         IdentityOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name("Identity").Device(DEVICE_DEFAULT).TypeConstraint("T", DT_STRING),
+    IdentityOp);
+REGISTER_KERNEL_BUILDER(
+    Name("Identity").Device(DEVICE_DEFAULT).TypeConstraint<Variant>("T"),
+    IdentityOp);
+REGISTER_KERNEL_BUILDER(Name("Identity")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        IdentityOp);
+
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                   \
@@ -112,7 +125,8 @@ REGISTER_GPU_KERNEL(Variant);
 
 #undef REGISTER_GPU_KERNEL
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // A special GPU kernel for int32 and bool.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

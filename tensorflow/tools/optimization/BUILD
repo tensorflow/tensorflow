@@ -1,14 +1,15 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cuda_library",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])

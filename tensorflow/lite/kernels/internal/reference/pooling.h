@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_POOLING_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_POOLING_H_
 
-#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/round.h"

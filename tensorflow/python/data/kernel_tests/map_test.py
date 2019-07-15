@@ -50,6 +50,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -759,6 +762,34 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[list(range(i)) for i in range(10)])
 
+  def testRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(5).map(_ragged)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[ragged_factory_ops.constant([[i]]) for i in range(5)])
+
+  def testRaggedChain(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    def _concat(i):
+      self.assertTrue(ragged_tensor.is_ragged(i))
+      return ragged_concat_ops.concat([i, i], 0)
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).map(_concat)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            self.evaluate(_concat(ragged_factory_ops.constant([[i]])))
+            for i in range(10)
+        ])
+
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
@@ -1168,7 +1199,7 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerRefVariablesWithConflictingDevices(self):
+  def testSkipEagerRefVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
@@ -1192,34 +1223,33 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+  def testSkipEagerResourceVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
 
     def func(_):
       with variable_scope.variable_scope(
           "variable", reuse=variable_scope.AUTO_REUSE):
         with ops.device("/device:CPU:0"):
-          a = variable_scope.get_variable(
+          a_var = variable_scope.get_variable(
               "a", (), dtypes.int32, use_resource=True)
-          a = math_ops.add(a, 1)
+          a_var = math_ops.add(a_var, 1)
         with ops.device("/device:CPU:1"):
-          b = variable_scope.get_variable(
+          b_var = variable_scope.get_variable(
               "b", (), dtypes.int32, use_resource=True)
-      return math_ops.add(a, b)
+      return math_ops.add(a_var, b_var)
 
     g_1 = ops.Graph()
     with self.session(config=config, graph=g_1):
       # The MapDataset node ends up with two ResourceVariable inputs, one on
-      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
-      # this as it cannot place the MapDatasetOp on both devices.
+      # device CPU:0 and the other on device CPU:1.
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
       dataset = dataset.map(func)
-      expected_error = (
-          errors.InvalidArgumentError,
-          "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible resource devices")
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1] * 10
       self.assertDatasetProduces(
-          dataset, expected_error=expected_error, requires_initialization=True)
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
 
     g_2 = ops.Graph()
     with self.session(config=config, graph=g_2):

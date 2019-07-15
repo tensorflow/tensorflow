@@ -21,7 +21,6 @@ import abc
 import math
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import control_flow_ops
@@ -141,10 +140,7 @@ class ExponentialDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(
-        self.name, "ExponentialDecay",
-        [self.initial_learning_rate, step, self.decay_steps, self.decay_rate]
-    ) as name:
+    with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -224,8 +220,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
       and values[-1] when `step > boundaries[-1]`.
 
     Raises:
-      ValueError: if types of all `values` do not match or
-          the number of elements in the lists does not match.
+      ValueError: if the number of elements in the lists do not match.
     """
     super(PiecewiseConstantDecay, self).__init__()
 
@@ -238,32 +233,15 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "PiecewiseConstant",
-                        [step, self.boundaries, self.values, self.name]):
+    with ops.name_scope_v2(self.name or "PiecewiseConstant"):
       boundaries = ops.convert_n_to_tensor(self.boundaries)
       values = ops.convert_n_to_tensor(self.values)
       x_recomp = ops.convert_to_tensor(step)
-      # Avoid explicit conversion to x's dtype. This could result in faulty
-      # comparisons, for example if floats are converted to integers.
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
-          # We can promote int32 boundaries to int64 without loss of precision.
-          # This covers the most common case where the user passes in boundaries
-          # as an array of Python integers.
-          if (b.dtype.base_dtype == dtypes.int32 and
-              x_recomp.dtype.base_dtype == dtypes.int64):
-            b = math_ops.cast(b, x_recomp.dtype.base_dtype)
-            boundaries[i] = b
-          else:
-            raise ValueError(
-                "Boundaries (%s) must have the same dtype as x (%s)." %
-                (b.dtype.base_dtype, x_recomp.dtype.base_dtype))
-      # TODO(rdipietro): Ensure that boundaries' elements strictly increases.
-      for v in values[1:]:
-        if v.dtype.base_dtype != values[0].dtype.base_dtype:
-          raise ValueError(
-              "Values must have elements all with the same dtype (%s vs %s)." %
-              (values[0].dtype.base_dtype, v.dtype.base_dtype))
+          # We cast the boundaries to have the same type as the step
+          b = math_ops.cast(b, x_recomp.dtype.base_dtype)
+          boundaries[i] = b
       pred_fn_pairs = []
       pred_fn_pairs.append((x_recomp <= boundaries[0], lambda: values[0]))
       pred_fn_pairs.append((x_recomp > boundaries[-1], lambda: values[-1]))
@@ -389,11 +367,7 @@ class PolynomialDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(
-        self.name, "PolynomialDecay",
-        [self.initial_learning_rate, step, self.decay_steps,
-         self.end_learning_rate, self.power]
-    ) as name:
+    with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -512,9 +486,7 @@ class InverseTimeDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "InverseTimeDecay",
-                        [self.initial_learning_rate, step, self.decay_rate]
-                       ) as name:
+    with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -606,8 +578,7 @@ class CosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "CosineDecay",
-                        [self.initial_learning_rate, step]):
+    with ops.name_scope_v2(self.name or "CosineDecay"):
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -707,9 +678,7 @@ class CosineDecayRestarts(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "SGDRDecay",
-                        [self.initial_learning_rate, step]
-                       ) as name:
+    with ops.name_scope_v2(self.name or "SGDRDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -844,8 +813,7 @@ class LinearCosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "LinearCosineDecay",
-                        [self.initial_learning_rate, step]) as name:
+    with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -969,8 +937,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "NoisyLinearCosineDecay",
-                        [self.initial_learning_rate, step]) as name:
+    with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype

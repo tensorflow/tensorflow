@@ -49,7 +49,6 @@ from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -86,7 +85,7 @@ from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
 
-# If the above import is made available through the BUILD rule, then this
+# If the below import is made available through the BUILD rule, then this
 # function is overridden and will instead return True and cause Tensorflow
 # graphs to be compiled with XLA.
 def is_xla_enabled():
@@ -152,11 +151,13 @@ def assert_equal_graph_def_v2(expected, actual):
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
-  assert_equal_graph_def(actual, expected, checkpoint_v2=True)
+  assert_equal_graph_def(actual, expected, checkpoint_v2=True,
+                         hash_table_shared_name=True)
 
 
 @tf_export(v1=["test.assert_equal_graph_def"])
-def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
+def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False,
+                              hash_table_shared_name=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -168,15 +169,19 @@ def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
     expected: The `GraphDef` we expected.
     checkpoint_v2: boolean determining whether to ignore randomized attribute
       values that appear in V2 checkpoints.
+    hash_table_shared_name: boolean determining whether to ignore randomized
+      shared_names that appear in HashTableV2 op defs.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
-  assert_equal_graph_def(actual, expected, checkpoint_v2)
+  assert_equal_graph_def(actual, expected, checkpoint_v2,
+                         hash_table_shared_name)
 
 
-def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
+                           hash_table_shared_name=False):
   if not isinstance(actual, graph_pb2.GraphDef):
     raise TypeError("Expected tf.GraphDef for actual, got %s" %
                     type(actual).__name__)
@@ -187,6 +192,10 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
     _strip_checkpoint_v2_randomized(expected)
+
+  if hash_table_shared_name:
+    _strip_hash_table_shared_name(actual)
+    _strip_hash_table_shared_name(expected)
 
   diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
@@ -252,12 +261,29 @@ def _strip_checkpoint_v2_randomized(graph_def):
       del node.attr[attr_key]
 
 
+_TABLE_SHARED_NAME_PATTERN = r"hash_table_[0-9a-z\-]+"
+
+
+def _strip_hash_table_shared_name(graph_def):
+  for node in graph_def.node:
+    delete_keys = []
+    if node.op == "HashTableV2" and "shared_name" in node.attr:
+      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+        delete_keys.append("shared_name")
+    for attr_key in delete_keys:
+      del node.attr[attr_key]
+
+
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
 
-def CudaSupportsHalfMatMulAndConv():
-  return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+def IsBuiltWithROCm():
+  return pywrap_tensorflow.IsBuiltWithROCm()
+
+
+def GpuSupportsHalfMatMulAndConv():
+  return pywrap_tensorflow.GpuSupportsHalfMatMulAndConv()
 
 
 def IsMklEnabled():
@@ -1251,7 +1277,7 @@ def run_v2_only(func=None):
 
     def decorated(self, *args, **kwargs):
       if not tf2.enabled():
-        self.skipTest("Test is only comptaible in v2")
+        self.skipTest("Test is only compatible with v2")
 
       return f(self, *args, **kwargs)
 
@@ -1333,13 +1359,32 @@ def run_cuda_only(func=None):
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
+  Warning: if a non-GPU version of the package is installed, the function would
+  also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
+  was build with CUDA support.
+
   Args:
-    cuda_only: limit the search to CUDA gpus.
+    cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
       CUDA compute capability required, or None if no requirement.
 
+  Note that the keyword arg name "cuda_only" is misleading (since routine will
+  return true when a GPU device is available irrespective of whether TF was
+  built with CUDA support or ROCm support. However no changes here because
+
+  ++ Changing the name "cuda_only" to something more generic would break
+     backward compatibility
+
+  ++ Adding an equivalent "rocm_only" would require the implementation check
+     the build type. This in turn would require doing the same for CUDA and thus
+     potentially break backward compatibility
+
+  ++ Adding a new "cuda_or_rocm_only" would not break backward compatibility,
+     but would require most (if not all) callers to update the call to use
+     "cuda_or_rocm_only" instead of "cuda_only"
+
   Returns:
-    True if a gpu device of the requested kind is available.
+    True if a GPU device of the requested kind is available.
   """
 
   def compute_capability_from_device_desc(device_desc):
@@ -1523,6 +1568,44 @@ def use_deterministic_cudnn(func):
 
 
 # The description is just for documentation purposes.
+def enable_tf_xla_constant_folding(description):
+
+  if not isinstance(description, str):
+    raise ValueError("'description' should be string, got {}".format(
+        type(description)))
+
+  def enable_tf_xla_constant_folding_impl(func):
+    """Enable constant folding during the call to this function.
+
+    Some tests fail without constant folding.
+
+    Args:
+      func: Function to run with constant folding turned on.
+
+    Returns:
+      Decorated function.
+    """
+
+    def decorator(f):
+
+      def decorated(self, *args, **kwargs):
+        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        result = f(self, *args, **kwargs)
+        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        return result
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return enable_tf_xla_constant_folding_impl
+
+
+# The description is just for documentation purposes.
 def disable_xla(description):
 
   def disable_xla_impl(func):
@@ -1546,20 +1629,86 @@ def disable_xla(description):
   return disable_xla_impl
 
 
-# The description is just for documentation purposes.
-def disable_all_xla(description):
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
 
-  def disable_all_impl(cls):
-    """Execute all test methods in this class only if xla is not enabled."""
-    base_decorator = disable_xla
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
     for name in dir(cls):
       value = getattr(cls, name)
       if callable(value) and name.startswith(
-          "test") and not name == "test_session":
-        setattr(cls, name, base_decorator(description)(value))
+          "test") and (name != "test_session"):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
     return cls
 
-  return disable_all_impl
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def no_xla_auto_jit(description):  # pylint: disable=unused-argument
+
+  def no_xla_auto_jit_impl(func):
+    """This test is not intended to be run with XLA auto jit enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Skip test if using XLA is forced.
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return no_xla_auto_jit_impl
+
+
+# The description is just for documentation purposes.
+def xla_allow_fallback(description):  # pylint: disable=unused-argument
+
+  def xla_allow_fallback_impl(func):
+    """Allow fallback to TF even though testing xla."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Update the global XLABuildOpsPassFlags to enable lazy compilation,
+          # which allows the compiler to fall back to TF classic. Remember the
+          # old value so that we can reset it.
+          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          result = func(self, *args, **kwargs)
+          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          return result
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return xla_allow_fallback_impl
 
 
 class EagerSessionWarner(object):
@@ -1581,10 +1730,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      os.putenv(
-          "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false " +
-          os.getenv("TF_XLA_FLAGS", ""))
+      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
+      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
+      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      # Constant folding secretly runs code on TF:Classic CPU, so we also
+      # disable it here.
+      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
+
     self._threads = []
     self._tempdir = None
     self._cached_session = None
@@ -1763,7 +1915,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                                  tensor.dense_shape.numpy())
         elif ragged_tensor.is_ragged(tensor):
           return ragged_tensor_value.RaggedTensorValue(
-              tensor.values.numpy(), tensor.row_splits.numpy())
+              self._eval_tensor(tensor.values),
+              self._eval_tensor(tensor.row_splits))
         elif isinstance(tensor, ops.IndexedSlices):
           return ops.IndexedSlicesValue(
               values=tensor.values.numpy(),
@@ -2226,6 +2379,8 @@ class TensorFlowTestCase(googletest.TestCase):
           to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
           `[p] = [1]['d']`, then `a[p] = (6, 7)`.
     """
+    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
+      return self._assertRaggedClose(a, b, rtol, atol, msg)
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
@@ -2304,6 +2459,8 @@ class TensorFlowTestCase(googletest.TestCase):
       b: the actual numpy ndarray or anything can be converted to one.
       msg: Optional message to report on failure.
     """
+    if (ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b)):
+      return self._assertRaggedEqual(a, b, msg)
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -2593,6 +2750,51 @@ class TensorFlowTestCase(googletest.TestCase):
         device1, device2,
         "Devices %s and %s are not equal. %s" % (device1, device2, msg))
 
+  def _GetPyList(self, a):
+    """Converts `a` to a nested python list."""
+    if isinstance(a, ragged_tensor.RaggedTensor):
+      return self.evaluate(a).to_list()
+    elif isinstance(a, ops.Tensor):
+      a = self.evaluate(a)
+      return a.tolist() if isinstance(a, np.ndarray) else a
+    elif isinstance(a, np.ndarray):
+      return a.tolist()
+    elif isinstance(a, ragged_tensor_value.RaggedTensorValue):
+      return a.to_list()
+    else:
+      return np.array(a).tolist()
+
+  def _assertRaggedEqual(self, a, b, msg):
+    """Asserts that two ragged tensors are equal."""
+    a_list = self._GetPyList(a)
+    b_list = self._GetPyList(b)
+    self.assertEqual(a_list, b_list, msg)
+
+    if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
+      self.assertEqual(a_ragged_rank, b_ragged_rank, msg)
+
+  def _assertRaggedClose(self, a, b, rtol, atol, msg=None):
+    a_list = self._GetPyList(a)
+    b_list = self._GetPyList(b)
+    self._assertListCloseRecursive(a_list, b_list, rtol, atol, msg)
+
+    if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
+      self.assertEqual(a_ragged_rank, b_ragged_rank, msg)
+
+  def _assertListCloseRecursive(self, a, b, rtol, atol, msg, path="value"):
+    self.assertEqual(type(a), type(b))
+    if isinstance(a, (list, tuple)):
+      self.assertLen(a, len(b), "Length differs for %s" % path)
+      for i in range(len(a)):
+        self._assertListCloseRecursive(a[i], b[i], rtol, atol, msg,
+                                       "%s[%s]" % (path, i))
+    else:
+      self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
+
   # Fix Python 3 compatibility issues
   if six.PY3:
     # pylint: disable=invalid-name
@@ -2644,12 +2846,10 @@ class TensorFlowTestCase(googletest.TestCase):
       # will be used even when a specific device is supposed to be used.
       allow_soft_placement = not force_gpu
       if config is None:
-        config = config_pb2.ConfigProto()
+        config = context.context().config
         config.allow_soft_placement = allow_soft_placement
-        config.gpu_options.per_process_gpu_memory_fraction = 0.3
       elif not allow_soft_placement and config.allow_soft_placement:
-        config_copy = config_pb2.ConfigProto()
-        config_copy.CopyFrom(config)
+        config_copy = context.context().config
         config = config_copy
         config.allow_soft_placement = False
       # Don't perform optimizations for tests so we don't inadvertently run

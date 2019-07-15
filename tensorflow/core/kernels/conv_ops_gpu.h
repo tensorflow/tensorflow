@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
 #include <unordered_map>
@@ -26,6 +26,15 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
+
+// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
+inline bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
+  int major, minor;
+  CHECK(stream_exec  // Crash OK
+            .GetDeviceDescription()
+            .cuda_compute_capability(&major, &minor));
+  return major >= 7;
+}
 
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
@@ -205,6 +214,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

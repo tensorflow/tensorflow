@@ -36,52 +36,68 @@ bool Padding2D::operator==(const Padding2D& value) {
 
 bool Padding2D::operator!=(const Padding2D& value) { return !(*this == value); }
 
+Padding2D& Padding2D::operator-(const Padding2D& value) {
+  prepended.h -= value.prepended.h;
+  prepended.w -= value.prepended.w;
+  appended.h -= value.appended.h;
+  appended.w -= value.appended.w;
+  return *this;
+}
+
 std::string ToString(enum OperationType op) {
   switch (op) {
-    case OperationType::UNKNOWN:
-      break;
     case OperationType::ABS:
       return "abs";
     case OperationType::ADD:
       return "add";
     case OperationType::APPLY_MASK:
       return "apply_mask";
-    case OperationType::SUB:
-      return "subtract";
-    case OperationType::POOLING_2D:
-      return "pooling_2d";
-    case OperationType::MAX_UNPOOLING_2D:
-      return "max_unpooling";
     case OperationType::BATCH_NORMALIZATION:
       return "batch_normalization";
+    case OperationType::BATCH_TO_SPACE:
+      return "batch_to_space";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONST:
       return "const";
     case OperationType::CONVOLUTION_2D:
       return "convolution_2d";
+    case OperationType::CONVOLUTION_TRANSPOSED:
+      return "convolution_transposed";
     case OperationType::COS:
       return "cos";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::FULLY_CONNECTED:
+      return "fully_connected";
+    case OperationType::HARD_SWISH:
+      return "hard_swish";
     case OperationType::LOG:
       return "log";
+    case OperationType::LSTM:
+      return "lstm";
+    case OperationType::MAX_UNPOOLING_2D:
+      return "max_unpooling";
     case OperationType::MUL:
       return "mul";
+    case OperationType::MULTIPLY_SCALAR:
+      return "multiply_scalar";
     case OperationType::PAD:
       return "pad";
+    case OperationType::POOLING_2D:
+      return "pooling_2d";
     case OperationType::POW:
       return "pow";
     case OperationType::PRELU:
       return "prelu";
     case OperationType::RELU:
       return "relu";
-    case OperationType::RESIZE:
-      return "resize";
     case OperationType::RESHAPE:
       return "reshape";
+    case OperationType::RESIZE:
+      return "resize";
     case OperationType::RSQRT:
       return "rsqrt";
     case OperationType::SIGMOID:
@@ -92,24 +108,24 @@ std::string ToString(enum OperationType op) {
       return "slice";
     case OperationType::SOFT_MAX:
       return "soft_max";
+    case OperationType::SPACE_TO_BATCH:
+      return "space_to_batch";
+    case OperationType::STRETCH_TIME:
+      return "stretch_time";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
       return "square";
     case OperationType::SQUARED_DIFF:
       return "squared_diff";
-    case OperationType::UPSAMPLE_2D:
-      return "upsample_2d";
-    case OperationType::CONVOLUTION_TRANSPOSED:
-      return "convolution_transposed";
-    case OperationType::MULTIPLY_SCALAR:
-      return "multiply_scalar";
-    case OperationType::FULLY_CONNECTED:
-      return "fully_connected";
+    case OperationType::SUB:
+      return "subtract";
     case OperationType::TANH:
       return "tanh";
-    case OperationType::LSTM:
-      return "lstm";
+    case OperationType::UPSAMPLE_2D:
+      return "upsample_2d";
+    default:
+      break;
   }
   return "unknown_operation";
 }
@@ -128,6 +144,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
@@ -144,6 +161,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"soft_max", OperationType::SOFT_MAX},
+          {"stretch_time", OperationType::STRETCH_TIME},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"subtract", OperationType::SUB},

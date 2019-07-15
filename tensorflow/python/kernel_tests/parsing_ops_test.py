@@ -1131,7 +1131,7 @@ class ParseSequenceExampleTest(test.TestCase):
                 expected_context_values=None,
                 expected_feat_list_values=None,
                 expected_err=None):
-    # Test using tf.parse_single_sequence_example
+    # Test using tf.io.parse_single_sequence_example
     self._test(
         kwargs,
         expected_context_values=expected_context_values,
@@ -1614,6 +1614,76 @@ class ParseSequenceExampleTest(test.TestCase):
             "d": [0, 0]
         },
         batch=True)
+
+
+class DecodeRawTest(test.TestCase):
+
+  def _decode_v1(self, words):
+    with self.cached_session():
+      examples = np.array(words)
+      example_tensor = constant_op.constant(
+          examples, shape=examples.shape, dtype=dtypes.string)
+      byte_tensor = parsing_ops.decode_raw_v1(example_tensor, dtypes.uint8)
+      return self.evaluate(byte_tensor)
+
+  def _decode_v2(self, words, fixed_length=None):
+    with self.cached_session():
+      examples = np.array(words)
+      byte_tensor = parsing_ops.decode_raw(
+          examples, dtypes.uint8, fixed_length=fixed_length)
+      return self.evaluate(byte_tensor)
+
+  def _ordinalize(self, words, fixed_length=None):
+    outputs = []
+    if fixed_length is None:
+      fixed_length = len(words[0])
+
+    for word in words:
+      output = []
+      for i in range(fixed_length):
+        if i < len(word):
+          output.append(ord(word[i]))
+        else:
+          output.append(0)
+      outputs.append(output)
+    return np.array(outputs)
+
+  def testDecodeRawV1EqualLength(self):
+    words = ["string1", "string2"]
+
+    observed = self._decode_v1(words)
+    expected = self._ordinalize(words)
+
+    self.assertAllEqual(expected.shape, observed.shape)
+    self.assertAllEqual(expected, observed)
+
+  def testDecodeRawV2FallbackEqualLength(self):
+    words = ["string1", "string2"]
+
+    observed = self._decode_v2(words)
+    expected = self._ordinalize(words)
+
+    self.assertAllEqual(expected.shape, observed.shape)
+    self.assertAllEqual(expected, observed)
+
+  def testDecodeRawV1VariableLength(self):
+    words = ["string", "longer_string"]
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._decode_v1(words)
+
+  def testDecodeRawV2FallbackVariableLength(self):
+    words = ["string", "longer_string"]
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._decode_v2(words)
+
+  def testDecodeRawV2VariableLength(self):
+    words = ["string", "longer_string"]
+
+    observed = self._decode_v2(words, fixed_length=8)
+    expected = self._ordinalize(words, fixed_length=8)
+
+    self.assertAllEqual(expected.shape, observed.shape)
+    self.assertAllEqual(expected, observed)
 
 
 class DecodeJSONExampleTest(test.TestCase):

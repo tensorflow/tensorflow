@@ -24,6 +24,7 @@ import threading
 
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -129,8 +130,8 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See `tf.FIFOQueue` and
-  `tf.RandomShuffleQueue` for concrete
+  See `tf.queue.FIFOQueue` and
+  `tf.queue.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
   """
@@ -625,7 +626,7 @@ def _shared_name(shared_name):
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -674,7 +675,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        `tf.set_random_seed`
+        `tf.compat.v1.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -711,7 +712,7 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -774,7 +775,7 @@ class PaddingFIFOQueue(QueueBase):
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -847,7 +848,7 @@ class PaddingFIFOQueue(QueueBase):
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -1215,6 +1216,11 @@ class ConditionalAccumulatorBase(object):
     """
     if name is None:
       name = "%s_NumAccumulated" % self._name
+
+    if compat.forward_compatible(2019, 8, 8):
+      return gen_data_flow_ops.resource_accumulator_num_accumulated(
+          self._accumulator_ref, name=name)
+
     return gen_data_flow_ops.accumulator_num_accumulated(
         self._accumulator_ref, name=name)
 
@@ -1231,6 +1237,12 @@ class ConditionalAccumulatorBase(object):
     Returns:
       Operation that sets the accumulator's time step.
     """
+    if compat.forward_compatible(2019, 8, 8):
+      return gen_data_flow_ops.resource_accumulator_set_global_step(
+          self._accumulator_ref,
+          math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
+          name=name)
+
     return gen_data_flow_ops.accumulator_set_global_step(
         self._accumulator_ref,
         math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
@@ -1264,12 +1276,23 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the accumulator.
       reduction_type: Reduction type to use when taking the gradient.
     """
-    accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype,
-        shape=shape,
-        shared_name=shared_name,
-        name=name,
-        reduction_type=reduction_type)
+    if compat.forward_compatible(2019, 8, 8):
+      accumulator_ref = gen_data_flow_ops.resource_conditional_accumulator(
+          dtype=dtype,
+          shape=shape,
+          shared_name=shared_name,
+          name=name,
+          reduction_type=reduction_type)
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=accumulator_ref, handle_device=context.context().device_name)
+    else:
+      accumulator_ref = gen_data_flow_ops.conditional_accumulator(
+          dtype=dtype,
+          shape=shape,
+          shared_name=shared_name,
+          name=name,
+          reduction_type=reduction_type)
+
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1292,6 +1315,13 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     grad = ops.convert_to_tensor(grad, self._dtype)
     grad.get_shape().assert_is_compatible_with(self._shape)
     local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
+
+    if compat.forward_compatible(2019, 8, 8):
+      return gen_data_flow_ops.resource_accumulator_apply_gradient(
+          self._accumulator_ref,
+          local_step=local_step,
+          gradient=grad,
+          name=name)
     return gen_data_flow_ops.accumulator_apply_gradient(
         self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
@@ -1317,16 +1347,18 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If num_required < 1
     """
-    out = gen_data_flow_ops.accumulator_take_gradient(
-        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    if compat.forward_compatible(2019, 8, 8):
+      out = gen_data_flow_ops.resource_accumulator_take_gradient(
+          self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    else:
+      out = gen_data_flow_ops.accumulator_take_gradient(
+          self._accumulator_ref, num_required, dtype=self._dtype, name=name)
     out.set_shape(self._shape)
     return out
 
 
 @tf_export(
-    "sparse.SparseConditionalAccumulator",
     v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
-@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -2394,8 +2426,7 @@ class RecordInput(object):
       with ops.name_scope(self._name):
         batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
-        records = [array_ops.reshape(record, []) for record in records]
-        for index, protobuf in zip(six.moves.range(len(records)), records):
+        for index, protobuf in enumerate(records):
           batch_index = index % self._batches
-          batch_list[batch_index].append(protobuf)
+          batch_list[batch_index].append(array_ops.reshape(protobuf, []))
         return batch_list

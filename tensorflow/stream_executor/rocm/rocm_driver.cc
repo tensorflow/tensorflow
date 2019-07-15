@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 #include <stdlib.h>
+
 #include <map>
 #include <set>
 #include <utility>
@@ -23,18 +24,17 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
 
@@ -115,15 +115,9 @@ string ToString(hipError_t result) {
 // stack-limited threads (such as those spawned by a default-argument
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
-static mutex driver_executor_threadpool_mu(LINKER_INITIALIZED);
-static port::ThreadPool* InitializeDriverExecutor() {
-  return new port::ThreadPool(port::Env::Default(), port::ThreadOptions(),
-                              "rocm_driver", 1);
-}
-
 port::ThreadPool* GetDriverExecutor() {
-  mutex_lock lock(driver_executor_threadpool_mu);
-  static port::ThreadPool* thread_pool = InitializeDriverExecutor();
+  static port::ThreadPool* thread_pool = new port::ThreadPool(
+      port::Env::Default(), port::ThreadOptions(), "rocm_driver", 1);
   return thread_pool;
 }
 
@@ -311,17 +305,10 @@ static port::Status InternalInit() {
 /* static */ port::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as hipInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status init_retval;
-  static bool set = false;
-  static mutex* init_mu = new mutex;
-
-  mutex_lock lock(*init_mu);
-  if (!set) {
-    init_retval = InternalInit();
-    set = true;
-  }
-
-  return init_retval;
+  static port::Status* init_retval = [] {
+    return new port::Status(InternalInit());
+  }();
+  return *init_retval;
 }
 
 /* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
@@ -472,7 +459,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::LoadHsaco(GpuContext* context,
                                        const char* hsaco_contents,
                                        hipModule_t* module) {
-  port::Notification notification;
+  absl::Notification notification;
   bool ret = true;
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, module, &ret, &notification]() {
@@ -1008,9 +995,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateEvent(GpuContext* context,
-                                                 GpuEventHandle* event,
-                                                 EventFlags flags) {
+/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
+                                               GpuEventHandle* event,
+                                               EventFlags flags) {
   int hipflags;
   switch (flags) {
     case EventFlags::kDefault:

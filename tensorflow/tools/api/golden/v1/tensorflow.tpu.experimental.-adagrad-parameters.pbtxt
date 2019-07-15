@@ -1,0 +1,10 @@
+path: "tensorflow.tpu.experimental.AdagradParameters"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding.AdagradParameters\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding._OptimizationParameters\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'initial_accumulator\', \'use_gradient_accumulation\', \'clip_weight_min\', \'clip_weight_max\'], varargs=None, keywords=None, defaults=[\'0.1\', \'True\', \'None\', \'None\'], "
+  }
+}

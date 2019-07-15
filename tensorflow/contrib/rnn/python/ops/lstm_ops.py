@@ -21,21 +21,16 @@ import abc
 
 import six
 
-from tensorflow.contrib.rnn.ops import gen_lstm_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.platform import resource_loader
-
-_lstm_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_lstm_ops.so"))
 
 LayerRNNCell = rnn_cell_impl.LayerRNNCell  # pylint: disable=invalid-name
 
@@ -124,7 +119,7 @@ def _lstm_block_cell(x,
     wco = wci
 
   # pylint: disable=protected-access
-  return gen_lstm_ops.lstm_block_cell(
+  return gen_rnn_ops.lstm_block_cell(
       x=x,
       cs_prev=cs_prev,
       h_prev=h_prev,
@@ -210,7 +205,7 @@ def _block_lstm(seq_len_max,
     wco = wci
 
   # pylint: disable=protected-access
-  i, cs, f, o, ci, co, h = gen_lstm_ops.block_lstm(
+  i, cs, f, o, ci, co, h = gen_rnn_ops.block_lstm(
       seq_len_max=seq_len_max,
       x=array_ops.stack(x),
       cs_prev=cs_prev,
@@ -253,23 +248,23 @@ def _LSTMBlockCellGrad(op, *grad):
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
   (cs_prev_grad, dicfo, wci_grad, wcf_grad,
-   wco_grad) = gen_lstm_ops.lstm_block_cell_grad(
-       x,
-       cs_prev,
-       h_prev,
-       w,
-       wci,
-       wcf,
-       wco,
-       b,
-       i,
-       cs,
-       f,
-       o,
-       ci,
-       co,
-       cs_grad,
-       h_grad,
+   wco_grad) = gen_rnn_ops.lstm_block_cell_grad(
+       x=x,
+       cs_prev=cs_prev,
+       h_prev=h_prev,
+       w=w,
+       wci=wci,
+       wcf=wcf,
+       wco=wco,
+       b=b,
+       i=i,
+       cs=cs,
+       f=f,
+       o=o,
+       ci=ci,
+       co=co,
+       cs_grad=cs_grad,
+       h_grad=h_grad,
        use_peephole=op.get_attr("use_peephole"))
 
   # Backprop from dicfo to xh.
@@ -293,43 +288,6 @@ def _LSTMBlockCellGrad(op, *grad):
 
   return (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
           wco_grad, b_grad)
-
-
-@ops.RegisterGradient("BlockLSTM")
-def _BlockLSTMGrad(op, *grad):
-  """Gradient for BlockLSTM."""
-  seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b = op.inputs
-  i, cs, f, o, ci, co, h = op.outputs
-
-  cs_grad = grad[1]
-  h_grad = grad[6]
-
-  (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad, wco_grad,
-   b_grad) = gen_lstm_ops.block_lstm_grad(
-       seq_len_max,
-       x,
-       cs_prev,
-       h_prev,
-       w,
-       wci,
-       wcf,
-       wco,
-       b,
-       i,
-       cs,
-       f,
-       o,
-       ci,
-       co,
-       h,
-       cs_grad,
-       h_grad,
-       use_peephole=op.get_attr("use_peephole"))
-
-  return [
-      None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
-      wco_grad, b_grad
-  ]
 
 
 class LSTMBlockCell(LayerRNNCell):
@@ -696,7 +654,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       max_seq_len = math_ops.cast(math_ops.reduce_max(sequence_length),
                                   dtypes.int64)
 
-    _, cs, _, _, _, _, h = gen_lstm_ops.block_lstm(
+    _, cs, _, _, _, _, h = gen_rnn_ops.block_lstm(
         seq_len_max=max_seq_len,
         x=inputs,
         cs_prev=initial_cell_state,

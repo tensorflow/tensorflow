@@ -4,15 +4,15 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
 py_binary(
     name = "simple_estimator_example",
     srcs = ["simple_estimator_example.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -23,6 +23,7 @@ py_binary(
     srcs = [
         "keras_model_with_estimator.py",
     ],
+    python_version = "PY2",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
@@ -32,6 +33,7 @@ py_binary(
 py_binary(
     name = "keras_mnist",
     srcs = ["keras_mnist.py"],
+    python_version = "PY2",
     deps = [":keras_mnist_lib"],
 )
 
@@ -51,6 +53,7 @@ py_binary(
     srcs = [
         "mnist_eager_multigpu.py",
     ],
+    python_version = "PY2",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
@@ -62,6 +65,7 @@ py_binary(
     srcs = [
         "mnist_tf1_tpu.py",
     ],
+    python_version = "PY2",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

@@ -68,23 +68,23 @@ class SquareLinearOperatorBlockDiagTest(
     self._rtol[dtypes.complex64] = 1e-4
 
   @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  def operator_shape_infos(self):
+    shape_info = linear_operator_test_util.OperatorShapeInfo
     return [
-        build_info((0, 0)),
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((5, 5), blocks=[(2, 2), (3, 3)]),
-        build_info((3, 7, 7), blocks=[(1, 2, 2), (3, 2, 2), (1, 3, 3)]),
-        build_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
+        shape_info((0, 0)),
+        shape_info((1, 1)),
+        shape_info((1, 3, 3)),
+        shape_info((5, 5), blocks=[(2, 2), (3, 3)]),
+        shape_info((3, 7, 7), blocks=[(1, 2, 2), (3, 2, 2), (1, 3, 3)]),
+        shape_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
     ]
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
-    shape = list(build_info.shape)
+    shape = list(shape_info.shape)
     expected_blocks = (
-        build_info.__dict__["blocks"] if "blocks" in build_info.__dict__
+        shape_info.__dict__["blocks"] if "blocks" in shape_info.__dict__
         else [shape])
     matrices = [
         linear_operator_test_util.random_positive_definite_matrix(
@@ -111,7 +111,7 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertTrue(operator.is_square)
 
     # Broadcast the shapes.
-    expected_shape = list(build_info.shape)
+    expected_shape = list(shape_info.shape)
 
     matrices = linear_operator_util.broadcast_matrix_batch_dims(matrices)
 
@@ -258,4 +258,5 @@ class SquareLinearOperatorBlockDiagTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorBlockDiagTest)
   test.main()

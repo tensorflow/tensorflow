@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/executor.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -68,10 +69,16 @@ class ExecutorTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
+    rendez_ = NewLocalRendezvous();
+    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
+                                       Rendezvous** r) {
+      *r = rendez_;
+      rendez_->Ref();
+      return Status::OK();
+    };
     delete exec_;
     TF_CHECK_OK(NewLocalExecutor(params, std::move(graph), &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
-    rendez_ = NewLocalRendezvous();
   }
 
   Status Run(Rendezvous* rendez) {

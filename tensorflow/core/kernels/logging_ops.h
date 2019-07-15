@@ -12,22 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
-namespace logging {
+class AssertOp : public OpKernel {
+ public:
+  explicit AssertOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
 
-// Register a listener method to call on any printed messages.
-// Returns true if it is successfully registered.
-bool RegisterListener(void (*listener)(const char*));
+ private:
+  int32 summarize_ = 0;
+};
 
-}  // namespace logging
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_

@@ -516,6 +516,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/tf_attrtype.h"
 %include "tensorflow/c/python_api.h"
 
 

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <mutex>
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -136,9 +135,9 @@ ExampleTensorMap ExampleStore<T>::serialized_example;
 template <typename T>
 std::once_flag ExampleStore<T>::flags_init;
 
-template class ExampleStore<BytesFiller>;
-template class ExampleStore<Int64Filler>;
-template class ExampleStore<FloatFiller>;
+template struct ExampleStore<BytesFiller>;
+template struct ExampleStore<Int64Filler>;
+template struct ExampleStore<FloatFiller>;
 
 enum BenchmarkType { kDense, kSparse, kVarLenDense };
 

@@ -88,7 +88,7 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
     *suffix = ":" + input_parts[1];
   }
   StringPiece node_name_piece(input_parts[0]);
-  if (str_util::ConsumePrefix(&node_name_piece, "^")) {
+  if (absl::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
     *prefix = "";
@@ -200,7 +200,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
       // for merge only wait for one non-control input.
       int32 num_control_edges = 0;
       for (int i = 0; i < node_def.input_size(); ++i) {
-        if (str_util::StartsWith(node_def.input(i), "^")) {
+        if (absl::StartsWith(node_def.input(i), "^")) {
           num_control_edges++;
         }
       }

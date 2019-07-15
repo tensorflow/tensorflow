@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dump.h"
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -47,20 +48,25 @@ struct CanonicalDebugOptions {
     // function we treat this struct's members as write-only, and read only from
     // `opts`.
 
-    // If dump_to is empty, default to dumping to stdout.
-    if (opts.xla_dump_to().empty()) {
-      dump_to = "-";
-    }
-
     // Did the user specifiy an explicit format for dumping?
-    bool output_format_specified =
+    bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_as_url() || opts.xla_dump_hlo_snapshots();
+        opts.xla_dump_hlo_snapshots();
+    bool output_format_specified =
+        output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 
     // If we haven't specified an output format, default to dumping as text.
     if (!output_format_specified) {
       dump_as_text = true;
+    }
+
+    // If dump_to is empty, default to dumping to stdout, so long as some dump
+    // format other than dump-as-url was specified.  If the user only specified
+    // --xla_dump_hlo_as_url, then don't dump to stdout, that is likely noise
+    // they don't want.
+    if (opts.xla_dump_to().empty() && output_format_other_than_url_specified) {
+      dump_to = "-";
     }
 
     // If we specified a regular expression restricting which modules to dump,
@@ -142,6 +148,10 @@ void DumpToFileInDirImpl(string_view filename, string_view contents,
     return;
   }
 
+  if (opts.dump_to.empty()) {
+    return;
+  }
+
   const string& dir = opts.dump_to;
   VLOG(1) << "Dumping " << filename << " to " << dir;
 
@@ -190,6 +200,10 @@ void DumpHloModuleImpl(const HloModule& module,
   if (opts.dump_as_text) {
     DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"), module.ToString(),
                                 opts);
+    if (buffer_assn) {
+      DumpToFileInDirOrStdoutImpl(StrCat(filename, "-buffer-assignment.txt"),
+                                  buffer_assn->ToString(), opts);
+    }
   }
 
   if (opts.dump_as_proto) {

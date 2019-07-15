@@ -159,11 +159,103 @@ TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
                  /*type=*/TensorType_INT32);
 }
 
+// uint8 tests.
+TEST(UnpackOpTest, Uint8ThreeOutputs) {
+  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{3, 2},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6},
+                 /*expected_output_shape=*/{{2}, {2}, {2}},
+                 /*expected_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
+                 /*type=*/TensorType_UINT8);
+}
+
+TEST(UnpackOpTest, Uint8ThreeOutputsAxisOne) {
+  Check<uint8_t>(/*axis=*/1, /*input_shape=*/{3, 2},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6},
+                 /*expected_output_shape=*/{{3}, {3}},
+                 /*expected_output_data=*/{{1, 3, 5}, {2, 4, 6}},
+                 /*type=*/TensorType_UINT8);
+}
+
+TEST(UnpackOpTest, Uint8ThreeOutputsNegativeAxisOne) {
+  Check<uint8_t>(/*axis=*/-1, /*input_shape=*/{3, 2},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6},
+                 /*expected_output_shape=*/{{3}, {3}},
+                 /*expected_output_data=*/{{1, 3, 5}, {2, 4, 6}},
+                 /*type=*/TensorType_UINT8);
+}
+
+TEST(UnpackOpTest, Uint8ThreeOutputsNegativeAxisTwo) {
+  Check<uint8_t>(/*axis=*/-2, /*input_shape=*/{3, 2},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6},
+                 /*expected_output_shape=*/{{2}, {2}, {2}},
+                 /*expected_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
+                 /*type=*/TensorType_UINT8);
+}
+
+TEST(UnpackOpTest, Uint8OneOutput) {
+  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{1, 6},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6},
+                 /*expected_output_shape=*/{{6}},
+                 /*expected_output_data=*/{{1, 2, 3, 4, 5, 6}},
+                 /*type=*/TensorType_UINT8);
+}
+
+TEST(UnpackOpTest, Uint8ThreeDimensionsOutputs) {
+  Check<uint8_t>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
+                 /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
+                 /*expected_output_shape=*/{{2, 2}, {2, 2}},
+                 /*expected_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
+                 /*type=*/TensorType_UINT8);
+}
+
+// int8 tests.
+TEST(UnpackOpTest, Int8ThreeOutputs) {
+  Check<int8_t>(/*axis=*/0, /*input_shape=*/{3, 2},
+                /*input_data=*/{1, 2, 3, 4, 5, 6},
+                /*expected_output_shape=*/{{2}, {2}, {2}},
+                /*expected_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8ThreeOutputsAxisOne) {
+  Check<int8_t>(/*axis=*/1, /*input_shape=*/{3, 2},
+                /*input_data=*/{1, 2, 3, 4, 5, 6},
+                /*expected_output_shape=*/{{3}, {3}},
+                /*expected_output_data=*/{{1, 3, 5}, {2, 4, 6}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8ThreeOutputsNegativeAxisOne) {
+  Check<int8_t>(/*axis=*/-1, /*input_shape=*/{3, 2},
+                /*input_data=*/{1, 2, 3, 4, 5, 6},
+                /*expected_output_shape=*/{{3}, {3}},
+                /*expected_output_data=*/{{1, 3, 5}, {2, 4, 6}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8ThreeOutputsNegativeAxisTwo) {
+  Check<int8_t>(/*axis=*/-2, /*input_shape=*/{3, 2},
+                /*input_data=*/{1, 2, 3, 4, 5, 6},
+                /*expected_output_shape=*/{{2}, {2}, {2}},
+                /*expected_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8OneOutput) {
+  Check<int8_t>(/*axis=*/0, /*input_shape=*/{1, 6},
+                /*input_data=*/{1, 2, 3, 4, 5, 6},
+                /*expected_output_shape=*/{{6}},
+                /*expected_output_data=*/{{1, 2, 3, 4, 5, 6}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8ThreeDimensionsOutputs) {
+  Check<int8_t>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
+                /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
+                /*expected_output_shape=*/{{2, 2}, {2, 2}},
+                /*expected_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
+                /*type=*/TensorType_INT8);
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

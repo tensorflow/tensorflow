@@ -24,7 +24,9 @@ import functools
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -32,9 +34,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
@@ -109,6 +113,21 @@ def _flatten_first_two_dims(x):
 PFOR_CONFIG_ARG = "pfor_config"
 
 
+def _is_under_xla_context():
+  """Check if we are currently inside an XLA compile context."""
+  g = ops.get_default_graph()
+  while g is not None:
+    control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    while control_flow_context is not None:
+      if control_flow_context.IsXLAContext():
+        return True
+      else:
+        control_flow_context = control_flow_context.outer_context
+    # If g is a FuncGraph, get its outer_graph.
+    g = getattr(g, "outer_graph", None)
+  return False
+
+
 def pfor(loop_fn, iters, parallel_iterations=None):
   """Equivalent to running `loop_fn` `iters` times and stacking the outputs.
 
@@ -120,7 +139,7 @@ def pfor(loop_fn, iters, parallel_iterations=None):
 
 
   This is an experimental feature and currently has a lot of limitations:
-    - There should be no data depenendency between the different iterations. For
+    - There should be no data dependency between the different iterations. For
       example, a future iteration should not depend on a value or side-effect of
       a previous iteration.
     - Stateful kernels may mostly not be supported since these often imply a
@@ -158,7 +177,10 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   """
   def f():
     return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
-  if context.executing_eagerly():
+  # Note that we wrap into a tf.function if in eager execution mode or under
+  # XLA compilation. The latter is so that we don't compile operations like
+  # tf.placeholder that are created by the loop body.
+  if context.executing_eagerly() or _is_under_xla_context():
     f = function.defun(f)
   return f()
 
@@ -185,6 +207,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
+  # Run the loop body
   with ops.name_scope("loop_body"):
     loop_var = array_ops.placeholder(dtypes.int32, shape=[])
     if loop_fn_has_config:
@@ -195,6 +218,22 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
     else:
       assert pfor_config is None
       loop_fn_outputs = loop_fn(loop_var)
+
+  # Convert outputs to Tensor if needed.
+  tmp_loop_fn_outputs = []
+  for loop_fn_output in nest.flatten(loop_fn_outputs):
+    if (loop_fn_output is not None and not isinstance(
+        loop_fn_output,
+        (ops.Operation, ops.Tensor, sparse_tensor.SparseTensor))):
+      if isinstance(loop_fn_output, indexed_slices.IndexedSlices):
+        logging.warn("Converting %s to a dense representation may make it slow."
+                     " Alternatively, output the indices and values of the"
+                     " IndexedSlices separately, and handle the vectorized"
+                     " outputs directly." % loop_fn_output)
+      loop_fn_output = ops.convert_to_tensor(loop_fn_output)
+    tmp_loop_fn_outputs.append(loop_fn_output)
+  loop_fn_outputs = nest.pack_sequence_as(loop_fn_outputs, tmp_loop_fn_outputs)
+
   new_ops = set(ops.get_default_graph().get_operations()) - existing_ops
   iters = ops.convert_to_tensor(iters)
   if parallel_iterations is not None:
@@ -259,3 +298,79 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
       else:
         outputs = tiled_outputs
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
+
+
+@tf_export("vectorized_map")
+def vectorized_map(fn, elems):
+  """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
+
+
+  This method works similar to tf.map_fn but is optimized to run much faster,
+  but possibly with a much larger memory footprint. The speedups are obtained by
+  vectorization (see https://arxiv.org/pdf/1903.04243.pdf). The idea behind
+  vectorization is to semantically launch all the invocations of `fn` in
+  parallel and fuse corresponding operations across all these invocations. This
+  fusion is done statically at graph generation time and the generated code is
+  often similar in performance to a manually fused version.
+
+
+  For example, let's look at a method that calculates the outer product of a
+  matrix.
+
+  ```python
+  def outer_product(a):
+    return tf.tensordot(a, a, 0)
+
+  # outer_product was designed to not support batching.
+  c = outer_product(tf.ones((2, 3)))
+  # The shape is consistent
+  assert c.shape == (2, 3, 2, 3)
+  ```
+
+  Now suppose we want an efficient batched version of outer_product. We can
+  simply write:
+
+  ```python
+  batch_size = 100
+  a = tf.ones((batch_size, 32, 32))
+  c = tf.vectorized_map(outer_product, a)
+  assert c.shape == (batch_size, 32, 32, 32, 32)
+   ```
+
+  Because `tf.vectorized_map` fully parallelizes the batch, this method will
+  generally be significantly faster than using `tf.map_fn`, especially in eager
+  mode.
+
+  This is an experimental feature and currently has a lot of limitations:
+    - There should be no data dependency between the different semantic
+      invocations of `fn`, i.e. it should be safe to map the elements of the
+      inputs in any order.
+    - Stateful kernels may mostly not be supported since these often imply a
+      data dependency. We do support a limited set of such stateful kernels
+      though (like RandomFoo, Variable operations like reads, etc).
+    - `fn` has limited support for control flow operations. `tf.cond` in
+      particular is not supported.
+    - `fn` should return nested structure of Tensors or Operations. However
+      if an Operation is returned, it should have zero outputs.
+    - The shape and dtype of `fn` outputs should not depend on the input
+      to `fn`.
+
+  Args:
+    fn: The callable to be performed. It accepts one argument, which will have
+      the same (possibly nested) structure as `elems`, and returns a possibly
+      nested structure of Tensors and Operations, which may be different than
+      the structure of `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension. The nested sequence of the
+      resulting slices will be mapped over by `fn`.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
+    results of applying fn to tensors unpacked from elems along the first
+    dimension, from first to last.
+  """
+  def loop_fn(i):
+    gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
+    return fn(gathered_elems)
+  batch_size = array_ops.shape(nest.flatten(elems)[0])[0]
+  return pfor(loop_fn, batch_size)

@@ -93,14 +93,12 @@ class Nadam(optimizer_v2.OptimizerV2):
                        'tf.keras.optimizers.LearningRateSchedules as the '
                        'learning rate.')
 
-    if epsilon is None:
-      epsilon = backend_config.epsilon()
     super(Nadam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
-    self._set_hyper('epsilon', epsilon)
+    self.epsilon = epsilon or backend_config.epsilon()
     self._m_cache = None
 
   def _create_slots(self, var_list):
@@ -139,7 +137,7 @@ class Nadam(optimizer_v2.OptimizerV2):
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
     lr_t = self._get_hyper('learning_rate', var_dtype)
-    epsilon_t = self._get_hyper('epsilon', var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
@@ -160,7 +158,7 @@ class Nadam(optimizer_v2.OptimizerV2):
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
     lr_t = self._get_hyper('learning_rate', var_dtype)
-    epsilon_t = self._get_hyper('epsilon', var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
@@ -201,6 +199,6 @@ class Nadam(optimizer_v2.OptimizerV2):
         'decay': self._serialize_hyperparameter('decay'),
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
-        'epsilon': self._serialize_hyperparameter('epsilon'),
+        'epsilon': self.epsilon,
     })
     return config

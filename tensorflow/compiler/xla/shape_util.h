@@ -400,7 +400,8 @@ class ShapeUtil {
                                    absl::Span<const int64> dimensions,
                                    absl::Span<const int64> minor_to_major,
                                    absl::Span<const Tile> tiles = {},
-                                   int64 element_size_in_bits = 0);
+                                   int64 element_size_in_bits = 0,
+                                   int64 memory_space = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
@@ -750,7 +751,7 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);

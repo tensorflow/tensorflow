@@ -84,15 +84,6 @@ bool AlwaysForwardsRefInput(const Node& node) { return node.IsIdentity(); }
 
 }  // namespace
 
-Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-    return errors::Internal("Malformed assigned device '", device, "'");
-  }
-  *device_type = DeviceType(parsed.type);
-  return Status::OK();
-}
-
 bool HasForwardedRefInput(const Node& node) {
   if (AlwaysForwardsRefInput(node)) {
     for (const Edge* incoming_edge : node.in_edges()) {
@@ -226,108 +217,6 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
 
-Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
-                            bool allow_mixing_unknown_and_cpu,
-                            bool* out_can_pick_device,
-                            string* out_device_picked) {
-  if (out_can_pick_device) {
-    *out_can_pick_device = true;
-  }
-
-#define FAILED_TO_PICK_DEVICE(failing_status) \
-  do {                                        \
-    if (out_can_pick_device) {                \
-      *out_can_pick_device = false;           \
-      return Status::OK();                    \
-    } else {                                  \
-      return failing_status;                  \
-    }                                         \
-  } while (false)
-
-  TF_RET_CHECK(!device_names.empty()) << "No devices to choose from";
-  DCHECK_NE(out_can_pick_device == nullptr, out_device_picked == nullptr);
-
-  absl::flat_hash_set<absl::string_view> device_names_set;
-  for (absl::string_view device_name : device_names) {
-    if (!device_name.empty()) {
-      device_names_set.insert(device_name);
-    }
-  }
-
-  absl::optional<absl::string_view> maybe_gpu_device;
-  absl::optional<absl::string_view> maybe_cpu_device;
-  absl::optional<absl::string_view> maybe_unknown_device;
-
-  for (absl::string_view device_name : device_names_set) {
-    DeviceNameUtils::ParsedName parsed_name;
-    TF_RET_CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_name))
-        << device_name;
-    if (parsed_name.type == "GPU") {
-      if (maybe_gpu_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple GPU devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_gpu_device = device_name;
-    } else if (parsed_name.type == "CPU") {
-      if (maybe_cpu_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple CPU devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_cpu_device = device_name;
-    } else {
-      if (maybe_unknown_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple unknown devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_unknown_device = device_name;
-    }
-  }
-
-  if (maybe_unknown_device && maybe_gpu_device) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Found both unknown and GPU devices: ", *maybe_unknown_device, ", ",
-        *maybe_gpu_device));
-  }
-
-  if (!allow_mixing_unknown_and_cpu) {
-    if (maybe_unknown_device && maybe_cpu_device) {
-      FAILED_TO_PICK_DEVICE(errors::Internal(
-          "Found both unknown and CPU devices: ", *maybe_unknown_device, ", ",
-          *maybe_cpu_device));
-    }
-  }
-
-  if (out_device_picked) {
-    if (maybe_gpu_device) {
-      *out_device_picked = string(*maybe_gpu_device);
-    } else if (maybe_unknown_device) {
-      *out_device_picked = string(*maybe_unknown_device);
-    } else {
-      *out_device_picked = string(*maybe_cpu_device);
-    }
-  }
-
-  return Status::OK();
-
-#undef FAILED_TO_PICK_DEVICE
-}
-
-Status PickDeviceForXla(absl::Span<const string> device_names,
-                        bool allow_mixing_unknown_and_cpu,
-                        string* out_device_picked) {
-  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
-                              /*out_can_pick_device=*/nullptr,
-                              out_device_picked);
-}
-
-Status CanPickDeviceForXla(absl::Span<const string> device_names,
-                           bool allow_mixing_unknown_and_cpu,
-                           bool* out_can_pick_device) {
-  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
-                              out_can_pick_device,
-                              /*out_device_picked=*/nullptr);
-}
-
 namespace {
 struct XlaGlobalJitLevel {
   OptimizerOptions::GlobalJitLevel single_gpu;
@@ -424,5 +313,77 @@ bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def) {
                         [](const std::pair<string, AttrValue>& name_attr_pair) {
                           return name_attr_pair.second.has_func();
                         });
+}
+bool IsShapeConsumerOp(const Node& node) {
+  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
+         node.type_string() == "Size";
+}
+
+namespace {
+struct ClusterInfo {
+  int size;
+
+  // Maps op names to the number of times they appear in the cluster.
+  absl::flat_hash_map<absl::string_view, int> op_histogram;
+};
+
+void HistogramMapToRepeatedOpAndCount(
+    protobuf::RepeatedPtrField<XlaAutoClusteringSummary::OpAndCount>* result,
+    const absl::flat_hash_map<absl::string_view, int>& histogram) {
+  for (const auto& pair : histogram) {
+    XlaAutoClusteringSummary::OpAndCount* new_entry = result->Add();
+    new_entry->set_op(std::string(pair.first));
+    new_entry->set_count(pair.second);
+  }
+
+  absl::c_sort(*result, [](const XlaAutoClusteringSummary::OpAndCount& a,
+                           const XlaAutoClusteringSummary::OpAndCount& b) {
+    return a.op() < b.op();
+  });
+}
+
+void ClusterInfoToProtobuf(XlaAutoClusteringSummary::Cluster* result,
+                           absl::string_view name, const ClusterInfo& info) {
+  result->set_name(std::string(name));
+  result->set_size(info.size);
+  HistogramMapToRepeatedOpAndCount(result->mutable_op_histogram(),
+                                   info.op_histogram);
+}
+}  // namespace
+
+XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
+  absl::flat_hash_map<absl::string_view, ClusterInfo> cluster_name_to_info;
+  XlaAutoClusteringSummary result;
+
+  absl::flat_hash_map<absl::string_view, int> unclustered_op_histogram;
+
+  for (Node* n : graph.nodes()) {
+    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
+    if (cluster_name) {
+      result.set_clustered_node_count(result.clustered_node_count() + 1);
+      ClusterInfo* info = &cluster_name_to_info[*cluster_name];
+      info->size++;
+      info->op_histogram[n->type_string()]++;
+    } else {
+      result.set_unclustered_node_count(result.unclustered_node_count() + 1);
+      unclustered_op_histogram[n->type_string()]++;
+    }
+  }
+
+  for (const auto& pair : cluster_name_to_info) {
+    XlaAutoClusteringSummary::Cluster* new_cluster = result.add_clusters();
+    ClusterInfoToProtobuf(new_cluster, pair.first, pair.second);
+  }
+
+  absl::c_sort(*result.mutable_clusters(),
+               [&](const XlaAutoClusteringSummary::Cluster& a,
+                   const XlaAutoClusteringSummary::Cluster& b) {
+                 return a.name() < b.name();
+               });
+
+  HistogramMapToRepeatedOpAndCount(result.mutable_unclustered_op_histogram(),
+                                   unclustered_op_histogram);
+
+  return result;
 }
 }  // namespace tensorflow

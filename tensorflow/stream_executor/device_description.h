@@ -78,10 +78,6 @@ class DeviceDescription {
   // legitimate kernel launch request.
   const BlockDim &block_dim_limit() const { return block_dim_limit_; }
 
-  // Returns the maximum number of simultaneously resident blocks
-  // on a multiprocessor.
-  int64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
-
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
@@ -183,8 +179,6 @@ class DeviceDescription {
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
 
-  int64 blocks_per_core_limit_;
-
   int64 threads_per_core_limit_;
   int64 threads_per_block_limit_;
   int64 threads_per_warp_;
@@ -249,10 +243,6 @@ class DeviceDescriptionBuilder {
   }
   void set_block_dim_limit(const BlockDim &value) {
     device_description_->block_dim_limit_ = value;
-  }
-
-  void set_blocks_per_core_limit(int64 value) {
-    device_description_->blocks_per_core_limit_ = value;
   }
 
   void set_threads_per_core_limit(int64 value) {

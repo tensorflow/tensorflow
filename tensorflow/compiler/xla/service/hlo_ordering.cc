@@ -190,16 +190,29 @@ bool HloOrdering::UseIsBeforeValueDefinition(
   }
 
   // The use at a while is an input to a phi, and logically occurs before values
-  // are defined in the body or condition computations.
+  // are defined in the body. Note that the use is *not* before the value if the
+  // value is defined in the condition and is not the condition parameter, since
+  // the input of a while's life range is only ended at the start the body.
   if (use.instruction->opcode() == HloOpcode::kWhile) {
     const HloInstruction* xla_while = use.instruction;
     if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_body()) ||
-        call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_condition())) {
+                                           xla_while->while_body())) {
       VLOG(4) << "  use is while " << use.instruction->name()
-              << " and def is in condition or body";
+              << " and def is in body";
       return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           xla_while->while_condition())) {
+      if (value.defining_instruction() !=
+          xla_while->while_condition()->parameter_instruction(0)) {
+        VLOG(4) << "  use is while " << use.instruction->name()
+                << " and def is in condition and is not the parameter";
+        return false;
+      } else {
+        VLOG(4) << "  use is while " << use.instruction->name()
+                << " and def is in condition and is the parameter";
+        return true;
+      }
     }
   }
 
@@ -263,8 +276,21 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   }
 
   if (a.live_out_of_module()) {
-    VLOG(4) << a << " is live out of module and defined before " << b;
+    VLOG(4) << a << " is live out of module and not defined before " << b;
     return false;
+  }
+
+  // If the root instruction aliases the buffer 'a', the live range of 'a' is
+  // until the end of the computation and can never be strictly before another
+  // buffer nested in the same computation. This is needed to prevent the root
+  // instruction's buffers from being reused by later instructions even when
+  // the root is not the last instruction in the schedule.
+  for (const HloPosition& pos : a.positions()) {
+    if (pos.instruction->parent()->root_instruction() == pos.instruction &&
+        call_graph().InstructionIsNestedIn(b.instruction(),
+                                           pos.instruction->parent())) {
+      return false;
+    }
   }
 
   // All uses of 'a' must be before 'b' is defined.

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -177,7 +178,8 @@ void NcclReducer::Run(StatusCallback done) {
     // `WaitForDependencies` may block if the collective instances on which this
     // op depends have not yet launched.  When this function returns, this op is
     // ready to go.
-    tracing::ScopedActivity activity("WaitForDependencies");
+    profiler::TraceMe activity("WaitForDependencies",
+                               profiler::TraceMeLevel::kInfo);
     col_ctx_->col_exec->WaitForDependencies(*col_params_);
     NcclManager::instance()->SignalMultiNodeReady(nccl_collective_key);
   }
@@ -186,17 +188,17 @@ void NcclReducer::Run(StatusCallback done) {
     // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
     // implementation of `Launched` keeps track of the number of devices that
     // have launched.
-    tracing::ScopedActivity activity("Schedule");
+    profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
     col_ctx_->col_exec->Launched(*col_params_);
   }
 
   // Wait for nccl op and group_size copy to succeed, then do final_op.
   {
-    tracing::ScopedActivity activity("GroupSizeCopy");
+    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
     group_size_ready.WaitForNotification();
   }
   {
-    tracing::ScopedActivity activity("Nccl");
+    profiler::TraceMe activity("Nccl", profiler::TraceMeLevel::kInfo);
     nccl_done.WaitForNotification();
   }
   Status final_status =

@@ -37,7 +37,7 @@ ENTRY entry {
 )";
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseHloString(hlo_string));
+                      ParseAndReturnUnverifiedModule(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);

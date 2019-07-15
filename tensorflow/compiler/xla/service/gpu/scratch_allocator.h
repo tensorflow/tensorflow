@@ -18,18 +18,18 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace gpu {
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
-  ScratchAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator)
+  ScratchAllocator(int device_ordinal,
+                   se::DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
@@ -50,8 +50,8 @@ class ScratchAllocator : public se::ScratchAllocator {
 
  private:
   const int device_ordinal_;
-  DeviceMemoryAllocator* memory_allocator_;
-  std::vector<OwningDeviceMemory> allocated_buffers_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 

@@ -50,9 +50,9 @@ Status PartitionFunctionGraph(
   std::unordered_map<string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     const string& device = partition.first;
-    const GraphDef& graph_def = partition.second;
+    GraphDef& graph_def = partition.second;
     // Each partition gets a copy of all the
     // std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
     std::unique_ptr<Graph> subgraph(
@@ -62,7 +62,8 @@ Status PartitionFunctionGraph(
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def, subgraph.get()));
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToGraph(opts, std::move(graph_def), subgraph.get()));
     subgraphs->emplace(device, std::move(subgraph));
   }
 
@@ -70,7 +71,7 @@ Status PartitionFunctionGraph(
 }
 
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, std::vector<int>* arg_indices,
+    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs) {
@@ -101,7 +102,9 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    if (MTypeFromDType(type) == HOST_MEMORY) {
+    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
+                                              : MTypeFromDType(type);
+    if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }
     arg_alloc_attrs->push_back(alloc_attr);
@@ -112,7 +115,9 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    if (MTypeFromDType(type) == HOST_MEMORY) {
+    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
+                                              : MTypeFromDType(type);
+    if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }
     ret_alloc_attrs->push_back(alloc_attr);

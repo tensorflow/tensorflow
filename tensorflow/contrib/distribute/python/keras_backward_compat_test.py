@@ -673,26 +673,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          mode=['graph']))
-  def test_dataset_input_shape_fully_defined(self, distribution):
-    with self.cached_session():
-      model = get_model()
-
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
-
-      dataset = get_dataset(distribution)
-      # Input shapes are not fully known. Batch dimension is unknown as we are
-      # not using the drop_remainder argument.
-      dataset = dataset.repeat(100).batch(10)
-
-      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
-
-  @combinations.generate(
-      combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus,
@@ -1080,7 +1060,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       # are the same within some limits of tolerance.
       for key in results_with_ds:
         if (key.startswith('training_history') and
-            isinstance(distribution, tpu_strategy.TPUStrategy) and
+            isinstance(distribution, tpu_strategy.TPUStrategyV1) and
             distribution.extended.steps_per_run > 1):
           # TODO(b/119894254): Enable this test for all cases once the
           # underlying bug is fixed.

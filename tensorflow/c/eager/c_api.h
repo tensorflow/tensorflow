@@ -60,6 +60,8 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
 
 // Controls how to act when we try to run an operation on a given device but
 // some input tensors are not on that device.
+// LINT.IfChange
+// Note: Keep in sync with internal copy of enum in eager/context.h.
 typedef enum TFE_ContextDevicePlacementPolicy {
   // Running operations with input tensors on the wrong device will fail.
   TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
@@ -72,6 +74,7 @@ typedef enum TFE_ContextDevicePlacementPolicy {
   // Placement policy which silently copies int32 tensors but not other dtypes.
   TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 } TFE_ContextDevicePlacementPolicy;
+// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
 
 // Sets the default execution mode (sync/async). Note that this can be
 // overridden per thread using TFE_ContextSetAsyncForThread.
@@ -98,23 +101,22 @@ TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
 
 // Clears the internal caches in the TFE context. Useful when reseeding random
 // ops.
-TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx,
-                                                  TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 
 // Sets a thread-local device placement policy. After this call, other calls to
 // TFE_Execute in the same thread will use the device policy specified here
 // instead of the device policy used to construct the context. This has no
 // effect on the device policy used by other program threads.
 TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalDevicePlacementPolicy(
-    TFE_Context*, TFE_ContextDevicePlacementPolicy);
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy);
 
 // Returns the device placement policy to be used by this context in the current
 // thread.
 TF_CAPI_EXPORT extern TFE_ContextDevicePlacementPolicy
-TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
+TFE_ContextGetDevicePlacementPolicy(TFE_Context* ctx);
 
 // Overrides the execution mode (sync/async) for the current thread.
-TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
+TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char enable,
                                                         TF_Status* status);
 
@@ -411,6 +413,13 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
 
+// Removes a function from the context. Once removed, you can no longer
+// TFE_Execute it or TFE_Execute any TFE_Op which has it as an attribute or any
+// other function which calls it as an attribute.
+TF_CAPI_EXPORT extern void TFE_ContextRemoveFunction(TFE_Context* ctx,
+                                                     const char* name,
+                                                     TF_Status* status);
+
 // Checks whether a function is registered under `name`.
 TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
                                                     const char* name);
@@ -454,9 +463,8 @@ namespace tensorflow {
 class Tensor;
 }  // namespace tensorflow
 
-const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
-    TFE_TensorHandle* h, TF_Status* status);
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status);
 #endif
 
 #endif  // TENSORFLOW_C_EAGER_C_API_H_

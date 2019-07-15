@@ -70,8 +70,9 @@ class Analyzer(cfg.GraphVisitor):
       # Nodes that don't have a scope annotation are assumed not to touch any
       # symbols.
       # This Name node below is a literal name, e.g. False
-      assert isinstance(node.ast_node, (gast.Name, gast.Continue, gast.Break,
-                                        gast.Pass)), type(node.ast_node)
+      assert isinstance(node.ast_node,
+                        (gast.Name, gast.Continue, gast.Break, gast.Pass,
+                         gast.Global, gast.Nonlocal)), type(node.ast_node)
       live_out = set()
       for n in node.next:
         live_out |= self.in_[n]
@@ -144,12 +145,6 @@ class WholeTreeAnalyzer(transformer.Base):
     self.analyzers[node] = analyzer
     self.current_analyzer = parent_analyzer
     return node
-
-  def visit_Nonlocal(self, node):
-    raise NotImplementedError()
-
-  def visit_Global(self, node):
-    raise NotImplementedError()
 
 
 class Annotator(transformer.Base):

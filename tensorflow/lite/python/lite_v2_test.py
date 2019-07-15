@@ -26,7 +26,13 @@ from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.save import save
@@ -76,6 +82,16 @@ class TestModels(test_util.TensorFlowTestCase):
         return x - self.z
 
     return BasicModel()
+
+  def _assertValidDebugInfo(self, debug_info):
+    """Verify the DebugInfo is valid."""
+    file_names = set()
+    for file_path in debug_info.files:
+      file_names.add(os.path.basename(file_path))
+    # To make the test independent on how the nodes are created, we only assert
+    # the name of this test file.
+    self.assertIn('lite_v2_test.py', file_names)
+    self.assertNotIn('lite_test.py', file_names)
 
 
 class FromConcreteFunctionTest(TestModels):
@@ -148,6 +164,104 @@ class FromConcreteFunctionTest(TestModels):
       _ = converter.convert()
     self.assertIn('can only convert a single ConcreteFunction',
                   str(error.exception))
+
+  def _getCalibrationQuantizeModel(self):
+    np.random.seed(0)
+
+    root = tracking.AutoTrackable()
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[1, 5, 5, 3], dtype=dtypes.float32)
+    ])
+    def func(inp):
+      conv = nn_ops.conv2d(
+          inp,
+          filter=array_ops.ones([3, 3, 3, 16]),
+          strides=[1, 1, 1, 1],
+          padding='SAME')
+      output = nn_ops.relu(conv, name='output')
+      return output
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+
+    root.f = func
+    to_save = root.f.get_concrete_function()
+    return (to_save, calibration_gen)
+
+  def testPostTrainingCalibrateAndQuantize(self):
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  def testCalibrateAndQuantizeBuiltinInt8(self):
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert model by specifying target spec (instead of optimizations), since
+    # when targeting an integer only backend, quantization is mandatory.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a concrete function has debug info captured."""
+    root = tracking.AutoTrackable()
+    root.v1 = variables.Variable(3.)
+    root.f = def_function.function(lambda x: root.v1 * x)
+    input_data = constant_op.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
 
 
 class FromSavedModelTest(TestModels):
@@ -238,6 +352,49 @@ class FromSavedModelTest(TestModels):
     self.assertIn('This converter can only convert a single ConcreteFunction',
                   str(error.exception))
 
+  @test_util.run_v2_only
+  def testKerasSequentialModel(self):
+    """Test a simple sequential tf.Keras model."""
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(model, save_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a SavedModel has debug info captured."""
+    input_data = constant_op.constant(1., shape=[1])
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(lambda x: 2. * x)
+    to_save = root.f.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, to_save)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
+
 
 class FromKerasModelTest(TestModels):
 
@@ -247,11 +404,13 @@ class FromKerasModelTest(TestModels):
     input_data = constant_op.constant(1., shape=[1, 1])
 
     # Create a simple Keras model.
-    x = [-1, 0, 1, 2, 3, 4]
-    y = [-3, -1, 1, 3, 5, 7]
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential(
-        [keras.layers.Dense(units=1, input_shape=[1])])
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(units=1, input_shape=[1])
+    ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
 
@@ -306,6 +465,49 @@ class FromKerasModelTest(TestModels):
     actual_value = self._evaluateTFLiteModel(tflite_model, input_data)
     for tf_result, tflite_result in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(tf_result[0], tflite_result, 5)
+
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a tf.Keras model has debug info captured."""
+    # Create a simple Keras model.
+    x = [-1, 0, 1, 2, 3, 4]
+    y = [-3, -1, 1, 3, 5, 7]
+    model = keras.models.Sequential(
+        [keras.layers.Dense(units=1, input_shape=[1])])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
+
+
+class GrapplerTest(TestModels):
+
+  @test_util.run_v2_only
+  def testConstantFolding(self):
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    input_data = constant_op.constant([1., 2., 3., 4., 5., 6., 7., 8., 9.],
+                                      shape=[3, 3])
+
+    @def_function.function
+    def func(x):
+      y_const = constant_op.constant([1., 2., 3.])
+      y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+      return math_ops.matmul(x, y_broadcast)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.f(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    np.testing.assert_array_equal(expected_value.numpy(), actual_value)
 
 
 if __name__ == '__main__':

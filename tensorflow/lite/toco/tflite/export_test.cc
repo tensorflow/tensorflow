@@ -16,17 +16,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace toco {
 namespace tflite {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class ExportTest : public ::testing::Test {
  protected:
@@ -146,6 +148,11 @@ class ExportTest : public ::testing::Test {
     }
   }
 
+  tensorflow::Status ExportAndReturnStatus(const ExportParams& params) {
+    string result;
+    return Export(input_model_, &result, params);
+  }
+
   std::vector<string> ExportAndSummarizeOperators(const ExportParams& params) {
     std::vector<string> names;
 
@@ -213,18 +220,146 @@ TEST_F(ExportTest, LoadOperatorsMap) {
       3, operators[details::OperatorKey(::tflite::BuiltinOperator_SUB, "", 1)]);
 }
 
+TEST_F(ExportTest, UnsupportedFunctionality) {
+  AddOperatorsByName({"Conv"});
+
+  ExportParams params;
+  params.allow_dynamic_tensors = false;
+  auto status = ExportAndReturnStatus(params);
+  EXPECT_EQ(status.code(), ::tensorflow::error::UNIMPLEMENTED);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Unsupported flag: allow_dynamic_tensors."));
+}
+
 TEST_F(ExportTest, Export) {
   AddOperatorsByName({"Conv", "Add", "MyCrazyOp", "Sub"});
 
   ExportParams params;
   params.allow_custom_ops = true;
   params.enable_select_tf_ops = false;
-  params.quantize_weights = false;
+  params.quantize_weights = QuantizedBufferType::NONE;
 
   EXPECT_THAT(ExportAndSummarizeOperators(params),
               ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:MyCrazyOp",
                           "builtin:SUB"));
   EXPECT_THAT(ExportAndGetOperatorIndices(params), ElementsAre(1, 0, 2, 3));
+}
+
+TEST_F(ExportTest, UnsupportedControlFlowErrors) {
+  AddOperatorsByName({"Conv", "Add", "Switch", "Merge"});
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+
+  // The model contains control flow ops which are not convertible, so we should
+  // check the returned error message.
+
+  string output;
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  auto status = Export(input_model_, &output, params, ops_by_type);
+  EXPECT_EQ(status.error_message(),
+            "We are continually in the process of adding support to TensorFlow "
+            "Lite for more ops. It would be helpful if you could inform us of "
+            "how this conversion went by opening a github issue at "
+            "https://github.com/tensorflow/tensorflow/issues/"
+            "new?template=40-tflite-op-request.md\n and pasting the "
+            "following:\n\nTensorFlow Lite currently doesn't support control "
+            "flow ops: Merge, Switch. We are working on supporting control "
+            "flow ops, please see github issue at "
+            "https://github.com/tensorflow/tensorflow/issues/28485.");
+}
+
+TEST_F(ExportTest, UnsupportedOpsAndNeedEnableFlex) {
+  AddOperatorsByName({"Conv", "Add", "BatchNormWithGlobalNormalization"});
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = false;
+
+  string output;
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  auto status = Export(input_model_, &output, params, ops_by_type);
+  EXPECT_EQ(
+      status.error_message(),
+      "We are continually in the process of adding support to TensorFlow Lite "
+      "for more ops. It would be helpful if you could inform us of how this "
+      "conversion went by opening a github issue at "
+      "https://github.com/tensorflow/tensorflow/issues/"
+      "new?template=40-tflite-op-request.md\n and pasting the "
+      "following:\n\nSome of the operators in the model are not supported by "
+      "the standard TensorFlow Lite runtime. If those are native TensorFlow "
+      "operators, you might be able to use the extended runtime by passing "
+      "--enable_select_tf_ops, or by setting "
+      "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+      "tf.lite.TFLiteConverter(). Otherwise, if you have a custom "
+      "implementation for them you can disable this error with "
+      "--allow_custom_ops, or by setting allow_custom_ops=True when calling "
+      "tf.lite.TFLiteConverter(). Here is a list of builtin operators you are "
+      "using: ADD, CONV_2D. Here is a list of operators for which you will "
+      "need custom implementations: BatchNormWithGlobalNormalization.");
+}
+
+TEST_F(ExportTest, UnsupportedOpsNeedCustomImplementation) {
+  AddOperatorsByName({"Conv", "Add", "MyCustomOp1", "MyCustomOp2"});
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = true;
+
+  string output;
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  auto status = Export(input_model_, &output, params, ops_by_type);
+  EXPECT_EQ(
+      status.error_message(),
+      "We are continually in the process of adding support to TensorFlow Lite "
+      "for more ops. It would be helpful if you could inform us of how this "
+      "conversion went by opening a github issue at "
+      "https://github.com/tensorflow/tensorflow/issues/"
+      "new?template=40-tflite-op-request.md\n and pasting the "
+      "following:\n\nSome of the operators in the model are not supported by "
+      "the standard TensorFlow Lite runtime and are not recognized by "
+      "TensorFlow. If you have a custom implementation for them you can "
+      "disable this error with --allow_custom_ops, or by setting "
+      "allow_custom_ops=True when calling tf.lite.TFLiteConverter(). Here is a "
+      "list of builtin operators you are using: ADD, CONV_2D. Here is a list "
+      "of operators for which you will need custom implementations: "
+      "MyCustomOp1, MyCustomOp2.");
+}
+
+TEST_F(ExportTest, UnsupportedControlFlowAndCustomOpsErrors) {
+  AddOperatorsByName(
+      {"Conv", "Add", "Switch", "Merge", "MyCustomOp1", "MyCustomOp2"});
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+
+  // The model contains control flow ops which are not convertible, so we should
+  // check the returned error message.
+
+  string output;
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  auto status = Export(input_model_, &output, params, ops_by_type);
+  EXPECT_EQ(
+      status.error_message(),
+      "We are continually in the process of adding support to TensorFlow Lite "
+      "for more ops. It would be helpful if you could inform us of how this "
+      "conversion went by opening a github issue at "
+      "https://github.com/tensorflow/tensorflow/issues/"
+      "new?template=40-tflite-op-request.md\n and pasting the "
+      "following:\n\nTensorFlow Lite currently doesn't support control flow "
+      "ops: Merge, Switch. We are working on supporting control flow ops, "
+      "please see github issue at "
+      "https://github.com/tensorflow/tensorflow/issues/28485. Some of the "
+      "operators in the model are not supported by the standard TensorFlow "
+      "Lite runtime. If those are native TensorFlow operators, you might be "
+      "able to use the extended runtime by passing --enable_select_tf_ops, or "
+      "by setting target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+      "tf.lite.TFLiteConverter(). Otherwise, if you have a custom "
+      "implementation for them you can disable this error with "
+      "--allow_custom_ops, or by setting allow_custom_ops=True when calling "
+      "tf.lite.TFLiteConverter(). Here is a list of builtin operators you are "
+      "using: ADD, CONV_2D. Here is a list of operators for which you will "
+      "need custom implementations: MyCustomOp1, MyCustomOp2.");
 }
 
 TEST_F(ExportTest, QuantizeWeights) {
@@ -249,7 +384,7 @@ class OpSetsTest : public ExportTest {
     import_all_ops_as_unsupported_ = true;
     params_.allow_custom_ops = false;
     params_.enable_select_tf_ops = false;
-    params_.quantize_weights = false;
+    params_.quantize_weights = QuantizedBufferType::NONE;
 
     for (const OpSet& i : sets) {
       switch (i) {
@@ -335,7 +470,7 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
 
 // This test is based on a hypothetical scenario that dilation is supported
 // only in Conv version 2. So Toco populates version=1 when dialation
-// parameters are all 1, and version=2 otehrwise.
+// parameters are all 1, and version=2 otherwise.
 class FakeConvolutionOperator
     : public BuiltinOperator<ConvOperator, ::tflite::Conv2DOptions,
                              ::tflite::BuiltinOptions_Conv2DOptions> {

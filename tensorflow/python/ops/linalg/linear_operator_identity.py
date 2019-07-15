@@ -131,7 +131,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   operator.matmul(x)
   ==> Shape [2, 4] Tensor, same as x.
 
-  y = tf.random_normal(shape=[3, 2, 4])
+  y = tf.random.normal(shape=[3, 2, 4])
   # Note that y.shape is compatible with operator.shape because operator.shape
   # is broadcast to [3, 2, 2].
   # This broadcast does NOT require copying data, since we can infer that y
@@ -389,7 +389,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name, values=[mat]):
+    with self._name_scope(name):
       mat = ops.convert_to_tensor(mat, name="mat")
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
@@ -492,7 +492,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   operator.matmul(x)
   ==> 3 * x
 
-  y = tf.random_normal(shape=[3, 2, 4])
+  y = tf.random.normal(shape=[3, 2, 4])
   # Note that y.shape is compatible with operator.shape because operator.shape
   # is broadcast to [3, 2, 2].
   x = operator.solve(y)
@@ -708,7 +708,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name, values=[mat]):
+    with self._name_scope(name):
       # Shape [B1,...,Bb, 1]
       multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
 

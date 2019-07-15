@@ -36,6 +36,8 @@ limitations under the License.
 
 %include "tensorflow/python/lib/core/bfloat16.i"
 
+%include "tensorflow/lite/toco/python/toco.i"
+
 %include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/quantize_training.i"
 

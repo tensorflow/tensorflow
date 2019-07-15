@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -85,8 +86,8 @@ Status HostTracer::Stop() {
 constexpr char kUserMetadataMarker = '#';
 
 Status HostTracer::CollectData(RunMetadata* run_metadata) {
-  if (events_.empty() && recording_) {
-    events_ = TraceMeRecorder::Collect();
+  if (recording_) {
+    return Status(error::INTERNAL, "TraceMeRecorder not stopped");
   }
   // Pair up start and end events, and add complete events to trace_entries.
   absl::flat_hash_map<uint64, uint64> end_times;
@@ -146,7 +147,12 @@ std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*) {
 }
 
 auto register_host_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateHostTracer);
+  bool enable;
+
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_CPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateHostTracer);
+  }
   return 0;
 }();
 

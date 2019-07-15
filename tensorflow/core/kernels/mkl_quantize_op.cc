@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::primitive_attr;
@@ -70,7 +70,6 @@ class MklQuantizeV2Op : public OpKernel {
   ~MklQuantizeV2Op() {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& input = ctx->input(0);
     const float input_min_range = ctx->input(1).flat<float>()(0);
     const float input_max_range = ctx->input(2).flat<float>()(0);
     float min_range = std::min(0.0f, input_min_range);

@@ -803,6 +803,141 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
       return Status::OK();
     });
 
+REGISTER_OP("_MklQuantizedMatMulWithBias")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("mkl_a: uint8")      // MKL second tensor
+    .Input("mkl_b: uint8")      // MKL second tensor
+    .Input("mkl_bias: uint8")   // MKL second tensor
+    .Input("mkl_min_a: uint8")  // MKL second tensor
+    .Input("mkl_max_a: uint8")  // MKL second tensor
+    .Input("mkl_min_b: uint8")  // MKL second tensor
+    .Input("mkl_max_b: uint8")  // MKL second tensor
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
+    .Input("a: T1")
+    .Input("b: T2")
+    // TODO(intel-tf): Modify bias type as Tbias and add relevent attribute.
+    .Input("bias: float")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("mkl_a: uint8")      // MKL second tensor
+    .Input("mkl_b: uint8")      // MKL second tensor
+    .Input("mkl_bias: uint8")   // MKL second tensor
+    .Input("mkl_min_a: uint8")  // MKL second tensor
+    .Input("mkl_max_a: uint8")  // MKL second tensor
+    .Input("mkl_min_b: uint8")  // MKL second tensor
+    .Input("mkl_max_b: uint8")  // MKL second tensor
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Input("mkl_a: uint8")                   // MKL second tensor
+    .Input("mkl_b: uint8")                   // MKL second tensor
+    .Input("mkl_bias: uint8")                // MKL second tensor
+    .Input("mkl_min_a: uint8")               // MKL second tensor
+    .Input("mkl_max_a: uint8")               // MKL second tensor
+    .Input("mkl_min_b: uint8")               // MKL second tensor
+    .Input("mkl_max_b: uint8")               // MKL second tensor
+    .Input("mkl_min_freezed_output: uint8")  // MKL second tensor
+    .Input("mkl_max_freezed_output: uint8")  // MKL second tensor
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
+    .Attr("Toutput: quantizedtype = DT_QUINT8")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("_MklQuantizedDepthwiseConv2D")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -1004,6 +1139,72 @@ MKL-DNN implementation of quantized depthwise Conv2D with Bias, Relu and Requant
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke this operator.
 )doc");
+
+REGISTER_OP("_MklFusedBatchNormV3")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(
+        R"doc(MKL-DNN implementation of FusedBatchNormV3: Do not invoke this operator directly in Python.
+         Graph rewrite pass is expected to invoke this operator.)doc");
+
+REGISTER_OP("_MklFusedBatchNormGradV3")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("reserve_space_3: U")
+    .Input("mkl_y_backprop: uint8")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_reserve_space_1: uint8")
+    .Input("mkl_reserve_space_2: uint8")
+    .Input("mkl_reserve_space_3: uint8")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_4: U")
+    .Output("reserve_space_5: U")
+    .Output("mkl_x_backprop: uint8")
+    .Output("mkl_scale_backprop: uint8")
+    .Output("mkl_offset_backprop: uint8")
+    .Output("mkl_reserve_space_4: uint8")
+    .Output("mkl_reserve_space_5: uint8")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(
+        R"doc(MKL-DNN implementation of FusedBatchNormGradV3: Do not invoke this operator directly in Python.
+             Graph rewrite pass is expected to invoke this operator.)doc");
 
 }  // namespace tensorflow
 

@@ -11,6 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load(
@@ -59,15 +60,17 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/python/autograph/core:test_lib",
-    "//tensorflow/python/autograph/pyct/testing:test_modules",
+    "//tensorflow/python/autograph/pyct/testing",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
@@ -82,17 +85,24 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+    "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
-    "//tensorflow/python/ops/ragged:ragged_test_util",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
+    "//tensorflow/tools/common:public_api",
+    "//tensorflow/tools/common:test_module1",
+    "//tensorflow/tools/docs:doc_generator_visitor",
+    "//tensorflow/tools/docs:generate_lib",
+    "//tensorflow/tools/docs:parser",
+    "//tensorflow/tools/docs:py_guide_parser",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
@@ -159,8 +169,9 @@ filegroup(
         "@eigen_archive//:COPYING.MPL2",
         "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@flatbuffers//:LICENSE.txt",
+        "@functools32_archive//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
@@ -169,14 +180,17 @@ filegroup(
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
+        "@kissfft//:COPYING",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@swig//:LICENSE",
@@ -242,6 +256,8 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

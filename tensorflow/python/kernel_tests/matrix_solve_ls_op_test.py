@@ -353,7 +353,11 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
 
 if __name__ == "__main__":
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  dtypes_to_test = [np.float32, np.float64]
+  if not test_lib.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
+  for dtype_ in dtypes_to_test:
     # TF2 does not support placeholders under eager so we skip it
     for use_placeholder_ in set([False, not tf2.enabled()]):
       for fast_ in [True, False]:
@@ -368,7 +372,7 @@ if __name__ == "__main__":
                                                              l2_regularizer_)
             _AddTest(MatrixSolveLsOpTest, "MatrixSolveLsOpTest", name,
                      test_case)
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  for dtype_ in dtypes_to_test:
     for test_case in _GetLargeMatrixSolveLsOpTests(dtype_, False, True, 0.0):
       name = "%s_%s" % (test_case.__name__, dtype_.__name__)
       _AddTest(MatrixSolveLsOpTest, "MatrixSolveLsOpTest", name, test_case)

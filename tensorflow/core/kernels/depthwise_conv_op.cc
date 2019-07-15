@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 

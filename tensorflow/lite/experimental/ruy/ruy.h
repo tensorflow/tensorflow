@@ -27,15 +27,13 @@ namespace ruy {
 
 // Performs a multiplication of matrices.  This is Ruy's only API entry point.
 // Should be self-explanatory given the above documentation for each of Matrix,
-// Spec and Context. See reference code in reference.h, with the caveat that
-// that is reference code for transpose-multiply (TrMul) not just multiply;
-// see the translation between the two in transpose_dispatch.h.
+// Spec and Context.
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void Mul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
          const Spec& spec, Context* context, Matrix<DstScalar>* dst) {
-  MulDispatch<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec> dispatch;
-  dispatch.Mul(lhs, rhs, spec, context, dst);
+  DispatchMul<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec>(
+      lhs, rhs, spec, context, dst);
 }
 
 }  // namespace ruy

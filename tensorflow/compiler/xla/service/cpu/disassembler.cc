@@ -89,13 +89,14 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
     });
 
     // Construct ArrayRef pointing to section contents.
-    llvm::StringRef section_content_string;
-    if (section.getContents(section_content_string)) {
+    llvm::Expected<llvm::StringRef> section_content_string =
+        section.getContents();
+    if (!section_content_string) {
       continue;
     }
     llvm::ArrayRef<uint8_t> section_content_bytes(
-        reinterpret_cast<const uint8*>(section_content_string.data()),
-        section_content_string.size());
+        reinterpret_cast<const uint8*>(section_content_string->data()),
+        section_content_string->size());
 
     // Use int types from LLVM (eg, uint64_t) for values passed to and returned
     // from the LLVM API. These values map to different types in LLVM and

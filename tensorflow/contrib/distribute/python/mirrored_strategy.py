@@ -23,13 +23,9 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 
 
-# pylint: disable=protected-access,invalid-name
-_call_for_each_replica = mirrored_strategy._call_for_each_replica
-_create_mirrored_variable = mirrored_strategy._create_mirrored_variable
 all_local_devices = mirrored_strategy.all_local_devices
 CoreMirroredStrategy = mirrored_strategy.MirroredStrategy
 CoreMirroredExtended = mirrored_strategy.MirroredExtended
-# pylint: enable=protected-access,invalid-name
 
 
 class MirroredStrategy(distribute_lib.StrategyV1):
@@ -158,7 +154,8 @@ class MirroredExtended(CoreMirroredExtended):
     Returns:
       An `InputIterator` which returns inputs for each step of the computation.
     """
-    return input_lib.DatasetIterator(dataset, self._input_workers)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._container_strategy())
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

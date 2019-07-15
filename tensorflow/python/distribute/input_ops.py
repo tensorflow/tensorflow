@@ -42,10 +42,13 @@ def auto_shard_dataset(dataset, num_shards, index):
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
-  if isinstance(dataset, dataset_ops.DatasetV1):
-    return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+  if dataset.options().experimental_distribute.auto_shard:
+    if isinstance(dataset, dataset_ops.DatasetV1):
+      return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+    else:
+      return distribute._AutoShardDataset(dataset, num_shards, index)
   else:
-    return distribute._AutoShardDataset(dataset, num_shards, index)
+    return dataset
 
 
 def _clone_dataset(dataset):
@@ -53,8 +56,7 @@ def _clone_dataset(dataset):
   variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(dataset)
   remap_dict = _clone_helper(dataset._variant_tensor.op, variant_tensor_ops)
   new_variant_tensor = remap_dict[dataset._variant_tensor.op].outputs[0]
-  return dataset_ops._VariantDataset(new_variant_tensor,
-                                     dataset._element_structure)
+  return dataset_ops._VariantDataset(new_variant_tensor, dataset.element_spec)
 
 
 def _get_op_def(op):

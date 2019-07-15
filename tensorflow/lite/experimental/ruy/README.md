@@ -28,12 +28,3 @@ reference code at the moment.
 ruy is currently optimized only for the following combination of storage orders:
 LHS = row-major, RHS = column-major, destination = column-major. All other
 combinations of storage orders fall back to slow reference code at the moment.
-
-With these caveats out of the way, here are benchmark results:
-
-*   [float GEMM benchmark](https://docs.google.com/spreadsheets/d/1-k5KYWutjE6Qr7RiRZxb6v8YvSqR1BNsUAfLZ31oWJ8/edit?usp=sharing)
-    against Eigen and OpenBLAS.
-*   [8bit GEMM benchmark](https://docs.google.com/spreadsheets/d/1_6-OlhpUJepwsMiVubeKTKBgcM6P9_ugTFwd5HANBZQ/edit?usp=sharing)
-    against gemmlowp.
-*   [TFLite integrated benchmark](https://docs.google.com/spreadsheets/d/1AjpjRnNViBoyFEwQdHSEhMpE_XiRTRkIFh-L_0vFRNI/edit?usp=sharing)
-    on vision CNNs.

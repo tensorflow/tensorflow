@@ -12,7 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#import <Foundation/Foundation.h>
+
 #import "TFLInterpreter.h"
 #import "TFLInterpreterOptions.h"
 #import "TFLQuantizationParameters.h"
 #import "TFLTensor.h"
+
+NS_ASSUME_NONNULL_BEGIN
+
+/**
+ * A string describing the semantic versioning information for the TensorFlow Lite runtime. Is an
+ * empty string if the version could not be determined.
+ */
+FOUNDATION_EXPORT NSString *const TFLVersion;
+
+NS_ASSUME_NONNULL_END

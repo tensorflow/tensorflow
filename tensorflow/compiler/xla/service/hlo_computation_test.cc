@@ -432,8 +432,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto instructions = computation->MakeInstructionPostOrder();
   EXPECT_EQ(3, instructions.size());
 
-  const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
-  auto visit_status = computation->Accept(visitor);
+  FunctionVisitor visitor(
+      [](HloInstruction* instruction) { return Status::OK(); });
+  auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.error_message(),
               ::testing::ContainsRegex("cycle is detecte"));
@@ -687,15 +688,16 @@ add {
 ENTRY entry {
   param = f32[128] parameter(0), sharding={maximal device=0}
   crs0 = f32[128] all-reduce(param),
-    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    replica_groups={{0}}, channel_id=1, to_apply=add,
     sharding={maximal device=0}
   crs1 = f32[128] all-reduce(param),
-    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    replica_groups={{0}}, channel_id=1, to_apply=add,
     sharding={maximal device=1}
   add = f32[128] add(crs0, crs0), sharding={maximal device=0}
   ROOT t = (f32[128], f32[128]) tuple(add, crs1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
                           op::Add(), op::Tuple()));

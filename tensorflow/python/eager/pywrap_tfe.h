@@ -86,6 +86,14 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 
+// Registers e as the forward_gradient_function.  The registered function takes
+// (op_name, attrs, inputs, outputs, tangents) and returns the output
+// tangents. This function is used only for operations, not for custom gradients
+// or functional ops.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
+
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
@@ -148,6 +156,13 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+
+// Like TFE_Py_TapeSetShouldRecord but with a ternary return:
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecord is false)
+//   - 1 if first-order gradients may be requested
+//   - 2 if higher-order gradients may be requested
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
+
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
@@ -156,6 +171,9 @@ void TFE_Py_TapeSetStopOnThread();
 
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
+
+// Returns if gradient recording is stopped on the current thread.
+PyObject* TFE_Py_TapeSetIsStopped();
 
 // Records an operation in the gradient tape stack.type is a string for the
 // operation type, used in the backprop code. output_tensors should be a list of
@@ -214,6 +232,22 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 // Returns all variables watched by the given tape in the order those variables
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
+
+// Creates a new forward accumulator and adds it to the active set.
+PyObject* TFE_Py_ForwardAccumulatorNew();
+
+// Removes a forward accumulator from the active set, meaning it will no longer
+// be watching operations.
+void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
+
+// Tell the forward accumulator `accumulator` to watch `tensor`, with a Tensor
+// tangent vector `tangent` of matching shape and dtype.
+void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
+                                    PyObject* tangent);
+
+// Looks up the Jacobian-vector product of `tensor` in the forward accumulator
+// `accumulator`. Returns None if no JVP is available.
+PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,

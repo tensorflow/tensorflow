@@ -42,31 +42,36 @@ inline int ComputePaddingWithOffset(int stride, int dilation_rate, int in_size,
 
 // Matching GetWindowedOutputSize in TensorFlow.
 inline int ComputeOutSize(TfLitePadding padding, int image_size,
-                          int filter_size, int stride) {
+                          int filter_size, int stride, int dilation_rate = 1) {
+  int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding) {
     case kTfLitePaddingSame:
       return (image_size + stride - 1) / stride;
     case kTfLitePaddingValid:
-      return (image_size + stride - filter_size) / stride;
+      return (image_size + stride - effective_filter_size) / stride;
     default:
       return 0;
   }
 }
 
 inline TfLitePaddingValues ComputePaddingHeightWidth(
-    int stride_height, int stride_width, int dilation_rate, int in_height,
-    int in_width, int filter_height, int filter_width, TfLitePadding padding) {
-  int out_width = ComputeOutSize(padding, in_width, filter_width, stride_width);
-  int out_height =
-      ComputeOutSize(padding, in_height, filter_height, stride_height);
+    int stride_height, int stride_width, int dilation_rate_height,
+    int dilation_rate_width, int in_height, int in_width, int filter_height,
+    int filter_width, TfLitePadding padding, int* out_height, int* out_width) {
+  *out_width = ComputeOutSize(padding, in_width, filter_width, stride_width,
+                              dilation_rate_width);
+  *out_height = ComputeOutSize(padding, in_height, filter_height, stride_height,
+                               dilation_rate_height);
 
   TfLitePaddingValues padding_values;
   int offset = 0;
-  padding_values.height = ComputePaddingWithOffset(
-      stride_height, 1, in_height, filter_height, out_height, &offset);
+  padding_values.height =
+      ComputePaddingWithOffset(stride_height, dilation_rate_height, in_height,
+                               filter_height, *out_height, &offset);
   padding_values.height_offset = offset;
-  padding_values.width = ComputePaddingWithOffset(
-      stride_width, 1, in_width, filter_width, out_width, &offset);
+  padding_values.width =
+      ComputePaddingWithOffset(stride_width, dilation_rate_width, in_width,
+                               filter_width, *out_width, &offset);
   padding_values.width_offset = offset;
   return padding_values;
 }

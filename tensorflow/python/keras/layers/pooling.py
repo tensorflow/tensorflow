@@ -37,7 +37,7 @@ class Pooling1D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of a single integer,
       representing the size of the pooling window.
     strides: An integer or tuple/list of a single integer, specifying the
@@ -199,7 +199,7 @@ class Pooling2D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of 2 integers: (pool_height, pool_width)
       specifying the size of the pooling window.
       Can be a single integer to specify the same value for
@@ -384,7 +384,7 @@ class Pooling3D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of 3 integers:
       (pool_depth, pool_height, pool_width)
       specifying the size of the pooling window.

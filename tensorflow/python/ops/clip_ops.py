@@ -48,6 +48,15 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
   correct results.
 
+  For example:
+  
+  ```python
+  A = tf.constant([[1, 20, 13], [3, 21, 13]])
+  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
+  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError` 
+  as input and clip_values are of different dtype
+  ```
+  
   Args:
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -62,6 +71,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
+    TypeError: If dtype of the input is `int32` and dtype of 
+    the `clip_value_min' or `clip_value_max` is `float32`  
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -145,6 +156,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
+
+  Raises:
+    ValueError: If the clip_norm tensor is not a 0-D scalar tensor.
+    TypeError: If dtype of the input is not a floating point or
+      complex type.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     values = ops.convert_to_tensor(

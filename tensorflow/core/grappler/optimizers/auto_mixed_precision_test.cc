@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -541,6 +542,68 @@ TEST_F(AutoMixedPrecisionTest, ExistingCast) {
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("SrcT").type(), DT_BOOL);
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
+TEST_F(AutoMixedPrecisionTest, RecurrentEdgeColorMismatch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output blk1 = ops::Exp(s.WithOpName("blk1"), input);
+  Output ent1 =
+      ops::internal::Enter(s.WithOpName("ent1"), blk1, "loop1").output;
+  // Note that the second input is later replaced with "nxt1".
+  Output mrg1 = ops::Merge(s.WithOpName("mrg1"), {ent1, ent1}).output;
+  // For simplicity, the loop condition is constant false.
+  Output con1 = ops::Const(s.WithOpName("con1"), false, {});
+  Output lpc1 = ops::LoopCond(s.WithOpName("lpc1"), con1).output;
+  auto swt1 = ops::Switch(s.WithOpName("swt1"), mrg1, lpc1);
+  Output gry1 = ops::Sqrt(s.WithOpName("gry1"), swt1.output_true);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), gry1, gry1);
+  Output nxt1 = ops::NextIteration(s.WithOpName("nxt1"), wht1);
+  Output ext1 = ops::internal::Exit(s.WithOpName("ext1"), swt1.output_false);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), ext1);
+  // Add a second merge node from the same NextIteration node. This case arises
+  // during graph optimization of some models.
+  auto mrg2 = ops::Merge(s.WithOpName("mrg2"), {ent1, nxt1});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  NodeMap node_map_original(&item.graph);
+  auto merge_node = node_map_original.GetNode("mrg1");
+  // Modify the graph to create a loop.
+  merge_node->set_input(1, "nxt1");
+  // Add a control edge to ensure the loop condition is inside the frame.
+  auto const_node = node_map_original.GetNode("con1");
+  const_node->add_input("^mrg1");
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  // Note that mrg1 gets painted black because it is between blk1 and gry1. This
+  // forces nxt1 and mrg2 to be painted black as well (they would otherwise be
+  // painted white because they are clear and have a direct path to wht1).
+  EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("ent1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("mrg1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("swt1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("nxt1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("ext1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("mrg2")->attr().at("T").type(), DT_FLOAT);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -1064,6 +1065,15 @@ class TensorArrayTest(test.TestCase):
         grad = gradients_impl.gradients(loop(x), [x])[0]
       self.assertAllClose(31.0, self.evaluate(grad))
 
+  def testShapeAfterWhileLoop(self):
+    size = 10
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+    _, ta = control_flow_ops.while_loop(
+        lambda i, _: i < size,
+        lambda i, ta: (i + 1, ta.write(i, [[0.]])), [0, ta],
+        parallel_iterations=1)
+    self.assertIsNotNone(ta.element_shape.dims)
+
   @test_util.deprecated_graph_mode_only
   def testSkipEagerSumOfTwoReadVariablesWithoutRepeatGrad(self):
     with self.session(use_gpu=True) as session:
@@ -1740,19 +1750,18 @@ class TensorArrayTest(test.TestCase):
 
 class TensorArrayBenchmark(test.Benchmark):
 
+  def _tensorArrayWriteInWhile(self):
+    size = 10000
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+    (_, ta) = control_flow_ops.while_loop(
+        lambda i, _: i < size,
+        lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
+        parallel_iterations=1)
+    return ta.stack()
+
   def _benchmarkWriteInWhile(self):
     ops.reset_default_graph()
-
-    def write():
-      size = 10000
-      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
-      ta = control_flow_ops.while_loop(
-          lambda i, _: i < size,
-          lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
-          parallel_iterations=1)[1]
-      return ta.stack()
-
-    op = write()
+    op = self._tensorArrayWriteInWhile()
     self.run_op_benchmark(session_lib.Session(), op)
 
   def benchmarkWriteInWhile(self):
@@ -1761,6 +1770,18 @@ class TensorArrayBenchmark(test.Benchmark):
   @test_util.enable_control_flow_v2
   def benchmarkWriteInWhileWithControlFlowV2(self):
     self._benchmarkWriteInWhile()
+
+  def benchmarkWriteInDatasetMapFn(self):
+    ds = dataset_ops.Dataset.from_tensors(array_ops.zeros([10])).repeat()
+    ds = ds.map(lambda _: self._tensorArrayWriteInWhile())
+    op = ds.make_one_shot_iterator().get_next()
+    self.run_op_benchmark(session_lib.Session(), op)
+
+  def benchmarkWriteInDatasetParallelMapFn(self):
+    ds = dataset_ops.Dataset.from_tensors(array_ops.zeros([10])).repeat()
+    ds = ds.map(lambda _: self._tensorArrayWriteInWhile(), num_parallel_calls=2)
+    op = ds.make_one_shot_iterator().get_next()
+    self.run_op_benchmark(session_lib.Session(), op)
 
 
 if __name__ == "__main__":
