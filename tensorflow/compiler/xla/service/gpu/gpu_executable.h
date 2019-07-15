@@ -52,7 +52,6 @@ class GpuExecutable : public Executable {
  public:
   // cubin (i.e. the compiled ptx) may be empty, in which case we leave
   // compilation up to the GPU driver.
-  using GpuVersion = absl::variant<std::pair<int, int>, int>;
 
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
