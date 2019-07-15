@@ -1618,7 +1618,6 @@ class MklQuantizedConv2DOp
   }
 
   PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(mu_);
-  PersistentTensor cached_bias_md_ptensor_ GUARDED_BY(mu_);
 
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
@@ -1637,17 +1636,6 @@ private:
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DataTypeToEnum<Tbias>::value, bias_tf_shape,
                                 &cached_bias_data_ptensor_, bias_tensor));
-
-    Tensor* second_tensor = nullptr;
-    TensorShape bias_mkl_format;
-    bias_mkl_format.AddDim(
-        sizeof(conv_prim_desc.bias_primitive_desc().desc().data.format) /
-        sizeof(DT_INT32));
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DT_INT32, bias_mkl_format,
-                                &cached_bias_md_ptensor_, &second_tensor));
-    second_tensor->scalar<int32>()() =
-        conv_prim_desc.bias_primitive_desc().desc().data.format;
   }
 
   // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
@@ -1690,8 +1678,6 @@ private:
     tf_shared_lock lock(mu_);
     const Tensor& cached_bias_data =
         *cached_bias_data_ptensor_.AccessTensor(context);
-    const Tensor& cached_bias_md =
-        *cached_bias_md_ptensor_.AccessTensor(context);
 
     return static_cast<Tbias*>(
         const_cast<Tbias*>(cached_bias_data.flat<Tbias>().data()));
