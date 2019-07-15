@@ -105,8 +105,10 @@ retained with length 1.
 
 // In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
 // of function arguments.
+// Note: NoSideEffect trait is not added intentionally to preserve the captured
+// attributes even if the input is unused.
 def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [NoSideEffect, SameOperandsAndResultType]> {
+    [SameOperandsAndResultType]> {
   let summary = "PlaceholderInput op";
 
   let description = [{

@@ -27,6 +27,9 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
     return GetOrCreateIfNotFound<DefaultLayoutSensitiveOpTransposer>(
         "DefaultLayoutSensitiveOp");
   }
+  if (IsAvgPoolGrad(node)) {
+    return GetOrCreateIfNotFound<AvgPoolGradTransposer>("AvgPoolGrad");
+  }
   if (IsBiasAddGrad(node)) {
     return GetOrCreateIfNotFound<BiasAddGradTransposer>("BiasAddGrad");
   }
@@ -45,10 +48,10 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
   if (IsMaxPoolV2(node)) {
     return GetOrCreateIfNotFound<MaxPoolV2Transposer>("MaxPoolV2");
   }
-  if (IsMaxPoolGrad(node)) {
+  if (IsMaxPoolGrad(node) || IsMaxPoolGradGradV1(node)) {
     return GetOrCreateIfNotFound<MaxPoolGradTransposer>("MaxPoolGrad");
   }
-  if (IsMaxPoolGradV2(node)) {
+  if (IsMaxPoolGradV2(node) || IsMaxPoolGradGradV2(node)) {
     return GetOrCreateIfNotFound<MaxPoolGradV2Transposer>("MaxPoolGradV2");
   }
   // Check layout agnostic ops.

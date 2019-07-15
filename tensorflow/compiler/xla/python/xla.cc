@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -104,6 +106,22 @@ StatusOr<std::string> GetComputationHloDotGraph(
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
                      RenderedGraphFormat::kDot);
+}
+
+// Registers a 'fn_capsule' as a CPU custom call target.
+// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
+// "xla._CPU_CUSTOM_CALL_TARGET".
+Status RegisterCpuCustomCallTarget(const std::string& fn_name,
+                                   py::capsule capsule) {
+  static const char* const kName = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (absl::string_view(capsule.name()) != kName) {
+    return InvalidArgument(
+        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
+        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+  }
+  CustomCallTargetRegistry::Global()->Register(
+      fn_name, static_cast<void*>(capsule), "Host");
+  return Status::OK();
 }
 
 }  // namespace

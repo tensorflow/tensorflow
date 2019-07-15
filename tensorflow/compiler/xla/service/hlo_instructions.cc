@@ -930,7 +930,7 @@ std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
   if (inferred_dimension() == -1) {
     return {};
   }
-  return {StrCat("inferred_dimension={", inferred_dimension(), "}")};
+  return {StrCat("inferred_dimension=", inferred_dimension())};
 }
 
 bool HloReshapeInstruction::IdenticalSlowPath(

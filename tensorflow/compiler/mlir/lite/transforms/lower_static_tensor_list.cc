@@ -62,7 +62,7 @@ namespace {
 class TensorListPatternRewriter : public PatternRewriter {
  public:
   explicit TensorListPatternRewriter(FuncOp fn)
-      : PatternRewriter(fn.getBody()) {}
+      : PatternRewriter(fn.getContext()) {}
 
   Operation *createOperation(const OperationState &state) override {
     return OpBuilder::createOperation(state);

@@ -657,10 +657,11 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 // other.
 // Note that if `self` is not on CPU, we raise an Exception.
 static PyObject* EagerTensor_numpy(EagerTensor* self) {
-  auto status = tensorflow::make_safe(TF_NewStatus());
-  auto* py_array = TFE_TensorHandleToNumpy(self->handle, status.get());
-  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_ValueError)) {
+  auto* py_array = TFE_TensorHandleToNumpy(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
     Py_XDECREF(py_array);
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
     return nullptr;
   } else {
     return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
@@ -745,13 +746,14 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
     return -1;
   }
 
-  auto status = tensorflow::make_safe(TF_NewStatus());
   // TensorHandleToNumpy is zero-copy for everything but DT_RESOURCE and
   // DT_STRING so the following is only slightly slower than a NumPy-free
   // implementation.
   auto py_array = tensorflow::make_safe(
-      TFE_TensorHandleToNumpy(self->handle, status.get()));
-  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_BufferError)) {
+      TFE_TensorHandleToNumpy(self->handle, self->status));
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_BufferError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
     return -1;
   }
   if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {

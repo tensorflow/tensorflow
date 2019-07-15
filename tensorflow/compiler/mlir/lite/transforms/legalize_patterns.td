@@ -76,6 +76,8 @@ def : Pat<(TF_AvgPoolOp $value,
               /*stride_w=*/ExtractI32At<2>:$strides,
               /*fused_activation_function=*/TFL_AF_None)>;
 
+def : Pat<(TF_ArgMinOp $input, $dim), (TFL_ArgMinOp $input, $dim)>;
+
 def : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
 
 def : Pat<(TF_CosOp $arg), (TFL_CosOp $arg)>;
@@ -228,6 +230,9 @@ def : Pat<(TF_PadV2Op $arg0, $arg1, $cst), (TFL_PadV2Op $arg0, $arg1, $cst)>;
 def : Pat<(TF_MeanOp $arg0, $arg1, BoolAttr:$arg2), (TFL_MeanOp $arg0, $arg1, $arg2)>;
 
 def : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2), (TFL_SumOp $arg, $axes, $arg2)>;
+
+// TopK in TFL is always sorted so we ignore that attribute here.
+def : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted), (TFL_TopKV2Op $input, $k)>;
 
 def : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMinOp $arg0, $arg1, $arg2)>;
 

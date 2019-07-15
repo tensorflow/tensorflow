@@ -40,6 +40,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -844,21 +845,21 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
-       structure.TensorStructure(dtypes.float32,
-                                 []), ops.Tensor, dtypes.float32, []),
+       tensor_spec.TensorSpec([],
+                              dtypes.float32), ops.Tensor, dtypes.float32, []),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
           indices=[[0]],
           values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1]),
+          dense_shape=[1]), sparse_tensor.SparseTensorSpec([1], dtypes.int32),
        sparse_tensor.SparseTensor, dtypes.int32, [1]),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
           "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
       }, {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.TensorStructure(
-              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (tensor_spec.TensorSpec(
+              [1], dtypes.string), tensor_spec.TensorSpec([], dtypes.string))
       }, {
           "a": ops.Tensor,
           "b": (ops.Tensor, ops.Tensor)

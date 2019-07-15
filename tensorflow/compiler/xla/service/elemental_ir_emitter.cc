@@ -642,18 +642,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                                 FDiv(imag_num, denom));
     }
     case HloOpcode::kAbs: {
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
-                                          {sum_sq->getType()}, b_);
+      return EmitComplexAbs(component_type, operand_value);
     }
     case HloOpcode::kSign: {  // Sign(c) = c / |c|
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, b_);
+      TF_ASSIGN_OR_RETURN(auto cplx_abs,
+                          EmitComplexAbs(component_type, operand_value));
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = FCmpOEQ(cplx_abs, zero);
@@ -760,6 +753,30 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return Unimplemented("binary floating point op '%s'",
                            HloOpcodeString(op->opcode()));
   }
+}
+
+// Using sqrt(a^2 + b^2) can cause overflow errors. Therefore we can use
+// sqrt(a^2 + b^2) = sqrt(a^2 * (1 + b^2/a^2))
+//                 = |a| * sqrt(1 + (b/a)^2)
+// With the assumption that |a| >= |b|
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  auto real = EmitExtractReal(operand_value);
+  auto imag = EmitExtractImag(operand_value);
+  auto abs_real = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real},
+                                               {real->getType()}, b_);
+  auto abs_imag = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag},
+                                               {imag->getType()}, b_);
+  auto max = EmitFloatMax(abs_real, abs_imag);
+  auto min = EmitFloatMin(abs_real, abs_imag);
+
+  auto div = FDiv(min, max);
+  auto div_sq = FMul(div, div);
+  auto one = llvm::ConstantFP::get(max->getType(), 1);
+  TF_ASSIGN_OR_RETURN(auto sqrt, EmitSqrt(prim_type, FAdd(one, div_sq)));
+
+  auto zero = llvm::ConstantFP::get(max->getType(), 0);
+  return Select(FCmpOEQ(max, zero), zero, FMul(max, sqrt));
 }
 
 // (a+bi)^(c+di) =

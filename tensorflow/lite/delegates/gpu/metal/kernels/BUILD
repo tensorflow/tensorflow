@@ -1,3 +1,6 @@
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -337,3 +340,27 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
     ],
 )
+
+objc_library(
+    name = "add_test_lib",
+    testonly = 1,
+    srcs = ["add_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":add",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "add_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":add_test_lib"],
+)
+
+tflite_portable_test_suite()

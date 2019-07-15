@@ -1491,9 +1491,9 @@ Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
       *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       return OkStatus();
     default:
-      return InvalidArgumentError(
-          absl::StrCat("Tensor \"", tflite_tensor.name ?: "nullptr",
-                       "\" has bad input dims size: ", dims->size, "."));
+      return InvalidArgumentError(absl::StrCat(
+          "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
+          "\" has bad input dims size: ", dims->size, "."));
   }
 }
 

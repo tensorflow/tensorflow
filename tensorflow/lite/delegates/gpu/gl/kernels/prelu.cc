@@ -65,7 +65,7 @@ class PReLULinearAlpha : public NodeShader {
               }
             : GeneratedCode{
                   /*parameters=*/{},
-                  /*objects=*/{{"alpha", MakeReadonlyBuffer(alpha->data)}},
+                  /*objects=*/{{"alpha", MakeReadonlyObject(alpha->data)}},
                   // Declare workload explicitly because shader depends on
                   // gid.z.
                   /*workload=*/

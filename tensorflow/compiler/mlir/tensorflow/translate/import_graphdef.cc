@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -158,8 +159,8 @@ class Importer {
     return ::tensorflow::ConvertTensorProto(value, builder_.get());
   }
 
-  // Converts func name in graphdef to mlir::FunctionAttribute.
-  StatusOr<mlir::FunctionAttr> ConvertFunctionCallName(
+  // Converts func name in graphdef to mlir::SymbolRefAttribute.
+  StatusOr<mlir::SymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
@@ -611,12 +612,12 @@ Status Importer::ConvertFunctionCallAttribute(
   return Status::OK();
 }
 
-StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
+StatusOr<mlir::SymbolRefAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
   auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
-  return builder_->getFunctionAttr(func);
+  return builder_->getSymbolRefAttr(func);
 }
 
 StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
@@ -715,6 +716,13 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
     attributes.push_back(builder_->getNamedAttr(attr_name, attr));
   }
 
+  // Checks opdef stateful attribute and import that as Function Attribute
+  if (func_def->signature().is_stateful()) {
+    auto stateful_str = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+    attributes.push_back(
+        builder_->getNamedAttr(stateful_str, builder_->getUnitAttr()));
+  }
+
   // Checks for an associated custom gradient function. Adds it to the attribute
   // list of this function.
   auto grad_func_name = func_lib.FindGradient(func_name);
@@ -722,7 +730,7 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
     auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
-    auto gradient_attr = builder_->getFunctionAttr(grad_func);
+    auto gradient_attr = builder_->getSymbolRefAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
   }
@@ -1157,7 +1165,7 @@ Status Importer::Convert(llvm::StringRef func_name,
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
-  auto* bb = builder_->createBlock();
+  auto* bb = builder_->createBlock(&function.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));

@@ -725,6 +725,10 @@ class NNAPIOpBuilder {
       tensor_rank = 1;
       tensor_dims = &tensor_rank;
     }
+    if (tensor_rank == 0) {
+      // if the tensor_rank is 0, the dimension ptr must be nullptr.
+      tensor_dims = nullptr;
+    }
     ANeuralNetworksSymmPerChannelQuantParams ann_perchannel_params;
     if (tensor_type == kTfLiteInt8 || tensor_type == kTfLiteUInt8) {
       if (tensor->quantization.type == kTfLiteAffineQuantization) {
@@ -1727,6 +1731,21 @@ class NNAPIDelegateKernel {
             (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
              input_type == kTfLiteInt32)) {
           return BasicMappingFn<ANEURALNETWORKS_MINIMUM>;
+        }
+      } break;
+      case kTfLiteBuiltinCast: {
+        const TfLiteType input_type =
+            context->tensors[node->inputs->data[0]].type;
+        const TfLiteType output_type =
+            context->tensors[node->outputs->data[0]].type;
+        auto is_supported_tensor_type = [](const TfLiteType& type) {
+          return (type == kTfLiteFloat32 || type == kTfLiteInt32 ||
+                  type == kTfLiteUInt8);
+        };
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            is_supported_tensor_type(input_type) &&
+            is_supported_tensor_type(output_type)) {
+          return BasicMappingFn<ANEURALNETWORKS_CAST>;
         }
       } break;
       case kTfLiteBuiltinPrelu:

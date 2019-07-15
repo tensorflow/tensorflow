@@ -67,6 +67,14 @@ static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
   return true;
 }
 
+// Returns true if the given `value` has at least the specified rank or has
+// unranked type.
+static inline bool HasRankAtLeast(Value *value, int64_t rank) {
+  auto type = value->getType();
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>())
+    return ranked_type.getRank() >= rank;
+  return type.isa<UnrankedTensorType>();
+}
 // Returns true if the given pair of TensorFlow types can be cast to one
 // another. In other words, a single run-time value is legal for both the types.
 // For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
@@ -275,10 +283,10 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IfOp::verify() {
-  auto thenAttr = getAttrOfType<FunctionAttr>("then_branch");
+  auto thenAttr = getAttrOfType<SymbolRefAttr>("then_branch");
   if (!thenAttr) return emitOpError("requires then_branch attribute");
 
-  auto elseAttr = getAttrOfType<FunctionAttr>("else_branch");
+  auto elseAttr = getAttrOfType<SymbolRefAttr>("else_branch");
   if (!elseAttr) return emitOpError("requires else_branch attribute");
 
   auto module = getParentOfType<ModuleOp>();
@@ -627,9 +635,8 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SoftmaxOp op) {
-  if (!IsOfRankOrUnranked(op.logits(), 1) &&
-      !IsOfRankOrUnranked(op.logits(), 2)) {
-    return op.emitOpError("requires operand to be 1D/2D tensor");
+  if (!HasRankAtLeast(op.logits(), 1)) {
+    return op.emitOpError("requires operand to have rank at least 1");
   }
   return success();
 }
@@ -728,7 +735,7 @@ void TruncateDivOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 LogicalResult WhileOp::verify() {
-  auto condAttr = getAttrOfType<FunctionAttr>("cond");
+  auto condAttr = getAttrOfType<SymbolRefAttr>("cond");
   if (!condAttr) return emitOpError("requires cond attribute");
 
   auto module = getParentOfType<ModuleOp>();
@@ -739,7 +746,7 @@ LogicalResult WhileOp::verify() {
   if (condFuncType.getNumResults() != 1)
     return emitOpError("requires cond function to have exactly one result");
 
-  auto bodyAttr = getAttrOfType<FunctionAttr>("body");
+  auto bodyAttr = getAttrOfType<SymbolRefAttr>("body");
   if (!bodyAttr) return emitOpError("requires body attribute");
   auto bodyFn = module.lookupSymbol<FuncOp>(bodyAttr.getValue());
   auto bodyFuncType = bodyFn.getType();

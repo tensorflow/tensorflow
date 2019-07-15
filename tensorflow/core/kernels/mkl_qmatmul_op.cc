@@ -222,10 +222,10 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           bias_mem(nullptr),
           dst_mem(nullptr),
           fwd_desc(nullptr),
+          fwd_pd(nullptr),
           src_md(nullptr),
           weight_md(nullptr),
           bias_md(nullptr),
-          fwd_pd(nullptr),
           matmul_fwd(nullptr),
           fwd_stream(nullptr) {}
   };
@@ -719,6 +719,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
         context->CtxFailure(
             errors::InvalidArgument("Quantization mode must be"
                                     "either MIN_FIRST or SCALED."));
+        return nullptr;
       }
     }
   }

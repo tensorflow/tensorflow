@@ -525,8 +525,8 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     TensorShape output_shape = mkl_shape.GetTfShape();
 
     // Allocate output tensor.
-    context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
-                           &output_tensor);
+    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
+                                       &output_tensor));
 
     auto cpu_engine = engine(engine::cpu, 0);
     MklDnnData<T> input(&cpu_engine);
@@ -576,7 +576,7 @@ inline const Tensor& MklGetInput(OpKernelContext* ctext, int n) {
 inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
                             OpInputList* input_tensors) {
   CHECK_NOTNULL(input_tensors);
-  ctext->input_list(name, input_tensors);
+  TF_CHECK_OK(ctext->input_list(name, input_tensors));
 }
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,

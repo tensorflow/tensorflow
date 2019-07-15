@@ -62,6 +62,8 @@ TEST(TransposerFactoryTest, SanityCheck) {
   CheckSameTransposerForOps({"Conv2D", "FusedBatchNorm"}, &factory,
                             &transposers);
 
+  CheckSameTransposerForOps({"AvgPoolGrad"}, &factory, &transposers);
+
   CheckSameTransposerForOps({"BiasAddGrad"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"FusedBatchNormGrad", "FusedBatchNormGradV2"},
@@ -69,7 +71,11 @@ TEST(TransposerFactoryTest, SanityCheck) {
 
   CheckSameTransposerForOps({"Conv2DBackpropFilter"}, &factory, &transposers);
 
-  CheckSameTransposerForOps({"MaxPoolGrad"}, &factory, &transposers);
+  CheckSameTransposerForOps({"MaxPoolGrad", "MaxPoolGradGrad"}, &factory,
+                            &transposers);
+
+  CheckSameTransposerForOps({"MaxPoolGradV2", "MaxPoolGradGradV2"}, &factory,
+                            &transposers);
 
   CheckSameTransposerForOps({"AddN"}, &factory, &transposers);
 
@@ -88,8 +94,6 @@ TEST(TransposerFactoryTest, SanityCheck) {
   CheckSameTransposerForOps({"Squeeze"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"MaxPoolV2"}, &factory, &transposers);
-
-  CheckSameTransposerForOps({"MaxPoolGradV2"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"RealDiv", "Atan2", "Complex"}, &factory,
                             &transposers);

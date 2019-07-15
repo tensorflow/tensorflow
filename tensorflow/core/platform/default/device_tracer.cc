@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -586,7 +587,7 @@ class CudaEventCollector {
     auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
-    std::string node_name = record.kernel_name;
+    std::string node_name = port::MaybeAbiDemangle(record.kernel_name);
     // Sometimes CUPTI returns invalid characters. See b/129892466.
     if (!IsAscii(node_name)) {
       node_name = "<invalid_name>";
