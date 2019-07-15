@@ -276,6 +276,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(self.evaluate(grads), [[0., 0.], [0., 1.]])
 
+  @test_util.run_deprecated_v1
+  def testDefaultGradientDtype(self):
+    v = resource_variable_ops.ResourceVariable(
+        np.random.uniform(size=[2, 2]), dtype=dtypes.float64)
+
+    c = constant_op.constant(1.)
+    identity = array_ops.identity_n([c, v.handle])
+    # TODO(b/137403775): Remove this.
+    custom_gradient.copy_handle_data(v.handle, identity[1])
+
+    g = gradients_impl.gradients(identity[0], [c, v.handle])
+    self.assertEqual(g[1].dtype, dtypes.float64)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(g[1], [[0., 0.], [0., 0.]])
+
   @test_util.run_in_graph_and_eager_modes
   def testGradientGatherNdIndexedSlices(self):
     v = resource_variable_ops.ResourceVariable(
