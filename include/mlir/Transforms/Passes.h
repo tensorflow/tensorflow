@@ -105,6 +105,10 @@ FunctionPassBase *createLoopTilingPass(uint64_t cacheSizeBytes);
 FunctionPassBase *
 createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes);
 
+/// Creates a pass that transforms perfectly nested loops with independent
+/// bounds into a single loop.
+FunctionPassBase *createLoopCoalescingPass();
+
 /// Promotes all accessed memref regions to the specified faster memory space
 /// while generating DMAs to move data.
 FunctionPassBase *createDmaGenerationPass(

@@ -86,6 +86,7 @@ def ForOp : Loop_Op<"for"> {
     }
     void setLowerBound(Value *bound) { getOperation()->setOperand(0, bound); }
     void setUpperBound(Value *bound) { getOperation()->setOperand(1, bound); }
+    void setStep(Value *step) { getOperation()->setOperand(2, step); }
   }];
 }
 

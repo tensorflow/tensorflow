@@ -33,8 +33,12 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/StandardOps/Ops.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
+
+#include "mlir/IR/Module.h"
 
 #define DEBUG_TYPE "LoopUtils"
 
@@ -382,6 +386,11 @@ void getPerfectlyNestedLoopsImpl(
 /// AffineForOp, and the second op is a terminator).
 void mlir::getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
                                    AffineForOp root) {
+  getPerfectlyNestedLoopsImpl(nestedLoops, root);
+}
+
+void mlir::getPerfectlyNestedLoops(SmallVectorImpl<loop::ForOp> &nestedLoops,
+                                   loop::ForOp root) {
   getPerfectlyNestedLoopsImpl(nestedLoops, root);
 }
 
@@ -870,6 +879,10 @@ static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
   return builder.create<DivISOp>(loc, sum, divisorCst);
 }
 
+// Build the IR that performs ceil division of a positive value by another
+// positive value:
+//    ceildiv(a, b) = divis(a + (b - 1), b)
+// where divis is rounding-to-zero division.
 static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
                               Value *divisor) {
   assert(dividend->getType().isIndex() && "expected index-typed value");
@@ -913,4 +926,135 @@ void mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
 
   // Call parametric tiling with the given sizes.
   return ::tile(forOps, tileSizes);
+}
+
+// Replaces all uses of `orig` with `replacement` except if the user is listed
+// in `exceptions`.
+static void
+replaceAllUsesExcept(Value *orig, Value *replacement,
+                     const SmallPtrSetImpl<Operation *> &exceptions) {
+  for (auto &use : orig->getUses()) {
+    if (exceptions.count(use.getOwner()) == 0)
+      use.set(replacement);
+  }
+}
+
+// Transform a loop with a strictly positive step
+//   for %i = %lb to %ub step %s
+// into a 0-based loop with step 1
+//   for %ii = 0 to ceildiv(%ub - %lb, %s) step 1 {
+//     %i = %ii * %s + %lb
+// Insert the induction variable remapping in the body of `inner`, which is
+// expected to be either `loop` or another loop perfectly nested under `loop`.
+// Insert the definition of new bounds immediate before `outer`, which is
+// expected to be either `loop` or its parent in the loop nest.
+static void normalizeLoop(loop::ForOp loop, loop::ForOp outer,
+                          loop::ForOp inner) {
+  OpBuilder builder(outer);
+  Location loc = loop.getLoc();
+
+  // Check if the loop is already known to have a constant zero lower bound or
+  // a constant one step.
+  bool isZeroBased = false;
+  if (auto ubCst =
+          dyn_cast_or_null<ConstantIndexOp>(loop.lowerBound()->getDefiningOp()))
+    isZeroBased = ubCst.getValue() == 0;
+
+  bool isStepOne = false;
+  if (auto stepCst =
+          dyn_cast_or_null<ConstantIndexOp>(loop.step()->getDefiningOp()))
+    isStepOne = stepCst.getValue() == 1;
+
+  if (isZeroBased && isStepOne)
+    return;
+
+  // Compute the number of iterations the loop executes: ceildiv(ub - lb, step)
+  // assuming the step is strictly positive.  Update the bounds and the step
+  // of the loop to go from 0 to the number of iterations, if necessary.
+  // TODO(zinenko): introduce support for negative steps or emit dynamic asserts
+  // on step positivity, whatever gets implemented first.
+  Value *diff =
+      builder.create<SubIOp>(loc, loop.upperBound(), loop.lowerBound());
+  Value *numIterations = ceilDivPositive(builder, loc, diff, loop.step());
+  loop.setUpperBound(numIterations);
+
+  Value *lb = loop.lowerBound();
+  if (!isZeroBased) {
+    Value *cst0 = builder.create<ConstantIndexOp>(loc, 0);
+    loop.setLowerBound(cst0);
+  }
+
+  Value *step = loop.step();
+  if (!isStepOne) {
+    Value *cst1 = builder.create<ConstantIndexOp>(loc, 1);
+    loop.setStep(cst1);
+  }
+
+  // Insert code computing the value of the original loop induction variable
+  // from the "normalized" one.
+  builder.setInsertionPointToStart(inner.body());
+  Value *scaled =
+      isStepOne ? loop.getInductionVar()
+                : builder.create<MulIOp>(loc, loop.getInductionVar(), step);
+  Value *shifted =
+      isZeroBased ? scaled : builder.create<AddIOp>(loc, scaled, lb);
+
+  SmallPtrSet<Operation *, 2> preserve{scaled->getDefiningOp(),
+                                       shifted->getDefiningOp()};
+  replaceAllUsesExcept(loop.getInductionVar(), shifted, preserve);
+}
+
+void mlir::coalesceLoops(MutableArrayRef<loop::ForOp> loops) {
+  if (loops.size() < 2)
+    return;
+
+  loop::ForOp innermost = loops.back();
+  loop::ForOp outermost = loops.front();
+
+  // 1. Make sure all loops iterate from 0 to upperBound with step 1.  This
+  // allows the following code to assume upperBound is the number of iterations.
+  for (auto loop : loops)
+    normalizeLoop(loop, outermost, innermost);
+
+  // 2. Emit code computing the upper bound of the coalesced loop as product
+  // of the number of iterations of all loops.
+  OpBuilder builder(outermost);
+  Location loc = outermost.getLoc();
+  Value *upperBound = outermost.upperBound();
+  for (auto loop : loops.drop_front())
+    upperBound = builder.create<MulIOp>(loc, upperBound, loop.upperBound());
+  outermost.setUpperBound(upperBound);
+
+  builder.setInsertionPointToStart(outermost.body());
+
+  // 3. Remap induction variables.  For each original loop, the value of the
+  // induction variable can be obtained by dividing the induction variable of
+  // the linearized loop by the total number of iterations of the loops nested
+  // in it modulo the number of iterations in this loop (remove the values
+  // related to the outer loops):
+  //   iv_i = floordiv(iv_linear, product-of-loop-ranges-until-i) mod range_i.
+  // Compute these iteratively from the innermost loop by creating a "running
+  // quotient" of division by the range.
+  Value *previous = outermost.getInductionVar();
+  for (unsigned i = 0, e = loops.size(); i < e; ++i) {
+    unsigned idx = loops.size() - i - 1;
+    if (i != 0)
+      previous =
+          builder.create<DivISOp>(loc, previous, loops[idx + 1].upperBound());
+
+    Value *iv = (i == e - 1) ? previous
+                             : builder.create<RemISOp>(loc, previous,
+                                                       loops[idx].upperBound());
+    replaceAllUsesInRegionWith(loops[idx].getInductionVar(), iv,
+                               loops.back().region());
+  }
+
+  // 4. Move the operations from the innermost just above the second-outermost
+  // loop, delete the extra terminator and the second-outermost loop.
+  loop::ForOp second = loops[1];
+  innermost.body()->back().erase();
+  outermost.body()->getOperations().splice(
+      Block::iterator(second.getOperation()),
+      innermost.body()->getOperations());
+  second.erase();
 }

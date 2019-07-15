@@ -57,6 +57,8 @@ LogicalResult loopUnrollUpToFactor(AffineForOp forOp, uint64_t unrollFactor);
 /// AffineForOp, and the second op is a terminator).
 void getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
                              AffineForOp root);
+void getPerfectlyNestedLoops(SmallVectorImpl<loop::ForOp> &nestedLoops,
+                             loop::ForOp root);
 
 /// Unrolls and jams this loop by the specified factor. Returns success if the
 /// loop is successfully unroll-jammed.
@@ -153,6 +155,11 @@ void tile(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
 /// parametric tile sizes that the outer loops have a fixed number of iterations
 /// as defined in `sizes`.
 void extractFixedOuterLoops(loop::ForOp rootFOrOp, ArrayRef<int64_t> sizes);
+
+/// Replace a perfect nest of "for" loops with a single linearized loop. Assumes
+/// `loops` contains a list of perfectly nested loops with bounds and steps
+/// independent of any loop induction variable involved in the nest.
+void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 
 } // end namespace mlir
 

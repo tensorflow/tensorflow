@@ -5,6 +5,7 @@ add_llvm_library(MLIRTransforms
   CSE.cpp
   DialectConversion.cpp
   DmaGeneration.cpp
+  LoopCoalescing.cpp
   LoopFusion.cpp
   LoopInvariantCodeMotion.cpp
   LoopParametricTiling.cpp
