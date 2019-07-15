@@ -731,9 +731,9 @@ class Tensor(_TensorLike):
                               " array.".format(self.name))
 
   def __len__(self):
-    raise NotImplementedError("len is not well defined for symbolic Tensors. "
-                              "({}) Please call `x.shape` rather than `len(x)` "
-                              "for shape information.".format(self.name))
+    raise AttributeError("len is not well defined for symbolic Tensors. ({}) "
+                         "Please call `x.shape` rather than `len(x)` for "
+                         "shape information.".format(self.name))
 
   @staticmethod
   def _override_operator(operator, func):
