@@ -47,10 +47,10 @@ class PreprocessingLayerTest(test.TestCase):
           if np.issubdtype(a.dtype, np.number) else self.assertAllEqual)
       comparison_fn(a, b, msg=msg)
 
-  def assert_accumulator_equal(self, combiner, acc1, acc2, message=None):
+  def assert_extracted_output_equal(self, combiner, acc1, acc2, msg=None):
     data_1 = combiner.extract(acc1)
     data_2 = combiner.extract(acc2)
-    self.assertAllCloseOrEqual(data_1, data_2, msg=message)
+    self.assertAllCloseOrEqual(data_1, data_2, msg=msg)
 
   def validate_accumulator_computation(self, combiner, data, expected):
     """Validate that various combinations of compute and merge are identical."""
@@ -67,77 +67,75 @@ class PreprocessingLayerTest(test.TestCase):
         combiner.compute(data_1),
         combiner.compute(data_2)
     ])
-    self.assert_accumulator_equal(
-        combiner,
+    self.assertAllCloseOrEqual(
         single_compute,
         all_merge,
-        message="Sharding data should not change the data output.")
+        msg="Sharding data should not change the data output.")
 
     unordered_all_merge = combiner.merge([
         combiner.compute(data_1),
         combiner.compute(data_2),
         combiner.compute(data_0)
     ])
-    self.assert_accumulator_equal(
-        combiner,
+    self.assertAllCloseOrEqual(
         all_merge,
         unordered_all_merge,
-        message="The order of merge arguments should not change the data "
-        "output."
-    )
+        msg="The order of merge arguments should not change the data "
+        "output.")
 
     hierarchical_merge = combiner.merge([
         combiner.compute(data_1),
         combiner.merge([combiner.compute(data_2),
                         combiner.compute(data_0)])
     ])
-    self.assert_accumulator_equal(
-        combiner,
+    self.assertAllCloseOrEqual(
         all_merge,
         hierarchical_merge,
-        message="Nesting merge arguments should not change the data output.")
+        msg="Nesting merge arguments should not change the data output.")
 
     nested_compute = combiner.compute(
         data_0, combiner.compute(data_1, combiner.compute(data_2)))
-    self.assert_accumulator_equal(
-        combiner,
+    self.assertAllCloseOrEqual(
         all_merge,
         nested_compute,
-        message="Nesting compute arguments should not change the data output.")
+        msg="Nesting compute arguments should not change the data output.")
 
     mixed_compute = combiner.merge([
         combiner.compute(data_0),
         combiner.compute(data_1, combiner.compute(data_2))
     ])
-    self.assert_accumulator_equal(
-        combiner,
+    self.assertAllCloseOrEqual(
         all_merge,
         mixed_compute,
-        message="Mixing merge and compute calls should not change the data "
+        msg="Mixing merge and compute calls should not change the data "
         "output.")
+    self.assertAllCloseOrEqual(expected, all_merge)
 
-    self.assertAllCloseOrEqual(expected, combiner.extract(all_merge))
+  def validate_accumulator_extract(self, combiner, data, expected):
+    """Validate that the expected results of computing and extracting."""
+    acc = combiner.compute(data)
+    extracted_data = combiner.extract(acc)
+    self.assertAllCloseOrEqual(expected, extracted_data)
 
   def validate_accumulator_extract_and_restore(self, combiner, data, expected):
     """Validate that the extract<->restore loop loses no data."""
     acc = combiner.compute(data)
     extracted_data = combiner.extract(acc)
     restored_acc = combiner.restore(extracted_data)
-    self.assert_accumulator_equal(combiner, acc, restored_acc)
+    self.assert_extracted_output_equal(combiner, acc, restored_acc)
     self.assertAllCloseOrEqual(expected, combiner.extract(restored_acc))
 
   def validate_accumulator_serialize_and_deserialize(self, combiner, data,
                                                      expected):
     """Validate that the serialize<->deserialize loop loses no data."""
     acc = combiner.compute(data)
-    extracted_data = combiner.serialize(acc)
-    restored_acc = combiner.deserialize(extracted_data)
-    self.assert_accumulator_equal(combiner, acc, restored_acc)
-    self.assertAllCloseOrEqual(expected, combiner.extract(restored_acc))
+    serialized_data = combiner.serialize(acc)
+    deserialized_data = combiner.deserialize(serialized_data)
+    self.assertAllCloseOrEqual(acc, deserialized_data)
 
-  def validate_accumulator_uniqueness(self, combiner, data, expected):
+  def validate_accumulator_uniqueness(self, combiner, data):
     """Validate that every call to compute creates a unique accumulator."""
     acc = combiner.compute(data)
     acc2 = combiner.compute(data)
     self.assertIsNot(acc, acc2)
-    self.assertAllCloseOrEqual(expected, combiner.extract(acc))
+    self.assertAllCloseOrEqual(acc, acc2)
