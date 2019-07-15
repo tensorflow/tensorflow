@@ -1205,7 +1205,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_INT64:
         POPULATE_TENSOR_PROTO(tensor, t, int64, int64);
       case DT_UINT64:
-        POPULATE_TENSOR_PROTO(tensor, t, uint64, int64);
+        POPULATE_TENSOR_PROTO(tensor, t, uint64, uint64);
       case DT_INT32:
         POPULATE_TENSOR_PROTO(tensor, t, int32, int);
       case DT_UINT32:
