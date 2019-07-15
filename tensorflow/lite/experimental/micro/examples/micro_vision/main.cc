@@ -26,7 +26,13 @@ limitations under the License.
 // Create an area of memory to use for input, output, and intermediate arrays.
 // TODO(rocky): This is too big for many platforms.  Need to implement a more
 // efficient memory manager for intermediate tensors.
-const int tensor_arena_size = 291 * 1024;
+// TODO(petewarden): Temporarily reduce the size for Arduino builds, so we can
+// make sure the continuous-integration builds work.
+#ifdef ARDUINO
+constexpr int tensor_arena_size = 10 * 1024;
+#else   // ARDUINO
+constexpr int tensor_arena_size = 291 * 1024;
+#endif  // ARDUINO
 uint8_t tensor_arena[tensor_arena_size];
 
 int main(int argc, char* argv[]) {
