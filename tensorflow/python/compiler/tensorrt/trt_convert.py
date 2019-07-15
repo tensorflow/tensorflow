@@ -399,7 +399,6 @@ class TrtGraphConverter(object):
 
     # For calibration usage.
     self._calibration_graph = None
-    self._calibration_sess = None
     self._calibration_data_collected = False
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
@@ -535,11 +534,10 @@ class TrtGraphConverter(object):
     self._run_conversion()
 
   def convert(self):
-    """Run the conversion.
+    """Run the TF-TRT conversion.
 
     Returns:
-      The converted GraphDef for TF 1.x, or the converted ConcreteFunction in TF
-      2.0+.
+      The converted GraphDef for TF 1.x.
     """
     assert not self._converted
     if self._input_graph_def:
@@ -576,7 +574,8 @@ class TrtGraphConverter(object):
       The GraphDef after the calibration.
     """
     assert self._converted
-    assert not self._calibration_sess
+    assert self._need_calibration
+    assert not self._calibration_data_collected
 
     if context.executing_eagerly():
       raise RuntimeError("Calibration for TF 2.0 is not supported yet.")
@@ -593,53 +592,46 @@ class TrtGraphConverter(object):
           input_map=input_map_fn() if input_map_fn else None,
           return_elements=fetch_names,
           name="")
-    self._calibration_sess = session.Session(
-        graph=self._calibration_graph, config=self._session_config)
 
-    for _ in range(num_runs):
-      self._calibration_sess.run(
-          fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
+    with session.Session(
+        graph=self._calibration_graph,
+        config=self._session_config) as calibration_sess:
+      for _ in range(num_runs):
+        calibration_sess.run(
+            fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
 
-    self.finalize_calibration()
+      # Maps device name to the corresponding get_calibration_data.
+      #
+      # TODO(laigd): a better way would be to use calibration_sess to list
+      # all the devices, add one get_calibration_data for each device, and
+      # fetch each such op for every resource until its found. This can work
+      # even when the device of the TRTEngineOp is empty or not fully specified.
+      device_to_get_resource_op_map = {}
+
+      with self._calibration_graph.as_default():
+        resource_name_input = array_ops.placeholder(dtypes.string)
+
+        for node in self._converted_graph_def.node:
+          if node.op == _TRT_ENGINE_OP_NAME:
+            # Adds the get_calibration_data op for the device if not done
+            # before. We only add one such op for each device.
+            # TODO(laigd): What if the device is empty?????
+            if node.device not in device_to_get_resource_op_map:
+              with self._calibration_graph.device(node.device):
+                serialized_resources_output = (
+                    gen_trt_ops.get_calibration_data_op(resource_name_input))
+              device_to_get_resource_op_map[node.device] = (
+                  serialized_resources_output)
+
+            # Get the calibration resource.
+            calibration_result = calibration_sess.run(
+                device_to_get_resource_op_map[node.device],
+                feed_dict={resource_name_input: node.name})
+            node.attr["calibration_data"].s = calibration_result
+
+      self._calibration_data_collected = True
+
     return self._converted_graph_def
-
-  def finalize_calibration(self):
-    """Clean up calibration resources and finalize the calibration."""
-    assert self._need_calibration
-    assert self._converted
-    assert not self._calibration_data_collected
-
-    # TODO(laigd): a better way would be to use self._calibration_sess to list
-    # all the devices, add one get_calibration_data for each device, and
-    # fetch each such op for every resource until its found. This can work
-    # even when the device of the TRTEngineOp is empty or not fully specified.
-
-    # Maps device name to the corresponding get_calibration_data.
-    device_to_get_resource_op_map = {}
-
-    with self._calibration_graph.as_default():
-      resource_name_input = array_ops.placeholder(dtypes.string)
-
-      for node in self._converted_graph_def.node:
-        if node.op == _TRT_ENGINE_OP_NAME:
-          # Adds the get_calibration_data op for the device if not done before.
-          # We only add one such op for each device.
-          # TODO(laigd): What if the device is empty?????
-          if node.device not in device_to_get_resource_op_map:
-            with self._calibration_graph.device(node.device):
-              serialized_resources_output = (
-                  gen_trt_ops.get_calibration_data_op(resource_name_input))
-            device_to_get_resource_op_map[node.device] = (
-                serialized_resources_output)
-
-          # Get the calibration resource.
-          calibration_result = self._calibration_sess.run(
-              device_to_get_resource_op_map[node.device],
-              feed_dict={resource_name_input: node.name})
-          node.attr["calibration_data"].s = calibration_result
-
-    self._calibration_data_collected = True
-    self._calibration_sess.close()
 
   def save(self, output_saved_model_dir):
     """Save the converted graph as a SavedModel.
