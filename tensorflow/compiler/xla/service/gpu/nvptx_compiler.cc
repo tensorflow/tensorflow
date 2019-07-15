@@ -496,7 +496,6 @@ void WarnIfBadDriverJITVersion() {
 
 NVPTXCompiler::NVPTXCompiler()
     : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
-<<<<<<< HEAD
                         .getPointerSize(0 /* default address space */)),
       platform_id_(se::cuda::kCudaPlatformId) {}
 
@@ -504,9 +503,6 @@ NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
     : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
                         .getPointerSize(0 /* default address space */)),
       platform_id_(platform_id) {}
-=======
-                        .getPointerSize(0 /* default address space */)) {}
->>>>>>> upstream/master
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

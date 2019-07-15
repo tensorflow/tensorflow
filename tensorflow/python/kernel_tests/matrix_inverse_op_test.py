@@ -74,20 +74,6 @@ class InverseOpTest(test.TestCase):
     self._verifyInverseReal(matrix2)
     # A multidimensional batch of 2x2 matrices
     self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
-<<<<<<< HEAD
-    # Complex
-    if test.is_built_with_rocm() :
-      # GEMM operation for complex datatype not yet supported in ROCm
-      return
-    matrix1 = matrix1.astype(np.complex64)
-    matrix1 += 1j * matrix1
-    matrix2 = matrix2.astype(np.complex64)
-    matrix2 += 1j * matrix2
-    self._verifyInverseComplex(matrix1)
-    self._verifyInverseComplex(matrix2)
-    # Complex batch
-    self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
-=======
     if not test.is_built_with_rocm():
       # ROCm does not support BLAS operations for complex types
       # Complex
@@ -99,7 +85,6 @@ class InverseOpTest(test.TestCase):
       self._verifyInverseComplex(matrix2)
       # Complex batch
       self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
->>>>>>> upstream/master
 
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
@@ -109,20 +94,6 @@ class InverseOpTest(test.TestCase):
     self._verifyInverseReal(matrix2)
     # A multidimensional batch of 2x2 matrices
     self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
-<<<<<<< HEAD
-    # Complex
-    if test.is_built_with_rocm() :
-      # GEMM operation for complex datatype not yet supported in ROCm
-      return
-    matrix1 = matrix1.astype(np.complex64)
-    matrix1 += 1j * matrix1
-    matrix2 = matrix2.astype(np.complex64)
-    matrix2 += 1j * matrix2
-    self._verifyInverseComplex(matrix1)
-    self._verifyInverseComplex(matrix2)
-    # Complex batch
-    self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
-=======
     if not test.is_built_with_rocm():
       # ROCm does not support BLAS operations for complex types
       # Complex
@@ -134,7 +105,6 @@ class InverseOpTest(test.TestCase):
       self._verifyInverseComplex(matrix2)
       # Complex batch
       self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testNonSquareMatrix(self):

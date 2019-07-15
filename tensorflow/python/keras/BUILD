@@ -1610,11 +1610,8 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no_rocm",
-<<<<<<< HEAD
         "no_cuda",
-=======
         "nomac",  # TODO(mihaimaruseac): b/127695564
->>>>>>> upstream/master
     ],
 )
 

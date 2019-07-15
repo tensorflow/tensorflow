@@ -20,22 +20,13 @@ namespace xla {
 namespace gpu {
 
 namespace nvptx {
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/target_constants.h
 // The triple that represents our target on LLVM NVPTX backend.
-=======
-// The triple that represents our target.
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/target_constants.h
 constexpr char kTargetTriple[] = "nvptx64-nvidia-cuda";
 
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
 constexpr char kDataLayout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/target_constants.h
-} // namespace nvptx
-
-=======
 }  // namespace nvptx
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/target_constants.h
 
 namespace amdgpu {
 
@@ -44,19 +35,11 @@ constexpr char kTargetTriple[] = "amdgcn-amd-amdhsa";
 
 // The data layout of the emitted module.
 constexpr char kDataLayout[] =
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/target_constants.h
-         "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32"
-         "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
-         "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-A5";
-
-} // namespace amdgpu
-=======
     "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32"
     "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
     "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-A5";
 
 }  // namespace amdgpu
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/target_constants.h
 
 }  // namespace gpu
 }  // namespace xla

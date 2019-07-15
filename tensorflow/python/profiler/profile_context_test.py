@@ -71,15 +71,9 @@ class ProfilerContextTest(test.TestCase):
       with gfile.Open(outfile, "r") as f:
 
         if test.is_built_with_rocm():
-<<<<<<< HEAD
-          # The profiler output for ROCm mode, includes an extra warning related
-          # to the lack of stream tracing in ROCm moed. Need to skip this warning
-          # when doing the diff in ROCm mode
-=======
           # The profiler output for ROCm mode, includes an extra warning
           # related to the lack of stream tracing in ROCm mode.
           # Need to skip this warning when doing the diff
->>>>>>> upstream/master
           profile_str = "\n".join(profile_str.split("\n")[7:])
 
         self.assertEqual(profile_str, f.read())

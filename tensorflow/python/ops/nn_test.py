@@ -1304,15 +1304,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
-<<<<<<< HEAD
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
-=======
     if test_lib.is_built_with_rocm():
       self.skipTest("Pooling with 3D tensors is not supported in ROCm")
->>>>>>> upstream/master
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1323,15 +1316,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
-<<<<<<< HEAD
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
-=======
     if test_lib.is_built_with_rocm():
       self.skipTest("Pooling with 3D tensors is not supported in ROCm")
->>>>>>> upstream/master
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1396,15 +1382,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
-<<<<<<< HEAD
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
-=======
     if test_lib.is_built_with_rocm():
       self.skipTest("Pooling with 3D tensors is not supported in ROCm")
->>>>>>> upstream/master
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1415,15 +1394,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
-<<<<<<< HEAD
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
-=======
     if test_lib.is_built_with_rocm():
       self.skipTest("Pooling with 3D tensors is not supported in ROCm")
->>>>>>> upstream/master
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2

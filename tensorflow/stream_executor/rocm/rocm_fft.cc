@@ -110,11 +110,7 @@ namespace wrap {
   __macro(hipfftExecC2C)             \
   __macro(hipfftExecC2R)             \
   __macro(hipfftExecZ2Z)             \
-<<<<<<< HEAD
-  __macro(hipfftExecR2C)             \
-=======
   __macro(hipfftExecR2C)
->>>>>>> upstream/master
 
 // clang-format on
 

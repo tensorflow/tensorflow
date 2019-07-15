@@ -992,10 +992,7 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
-<<<<<<< HEAD
         ":gpu_compiler",
-=======
->>>>>>> upstream/master
         ":outfeed_manager",
         ":target_constants",
         "//tensorflow/compiler/xla:literal",
