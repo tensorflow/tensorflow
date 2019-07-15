@@ -357,7 +357,7 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
 
 void GenerateImport(OpOptionData* option, FILE* fp) {
   std::unordered_set<std::string> ignores;
-  ignores.insert("CONCAT_EMBEDDINGS");
+  ignores.insert("CONCATENATE_EMBEDDINGS");
   ignores.insert("CALL");
 
   // Allow any op that doesn't have an options struct to be blocked
