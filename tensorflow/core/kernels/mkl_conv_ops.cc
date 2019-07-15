@@ -1665,7 +1665,7 @@ private:
   void CacheBias(OpKernelContext* context,
                  const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                  Tbias *bias_data,
-                 memory *scaled_bias)
+                 const memory *scaled_bias)
       LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     const Tensor& cached_bias_data_tensor =
