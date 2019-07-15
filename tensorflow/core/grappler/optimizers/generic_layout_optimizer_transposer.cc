@@ -723,7 +723,8 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
 
 Status Conv2DBackpropFilterTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
-  DCHECK(IsConv2DBackpropFilter(*node->node()));
+  DCHECK(IsConv2DBackpropFilter(*node->node()) ||
+         IsDepthwiseConv2dNativeBackpropFilter(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
@@ -739,7 +740,8 @@ Status Conv2DBackpropFilterTransposer::TransposeNode(
 
 Status Conv2DBackpropInputTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
-  DCHECK(IsConv2DBackpropInput(*node->node()));
+  DCHECK(IsConv2DBackpropInput(*node->node()) ||
+         IsDepthwiseConv2dNativeBackpropInput(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
@@ -1575,12 +1577,17 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
 // Utils.
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
-  std::set<string> default_layout_sensitive_ops = {
-      "AvgPool",          "BiasAdd",
-      "Conv2D",           "DepthToSpace",
-      "FusedBatchNorm",   "FusedBatchNormV2",
-      "FusedBatchNormV3", "FusedConv2DBiasActivation",
-      "MaxPool",          "SpaceToDepth"};
+  std::set<string> default_layout_sensitive_ops = {"AvgPool",
+                                                   "BiasAdd",
+                                                   "Conv2D",
+                                                   "DepthwiseConv2dNative",
+                                                   "DepthToSpace",
+                                                   "FusedBatchNorm",
+                                                   "FusedBatchNormV2",
+                                                   "FusedBatchNormV3",
+                                                   "FusedConv2DBiasActivation",
+                                                   "MaxPool",
+                                                   "SpaceToDepth"};
   return default_layout_sensitive_ops.find(node.op()) !=
          default_layout_sensitive_ops.end();
 }
@@ -1588,8 +1595,11 @@ bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
 bool IsLayoutSensitiveOp(const NodeDef& node) {
   return IsDefaultLayoutSensitiveOp(node) || IsAvgPoolGrad(node) ||
          IsBiasAddGrad(node) || IsConv2DBackpropFilter(node) ||
-         IsConv2DBackpropInput(node) || IsFusedBatchNormGrad(node) ||
-         IsMaxPoolV2(node) || IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
+         IsConv2DBackpropInput(node) ||
+         IsDepthwiseConv2dNativeBackpropFilter(node) ||
+         IsDepthwiseConv2dNativeBackpropInput(node) ||
+         IsFusedBatchNormGrad(node) || IsMaxPoolV2(node) ||
+         IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
          IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node);
 }
 
