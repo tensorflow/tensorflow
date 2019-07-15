@@ -190,7 +190,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         _ = a + b
 
   def testNumpyArray(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       x = array_ops.ones((3, 4), name="test_ones")
 
     with self.assertRaisesRegexp(NotImplementedError,
