@@ -154,6 +154,7 @@ mlir::linalg::getAssumedNonViewOperands(LinalgOp linalgOp) {
   for (unsigned i = 0; i < nOperands; ++i) {
     res.push_back(op->getOperand(numViews + i));
     auto t = res.back()->getType();
+    (void)t;
     assert((t.isIntOrIndexOrFloat() || t.isa<VectorType>()) &&
            "expected scalar or vector type");
   }
