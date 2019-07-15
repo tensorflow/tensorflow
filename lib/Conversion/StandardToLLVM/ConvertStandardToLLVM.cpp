@@ -358,9 +358,6 @@ struct DivFOpLowering : public OneToOneLLVMOpLowering<DivFOp, LLVM::FDivOp> {
 struct RemFOpLowering : public OneToOneLLVMOpLowering<RemFOp, LLVM::FRemOp> {
   using Super::Super;
 };
-struct CmpIOpLowering : public OneToOneLLVMOpLowering<CmpIOp, LLVM::ICmpOp> {
-  using Super::Super;
-};
 struct SelectOpLowering
     : public OneToOneLLVMOpLowering<SelectOp, LLVM::SelectOp> {
   using Super::Super;
@@ -819,6 +816,30 @@ struct IndexCastOpLowering : public LLVMLegalizationPattern<IndexCastOp> {
     else
       rewriter.replaceOpWithNewOp<LLVM::SExtOp>(op, targetType,
                                                 transformed.in());
+    return matchSuccess();
+  }
+};
+
+// Convert std.cmpi predicate into the LLVM dialect ICmpPredicate.  The two
+// enums share the numerical values so just cast.
+static LLVM::ICmpPredicate convertCmpIPredicate(CmpIPredicate pred) {
+  return static_cast<LLVM::ICmpPredicate>(pred);
+}
+
+struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
+  using LLVMLegalizationPattern<CmpIOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
+    auto cmpiOp = cast<CmpIOp>(op);
+    CmpIOpOperandAdaptor transformed(operands);
+
+    rewriter.replaceOpWithNewOp<LLVM::ICmpOp>(
+        op, lowering.convertType(cmpiOp.getResult()->getType()),
+        rewriter.getI64IntegerAttr(
+            static_cast<int64_t>(convertCmpIPredicate(cmpiOp.getPredicate()))),
+        transformed.lhs(), transformed.rhs());
+
     return matchSuccess();
   }
 };

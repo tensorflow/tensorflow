@@ -133,6 +133,7 @@ def LLVM_AndOp : LLVM_ArithmeticOp<"and", "CreateAnd">;
 def LLVM_OrOp : LLVM_ArithmeticOp<"or", "CreateOr">;
 def LLVM_XOrOp : LLVM_ArithmeticOp<"xor", "CreateXor">;
 
+// Predicate for integer comparisons.
 def ICmpPredicateEQ  : I64EnumAttrCase<"eq", 0>;
 def ICmpPredicateNE  : I64EnumAttrCase<"ne", 1>;
 def ICmpPredicateSLT : I64EnumAttrCase<"slt", 2>;
@@ -150,6 +151,10 @@ def ICmpPredicate : I64EnumAttr<
      ICmpPredicateSGT, ICmpPredicateSGE, ICmpPredicateULT, ICmpPredicateULE,
      ICmpPredicateUGT, ICmpPredicateUGE]> {
   let cppNamespace = "mlir::LLVM";
+
+  let returnType = "ICmpPredicate";
+  let convertFromStorage =
+      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
 }
 
 // Other integer operations.
@@ -157,8 +162,7 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
                   Arguments<(ins ICmpPredicate:$predicate, LLVM_Type:$lhs,
                              LLVM_Type:$rhs)> {
   let llvmBuilder = [{
-    $res = builder.CreateICmp(getLLVMCmpPredicate(
-        static_cast<CmpIPredicate>($predicate.getZExtValue())), $lhs, $rhs);
+    $res = builder.CreateICmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
   let parser = [{ return parseICmpOp(parser, result); }];
   let printer = [{ printICmpOp(p, *this); }];

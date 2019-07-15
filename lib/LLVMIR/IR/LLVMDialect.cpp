@@ -23,7 +23,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/StandardTypes.h"
 
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Attributes.h"
@@ -42,9 +41,7 @@ using namespace mlir::LLVM;
 //===----------------------------------------------------------------------===//
 
 static void printICmpOp(OpAsmPrinter *p, ICmpOp &op) {
-  *p << op.getOperationName() << " \""
-     << stringifyICmpPredicate(
-            static_cast<ICmpPredicate>(op.predicate().getZExtValue()))
+  *p << op.getOperationName() << " \"" << stringifyICmpPredicate(op.predicate())
      << "\" " << *op.getOperand(0) << ", " << *op.getOperand(1);
   p->printOptionalAttrDict(op.getAttrs(), {"predicate"});
   *p << " : " << op.lhs()->getType();

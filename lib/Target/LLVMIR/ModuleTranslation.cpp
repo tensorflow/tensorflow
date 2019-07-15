@@ -25,7 +25,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -114,27 +113,27 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
 }
 
 // Convert MLIR integer comparison predicate to LLVM IR comparison predicate.
-static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
+static llvm::CmpInst::Predicate getLLVMCmpPredicate(ICmpPredicate p) {
   switch (p) {
-  case CmpIPredicate::EQ:
+  case LLVM::ICmpPredicate::eq:
     return llvm::CmpInst::Predicate::ICMP_EQ;
-  case CmpIPredicate::NE:
+  case LLVM::ICmpPredicate::ne:
     return llvm::CmpInst::Predicate::ICMP_NE;
-  case CmpIPredicate::SLT:
+  case LLVM::ICmpPredicate::slt:
     return llvm::CmpInst::Predicate::ICMP_SLT;
-  case CmpIPredicate::SLE:
+  case LLVM::ICmpPredicate::sle:
     return llvm::CmpInst::Predicate::ICMP_SLE;
-  case CmpIPredicate::SGT:
+  case LLVM::ICmpPredicate::sgt:
     return llvm::CmpInst::Predicate::ICMP_SGT;
-  case CmpIPredicate::SGE:
+  case LLVM::ICmpPredicate::sge:
     return llvm::CmpInst::Predicate::ICMP_SGE;
-  case CmpIPredicate::ULT:
+  case LLVM::ICmpPredicate::ult:
     return llvm::CmpInst::Predicate::ICMP_ULT;
-  case CmpIPredicate::ULE:
+  case LLVM::ICmpPredicate::ule:
     return llvm::CmpInst::Predicate::ICMP_ULE;
-  case CmpIPredicate::UGT:
+  case LLVM::ICmpPredicate::ugt:
     return llvm::CmpInst::Predicate::ICMP_UGT;
-  case CmpIPredicate::UGE:
+  case LLVM::ICmpPredicate::uge:
     return llvm::CmpInst::Predicate::ICMP_UGE;
   default:
     llvm_unreachable("incorrect comparison predicate");
