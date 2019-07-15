@@ -25,6 +25,8 @@ import os
 import threading
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
@@ -186,6 +188,24 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
           ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
           r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
+
+  def testNumpyArray(self):
+    with context.graph_mode():
+      x = array_ops.ones((3, 4), name="test_ones")
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 r"Cannot convert a symbolic.+test_ones"):
+      np.array(x)
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 "len is not well defined.+test_ones"):
+      len(x)
+
+    with context.eager_mode():
+      x = array_ops.ones((3, 4))
+
+    self.assertAllEqual(x, np.ones((3, 4)))
+    self.assertEqual(len(x), 3)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
