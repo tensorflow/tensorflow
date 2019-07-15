@@ -124,7 +124,7 @@ class Importer {
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                  llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
-  // Adds all the ordered_ndoes_ to the shape refiner shape_refiner_. Then all
+  // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
   Status AddNodesToShapeRefiner();
 
@@ -241,9 +241,10 @@ class Importer {
   StatusOr<Node*> ReplaceWithPlaceholderNode(const TensorShapeProto& shape,
                                              DataType dtype, Node* input_node);
 
-  // Gets the output_nodes corresponding to the specified output_arrays in
-  // specs_. If there are no output_arrays set, output_nodes will be empty
-  Status GetOutputNodes(std::unordered_set<const Node*>* output_nodes);
+  // Gets the input and output nodes corresponding to the specified input and
+  // output nodes in specs_. If there are no input or output nodes specified,
+  // nodes will be empty
+  Status GetInputOutputNodes(std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
   // in the back_edge_helper.
@@ -348,17 +349,26 @@ StatusOr<Node*> Importer::ReplaceWithPlaceholderNode(
   return placeholder_node;
 }
 
-Status Importer::GetOutputNodes(std::unordered_set<const Node*>* output_nodes) {
+Status Importer::GetInputOutputNodes(std::unordered_set<const Node*>* nodes) {
   auto node_name_map = graph_->BuildNodeNameIndex();
-  for (auto& output_node_name : specs_.output_arrays) {
-    auto it = node_name_map.find(output_node_name);
+  auto add_node = [&](const string& name) {
+    auto it = node_name_map.find(name);
     if (it == node_name_map.end()) {
-      return errors::FailedPrecondition(absl::StrCat(
-          "Graph does not contain a node corresponding to output array:",
-          output_node_name));
+      return errors::FailedPrecondition(
+          absl::StrCat("Graph does not contain node :", name));
     }
-    output_nodes->insert(it->second);
+    nodes->insert(it->second);
+    return Status::OK();
+  };
+
+  for (const auto& input : specs_.inputs) {
+    TF_RETURN_IF_ERROR(add_node(input.first));
   }
+
+  for (const auto& output_node_name : specs_.output_arrays) {
+    TF_RETURN_IF_ERROR(add_node(output_node_name));
+  }
+
   return Status::OK();
 }
 
@@ -433,7 +443,7 @@ Status Importer::AddNodesToShapeRefiner() {
   // Prune nodes in the graph that are not reachable from the output.
   if (specs_.prune_unused_nodes) {
     std::unordered_set<const Node*> prune_start;
-    TF_RETURN_IF_ERROR(GetOutputNodes(&prune_start));
+    TF_RETURN_IF_ERROR(GetInputOutputNodes(&prune_start));
     if (!prune_start.empty()) {
       if (PruneForReverseReachability(graph_.get(), prune_start)) {
         VLOG(1) << "Pruned unused nodes in graphdef";
