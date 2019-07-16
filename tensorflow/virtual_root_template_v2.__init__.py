@@ -97,4 +97,8 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
+# All symbols start with `_` have been hided from `__all__` so we need
+# explicitly import `__version__`.
+from tensorflow_core import __version__
+
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)
