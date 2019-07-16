@@ -173,6 +173,7 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
+        "engine/training_v2.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",
@@ -1051,7 +1052,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1066,7 +1067,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )

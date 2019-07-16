@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This module customizes `test_combinations` for Tensorflow.
+"""This module customizes `test_combinations` for `tf.distribute.Strategy`.
 
-Additionally it provides `generate()`, `combine()` and `times()` with Tensorflow
-customizations as a default.
+Additionally it provides `generate()`, `combine()` and `times()` with
+`tf.distribute.Strategy` customizations as a default.
 """
 
 from __future__ import absolute_import
@@ -25,9 +25,9 @@ from __future__ import print_function
 import functools
 import sys
 
-from tensorflow.python.distribute import test_combinations
 from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import combinations as framework_combinations
+from tensorflow.python.framework import test_combinations
 
 
 # TODO(rchao): Rename `distribution` parameter to `strategy` or
@@ -156,28 +156,6 @@ class TPUCombination(NamedTPUCombination):
            ] + NamedTPUCombination.parameter_modifiers(self)
 
 
-class EagerGraphCombination(test_combinations.TestCombination):
-  """Run the test in Graph or Eager mode.  Graph is the default.
-
-  The optional `mode` parameter controls the test's execution mode.  Its
-  accepted values are "graph" or "eager" literals.
-  """
-
-  def context_managers(self, kwargs):
-    # TODO(isaprykin): Switch the default to eager.
-    mode = kwargs.pop("mode", "graph")
-    if mode == "eager":
-      return [context.eager_mode()]
-    elif mode == "graph":
-      return [ops.Graph().as_default(), context.graph_mode()]
-    else:
-      raise ValueError(
-          "'mode' has to be either 'eager' or 'graph' and not {}".format(mode))
-
-  def parameter_modifiers(self):
-    return [test_combinations.OptionalParameter("mode")]
-
-
 class NamedDistribution(object):
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
@@ -205,10 +183,11 @@ class NamedDistribution(object):
     return self._name
 
 
+_defaults = framework_combinations.generate.keywords["test_combinations"]
+
 generate = functools.partial(
-    test_combinations.generate,
-    test_combinations=(EagerGraphCombination(), GPUCombination(),
-                       TPUCombination()))
-combine = test_combinations.combine
-times = test_combinations.times
-NamedObject = test_combinations.NamedObject
+    framework_combinations.generate,
+    test_combinations=_defaults + (GPUCombination(), TPUCombination()))
+combine = framework_combinations.combine
+times = framework_combinations.times
+NamedObject = framework_combinations.NamedObject

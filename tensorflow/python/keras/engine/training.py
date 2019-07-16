@@ -49,6 +49,7 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -149,6 +150,7 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
+    self._run_distributed = False
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -236,8 +238,18 @@ class Model(network.Network):
     """
     _keras_api_gauge.get_cell('compile').set(True)
     self._run_eagerly = kwargs.pop('run_eagerly', None)
+    self._run_distributed = kwargs.pop('run_distributed', False)
 
-    if distribute is not None:
+    if ((sample_weight_mode is not None)
+        or (target_tensors is not None)
+        or (weighted_metrics is not None)):
+      # Fallback out of things that aren't supported with dist strat
+      self._run_distributed = False
+
+    if self._run_distributed:
+      self._distribution_strategy = (
+          distribution_strategy_context.get_strategy())
+    elif distribute is not None:
       if tf2.enabled():
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
@@ -262,10 +274,11 @@ class Model(network.Network):
     # of enabling the feature and graduate it to the main distributed code path.
     self._cloning = kwargs.pop('cloning', False)
 
-    self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
-                                                           sample_weight_mode,
-                                                           target_tensors,
-                                                           weighted_metrics)
+    if not self._run_distributed:
+      self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
+                                                             sample_weight_mode,
+                                                             target_tensors,
+                                                             weighted_metrics)
     self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
@@ -452,6 +465,17 @@ class Model(network.Network):
 
   def _select_training_loop(self, inputs):
     """Select training loop for fit/eval/predict based on the inputs."""
+    # Experiment training loop with default DS path.
+    if (context.executing_eagerly()
+        and self._run_distributed
+        and tf2.enabled()
+        and not isinstance(inputs, (iterator_ops.Iterator,
+                                    iterator_ops.IteratorV2))
+        and not distributed_training_utils.is_tpu_strategy(
+            self._distribution_strategy)
+        and not getattr(self, '_cloning', False)):
+      return training_v2.Loop()
+
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
@@ -2106,12 +2130,11 @@ class Model(network.Network):
 
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
-        x = distributed_training_utils.list_to_tuple(x)
+        x = training_utils.list_to_tuple(x)
         if y is not None:
-          y = distributed_training_utils.list_to_tuple(y)
+          y = training_utils.list_to_tuple(y)
           if sample_weight is not None:
-            sample_weight = distributed_training_utils.list_to_tuple(
-                sample_weight)
+            sample_weight = training_utils.list_to_tuple(sample_weight)
             in_tuple = (x, y, sample_weight)
           else:
             in_tuple = (x, y)

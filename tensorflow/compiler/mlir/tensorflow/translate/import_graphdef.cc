@@ -716,6 +716,13 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
     attributes.push_back(builder_->getNamedAttr(attr_name, attr));
   }
 
+  // Checks opdef stateful attribute and import that as Function Attribute
+  if (func_def->signature().is_stateful()) {
+    auto stateful_str = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+    attributes.push_back(
+        builder_->getNamedAttr(stateful_str, builder_->getUnitAttr()));
+  }
+
   // Checks for an associated custom gradient function. Adds it to the attribute
   // list of this function.
   auto grad_func_name = func_lib.FindGradient(func_name);
@@ -1158,7 +1165,7 @@ Status Importer::Convert(llvm::StringRef func_name,
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
-  auto* bb = builder_->createBlock();
+  auto* bb = builder_->createBlock(&function.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));

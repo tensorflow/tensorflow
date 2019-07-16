@@ -103,6 +103,7 @@ cc_library(
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "translate/control_to_executor_dialect.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
@@ -472,6 +473,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
+        "@local_config_mlir//:Pass",
     ],
 )
 

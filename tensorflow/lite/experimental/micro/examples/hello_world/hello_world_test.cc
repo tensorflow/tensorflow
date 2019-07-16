@@ -41,16 +41,15 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // This pulls in all the operation implementations we need
   tflite::ops::micro::AllOpsResolver resolver;
 
-  // Create an area of memory to use for input, output, and intermediate arrays.
-  // Finding the minimum value for your model may require some trial and error.
   const int tensor_arena_size = 2 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
-  tflite::SimpleTensorAllocator tensor_allocator(tensor_arena,
-                                                 tensor_arena_size);
 
+  // Create an area of memory to use for input, output, and intermediate arrays.
+  // Finding the minimum value for your model may require some trial and error.
   // Build an interpreter to run the model with
-  tflite::MicroInterpreter interpreter(model, resolver, &tensor_allocator,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
+  interpreter.AllocateTensors();
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);

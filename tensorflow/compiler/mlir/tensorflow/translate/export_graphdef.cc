@@ -66,6 +66,12 @@ namespace {
 
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
+  // TODO(prakalps): b/137006652 prevents us from using location info (derived
+  // from experimental_debug_info) to generate node names. Until it is fixed,
+  // first check for "name" attribute to get node name.
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    return attr.getValue();
+  }
   if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>())
     return name_loc.getName().str();
 
@@ -524,9 +530,14 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
     *flib->add_gradient() = grad;
   }
 
-  // Ignore the gradient attribute on the function as it gets converted to
-  // GradientDef.
-  absl::flat_hash_set<string> attrs_to_ignore = {grad_string};
+  auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+  if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
+    func_def.mutable_signature()->set_is_stateful(true);
+  }
+
+  // Ignore the gradient and is_stateful attribute on the function as they have
+  // been handled above.
+  absl::flat_hash_set<string> attrs_to_ignore = {grad_string, stateful_string};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(

@@ -2993,7 +2993,7 @@ class HloInstruction::FusionReusesParamElements {
       }
     }
 
-    auto p = cache->emplace(&hlo, UseKind{});
+    auto p = cache->emplace(&hlo, UseKind::kNoUse);
     auto value_it = p.first;
     const bool key_is_new = p.second;
 
@@ -3003,8 +3003,9 @@ class HloInstruction::FusionReusesParamElements {
 
         // The next operation invalidates iterators.
         UseKind new_val =
-            Plus(old_val, std::min(hlo.OperandElementUse(j),
-                                   ComputeInternal(i, *hlo.operand(j), cache)));
+            Fold(old_val,
+                 FoldUseMandatory(hlo.OperandElementUse(j),
+                                  ComputeInternal(i, *hlo.operand(j), cache)));
 
         // Re-acquire the iterator. We could work harder to do this only if
         // absolutely necessary, but this code is not hot enough to warrant
@@ -3016,21 +3017,61 @@ class HloInstruction::FusionReusesParamElements {
     return value_it->second;
   }
 
-  // Fold operation for UseKinds.
-  static UseKind Plus(UseKind a, UseKind b) {
-    if (a == UseKind::kNoUse) {
-      return b;
-    } else if (b == UseKind::kNoUse) {
-      return a;
-    } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
-      return UseKind::kReuse;
-    } else if (a == UseKind::kUsePermutingElements ||
-               b == UseKind::kUsePermutingElements) {
-      return UseKind::kReuse;
-    } else {
-      CHECK(a == UseKind::kUse && b == UseKind::kUse);
-      return UseKind::kUse;
+  // Combines two UseKinds.
+  //
+  // This is the min operation on the lattice
+  //
+  //   kReuse < kUse < kNoUse.
+  //
+  // Two kUses uses which have different permutations count as kReuse.
+  static UseKind Fold(UseKind a, UseKind b) {
+    // Without loss of generality, let `b` be the operation with the larger use
+    // kind.
+    if (b.kind < a.kind) {
+      std::swap(a, b);
     }
+    // If the kinds are different, return the smaller one, namely `a`.
+    if (a.kind != b.kind) {
+      return a;
+    }
+    // If the kinds are both kUse, check that they're the same permutation.
+    if (a.kind == UseKind::kUse && b.kind == UseKind::kUse &&
+        a.permutation_instr != b.permutation_instr) {
+      return UseKind::kReuse;
+    }
+    return a;  // They're the same.
+  }
+
+  // Combines two UseKinds differently than Fold().
+  //
+  // This is the min operation on the lattice
+  //
+  //   kNoUse < kReuse < kUse.
+  //
+  // If `a` and `b` are both kUse and one has a non-null permutation
+  // instruction, returns kUse with that permutation.  OTOH if both have
+  // different, non-null permutation instructions, returns kReuse.
+  //
+  // You can think of this sort of as a conjunction, whereas Fold is sort of a
+  // disjunction.  FoldUseMandatory() says "no use" if either input isn't used,
+  // whereas Fold() would say "use".
+  static UseKind FoldUseMandatory(UseKind a, UseKind b) {
+    if (a.kind == UseKind::kNoUse || b.kind == UseKind::kNoUse) {
+      return UseKind::kNoUse;
+    }
+    if (a.kind == UseKind::kReuse || b.kind == UseKind::kReuse) {
+      return UseKind::kReuse;
+    }
+    if (a.permutation_instr == b.permutation_instr) {
+      return a;  // They're the same.
+    }
+    if (b.permutation_instr == nullptr) {
+      return a;
+    }
+    if (a.permutation_instr == nullptr) {
+      return b;
+    }
+    return UseKind::kReuse;
   }
 };
 
@@ -3043,15 +3084,15 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-      return UseKind::kUsePermutingElements;
+      return UseKind::Permuting(this);
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+      return operand_num > 0 ? UseKind::kReuse : UseKind::Permuting(this);
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
       return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
                  ? UseKind::kReuse
-                 : UseKind::kUsePermutingElements;
+                 : UseKind::Permuting(this);
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(operand_num,

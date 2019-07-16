@@ -43,7 +43,11 @@ class TensorFlowDialect : public Dialect {
   // string description of gradient attribute.
   static StringRef GetGradientAttrName() { return "tf.gradient"; }
 
-  // Parses a type registered to this dialect.
+  // This attribute marks if a function is stateful.
+  // Returns the string description of stateful attribute.
+  static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
+
+  // Parse a type registered to this dialect.
   Type parseType(StringRef data, Location loc) const override;
 
   // Prints a type registered to this dialect.

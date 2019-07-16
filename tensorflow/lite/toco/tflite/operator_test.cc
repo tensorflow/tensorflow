@@ -541,11 +541,25 @@ TEST_F(OperatorTest, VersioningSpareToDense) {
   OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
   EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
 
+  // Expect version 2 for int64 input.
   Model int64_model;
   Array& int64_array = int64_model.GetOrCreateArray(op.inputs[2]);
   int64_array.data_type = ArrayDataType::kInt64;
   OperatorSignature int64_signature = {.op = &op, .model = &int64_model};
   EXPECT_EQ(base_op->GetVersion(int64_signature), 2);
+
+  // Expect version 3 for int8 and uint8 input.
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[2]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 3);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[2]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 3);
 }
 
 TEST_F(OperatorTest, BuiltinPack) {

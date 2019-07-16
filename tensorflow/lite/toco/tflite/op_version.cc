@@ -129,6 +129,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kTransposeConv, 1}, "1.9.0"},
           {{OperatorType::kSparseToDense, 1}, "1.9.0"},
           {{OperatorType::kSparseToDense, 2}, "1.14.0"},
+          {{OperatorType::kSparseToDense, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kExpandDims, 1}, "1.10.0"},
           {{OperatorType::kPack, 1}, "1.11.0"},
           {{OperatorType::kPack, 2}, "1.14.0"},

@@ -2767,6 +2767,16 @@ bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
 
     return false;
   }
+  if (PyArray_Check(seq) &&
+      PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)) != 1) {
+    PyErr_SetString(PyExc_ValueError,
+                    Printf("expected a sequence for attr %s, got an ndarray "
+                           "with rank %d instead",
+                           attr_name.data(),
+                           PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
+                        .data());
+    return false;
+  }
   return true;
 }
 
@@ -3026,15 +3036,20 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       if (!RaiseIfNotPySequence(input, input_arg.type_list_attr())) {
         return nullptr;
       }
+      tensorflow::Safe_PyObjectPtr fast_input(
+          PySequence_Fast(input, "Could not parse sequence."));
+      if (fast_input.get() == nullptr) {
+        return nullptr;
+      }
       const string& attr_name = input_arg.type_list_attr();
-      Py_ssize_t len = PySequence_Fast_GET_SIZE(input);
+      Py_ssize_t len = PySequence_Fast_GET_SIZE(fast_input.get());
       tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
       PyObject* py_attr_value = nullptr;
       if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
       }
       for (Py_ssize_t j = 0; j < len; j++) {
-        PyObject* py_input = PySequence_Fast_GET_ITEM(input, j);
+        PyObject* py_input = PySequence_Fast_GET_ITEM(fast_input.get(), j);
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
         if (!ConvertToTensor(
                 op_exec_info, py_input, &py_eager_tensor,

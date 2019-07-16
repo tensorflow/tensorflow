@@ -693,6 +693,20 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
+Status AvgPoolGradTransposer::TransposeNode(TransposeContext* context,
+                                            utils::MutableNodeView* node) {
+  DCHECK(IsAvgPoolGrad(*node->node()));
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 1, 4)) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {1}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
 Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsBiasAddGrad(*node->node()));
@@ -783,7 +797,7 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
 
 Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
-  DCHECK(IsMaxPoolGrad(*node->node()));
+  DCHECK(IsMaxPoolGrad(*node->node()) || IsMaxPoolGradGradV1(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -796,7 +810,7 @@ Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
 
 Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
                                               utils::MutableNodeView* node) {
-  DCHECK(IsMaxPoolGradV2(*node->node()));
+  DCHECK(IsMaxPoolGradV2(*node->node()) || IsMaxPoolGradGradV2(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -1572,10 +1586,11 @@ bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
 }
 
 bool IsLayoutSensitiveOp(const NodeDef& node) {
-  return IsDefaultLayoutSensitiveOp(node) || IsBiasAddGrad(node) ||
-         IsConv2DBackpropInput(node) || IsConv2DBackpropFilter(node) ||
-         IsFusedBatchNormGrad(node) || IsMaxPoolGrad(node) ||
-         IsMaxPoolGradV2(node) || IsMaxPoolV2(node);
+  return IsDefaultLayoutSensitiveOp(node) || IsAvgPoolGrad(node) ||
+         IsBiasAddGrad(node) || IsConv2DBackpropFilter(node) ||
+         IsConv2DBackpropInput(node) || IsFusedBatchNormGrad(node) ||
+         IsMaxPoolV2(node) || IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
+         IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node);
 }
 
 bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
@@ -1640,6 +1655,14 @@ bool IsMaxPoolGradV2(const NodeDef& node) {
   return node.op() == "MaxPoolGradV2";
 }
 
+bool IsMaxPoolGradGradV1(const NodeDef& node) {
+  return node.op() == "MaxPoolGradGrad";
+}
+
+bool IsMaxPoolGradGradV2(const NodeDef& node) {
+  return node.op() == "MaxPoolGradGradV2";
+}
+
 bool IsBinaryOp(const NodeDef& node) {
   bool is_binary =
       IsAdd(node) || IsAtan2(node) || IsComparisonOp(node) || IsComplex(node) ||
@@ -1658,7 +1681,7 @@ bool IsReduceOp(const NodeDef& node) {
 
 std::vector<int> GetDataFaninPorts(const utils::MutableNodeView& node) {
   const auto* node_def = node.node();
-  if (IsSplit(*node_def)) {
+  if (IsAvgPoolGrad(*node_def) || IsSplit(*node_def)) {
     return {1};
   }
   if (IsStridedSliceGrad(*node_def)) {
@@ -1668,7 +1691,8 @@ std::vector<int> GetDataFaninPorts(const utils::MutableNodeView& node) {
     return {0, 1};
   }
   if (IsTernaryOp(*node_def) || IsSelect(*node_def) ||
-      IsMaxPoolGrad(*node_def) || IsMaxPoolGradV2(*node_def)) {
+      IsMaxPoolGrad(*node_def) || IsMaxPoolGradV2(*node_def) ||
+      IsMaxPoolGradGradV1(*node_def) || IsMaxPoolGradGradV2(*node_def)) {
     return {0, 1, 2};
   }
   if (IsShapeN(*node_def) || IsIdentityN(*node_def) || IsAddN(*node_def) ||

@@ -1497,7 +1497,7 @@ class Layer(module.Module):
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
         with tf_utils.maybe_init_scope(self):
-          self.build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '

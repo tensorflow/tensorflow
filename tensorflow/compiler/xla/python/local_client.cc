@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -159,19 +160,30 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
   options.set_platform(platform);
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
+
   bool gpu_platform = platform_name == "gpu";
   std::unique_ptr<se::DeviceMemoryAllocator> allocator;
-  if (allocator_config.kind == AllocatorConfig::Kind::kBFC ||
-      (gpu_platform &&
-       allocator_config.kind == AllocatorConfig::Kind::kDefault)) {
-    if (!gpu_platform) {
-      return Unimplemented("BFCAllocator only available for GPU.");
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator;
+  if (gpu_platform) {
+    if (allocator_config.kind != AllocatorConfig::Kind::kPlatform) {
+      TF_ASSIGN_OR_RETURN(
+          allocator,
+          CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
+                             allocator_config.preallocate));
     }
-    TF_ASSIGN_OR_RETURN(
-        auto bfc_allocator,
-        CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
-                           allocator_config.preallocate));
-    allocator = std::move(bfc_allocator);
+
+    tensorflow::SubAllocator* sub_allocator = new tensorflow::GpuHostAllocator(
+        client->backend().stream_executor(0).ValueOrDie(), /*numa_node=*/0,
+        /*alloc_visitors=*/{},
+        /*free_visitors=*/{});
+    // TODO(phawkins): allow the user to tune this.
+    const int64 kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+    host_memory_allocator = absl::make_unique<tensorflow::BFCAllocator>(
+        sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
+        /*name=*/"xla_gpu_host_bfc");
+
+  } else if (allocator_config.kind == AllocatorConfig::Kind::kBFC) {
+    return Unimplemented("BFCAllocator only available for GPU.");
   }
 
   std::vector<std::unique_ptr<Device>> devices;
@@ -185,17 +197,20 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
         /*allow_event_reuse=*/gpu_platform));
   }
   return std::make_shared<PyLocalClient>(
-      platform_name, client, std::move(devices), std::move(allocator));
+      platform_name, client, std::move(devices), std::move(allocator),
+      std::move(host_memory_allocator));
 }
 
 PyLocalClient::PyLocalClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<Device>> devices,
-    std::unique_ptr<se::DeviceMemoryAllocator> allocator)
+    std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+    std::unique_ptr<tensorflow::Allocator> host_memory_allocator)
     : platform_name_(std::move(platform_name)),
       client_(client),
       devices_(std::move(devices)),
       owned_allocator_(std::move(allocator)),
+      host_memory_allocator_(std::move(host_memory_allocator)),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
                          client->device_count()) {
   if (owned_allocator_ != nullptr) {
@@ -245,9 +260,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
           << " device ordinal: " << device_ordinal;
 
   Device* device = &client->device(device_ordinal);
-  se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
+  se::DeviceMemoryAllocator* allocator = client->allocator();
   TF_ASSIGN_OR_RETURN(
       Shape shape, transfer_manager->ChooseCompactLayoutForShape(tree.shape));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
@@ -256,6 +271,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
   TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
       device->host_to_device_stream(), buffer));
 
+  std::vector<std::shared_ptr<void>> staging_buffers;
+  staging_buffers.reserve(tree.leaves.size());
   auto it = tree.leaves.begin();
   for (const ShapeUtil::IndexedShape& indexed_shape :
        ShapeUtil::GetLeafShapes(shape)) {
@@ -269,8 +286,27 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
             device->host_to_device_stream()->parent(), leaf)) {
       device->host_to_device_stream()->ThenWaitFor(device->compute_stream());
     }
-    TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDeviceAsync(
-        device->host_to_device_stream(), *it, leaf));
+
+    // If applicable on the backend, stage the transfer via host memory
+    // allocated via the host_memory_allocator. On GPU, this is pinned memory.
+    if (client->host_memory_allocator()) {
+      int64 size = it->size_bytes({});
+      void* ptr = client->host_memory_allocator()->AllocateRaw(
+          tensorflow::Allocator::kAllocatorAlignment, size);
+      std::shared_ptr<void> staging_buffer(ptr, [client](void* ptr) {
+        client->host_memory_allocator()->DeallocateRaw(ptr);
+      });
+      std::memcpy(ptr, it->untyped_data({}), size);
+      BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
+                               it->shape());
+      TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDeviceAsync(
+          device->host_to_device_stream(), literal, leaf));
+      staging_buffers.push_back(std::move(staging_buffer));
+    } else {
+      // Otherwise, just transfer the literal.
+      TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDeviceAsync(
+          device->host_to_device_stream(), *it, leaf));
+    }
     ++it;
   }
 
@@ -287,8 +323,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
   if (device->synchronous_deallocation()) {
     device->ThenRelease(device->host_to_device_stream(), device_buffer);
   }
-  device->ThenRelease(device->host_to_device_stream(),
-                      std::move(py_buffer_ref));
+  device->ThenRelease(
+      device->host_to_device_stream(),
+      std::make_pair(std::move(py_buffer_ref), std::move(staging_buffers)));
+
   return absl::make_unique<PyLocalBuffer>(shape, std::move(device_buffer),
                                           std::move(client));
 }

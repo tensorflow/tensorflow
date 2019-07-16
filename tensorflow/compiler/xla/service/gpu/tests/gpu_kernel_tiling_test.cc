@@ -316,9 +316,9 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -363,8 +363,8 @@ TEST_F(GpuKernelTilingTest,
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -411,11 +411,11 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -446,7 +446,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -511,7 +511,7 @@ TEST_F(GpuKernelTilingTest,
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);

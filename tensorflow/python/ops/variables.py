@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -1089,6 +1090,13 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       operator: string. The operator name.
     """
+    # We can't use the overload mechanism on __eq__ & __ne__ since __eq__ is
+    # called when adding a variable to sets. As a result we call a.value() which
+    # causes infinite recursion when operating within a GradientTape
+    # TODO(gjn): Consider removing this
+    if operator == "__eq__" or operator == "__ne__":
+      return
+
     tensor_oper = getattr(ops.Tensor, operator)
 
     def _run_op(a, *args, **kwargs):
@@ -1097,6 +1105,27 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     functools.update_wrapper(_run_op, tensor_oper)
     setattr(cls, operator, _run_op)
+
+  def __hash__(self):
+    return id(self)
+
+  # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
+  def __eq__(self, other):
+    """Compares two variables element-wise for equality."""
+    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+      return gen_math_ops.equal(self, other)
+    else:
+      # In legacy graph mode, tensor equality is object equality
+      return self is other
+
+  # TODO(gjn): duplicate of math_ops.tensor_not_equals, consider removing
+  def __ne__(self, other):
+    """Compares two variables element-wise for equality."""
+    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+      return gen_math_ops.not_equal(self, other)
+    else:
+      # In legacy graph mode, tensor equality is object equality
+      return self is not other
 
   def __iter__(self):
     """Dummy method to prevent iteration. Do not call.
