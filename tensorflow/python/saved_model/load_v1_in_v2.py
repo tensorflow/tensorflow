@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import monitored_session
@@ -152,6 +153,23 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
   def load(self, tags):
     """Creates an object from the MetaGraph identified by `tags`."""
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    load_shared_name_suffix = "_load_{}".format(ops.uid())
+    functions = function_deserialization.load_function_def_library(
+        meta_graph_def.graph_def.library,
+        load_shared_name_suffix=load_shared_name_suffix)
+    # Replace existing functions in the MetaGraphDef with renamed functions so
+    # we don't have duplicates or name collisions.
+    meta_graph_def.graph_def.library.Clear()
+    for function in functions.values():
+      meta_graph_def.graph_def.library.function.append(
+          function._inference_function.definition)  # pylint: disable=protected-access
+    # We've renamed functions and shared names. We need the same operation on
+    # the GraphDef itself for consistency.
+    for node_def in meta_graph_def.graph_def.node:
+      function_deserialization.fix_node_def(node_def, functions,
+                                            load_shared_name_suffix,
+                                            debug_name="MetaGraph import")
+
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),

@@ -354,6 +354,12 @@ class _EagerDefinedFunction(object):
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
+    graph_output_names = graph._output_names  # pylint: disable=protected-access
+    if (graph_output_names is not None
+        and all(t in graph_output_names for t in outputs)):
+      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+    else:
+      output_names = []
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
@@ -361,7 +367,7 @@ class _EagerDefinedFunction(object):
         [o._c_op for o in operations],  # pylint: disable=protected-access
         [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
         [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-        [],
+        output_names,
         [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
         [],  # control_output_names
         None,

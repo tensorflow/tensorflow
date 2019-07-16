@@ -193,6 +193,10 @@ class FuncGraph(ops.Graph):
     self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    # If not None, records the names of output args of this function. Used to
+    # preserve the output names in the signature of a serialized+deserialized
+    # function. Private at the moment mostly because it's often out of date.
+    self._output_names = None
     self.deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
