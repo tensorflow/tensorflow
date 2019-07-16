@@ -36,7 +36,7 @@ template_rule(
 # be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
 # TODO(bhavanis): MKL-DNN minor version needs to be updated for MKL-DNN v1.x.
-# The current version numbers will work only if MKL-DNN v0.18 is used.
+# The current version numbers will work only if MKL-DNN v0.20 is used.
 
 template_rule(
     name = "mkldnn_version_h",
@@ -44,7 +44,7 @@ template_rule(
     out = "include/mkldnn_version.h",
     substitutions = {
         "@MKLDNN_VERSION_MAJOR@": "0",
-        "@MKLDNN_VERSION_MINOR@": "18",
+        "@MKLDNN_VERSION_MINOR@": "20",
         "@MKLDNN_VERSION_PATCH@": "0",
         "@MKLDNN_VERSION_HASH@": "N/A",
     },
@@ -57,14 +57,8 @@ cc_library(
         "src/common/*.hpp",
         "src/cpu/*.cpp",
         "src/cpu/*.hpp",
-        "src/cpu/gemm/*.cpp",
-        "src/cpu/gemm/*.hpp",
-        "src/cpu/gemm/f32/*.cpp",
-        "src/cpu/gemm/f32/*.hpp",
-        "src/cpu/gemm/s8x8s32/*.cpp",
-        "src/cpu/gemm/s8x8s32/*.hpp",
-        "src/cpu/rnn/*.cpp",
-        "src/cpu/rnn/*.hpp",
+        "src/cpu/**/*.cpp",
+        "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
     ]) + if_mkl_v1_open_source_only([
         ":mkldnn_config_h",
@@ -125,14 +119,8 @@ cc_library(
         "src/common/*.hpp",
         "src/cpu/*.cpp",
         "src/cpu/*.hpp",
-        "src/cpu/gemm/*.cpp",
-        "src/cpu/gemm/*.hpp",
-        "src/cpu/gemm/f32/*.cpp",
-        "src/cpu/gemm/f32/*.hpp",
-        "src/cpu/gemm/s8x8s32/*.cpp",
-        "src/cpu/gemm/s8x8s32/*.hpp",
-        "src/cpu/rnn/*.cpp",
-        "src/cpu/rnn/*.hpp",
+        "src/cpu/**/*.cpp",
+        "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
