@@ -90,6 +90,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSpaceToDepth, 2}, "1.14.0"},
           {{OperatorType::kTranspose, 1}, "1.6.0"},
           {{OperatorType::kTranspose, 2}, "1.14.0"},
+          {{OperatorType::kTranspose, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kLstmCell, 1}, "1.7.0"},
           {{OperatorType::kLstmCell, 2}, "1.10.0"},
           {{OperatorType::kLstmCell, 3}, "1.14.0"},
