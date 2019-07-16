@@ -107,7 +107,7 @@ class IteratorResource : public ResourceBase {
       tf_shared_lock l(mu_);
       captured_state = iterator_state_;
     }
-    if (captured_state) {
+    if (captured_state->iterator) {
       return captured_state->iterator->Save(ctx, writer);
     } else {
       return errors::FailedPrecondition(
