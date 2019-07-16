@@ -253,6 +253,7 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "nofwdcompat",
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
