@@ -1,4 +1,4 @@
-//===- mlir-cpu-runner-lib.cpp - MLIR CPU Execution Driver Library --------===//
+//===- jit-runner.cpp - MLIR CPU Execution Driver Library -----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,10 +15,15 @@
 // limitations under the License.
 // =============================================================================
 //
-// This is a command line utility that executes an MLIR file on the CPU by
-// translating MLIR to LLVM IR before JIT-compiling and executing the latter.
+// This is a library that provides a shared implementation for command line
+// utilities that execute an MLIR file on the CPU by translating MLIR to LLVM
+// IR before JIT-compiling and executing the latter.
 //
+// The translation can be customized by providing an MLIR to MLIR
+// transformation.
 //===----------------------------------------------------------------------===//
+
+#include "mlir/Support/JitRunner.h"
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
@@ -254,8 +259,9 @@ static Error compileAndExecuteSingleFloatReturnFunction(
 // standard C++ main functions and an mlirTransformer.
 // The latter is applied after parsing the input into MLIR IR and before passing
 // the MLIR module to the ExecutionEngine.
-int run(int argc, char **argv,
-        llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
+int mlir::JitRunnerMain(
+    int argc, char **argv,
+    llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 

@@ -21,15 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/STLExtras.h"
+#include "mlir/Support/JitRunner.h"
 
-namespace mlir {
-class ModuleOp;
-struct LogicalResult;
-} // namespace mlir
-
-// TODO(herhut) Factor out into an include file and proper library.
-extern int run(int argc, char **argv,
-               llvm::function_ref<mlir::LogicalResult(mlir::ModuleOp)>);
-
-int main(int argc, char **argv) { return run(argc, argv, nullptr); }
+int main(int argc, char **argv) {
+  return mlir::JitRunnerMain(argc, argv, nullptr);
+}

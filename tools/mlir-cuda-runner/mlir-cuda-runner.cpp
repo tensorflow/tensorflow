@@ -34,15 +34,12 @@
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/JitRunner.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "cuda.h"
 
 using namespace mlir;
-
-// TODO(herhut) Factor out into an include file and proper library.
-extern int run(int argc, char **argv,
-               llvm::function_ref<LogicalResult(ModuleOp)>);
 
 inline void emit_cuda_error(const llvm::Twine &message, const char *buffer,
                             CUresult error, FuncOp &function) {
@@ -151,4 +148,6 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   return success();
 }
 
-int main(int argc, char **argv) { return run(argc, argv, &runMLIRPasses); }
+int main(int argc, char **argv) {
+  return mlir::JitRunnerMain(argc, argv, &runMLIRPasses);
+}

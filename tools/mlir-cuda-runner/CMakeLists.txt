@@ -53,8 +53,8 @@ if(MLIR_CUDA_RUNNER_ENABLED)
     MLIRParser
     MLIREDSC
     MLIRAnalysis
-    MLIRCPURunnerLib
     MLIRExecutionEngine
+    MLIRJitRunner
     MLIRSupport
     LLVMCore
     LLVMSupport
@@ -70,6 +70,5 @@ if(MLIR_CUDA_RUNNER_ENABLED)
   llvm_update_compile_flags(mlir-cuda-runner)
   whole_archive_link(mlir-cuda-runner ${FULL_LINK_LIBS})
   target_link_libraries(mlir-cuda-runner PRIVATE ${FULL_LINK_LIBS} ${LIBS})
-
 
 endif()
