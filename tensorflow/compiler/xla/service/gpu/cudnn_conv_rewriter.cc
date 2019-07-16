@@ -645,6 +645,15 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
 
     // If all else fails, try a forward convolution.
     if (CanImplementAsCudnnForwardConv(conv)) {
+      if (primitive_util::IsIntegralType(
+              conv->operand(0)->shape().element_type()) &&
+          conv->shape().element_type() != F32) {
+        Unimplemented(
+            "The convolution instruction with integer inputs only allows "
+            "float outputs.  Insert a clamp instruction with range [-128, 127) "
+            "followed by a convert "
+            "instruction after the convolution instruction for int8 outputs.");
+      }
       return CreateCudnnConv(kCudnnConvForwardCallTarget, conv->shape(),
                              conv->mutable_operand(0), conv->mutable_operand(1),
                              conv->window(),

@@ -149,6 +149,14 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
     return absl::nullopt;
   }
 
+  // In order to map to cudnnConvolutionBiasAcitvationForward for integer
+  // convolution, we require the convolution output to have float output.
+  // TODO(yongfengg): handle int32 in addition to float
+  if (primitive_util::IsIntegralType(instr->shape().element_type()) &&
+      conv->shape().tuple_shapes(0).element_type() != xla::F32) {
+    return absl::nullopt;
+  }
+
   if (bias_broadcast) {
     // TODO(timshen): handle bias_broadcast_instr->dimensions() == {}.
     if (bias_broadcast_instr->dimensions().size() != 1) {
@@ -204,13 +212,15 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
 
   auto bias = match.bias;
   if (!bias) {
+    PrimitiveType conv_output_type =
+        conv->shape().tuple_shapes(0).element_type();
     auto zero = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
+        HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
 
     int64 num_output_feature = conv->shape().tuple_shapes(0).dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
     bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
-        ShapeUtil::MakeShapeWithDescendingLayout(element_type,
+        ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,
                                                  {num_output_feature}),
         zero, {}));
   }
@@ -242,9 +252,7 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
                                                new_conv, 0);
 }
 
-}  // namespace
-
-StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+StatusOr<bool> RunFuseBiasSideActivation(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     std::vector<ConvWithRelu> matches;
@@ -277,5 +285,105 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
   return changed;
 }
 
+// Describes a matched pattern:
+// convert(clamp(broadcast(-128), (get_tuple_element(custom_call(x,w, ...)),
+// broadcast(127)); where the custom_call calls cudnn convolution (either pure
+// convolution or fused convlution) with integer inputs.
+struct ConvWithConvert {
+  HloInstruction* convert;
+  HloInstruction* gte;
+  HloCustomCallInstruction* conv;
+};
+
+absl::optional<ConvWithConvert> FindConvWithConvert(HloInstruction* instr) {
+  using match::Broadcast;
+  using match::Clamp;
+  using match::Convert;
+  using match::GetTupleElement;
+  using match::Op;
+
+  // The pattern we want to match:
+  //   convert(clamp(broadcast(-128), (get_tuple_element(custom_call(x,w, ...)),
+  //   broadcast(127));
+  //
+  // With its variants involving commute/reassociation of adds, multiplies, and
+  // max, and omission of alpha1, side_input, alpha2, or bias.
+
+  HloInstruction* gte = nullptr;
+  HloInstruction* conv_instr = nullptr;
+  auto lower_pattern = Broadcast(match::ConstantScalar(-128));
+  auto upper_pattern = Broadcast(match::ConstantScalar(127));
+  auto pattern = Convert(
+      Clamp(lower_pattern,
+            GetTupleElement(
+                &gte, Op(&conv_instr).WithOpcode(HloOpcode::kCustomCall), 0),
+            upper_pattern));
+
+  if (Match(instr, pattern)) {
+    if (primitive_util::IsIntegralType(
+            conv_instr->operand(0)->shape().element_type()) &&
+        instr->shape().element_type() == xla::S8) {
+      HloCustomCallInstruction* conv =
+          CastOrNull<HloCustomCallInstruction>(conv_instr);
+      return ConvWithConvert{instr, gte, conv};
+    }
+  }
+  return absl::nullopt;
+}
+
+Status TryRewriteToCudnnForwardConvert(ConvWithConvert match) {
+  auto conv = match.conv;
+  auto gte = match.gte;
+  auto convert = match.convert;
+
+  // Change type on conv and gte
+  auto convert_out_type = convert->shape().element_type();
+  conv->mutable_shape()->mutable_tuple_shapes(0)->set_element_type(
+      convert_out_type);
+  gte->mutable_shape()->set_element_type(convert_out_type);
+
+  // Remove clamp/convert and so on and just keep
+  // get_tuple_element(custom_call(x,w, ...))
+  convert->ReplaceAllUsesWithDifferentShape(gte);
+  conv->parent()->RemoveInstructionAndUnusedOperands(convert);
+
+  return Status::OK();
+}
+
+StatusOr<bool> RunFuseClamp(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    std::vector<ConvWithConvert> matches;
+    int num_forward_convs = 0;
+    for (auto instr : computation->instructions()) {
+      auto match = FindConvWithConvert(instr);
+      if (match.has_value()) {
+        matches.push_back(*match);
+      }
+      if (auto call = DynCast<HloCustomCallInstruction>(instr)) {
+        if (call->custom_call_target() == kCudnnConvForwardCallTarget) {
+          num_forward_convs++;
+        }
+      }
+    }
+    VLOG(1) << "Identified cuDNN forward conv + convert: " << matches.size()
+            << " out of " << num_forward_convs << " forward convs.";
+    std::vector<std::pair<HloInstruction*, std::unique_ptr<HloInstruction>>>
+        replacements;
+    for (const ConvWithConvert& match : matches) {
+      Status s = TryRewriteToCudnnForwardConvert(match);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+}  // namespace
+
+StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(bool fused_for_bias, RunFuseBiasSideActivation(module));
+  TF_ASSIGN_OR_RETURN(bool fused_for_clamp, RunFuseClamp(module));
+  return fused_for_bias | fused_for_clamp;
+}
 }  // namespace gpu
 }  // namespace xla
