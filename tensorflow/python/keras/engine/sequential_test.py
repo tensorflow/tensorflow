@@ -430,6 +430,25 @@ class TestSequential(keras_parameterized.TestCase):
     model.compile('adam', loss='mse')
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
 
+  def test_sequential_layer_tracking(self):
+    """Test that Sequential only tracks layers added in init or `.add`."""
+    layer = keras.layers.Dense(1)
+    model = keras.Sequential([layer])
+    self.assertEqual(model._layers[-1], layer)
+
+    model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
+    self.assertEqual(model._layers[-1], layer)
+
+    layer2 = keras.layers.Dense(2)
+    model.add(layer2)
+    self.assertEqual(model._layers[-1], layer2)
+
+    model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
+    self.assertEqual(model._layers[-1], layer2)
+
+    model.pop()
+    self.assertEqual(model._layers[-1], layer)
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 
