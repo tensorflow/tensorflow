@@ -36,12 +36,17 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.eager import context
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.util import nest
 
 # Set of ops to blacklist.
 _OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
@@ -116,7 +121,11 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   return meta_graph_def.signature_def[signature_def_key].outputs
 
 
-def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
+def _show_inputs_outputs(
+        saved_model_dir,
+        tag_set,
+        signature_def_key,
+        indent=0):
   """Prints input and output TensorInfos.
 
   Prints the details of input and output TensorInfos for the SignatureDef mapped
@@ -137,22 +146,94 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
       meta_graph_def, signature_def_key)
 
   indent_str = '  ' * indent
+
   def in_print(s):
     print(indent_str + s)
 
   in_print('The given SavedModel SignatureDef contains the following input(s):')
   for input_key, input_tensor in sorted(inputs_tensor_info.items()):
     in_print('  inputs[\'%s\'] tensor_info:' % input_key)
-    _print_tensor_info(input_tensor, indent+1)
+    _print_tensor_info(input_tensor, indent + 1)
 
   in_print('The given SavedModel SignatureDef contains the following '
            'output(s):')
   for output_key, output_tensor in sorted(outputs_tensor_info.items()):
     in_print('  outputs[\'%s\'] tensor_info:' % output_key)
-    _print_tensor_info(output_tensor, indent+1)
+    _print_tensor_info(output_tensor, indent + 1)
 
   in_print('Method name is: %s' %
            meta_graph_def.signature_def[signature_def_key].method_name)
+
+
+def _show_defined_functions(saved_model_dir, indent=0):
+  if context.executing_eagerly():
+    ops_lib.disable_eager_execution()
+  trackable_object = load.load(saved_model_dir)
+  indent_str = '  ' * indent
+
+  def in_print(s):
+    print(indent_str + s)
+  print('Defined Functions:')
+  functions = save._AugmentedGraphView(
+      trackable_object).list_functions(trackable_object)
+  for name, function in functions.items():
+    for concrete_functions in function._list_all_concrete_functions_for_serialization():
+      args, kwargs = (concrete_functions.structured_input_signature)
+      in_print('Function Name: \'%s\'' % name)
+      in_print('Callable with:')
+      _print_args(args, indent=2)
+
+
+def _print_args(arguments, indent=0):  # Level is indent
+  indent_str = '  ' * indent
+
+  def quotes(value):
+    is_quotes = '\'' * isinstance(value, str)
+    return is_quotes + value + is_quotes
+
+  def in_print(s, end='\n'):
+    print(indent_str + s, end=end)
+
+  def is_nested(args):
+    return nest.is_nested(args) and not isinstance(args, dict)
+  if is_nested(arguments):
+    for index, element in enumerate(arguments, 1):
+      if indent == 2:
+        in_print('Argument #%d' % index)
+      if isinstance(element, tensor_spec.TensorSpec):
+        _print_tensor_spec(element, indent)
+      elif is_nested(element):
+        in_print('  DType: %s' % type(element).__name__)
+        in_print('  Values: [', end='')
+        _print_args(element, indent + 1)
+        in_print('  ]')
+      elif isinstance(element, dict):
+        in_print('  DType: %s' % type(element).__name__)
+        in_print('  Values:  {', end='')
+        for key, value in element.items():
+          if is_nested(element):
+            in_print('      \'%s\': [' % str(key), end='')
+            _print_args(element, indent + 1)
+            in_print('        ]')
+          else:
+            in_print('      \'%s\': %s' % (str(key), quotes(value)), end='')
+        in_print('      }')
+      else:
+        in_print('  DType: %s' % type(element).__name__)
+        in_print('  Value: %s' % str(element))
+
+
+def _print_tensor_spec(tensor_spec, indent=0):
+  indent_str = '  ' * indent
+
+  def in_print(s):
+    print(indent_str + s)
+  in_print(
+      '  %s: Tensor(shape=%s, dtype=%s, name=\'%s\')' %
+      (tensor_spec.name,
+       tensor_spec.shape,
+       tensor_spec.dtype.name,
+       tensor_spec.name))
 
 
 def _print_tensor_info(tensor_info, indent=0):
@@ -163,6 +244,7 @@ def _print_tensor_info(tensor_info, indent=0):
     indent: How far (in increments of 2 spaces) to indent each line output
   """
   indent_str = '  ' * indent
+
   def in_print(s):
     print(indent_str + s)
 
@@ -200,6 +282,7 @@ def _show_all(saved_model_dir):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
       _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
+  _show_defined_functions(saved_model_dir, indent=1)
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):
@@ -433,8 +516,10 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
 
   for input_raw in filter(bool, input_exprs_str.split(';')):
     if '=' not in input_exprs_str:
-      raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
-                         '"<input_key>=<python expression>"' % input_exprs_str)
+      raise RuntimeError(
+          '--input_exprs "%s" format is incorrect. Please follow'
+          '"<input_key>=<python expression>"' %
+          input_exprs_str)
     input_key, expr = input_raw.split('=', 1)
     # ast.literal_eval does not work with numpy expressions
     input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
@@ -586,7 +671,8 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
     if input_tensor_key in tensor_key_feed_dict:
       warnings.warn(
           'input_key %s has been specified with both --inputs and --input_exprs'
-          ' options. Value in --input_exprs will be used.' % input_tensor_key)
+          ' options. Value in --input_exprs will be used.' %
+          input_tensor_key)
     tensor_key_feed_dict[input_tensor_key] = py_expr_evaluated
 
   # When input is a tf.Example:
@@ -637,10 +723,16 @@ def run(args):
         'required')
   tensor_key_feed_dict = load_inputs_from_input_arg_string(
       args.inputs, args.input_exprs, args.input_examples)
-  run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
-                                 tensor_key_feed_dict, args.outdir,
-                                 args.overwrite, worker=args.worker,
-                                 init_tpu=args.init_tpu, tf_debug=args.tf_debug)
+  run_saved_model_with_feed_dict(
+      args.dir,
+      args.tag_set,
+      args.signature_def,
+      tensor_key_feed_dict,
+      args.outdir,
+      args.overwrite,
+      worker=args.worker,
+      init_tpu=args.init_tpu,
+      tf_debug=args.tf_debug)
 
 
 def scan(args):
@@ -738,21 +830,24 @@ def create_parser():
   parser_show.set_defaults(func=show)
 
   # run command
-  run_msg = ('Usage example:\n'
-             'To run input tensors from files through a MetaGraphDef and save'
-             ' the output tensors to files:\n'
-             '$saved_model_cli show --dir /tmp/saved_model --tag_set serve \\\n'
-             '   --signature_def serving_default \\\n'
-             '   --inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy '
-             '\\\n'
-             '   --input_exprs \'input3_key=np.ones(2)\' \\\n'
-             '   --input_examples '
-             '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
-             '   --outdir=/out\n\n'
-             'For more information about input file format, please see:\n'
-             'https://www.tensorflow.org/guide/saved_model_cli\n')
+  run_msg = (
+      'Usage example:\n'
+      'To run input tensors from files through a MetaGraphDef and save'
+      ' the output tensors to files:\n'
+      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve \\\n'
+      '   --signature_def serving_default \\\n'
+      '   --inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy '
+      '\\\n'
+      '   --input_exprs \'input3_key=np.ones(2)\' \\\n'
+      '   --input_examples '
+      '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
+      '   --outdir=/out\n\n'
+      'For more information about input file format, please see:\n'
+      'https://www.tensorflow.org/guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
-      'run', description=run_msg, formatter_class=argparse.RawTextHelpFormatter)
+      'run',
+      description=run_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
   parser_run.add_argument(
       '--dir',
       type=str,
@@ -769,9 +864,10 @@ def create_parser():
       required=True,
       metavar='SIGNATURE_DEF_KEY',
       help='key of SignatureDef to run')
-  msg = ('Loading inputs from files, in the format of \'<input_key>=<filename>,'
-         ' or \'<input_key>=<filename>[<variable_name>]\', separated by \';\'.'
-         ' The file format can only be from .npy, .npz or pickle.')
+  msg = (
+      'Loading inputs from files, in the format of \'<input_key>=<filename>,'
+      ' or \'<input_key>=<filename>[<variable_name>]\', separated by \';\'.'
+      ' The file format can only be from .npy, .npz or pickle.')
   parser_run.add_argument('--inputs', type=str, default='', help=msg)
   msg = ('Specifying inputs by python expressions, in the format of'
          ' "<input_key>=\'<python expression>\'", separated by \';\'. '
@@ -888,8 +984,9 @@ def create_parser():
       '--minimum_segment_size',
       type=int,
       default=3,
-      help=('the minimum number of nodes required for a subgraph to be replaced'
-            'in a TensorRT node'))
+      help=(
+          'the minimum number of nodes required for a subgraph to be replaced'
+          'in a TensorRT node'))
   parser_convert_with_tensorrt.add_argument(
       '--is_dynamic_op',
       type=bool,
