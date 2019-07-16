@@ -32,6 +32,8 @@ from tensorflow.python.platform import test
 class MergeLayersTest(keras_parameterized.TestCase):
 
   def test_merge_add(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     i3 = keras.layers.Input(shape=(4, 5))
@@ -41,6 +43,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2, i3], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -65,6 +68,8 @@ class MergeLayersTest(keras_parameterized.TestCase):
       add_layer.compute_mask([i1, i2, i3], [None, None])
 
   def test_merge_subtract(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     i3 = keras.layers.Input(shape=(4, 5))
@@ -74,6 +79,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -100,6 +106,8 @@ class MergeLayersTest(keras_parameterized.TestCase):
       subtract_layer([i1])
 
   def test_merge_multiply(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     i3 = keras.layers.Input(shape=(4, 5))
@@ -107,6 +115,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2, i3], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -116,12 +125,15 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllClose(out, x1 * x2 * x3, atol=1e-4)
 
   def test_merge_average(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     o = keras.layers.average([i1, i2])
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -130,12 +142,15 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllClose(out, 0.5 * (x1 + x2), atol=1e-4)
 
   def test_merge_maximum(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     o = keras.layers.maximum([i1, i2])
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -144,12 +159,15 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllClose(out, np.maximum(x1, x2), atol=1e-4)
 
   def test_merge_minimum(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     o = keras.layers.minimum([i1, i2])
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -158,6 +176,8 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllClose(out, np.minimum(x1, x2), atol=1e-4)
 
   def test_merge_concatenate(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
     concat_layer = keras.layers.Concatenate(axis=1)
@@ -165,6 +185,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 8, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -190,12 +211,15 @@ class MergeLayersTest(keras_parameterized.TestCase):
       concat_layer(i1)
 
   def test_merge_dot(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest("b/137397816")
     i1 = keras.layers.Input(shape=(4,))
     i2 = keras.layers.Input(shape=(4,))
     o = keras.layers.dot([i1, i2], axes=1)
     self.assertListEqual(o.shape.as_list(), [None, 1])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
     _ = keras.layers.Dot(axes=1).get_config()
 
     x1 = np.random.random((2, 4))
@@ -212,6 +236,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 1])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
     out = model.predict([x1, x2])
     self.assertEqual(out.shape, (2, 1))
     self.assertAllClose(out, expected, atol=1e-4)

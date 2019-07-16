@@ -361,6 +361,8 @@ class KerasModelTest(keras_parameterized.TestCase):
   })
   def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
                  cloning=True):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not self._is_strategy_supported(strategy_fn):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
@@ -381,8 +383,12 @@ class KerasModelTest(keras_parameterized.TestCase):
         # the variable will not change. So this tests the learning rate not
         # applied to a float16 value, but instead the float32 variable.
         opt = gradient_descent.SGD(2 ** -14)
-        model.compile(opt, loss=loss_fn, cloning=cloning,
-                      run_eagerly=testing_utils.should_run_eagerly())
+        model.compile(
+            opt,
+            loss=loss_fn,
+            cloning=cloning,
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((2, 1))
@@ -410,6 +416,8 @@ class KerasModelTest(keras_parameterized.TestCase):
       'cloning': False,
   })
   def test_fixed_loss_scaling(self, strategy_fn, cloning=True):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     # Note: We do not test mixed precision in this method, only loss scaling.
     if not self._is_strategy_supported(strategy_fn):
       return
@@ -435,8 +443,12 @@ class KerasModelTest(keras_parameterized.TestCase):
 
       opt = gradient_descent.SGD(1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-      model.compile(opt, loss=loss_fn, cloning=cloning,
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          opt,
+          loss=loss_fn,
+          cloning=cloning,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -460,7 +472,8 @@ class KerasModelTest(keras_parameterized.TestCase):
       'use_loss_scaling': True
   })
   def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
-
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     # The advanced model tests mixed-precision-related features that would occur
     # in a resnet50 model. It tests a model that has:
     #  * Multiple layers, some which use auto-cast variables and some which do
@@ -511,8 +524,11 @@ class KerasModelTest(keras_parameterized.TestCase):
         opt = gradient_descent.SGD(learning_rate)
         if use_loss_scaling:
           opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn,
-                      run_eagerly=testing_utils.should_run_eagerly())
+        model.compile(
+            opt,
+            loss=loss_fn,
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -539,6 +555,8 @@ class KerasModelTest(keras_parameterized.TestCase):
       'cloning': False,
   })
   def test_dynamic_loss_scaling(self, strategy_fn, cloning=True):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not self._is_strategy_supported(strategy_fn):
       return
     strategy = strategy_fn()
@@ -574,8 +592,12 @@ class KerasModelTest(keras_parameterized.TestCase):
         loss_scale = loss_scale_module.DynamicLossScale(
             initial_loss_scale=initial_loss_scale, increment_period=2)
         opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn, cloning=cloning,
-                      run_eagerly=testing_utils.should_run_eagerly())
+        model.compile(
+            opt,
+            loss=loss_fn,
+            cloning=cloning,
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -666,6 +688,8 @@ class KerasModelTest(keras_parameterized.TestCase):
   })
   def test_save_slot_variables_with_autocast_vars(self, strategy_fn,
                                                   var_name='v'):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not self._is_strategy_supported(strategy_fn):
       return
     with strategy_fn().scope(), policy.policy_scope('infer_float32_vars'):
@@ -679,8 +703,11 @@ class KerasModelTest(keras_parameterized.TestCase):
       y = math_ops.cast(y, dtypes.float32)
       model = models.Model(inputs=x, outputs=y)
       opt = gradient_descent.SGD(1., 1.)
-      model.compile(optimizer=opt, loss='mse',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer=opt,
+          loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
     model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
     weights_file = os.path.join(self.get_temp_dir(), 'weights')
@@ -698,6 +725,8 @@ class KerasModelTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(*TESTCASES)
   def test_save_weights_with_dynamic_loss_scaling(self, strategy_fn):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not self._is_strategy_supported(strategy_fn):
       return
     strategy = strategy_fn()
@@ -716,8 +745,11 @@ class KerasModelTest(keras_parameterized.TestCase):
           initial_loss_scale=1., increment_period=2., multiplier=2.)
       opt = gradient_descent.SGD(1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-      model.compile(optimizer=opt, loss='mse',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer=opt,
+          loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
     # Run for 3 steps (6 examples with a batch size of 2)
     model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
     self.assertEqual(backend.get_value(loss_scale()), 2)

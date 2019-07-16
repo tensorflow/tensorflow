@@ -802,6 +802,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     x_val = np.random.random((10, 5))
 
     x = input_layer_lib.Input(shape=(5,))
@@ -810,6 +812,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     output = a(b(a(b(x))))
     m = keras.models.Model(x, output)
     m.run_eagerly = testing_utils.should_run_eagerly()
+    m._run_distributed = testing_utils.should_run_distributed()
 
     output_val = m.predict(x_val)
 
@@ -824,6 +827,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     input_shape = (16, 9, 3)
     input_layer = input_layer_lib.Input(shape=input_shape)
 
@@ -837,6 +842,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     m = keras.models.Model(inputs=input_layer, outputs=output)
     m.run_eagerly = testing_utils.should_run_eagerly()
+    m._run_distributed = testing_utils.should_run_distributed()
 
     x_val = np.random.random((10, 16, 9, 3))
     output_val = m.predict(x_val)
@@ -865,7 +871,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='sgd',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.train_on_batch(x, y)
     self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
 
@@ -877,6 +884,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     def func(x):
       return [x * 0.2, x * 0.3]
 
@@ -892,11 +901,13 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     o = keras.layers.add(o)
     model = keras.Model(i, o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     i2 = keras.layers.Input(shape=(3, 2, 1))
     o2 = model(i2)
     model2 = keras.Model(i2, o2)
     model2.run_eagerly = testing_utils.should_run_eagerly()
+    model2._run_distributed = testing_utils.should_run_distributed()
 
     x = np.random.random((4, 3, 2, 1))
     out = model2.predict(x)
@@ -914,7 +925,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='sgd',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     json_str = model.to_json()
     keras.models.model_from_json(json_str)
@@ -1213,7 +1225,8 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     model_input = np.random.randint(
         low=1, high=5, size=(10, 3, 4)).astype('float32')
@@ -1395,11 +1408,17 @@ class AddLossTest(keras_parameterized.TestCase):
     initial_weights = model.get_weights()
 
     x = np.ones((10, 10))
-    model.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
-    model2.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model2.compile(
+        'sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model2.set_weights(initial_weights)
     model2.fit(x, batch_size=2, epochs=1)
 
@@ -1420,11 +1439,19 @@ class AddLossTest(keras_parameterized.TestCase):
     initial_weights = model.get_weights()
 
     x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
-    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model2.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model2.set_weights(initial_weights)
     model2.fit(x, y, batch_size=2, epochs=1)
 
