@@ -118,9 +118,9 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
-  return primary_subgraph().AddNodeWithParameters(inputs, outputs, init_data,
-                                                  init_data_size, builtin_data,
-                                                  registration, node_index);
+  return primary_subgraph().AddNodeWithParameters(
+      inputs, outputs, {}, init_data, init_data_size, builtin_data,
+      registration, node_index);
 }
 
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,

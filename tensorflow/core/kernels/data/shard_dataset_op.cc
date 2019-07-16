@@ -66,7 +66,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, num_shards_, index_);
+    name_utils::DatasetDebugStringParams params;
+    params.set_args(num_shards_, index_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {

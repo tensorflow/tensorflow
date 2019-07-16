@@ -254,7 +254,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -334,7 +334,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL(),
              /* min_version */ 1,
              /* max_version */ 2);

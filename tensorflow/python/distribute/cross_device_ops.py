@@ -783,16 +783,21 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
   def __init__(self, num_packs=1):
     """NCCL all-reduce implementation of CrossDeviceOps.
 
-    Before performing all-reduce, tensors will be repacked or aggregated for
-    more efficient cross-device transportation.
+    It uses Nvidia NCCL for all-reduce. Before performing all-reduce, tensors
+    will be repacked or aggregated for more efficient cross-device
+    transportation.
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
         be greater than 0.
+
+    Raises:
+      ValueError if `num_packs` is zero or negative.
     """
-    assert num_packs > 0, (
-        "NCLL all-reduce requires num_packs > 0, but {} is specified".format(
-            num_packs))
+    if num_packs <= 0:
+      raise ValueError(
+          "NCCL all-reduce requires num_packs > 0, but {} is specified".format(
+              num_packs))
     super(NcclAllReduce, self).__init__(
         all_reduce_alg="nccl", num_packs=num_packs)
 
@@ -801,19 +806,29 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
 class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
   """Reduction using hierarchical copy all-reduce.
 
-  This is a good reduction for configurations like Nvidia DGX-1.
+  It reduces to one GPU along edges in some hierarchy and broadcasts back to
+  each GPU along the same path. Before performing all-reduce, tensors will be
+  repacked or aggregated for more efficient cross-device transportation.
+
+  This is a reduction created for Nvidia DGX-1 which assumes GPUs connects like
+  that on DGX-1 machine. If you have different GPU inter-connections, it is
+  likely that it would be slower than `tf.distribute.ReductionToOneDevice`.
   """
 
   def __init__(self, num_packs=1):
-    """Hierarchical copy all-reduce implementation of CrossDeviceOps.
-
-    Before performing all-reduce, tensors will be repacked or aggregated for
-    more efficient cross-device transportation.
+    """Initializes the object.
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
         be greater than 0.
+
+    Raises:
+      ValueError if `num_packs` is zero or negative.
     """
+    if num_packs <= 0:
+      raise ValueError(
+          "HierarchicalCopy requires num_packs > 0, but {} is specified".format(
+              num_packs))
     super(HierarchicalCopyAllReduce, self).__init__(
         all_reduce_alg="hierarchical_copy",
         num_packs=num_packs)
@@ -949,11 +964,12 @@ class CollectiveCommunication(enum.Enum):
   * `RING`: TensorFlow's ring algorithms for all-reduce and
     all-gather.
   * `NCCL`: Use ncclAllReduce for all-reduce, and ring algorithms for
-    all-gather.  TODO(ayushd): add ncclAllGather implementation.
+    all-gather.
   """
   AUTO = "AUTO"
   RING = "RING"
   NCCL = "NCCL"
+  # TODO(ayushd): add ncclAllGather implementation.
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.

@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -77,15 +78,15 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
                           self.evaluate(actual.dense_shape))
 
   def testFromNone(self):
-    value_structure = structure.TensorStructure(dtypes.float32, [])
+    value_structure = tensor_spec.TensorSpec([], dtypes.float32)
     opt = optional_ops.Optional.none_from_structure(value_structure)
     self.assertTrue(opt.value_structure.is_compatible_with(value_structure))
     self.assertFalse(
         opt.value_structure.is_compatible_with(
-            structure.TensorStructure(dtypes.float32, [1])))
+            tensor_spec.TensorSpec([1], dtypes.float32)))
     self.assertFalse(
         opt.value_structure.is_compatible_with(
-            structure.TensorStructure(dtypes.int32, [])))
+            tensor_spec.TensorSpec([], dtypes.int32)))
     self.assertFalse(self.evaluate(opt.has_value()))
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(opt.get_value())
@@ -183,7 +184,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
           (constant_op.constant(37.0), constant_op.constant("Foo"),
            constant_op.constant(42)))
       optional_none = optional_ops.Optional.none_from_structure(
-          structure.TensorStructure(dtypes.float32, []))
+          tensor_spec.TensorSpec([], dtypes.float32))
 
     with ops.device("/gpu:0"):
       gpu_optional_with_value = optional_ops._OptionalImpl(
@@ -212,7 +213,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
           (constant_op.constant(37.0), constant_op.constant("Foo"),
            constant_op.constant(42)))
       optional_none = optional_ops.Optional.none_from_structure(
-          structure.TensorStructure(dtypes.float32, []))
+          tensor_spec.TensorSpec([], dtypes.float32))
       nested_optional = optional_ops.Optional.from_value(
           (optional_with_value._variant_tensor, optional_none._variant_tensor,
            1.0))
@@ -253,26 +254,28 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
-       structure.TensorStructure(dtypes.float32, [])),
+       tensor_spec.TensorSpec([], dtypes.float32)),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
           indices=[[0, 1]],
           values=constant_op.constant([0], dtype=dtypes.int32),
           dense_shape=[10, 10]),
-       structure.SparseTensorStructure(dtypes.int32, [10, 10])),
+       sparse_tensor.SparseTensorSpec([10, 10], dtypes.int32)),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
           "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
       }, {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.TensorStructure(
-              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (
+              tensor_spec.TensorSpec([1], dtypes.string),
+              tensor_spec.TensorSpec([], dtypes.string),
+          )
       }),
       ("Optional", lambda: optional_ops.Optional.from_value(37.0),
-       optional_ops.OptionalStructure(
-           structure.TensorStructure(dtypes.float32, []))),
+       optional_ops.OptionalSpec(
+           tensor_spec.TensorSpec([], dtypes.float32))),
   )
-  def testOptionalStructure(self, tf_value_fn, expected_value_structure):
+  def testOptionalSpec(self, tf_value_fn, expected_value_structure):
     tf_value = tf_value_fn()
     opt = optional_ops.Optional.from_value(tf_value)
 
@@ -280,7 +283,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
         structure.are_compatible(opt.value_structure, expected_value_structure))
 
     opt_structure = structure.type_spec_from_value(opt)
-    self.assertIsInstance(opt_structure, optional_ops.OptionalStructure)
+    self.assertIsInstance(opt_structure, optional_ops.OptionalSpec)
     self.assertTrue(structure.are_compatible(opt_structure, opt_structure))
     self.assertTrue(
         structure.are_compatible(opt_structure._value_structure,
@@ -290,7 +293,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([tensor_shape.scalar()],
                      structure.get_flat_tensor_shapes(opt_structure))
 
-    # All OptionalStructure objects are not compatible with a non-optional
+    # All OptionalSpec objects are not compatible with a non-optional
     # value.
     non_optional_structure = structure.type_spec_from_value(
         constant_op.constant(42.0))
@@ -396,7 +399,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     # TODO(skyewm): support Optional arguments?
     @def_function.function
     def consume_optional(opt_tensor):
-      value_structure = structure.TensorStructure(dtypes.float32, [])
+      value_structure = tensor_spec.TensorSpec([], dtypes.float32)
       opt = optional_ops._OptionalImpl(opt_tensor, value_structure)
       return opt.get_value()
 

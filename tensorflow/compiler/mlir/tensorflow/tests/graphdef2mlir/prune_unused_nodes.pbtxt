@@ -1,0 +1,78 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-prune-unused-nodes -tf-input-arrays=input0,input1,unused_input -tf-input-data-types=DT_INT32,DT_INT32,DT_INT32 -tf-input-shapes=10:10:10 -tf-output-arrays=Add -o - | FileCheck %s
+
+node {
+  name: "Prune"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "unused_input"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK:  func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>, %arg2: tensor<10xi32>) -> tensor<10xi32>
+# CHECK-NEXT:  attributes  {tf.entry_function = {inputs = "input0, input1, unused_input", outputs = "Add"}} {
+# CHECK-NEXT:    %0:2 = "_tf.Placeholder.input"(%arg0) {device = "", dtype = "tfdtype$DT_INT32", name = "input0", shape = "tfshape$dim {\0A  size: 10\0A}\0A"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
+# CHECK-NEXT:    %1:2 = "_tf.Placeholder.input"(%arg1) {device = "", dtype = "tfdtype$DT_INT32", name = "input1", shape = "tfshape$dim {\0A  size: 10\0A}\0A"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
+# CHECK-NEXT:    %2:2 = "_tf.Add"(%0#0, %1#0) {T = "tfdtype$DT_INT32", device = "", name = "Add"} : (tensor<10xi32>, tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
+# CHECK-NEXT:    %3:2 = "_tf.Placeholder.input"(%arg2) {device = "", dtype = "tfdtype$DT_INT32", name = "unused_input", shape = "tfshape$dim {\0A  size: 10\0A}\0A"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
+# CHECK-NEXT:    return %2#0 : tensor<10xi32>
+# CHECK-NEXT: }
+

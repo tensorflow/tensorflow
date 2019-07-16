@@ -545,7 +545,8 @@ class HloInstruction {
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId();
@@ -556,6 +557,11 @@ class HloInstruction {
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
+                                                       HloInstruction* operand);
+
+  // Creates a bitcast instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcast(const Shape& shape,
                                                        HloInstruction* operand);
 
   // Creates a bitcast conversion instruction, where operand is the data to
@@ -718,8 +724,9 @@ class HloInstruction {
 
   // Creates a reshape instruction, where the operand is flattened row-major
   // order and then reshaped to the given result shape.
-  static std::unique_ptr<HloInstruction> CreateReshape(const Shape& shape,
-                                                       HloInstruction* operand);
+  static std::unique_ptr<HloInstruction> CreateReshape(
+      const Shape& shape, HloInstruction* operand,
+      int64 inferred_dimension = -1);
 
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
@@ -1446,6 +1453,9 @@ class HloInstruction {
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64 dimension() const;
 
+  // Delegates to HloReshapeInstruction::inferred_dimension.
+  int64 inferred_dimension() const;
+
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
 
@@ -1658,7 +1668,35 @@ class HloInstruction {
   // Old methods kept for smooth subclassing transition END.
 
  protected:
-  enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+  // Indicates how an instruction uses a value (such as an operand).
+  //
+  // Does it (a) not use it, (b) use it, or (c) use it multiple times?
+  //
+  // In the kUse case (i.e. (b)) we may either (i) use the value elementwise, or
+  // (ii) use it after having permuted it somehow, e.g. through a reshape.  If
+  // the use is a permuting use, we set permutation_instr to the instruction
+  // that did the permuting.
+  struct UseKind {
+    enum Kind { kReuse, kUse, kNoUse };
+
+    // Creates a UseKind that represents a use that permutes an instruction's
+    // elements according to the given instruction.
+    static UseKind Permuting(const HloInstruction* permutation_instr) {
+      UseKind k(kUse);
+      k.permutation_instr = permutation_instr;
+      return k;
+    }
+
+    UseKind(Kind kind)  // NOLINT intentionally nonexplicit
+        : kind(kind), permutation_instr(nullptr) {}
+
+    bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
+    bool friend operator==(Kind a, UseKind b) { return b == a; }
+
+    Kind kind;
+    const HloInstruction* permutation_instr;
+  };
+
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
 

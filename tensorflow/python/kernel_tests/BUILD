@@ -235,6 +235,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_gpu",  # TODO(b/131773093): Re-enable.
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     xla_enable_strict_auto_jit = True,
@@ -1294,7 +1295,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "topk_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["topk_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1701,6 +1702,7 @@ cuda_py_test(
     tags = [
         # TODO(b/134600611): Re-enable this test.
         "notap",
+        "no_oss",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -2811,6 +2813,7 @@ cuda_py_test(
     tags = [
         "no_gpu",
         "no_oss",
+        "notap",  # flaky timeout/segfault, b/136498892
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -3244,6 +3247,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    shard_count = 3,
     tags = ["notap"],  # http://b/31080670
     xla_enable_strict_auto_jit = True,
 )
@@ -3502,6 +3506,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = [
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3815,7 +3822,6 @@ cuda_py_test(
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
@@ -3825,8 +3831,10 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/compat",
     ],
     grpc_enabled = True,
     xla_enable_strict_auto_jit = True,

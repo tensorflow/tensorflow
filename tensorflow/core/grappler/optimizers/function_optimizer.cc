@@ -1102,7 +1102,26 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 
   VLOG(3) << "Add a frame forwarding control edge: from=" << frame->name()
           << " to=" << caller->name();
-  g->AddControlEdge(g->FindNodeId(frame->id()), caller);
+  Node* enter = g->FindNodeId(frame->id());
+  bool is_constant_enter = enter->attrs().Find("is_constant")->b();
+  if (is_constant_enter) {
+    // Enter[is_constant=true] is always alive. So we directly add a control
+    // edge from that.
+    g->AddControlEdge(enter, caller);
+  } else {
+    // Enter[is_constant=false] activates nodes only in 0th iteration so we
+    // add an edge from the Merge node which is activated in every iteration.
+    // A non-constant Enter node must have an edge to a Merge node.
+    auto it = absl::c_find_if(enter->out_edges(), [](const Edge* e) {
+      return !e->IsControlEdge() && e->dst()->IsMerge();
+    });
+    if (it != enter->out_edges().end()) {
+      g->AddControlEdge((*it)->dst(), caller);
+    } else {
+      LOG(WARNING) << "Enter[is_constant=false] node: " << enter->name()
+                   << " does not have an outgoing edge to a Merge.";
+    }
+  }
 }
 
 // Inlines all function calls that are safe for inlining into the main graph.
@@ -1157,7 +1176,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       AddStrictInputSemantics(n, graph.get());
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
 
-      if (n->type_string() == "If") {
+      if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
       } else if (n->type_string() == "Case") {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
@@ -1190,19 +1209,20 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
     // `PartitionedCall` is a TF-2.0 function call mechanism for multi-device
     // functions:
-    // a) Function can be multi-device, and we can't override device placements.
+    // a) Function can be multi-device.
     // b) Automatic control dependencies tracking guarantees that all function
     //    side-effectful nodes will have a path to one of the control outputs.
     //    Control outputs and control edges between side-effectful (stateful)
     //    nodes are used to explicitly mark the nodes that must execute, and to
     //    define their execution order.
     if (n->IsPartitionedCall() || force_inline_as_multi_device) {
-      inline_options.override_device = false;
-      inline_options.initialize_empty_device = true;
       inline_options.output_control_src = OutputControlSource::kControlOutputs;
+      inline_options.inlined_function_body_placer =
+          InlinedFunctionBodyPlacer::MultiDevice();
     } else {
-      inline_options.override_device = true;
       inline_options.output_control_src = OutputControlSource::kDataOutputs;
+      inline_options.inlined_function_body_placer =
+          InlinedFunctionBodyPlacer::SingleDevice();
     }
 
     if (fetch_nodes.contains(n->name())) {

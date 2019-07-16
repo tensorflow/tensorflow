@@ -21,6 +21,7 @@ import os
 import time
 from absl.testing import parameterized
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.ops import dataset_ops
@@ -44,9 +45,9 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       os.remove(filename)
     self.test_filenames = []
 
-  def setUpTFRecord(self):
-    self._num_files = 10
-    self._num_records = 10
+  def setUpTFRecord(self, num_files=10, num_records=10):
+    self._num_files = num_files
+    self._num_records = num_records
     self.test_filenames = self._createFiles()
 
   def makeSnapshotDirectory(self):
@@ -109,6 +110,24 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     # one that lost the race would be in passthrough mode.
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
+  def testGetNextCreatesDir(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    # We create two iterators but call getNext on only one.
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(tmpdir))
+    next1 = self.getNext(dataset1)
+
+    dataset2 = dataset_ops.Dataset.range(1001)
+    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir))
+    _ = self.getNext(dataset2)
+
+    for _ in range(1000):
+      self.evaluate(next1())
+
+    # We check that only one directory is created.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
   @parameterized.parameters(snapshot.COMPRESSION_NONE,
                             snapshot.COMPRESSION_GZIP)
   def testWriteSnapshotSimpleSuccessful(self, compression):
@@ -154,6 +173,40 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset2 = dataset2.apply(snapshot.snapshot(
         tmpdir, compression=compression))
     self.assertDatasetProduces(dataset2, expected)
+
+  def testReadSnapshotParallelAfterWrite(self):
+    with compat.forward_compatibility_horizon(2019, 8, 16):
+      self.setUpTFRecord(10, 4000)
+      filenames = self.test_filenames
+
+      expected = [
+          b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+          for f in range(0, 10)
+          for r in range(0, 4000)
+      ]
+
+      tmpdir = self.makeSnapshotDirectory()
+      dataset = core_readers._TFRecordDataset(filenames)
+      dataset = dataset.apply(
+          snapshot.snapshot(
+              tmpdir,
+              shard_size_bytes=1024 * 1024,
+              num_reader_threads=2,
+              reader_buffer_size=10))
+      self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
+
+      # remove the original files and try to read the data back only from
+      # snapshot.
+      self.removeTFRecords()
+
+      dataset2 = core_readers._TFRecordDataset(filenames)
+      dataset2 = dataset2.apply(
+          snapshot.snapshot(
+              tmpdir,
+              shard_size_bytes=1024 * 1024,
+              num_reader_threads=2,
+              reader_buffer_size=10))
+      self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
   def testSameFingerprintWithDifferentInitializationOrder(self):
     tmpdir = self.makeSnapshotDirectory()

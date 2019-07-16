@@ -25,8 +25,7 @@ namespace tensorrt {
 
 const char* kTfTrtPluginVersion = "1";
 
-// TODO(laigd): setting this to any non-empty string won't work.
-const char* kTfTrtPluginNamespace = "";
+const char* kTfTrtPluginNamespace = "TF";
 
 }  // namespace tensorrt
 }  // namespace tensorflow

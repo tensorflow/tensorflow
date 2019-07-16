@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -307,10 +306,6 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
 
 ops.register_tensor_conversion_function(
     (list, tuple), _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
-    np.ndarray, _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
-    np.generic, _constant_tensor_conversion_function, 100)
 ops.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 

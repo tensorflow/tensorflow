@@ -660,8 +660,8 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
     case C128: {
       TF_RETURN_IF_ERROR(
           result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
-            return std::complex<float>(real.Get<double>(multi_index),
-                                       imag.Get<double>(multi_index));
+            return std::complex<double>(real.Get<double>(multi_index),
+                                        imag.Get<double>(multi_index));
           }));
       break;
     }

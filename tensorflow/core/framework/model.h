@@ -40,6 +40,7 @@ constexpr int64 kAutotune = -1;
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
+  GRADIENT_DESCENT = 1,
 };
 
 // Represents thread-safe state that can be shared between an input pipeline and
@@ -270,11 +271,14 @@ class Node {
     return result;
   }
 
-  // Returns the per-element output time for this node.
-  double OutputTime(std::vector<double>* input_times) const
+  // Returns the per-element output time for this node and if `gradient` is not
+  // `nullptr`, collects the gradient of the output time w.r.t. tunable
+  // parameters of the subtree rooted in this node and the last input time.
+  double OutputTime(std::vector<double>* input_times,
+                    std::map<string, double>* gradient) const
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
-    return OutputTimeLocked(input_times);
+    return OutputTimeLocked(input_times, gradient);
   }
 
   // Returns a copy of this node, making a deep copy of its inputs and a
@@ -329,21 +333,27 @@ class Node {
   virtual std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const
       SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  // Returns the sum of per-element output time for the inputs of this node.
-  double OutputTimeForInputs(std::vector<double>* input_times) const
+  // Returns the sum of per-element output time for the inputs of this node and
+  // if `gradient` is not `nullptr`, collects gradients of output times w.r.t.
+  // tunable parameters and the last input time.
+  double OutputTimeForInputs(std::vector<double>* input_times,
+                             std::map<string, double>* gradient) const
       SHARED_LOCKS_REQUIRED(mu_) {
     double sum = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        sum += input->OutputTime(input_times);
+        sum += input->OutputTime(input_times, gradient);
       }
     }
     return sum;
   }
 
-  // Returns the per-element output time for this node.
-  virtual double OutputTimeLocked(std::vector<double>* input_times) const
+  // Returns the per-element output time for this node and if `gradient` is not
+  // `nullptr`, collects the gradient of the output time w.r.t. tunable
+  // parameters of the subtree rooted in this node and the last input time.
+  virtual double OutputTimeLocked(std::vector<double>* input_times,
+                                  std::map<string, double>* gradient) const
       SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node.
@@ -534,8 +544,20 @@ class Model {
   // element divided by CPU budget.
   void OptimizeHillClimb(int64 cpu_budget);
 
-  // Collects the output time for the given node.
-  double OutputTime(std::shared_ptr<Node> node);
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to the minimum value. It then improves current parameters by
+  // making a step in the direction opposite to the gradient of `OutputTime` and
+  // projecting resulting values on the feasible intervals. Improvement step is
+  // repeated until either the output time improvement is smaller than threshold
+  // value or the output time is less than the processing time needed to produce
+  // an element divided by CPU budget.
+  void OptimizeGradientDescent(int64 cpu_budget);
+
+  // Collects the output time and if `gradient` is not `nullptr`, the output
+  // time gradient w.r.t. tunable parameters of the subtree rooted in the given
+  // node and the last input time.
+  double OutputTime(std::shared_ptr<Node> node,
+                    std::map<string, double>* gradient);
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);

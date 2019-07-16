@@ -24,15 +24,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("CreateTRTEngineCache")
+REGISTER_OP("CreateTRTEngineCacheHandle")
     .Attr("container: string")
     .Attr("resource_name: string")
-    .Attr("max_cached_engines_count: int = 1")
     .Output("engine_cache_handle: resource")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("PopulateTRTEngineCache")
+    .Attr("max_cached_engines_count: int = 1")
     .Input("engine_cache_handle: resource")
     .Input("filename: string")
     .SetIsStateful()

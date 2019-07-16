@@ -44,6 +44,7 @@ from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -86,6 +87,7 @@ def _summarize_eager(tensor, summarize=None):
     summarize = 3
   elif summarize < 0:
     summarize = array_ops.size(tensor)
+
   # reshape((-1,)) is the fastest way to get a flat array view
   if tensor._rank():  # pylint: disable=protected-access
     flat = tensor.numpy().reshape((-1,))
@@ -94,7 +96,7 @@ def _summarize_eager(tensor, summarize=None):
       lst.append("...")
   else:
     # tensor.numpy() returns a scalar for zero dimensional arrays
-    if summarize != 0:
+    if gen_math_ops.not_equal(summarize, 0):
       lst = [str(tensor.numpy())]
     else:
       lst = []

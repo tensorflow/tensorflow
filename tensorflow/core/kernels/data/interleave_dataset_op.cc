@@ -298,7 +298,7 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64 cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   if (cycle_length == model::kAutotune) {
-    cycle_length = port::NumSchedulableCPUs();
+    cycle_length = port::MaxParallelism();
   }
   OP_REQUIRES(
       ctx, cycle_length > 0,

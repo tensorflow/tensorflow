@@ -23,6 +23,7 @@ import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
 import json
+import threading
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -36,6 +37,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -65,11 +67,11 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
-from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -182,19 +184,14 @@ class Layer(module.Module):
     self._maybe_create_attribute('_trainable_weights', [])
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
+    # Object to store all thread local layer properties.
+    self._thread_local = threading.local()
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
     self._callable_losses = []
     # A list of symbolic Tensors containing activity regularizers and losses
     # manually added through `add_loss` in graph-building mode.
     self._losses = []
-    # A list of loss values containing activity regularizers and losses
-    # manually added through `add_loss` during eager execution. It is cleared
-    # after every batch.
-    # Because we plan on eventually allowing a same model instance to be trained
-    # in eager mode or graph mode alternatively, we need to keep track of
-    # eager losses and symbolic losses via separate attributes.
-    self._eager_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
@@ -1500,7 +1497,7 @@ class Layer(module.Module):
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
         with tf_utils.maybe_init_scope(self):
-          self.build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -2152,8 +2149,11 @@ class Layer(module.Module):
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
-    if (isinstance(value, Layer) or
-        trackable_layer_utils.has_weights(value)):
+
+    # Sequential models use a separate layer tracking mechanism, so skip the
+    # logic defined here for tracking layers.
+    if (self.__class__.__name__ != 'Sequential' and
+        (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
@@ -2234,6 +2234,22 @@ class Layer(module.Module):
       A string with the object identifier, which is used at load time.
     """
     return '_tf_keras_layer'
+
+  @property
+  def _eager_losses(self):
+    # A list of loss values containing activity regularizers and losses
+    # manually added through `add_loss` during eager execution. It is cleared
+    # after every batch.
+    # Because we plan on eventually allowing a same model instance to be trained
+    # in eager mode or graph mode alternatively, we need to keep track of
+    # eager losses and symbolic losses via separate attributes.
+    if not hasattr(self._thread_local, '_eager_losses'):
+      self._thread_local._eager_losses = []
+    return self._thread_local._eager_losses
+
+  @_eager_losses.setter
+  def _eager_losses(self, losses):
+    self._thread_local._eager_losses = losses
 
   @property
   def _tracking_metadata(self):
@@ -2382,21 +2398,30 @@ class TensorFlowOpLayer(Layer):
       return self._defun_call(inputs)
     return self._make_op(inputs)
 
+  def _make_node_def(self, graph):
+    node_def = node_def_pb2.NodeDef()
+    node_def.CopyFrom(self.node_def)
+    node_def.name = graph.unique_name(node_def.name)
+    return node_def
+
   def _make_op(self, inputs):
     inputs = nest.flatten(inputs)
     graph = inputs[0].graph
+    node_def = self._make_node_def(graph)
     with graph.as_default():
       for index, constant in self.constants.items():
-        constant = ops.convert_to_tensor(constant)
+        # Recreate constant in graph to add distribution context.
+        value = tensor_util.constant_value(constant)
+        if value is not None:
+          constant = constant_op.constant(value, name=node_def.input[index])
         inputs.insert(index, constant)
-
-      self.node_def.name = graph.unique_name(self.node_def.name)
       # Check for case where first input should be a list of Tensors.
-      if 'N' in self.node_def.attr:
-        num_tensors = self.node_def.attr['N'].i
+      if 'N' in node_def.attr:
+        num_tensors = node_def.attr['N'].i
         inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
-      c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
+      c_op = ops._create_c_op(graph, node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
+      op._control_flow_post_processing()
 
       # Record the gradient because custom-made ops don't go through the
       # code-gen'd eager call path
@@ -2407,8 +2432,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs,
-                              op.name)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs, op.name)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

@@ -31,10 +31,10 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
   string GetOptimizedHlo(absl::string_view hlo_string) {
     return backend()
         .compiler()
-        ->RunHloPasses(ParseHloString(hlo_string, GetModuleConfigForTest())
-                           .ConsumeValueOrDie(),
-                       backend().default_stream_executor(),
-                       backend().memory_allocator())
+        ->RunHloPasses(
+            ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest())
+                .ConsumeValueOrDie(),
+            backend().default_stream_executor(), backend().memory_allocator())
         .ConsumeValueOrDie()
         ->ToString();
   }
@@ -294,10 +294,10 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
   const string optimized_hlo_string =
       backend()
           .compiler()
-          ->RunHloPasses(ParseHloString(kHloString, GetModuleConfigForTest())
-                             .ConsumeValueOrDie(),
-                         backend().default_stream_executor(),
-                         backend().memory_allocator())
+          ->RunHloPasses(
+              ParseAndReturnVerifiedModule(kHloString, GetModuleConfigForTest())
+                  .ConsumeValueOrDie(),
+              backend().default_stream_executor(), backend().memory_allocator())
           .ConsumeValueOrDie()
           ->ToString();
   EXPECT_THAT(

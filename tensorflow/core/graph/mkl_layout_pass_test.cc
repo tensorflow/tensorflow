@@ -1028,16 +1028,15 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
       " input: ['Transpose1'] }");
   EXPECT_EQ(
       DoMklLayoutOptimizationPass(),
-      "Const0(Const);Const1(Const);"
-      "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
-      "Input0(Input);Input1(Input);Relu(_MklRelu);"
-      "Transpose0(Transpose);Transpose1(Transpose)|Const0->Transpose0:1;Const1-"
-      ">Transpose1:1;"
-      "Conv2D->Transpose1;DMT/_0->Conv2D:2;DMT/_1->Conv2D:3;DMT/"
-      "_2->Relu:1;Input0->Transpose0;"
+      "Const0(Const);Const1(Const);Conv2D(_MklConv2D);"
+      "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Input0(Input);"
+      "Input1(Input);Relu(_MklRelu);Transpose0(_MklTranspose);"
+      "Transpose1(_MklTranspose)|Const0->Transpose0:1;"
+      "Const1->Transpose1:1;Conv2D->Transpose1;DMT/_0->Conv2D:2;"
+      "DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"
       "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/_0:control;"
-      "Transpose0:control->DMT/"
-      "_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
+      "Transpose0:control->DMT/_1:control;Transpose1->Relu;"
+      "Transpose1:control->DMT/_2:control");
 }
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
@@ -1057,8 +1056,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
                  }                                                            \
                }                                                              \
                tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004     \
-        \\000\\000\\000\\001\\000\\000\\000'                                  \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
              }                                                                \
            }                                                                  \
          }                                                                    \
@@ -1076,8 +1075,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
                  }                                                            \
                }                                                              \
                tensor_content:                                                \
-       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002     \
-        \\000\\000\\000\\003\\000\\000\\000'                                  \
+       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002'    \
+       '\\000\\000\\000\\003\\000\\000\\000'                                  \
              }                                                                \
            }                                                                  \
          }                                                                    \
@@ -1206,8 +1205,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
                  }                                                            \
                }                                                              \
                tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004     \
-        \\000\\000\\000\\001\\000\\000\\000'                                  \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
              }                                                                \
            }                                                                  \
          }                                                                    \
@@ -1230,8 +1229,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
                  }                                                            \
                }                                                              \
                tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004     \
-        \\000\\000\\000\\001\\000\\000\\000'                                  \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
              }                                                                \
            }                                                                  \
          }                                                                    \
@@ -1329,17 +1328,17 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
       "node { name: 'Relu' op: 'Relu'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['Transpose1'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);"
-      "DMT/_1(Const);DMT/_2(Const);Input0(Input);Input1(Input);"
-      "Relu(_MklRelu);Transpose0(Transpose);"
-      "Transpose1(Transpose)|Const0->Transpose0:1;"
-      "Const1->Transpose1:1;Conv3D->Transpose1;"
-      "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;DMT/_2->Relu:1;"
-      "Input0->Transpose0;Input1->Conv3D:1;Transpose0->Conv3D;"
-      "Transpose0:control->DMT/_0:control;Transpose0:control->DMT/_1:control;"
-      "Transpose1->Relu;Transpose1:control->DMT/_2:control");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "Const0(Const);Const1(Const);Conv3D(_MklConv3D);"
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
+            "Input0(Input);Input1(Input);Relu(_MklRelu);"
+            "Transpose0(_MklTranspose);Transpose1(_MklTranspose)"
+            "|Const0->Transpose0:1;Const1->Transpose1:1;"
+            "Conv3D->Transpose1;DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;"
+            "DMT/_2->Relu:1;Input0->Transpose0;Input1->Conv3D:1;"
+            "Transpose0->Conv3D;Transpose0:control->DMT/_0:control;"
+            "Transpose0:control->DMT/_1:control;Transpose1->Relu;"
+            "Transpose1:control->DMT/_2:control");
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -2285,8 +2284,8 @@ TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive1) {
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(MatMul);D(Zeta);E(BiasAddGrad)|"
-            "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A(Input);B(Input);C(_MklMatMul);D(Zeta);E(BiasAddGrad)"
+            "|A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // Check that we never rewrite BiasAddGrad.
@@ -2921,6 +2920,55 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(HalfInput);B(Input);C(Input);D(Input);E(Input);"
             "F(FusedBatchNormV2);G(Zeta)|A->F;A->G;"
+            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormV3'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
+            "F(_MklFusedBatchNormV3);G(Zeta)|A->F;A->G;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"
+            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"
+            "E->F:4;F->G:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'HalfInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormV3'"
+      " attr { key: 'T'            value { type: DT_HALF } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(HalfInput);B(Input);C(Input);D(Input);E(Input);"
+            "F(FusedBatchNormV3);G(Zeta)|A->F;A->G;"
             "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
 
@@ -3613,6 +3661,29 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_DeviceTest) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(Input);E(Input);"
             "F(FusedBatchNorm);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
+            "E->F:4;F->G:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNorm'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F'] }",
+      kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);E(Input);"
+            "F(FusedBatchNormV3);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
             "E->F:4;F->G:1");
 }
 

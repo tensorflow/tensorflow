@@ -271,6 +271,9 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Assign(self, node):
     return self._process_statement(node)
 
+  def visit_AnnAssign(self, node):
+    return self._process_statement(node)
+
   def visit_AugAssign(self, node):
     # Special rules for AugAssign. Here, the AST only shows the target as
     # written, when it is in fact also read.

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <set>
 #include <unordered_set>
@@ -224,19 +225,19 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
   // caller.
   TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
-        const auto& sources = this->GetRootPointsToSet().element(index);
+        const auto& sources = this->GetRootValueSet().element(index);
         // The points to set is unambiguous so the set should be a
         // singleton.
-        CHECK_EQ(1, sources.size());
-        const LogicalBuffer* buffer_source = sources[0];
-        HloInstruction* src = buffer_source->instruction();
+        CHECK_EQ(1, sources.values().size());
+        const HloValue* value_source = sources.values()[0];
+        HloInstruction* src = value_source->instruction();
 
         // The source for this result buffer can be a nested buffer such as
         // a tuple element. The source instruction should have a
         // non-parameter buffer assigned.
         TF_ASSIGN_OR_RETURN(
             const BufferAllocation::Slice slice,
-            this->assignment_->GetUniqueSlice(src, buffer_source->index()));
+            this->assignment_->GetUniqueSlice(src, value_source->index()));
         const BufferAllocation::Index buffer_index = slice.index();
         se::OwningDeviceMemory& buffer = buffers[buffer_index];
         if (!slice.allocation()->is_entry_computation_parameter()) {
@@ -293,7 +294,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  if (GetRootPointsToSet().IsAmbiguous()) {
+  if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
@@ -371,8 +372,8 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
-const PointsToSet& CpuExecutable::GetRootPointsToSet() const {
-  return assignment_->points_to_analysis().GetPointsToSet(
+const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
+  return assignment_->dataflow_analysis().GetInstructionValueSet(
       module().entry_computation()->root_instruction());
 }
 

@@ -1,16 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_protos_grappler",
-)
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
+    "tf_protos_grappler",
+    "tf_pyclif_proto_library",
 )
 
 package(
@@ -32,6 +26,13 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "op_performance_data_pyclif",
+    proto_lib = ":op_performance_data",
+    proto_srcfile = "op_performance_data.proto",
     visibility = ["//visibility:public"],
 )
 

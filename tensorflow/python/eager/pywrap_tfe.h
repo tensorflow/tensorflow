@@ -86,6 +86,14 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 
+// Registers e as the forward_gradient_function.  The registered function takes
+// (op_name, attrs, inputs, outputs, tangents) and returns the output
+// tangents. This function is used only for operations, not for custom gradients
+// or functional ops.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
+
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
@@ -148,6 +156,13 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+
+// Like TFE_Py_TapeSetShouldRecord but with a ternary return:
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecord is false)
+//   - 1 if first-order gradients may be requested
+//   - 2 if higher-order gradients may be requested
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
+
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 

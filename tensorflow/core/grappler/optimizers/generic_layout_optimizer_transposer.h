@@ -63,9 +63,11 @@ struct TransposeContext {
   std::unique_ptr<utils::MutableGraphView> graph_view;
   std::unique_ptr<const VirtualPlacer> virtual_placer;
 
+  string target_device;
   string src_format;
   string dst_format;
-  string target_device;
+  absl::flat_hash_map<char, int> src_dim_indices;
+  absl::flat_hash_map<char, int> dst_dim_indices;
   std::vector<int> src_to_dst;
   std::vector<int> dst_to_src;
 };
@@ -139,12 +141,21 @@ class Transposer {
                               utils::MutationNewNode* added_node);
 
  protected:
-  bool IsFanoutPortDimsN(const utils::MutableNodeView& node, int port,
+  bool IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                          int n) const;
-  bool IsFanoutPortsDimsN(const utils::MutableNodeView& node,
+  bool IsFanoutPortsRankN(const utils::MutableNodeView& node,
                           absl::Span<const int> ports, int n) const;
-  bool IsFaninPortDimsN(const utils::MutableNodeView& node, int port,
+  bool IsFaninPortRankN(const utils::MutableNodeView& node, int port,
                         int n) const;
+
+  // Checks if fanin at specified port(s) has dimensions `dims` iff fanin is a
+  // Const. If fanin is not a Const, no dimensions will be checked and this will
+  // return true.
+  bool IsFaninPortDimsNIfConst(const utils::MutableNodeView& node, int port,
+                               absl::Span<const int> dims) const;
+  bool IsFaninPortsDimsNIfConst(const utils::MutableNodeView& node,
+                                absl::Span<const int> ports,
+                                absl::Span<const int> dims) const;
   bool CanProcessNode(const TransposeContext& context,
                       const utils::MutableNodeView& node) const;
   string GetDeviceName(const VirtualPlacer* virtual_placer,
@@ -190,6 +201,14 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit DefaultLayoutSensitiveOpTransposer()
       : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit AvgPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -363,8 +382,7 @@ class ReduceTransposer : public LayoutAgnosticOpTransposer {
 
  private:
   bool KeepDims(const utils::MutableNodeView& node);
-  bool IsAlongAxis(const utils::MutableNodeView& axis_node,
-                   absl::Span<const int> axis);
+  bool IsAlongAxis(const Tensor& tensor, absl::Span<const int> axis, int rank);
   bool IsReduceAxisSupported(const TransposeContext& context,
                              const utils::MutableNodeView& node);
 };
@@ -437,12 +455,12 @@ class SqueezeTransposer : public LayoutAgnosticOpTransposer {
                        utils::MutableNodeView* node) override;
 
  private:
-  bool IsInputConvertible(const utils::MutableNodeView& node) const;
-  bool IsAlongAxis(const utils::MutableNodeView& node,
-                   absl::Span<const int> axis) const;
-  bool IsAlongHW(const utils::MutableNodeView& node) const;
-  bool IsAlongNHW(const utils::MutableNodeView& node) const;
-  bool IsDimsSupported(const utils::MutableNodeView& node) const;
+  bool IsInputConvertible(const TransposeContext& context,
+                          const utils::MutableNodeView& node) const;
+  bool IsAlongAxis(const AttrValue& attr, absl::Span<const int> axis,
+                   int rank) const;
+  bool IsDimsSupported(const TransposeContext& context,
+                       const utils::MutableNodeView& node) const;
   Status UpdateSqueezeDims(TransposeContext* context,
                            utils::MutableNodeView* node);
 };
@@ -552,6 +570,10 @@ bool IsMaxPoolV2(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
 
+bool IsMaxPoolGradGradV1(const NodeDef& node);
+
+bool IsMaxPoolGradGradV2(const NodeDef& node);
+
 bool IsBinaryOp(const NodeDef& node);
 
 bool IsReduceOp(const NodeDef& node);
@@ -565,8 +587,12 @@ bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
 
 bool IsDataFormatOp(const utils::MutableNodeView& node);
 
-std::vector<int> GetPermutation(absl::string_view src_format,
-                                absl::string_view dst_format);
+absl::flat_hash_map<char, int> GetDimensionIndices(
+    absl::string_view data_format);
+
+std::vector<int> GetPermutation(
+    const absl::flat_hash_map<char, int>& src_dim_indices,
+    absl::string_view dst_format);
 
 }  // namespace grappler
 }  // namespace tensorflow

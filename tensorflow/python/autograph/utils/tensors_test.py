@@ -22,6 +22,7 @@ from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
@@ -51,6 +52,13 @@ class TensorsTest(test.TestCase):
     self.assertFalse(tensors.is_tensor_list(constant_op.constant(1)))
     self.assertFalse(tensors.is_tensor_list(self._simple_list_of_tensors()))
     self.assertFalse(tensors.is_tensor_list(None))
+
+  def is_range_tensor(self):
+    self.assertTrue(tensors.is_range_tensor(math_ops.range(1)))
+    self.assertTrue(tensors.is_range_tensor(math_ops.range(1, 2)))
+    self.assertTrue(tensors.is_range_tensor(math_ops.range(1, 2, 3)))
+    self.assertFalse(tensors.is_range_tensor(None))
+    self.assertFalse(tensors.is_range_tensor(constant_op.constant(range(1))))
 
 
 if __name__ == '__main__':

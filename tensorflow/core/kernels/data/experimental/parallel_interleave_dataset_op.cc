@@ -1069,9 +1069,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
+                        ParallelInterleaveDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParallelInterleaveDataset").Device(DEVICE_CPU),
     ParallelInterleaveDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ParallelInterleaveDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalParallelInterleaveDataset");
 
 }  // namespace

@@ -52,7 +52,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(layer)
     model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -100,7 +103,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     output = gru_layer(inputs)
     gru_model = keras.models.Model(inputs, output)
     gru_model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
@@ -115,7 +121,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):
@@ -136,8 +143,11 @@ class GRULayerTest(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer='sgd', loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

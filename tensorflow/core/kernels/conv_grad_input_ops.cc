@@ -47,12 +47,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -158,26 +158,25 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
     auto out_backprop_t = out_backprop.tensor<T, 4>();
     auto filter_t = filter.tensor<T, 4>();
 
-    const bool has_input_padding =
-        (padding_left || padding_right || padding_top || padding_bottom);
-
     // WARNING: Need to swap row/col, padding_top/padding_left, and
     // padding_bottom/padding_right when calling Eigen. Eigen expects tensors
     // in NWHC format, but Tensorflow uses NHWC.
 
-    if (!has_input_padding) {
-      // If all input paddings are zero, we can assign spatial convolution
-      // backward input result to the `in_backprop`.
-
+    if (padding != EXPLICIT) {
+      // If padding was not explicitly defined, Eigen spatial convolution
+      // backward input will infer correct forward paddings from input tensors.
       in_backprop_t.device(d) = Eigen::SpatialConvolutionBackwardInput(
-          filter_t, out_backprop_t,                                //
-          in_backprop_t.dimension(2), in_backprop_t.dimension(1),  //
-          col_stride, row_stride, col_dilation, row_dilation);
+          filter_t, out_backprop_t, in_backprop_t.dimension(2),
+          in_backprop_t.dimension(1), col_stride, row_stride, col_dilation,
+          row_dilation);
 
     } else {
       // Otherwise we have to slice the result of a spatial convolution backward
       // input, before assigning it to the `in_backprop` to remove padding.
       using Offsets = Eigen::DSizes<Eigen::Index, 4>;
+
+      // TODO(ezhulenev): Pass explicit paddings to Eigen and do not materialize
+      // intermediate result in memory before slicing.
 
       in_backprop_t.device(d) =
           Eigen::SpatialConvolutionBackwardInput(
@@ -765,7 +764,9 @@ template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+// GPU definitions.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward data autotune results together.
 struct ConvBackwardDataAutoTuneGroup {
@@ -911,8 +912,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   TensorShape compatible_input_shape;
   if (padding_top != padding_bottom || padding_left != padding_right) {
     // Pad the input in the same way we did during the forward pass, so that
-    // cuDNN receives the same input during the backward pass function as it did
-    // during the forward pass function.
+    // cuDNN or MIOpen receives the same input during the backward pass function
+    // as it did during the forward pass function.
     const int64 padding_rows_diff = std::abs(padding_bottom - padding_top);
     const int64 padding_cols_diff = std::abs(padding_right - padding_left);
     const int64 new_in_rows =
@@ -1094,6 +1095,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
@@ -1128,6 +1130,24 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+    // MIOpen has its own Find and autotuner so use it here, passing
+    // default AlgorithmConfig to force a search
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
+    ProfileResult best_result;
+    bool miopen_find_status =
+        stream
+            ->ThenConvolveBackwardDataWithAlgorithm(
+                filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                AlgorithmConfig(), &best_result)
+            .ok();
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                errors::NotFound("Failed to find backwards-data algorithm!"));
+
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }
@@ -1141,7 +1161,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
-        "cuDNN Backward Data function launch failure : input shape(",
+        "DNN Backward Data function launch failure : input shape(",
         input_shape.DebugString(), ") filter shape(",
         filter_shape.DebugString(), ")"));
     return;
@@ -1255,6 +1275,6 @@ template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

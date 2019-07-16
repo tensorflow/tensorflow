@@ -50,7 +50,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
                                     const std::vector<string>& fetch) {
     SessionOptions options;
-    std::unique_ptr<tensorflow::Session> session(NewSession(options));
+    std::unique_ptr<Session> session(NewSession(options));
     TF_CHECK_OK(session->Create(graph));
     RunOptions run_options;
     std::vector<Tensor> output_tensors;
@@ -78,7 +78,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
           r1   r2
   */
   void BuildAbsGraph(GraphDef* graph_def, bool forward) {
-    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Scope s = Scope::NewRootScope();
     s = s.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
 
     Output a =
@@ -104,6 +104,55 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     TF_CHECK_OK(s.ToGraphDef(graph_def));
   }
 
+  // Constructs the following graph.
+  //
+  // We have 2 different name scopes in this graph.  s3, a3, a4, r3, and r4 are
+  // all under "sub" scope.  All other nodes are in the root scope.
+  //
+  // The intention is to test that ScopedAllocatorOptimizer works well with a
+  // graph that has multiple name scopes.  In particular, it should work when a
+  // node (in this case s2) is an input to two nodes in different name scopes
+  // (a2 and sub/a3) which may be scope allocated.
+  /*
+        a    b    c         a    b
+         \  / \  /           \  /
+          s1   s2------      sub/s3
+          |    |      |        |
+          a1   a2   sub/a4   sub/a3
+          |    |      |        |
+          r1   r2   sub/r4   sub/r3
+  */
+  void BuildGraphWithMultipleScopes(GraphDef* graph_def) {
+    Scope root_scope = Scope::NewRootScope();
+    root_scope =
+        root_scope.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
+
+    Output a = ops::Const<float>(root_scope.WithOpName("a"),
+                                 {1.0, 0.0, 0.0, -1.0}, {2, 2});
+    Output b = ops::Const<float>(root_scope.WithOpName("b"),
+                                 {1.0, -2.0, 3.0, 4.0}, {2, 2});
+    Output c = ops::Const<float>(root_scope.WithOpName("c"),
+                                 {-5.0, -2.0, 0.0, -2.0}, {2, 2});
+
+    // Root scope ops.
+    Output s1 = ops::Add(root_scope.WithOpName("s1"), a, b);
+    Output s2 = ops::Add(root_scope.WithOpName("s2"), b, c);
+    Output a1 = ops::Abs(root_scope.WithOpName("a1"), s1);
+    Output a2 = ops::Abs(root_scope.WithOpName("a2"), s2);
+    Output r1 = ops::Reshape(root_scope.WithOpName("r1"), a1, {1, 4});
+    Output r2 = ops::Reshape(root_scope.WithOpName("r2"), a2, {4, 1});
+
+    // Sub scope ops.
+    Scope sub_scope = root_scope.NewSubScope("sub");
+    Output s3 = ops::Add(sub_scope.WithOpName("s3"), a, b);
+    Output a3 = ops::Abs(sub_scope.WithOpName("a3"), s3);
+    Output a4 = ops::Abs(sub_scope.WithOpName("a4"), s2);
+    Output r3 = ops::Reshape(sub_scope.WithOpName("r3"), a3, {1, 4});
+    Output r4 = ops::Reshape(sub_scope.WithOpName("r4"), a4, {4, 1});
+
+    TF_CHECK_OK(root_scope.ToGraphDef(graph_def));
+  }
+
   void SetShapes(GraphDef* graph_def) {
     TensorShapeProto shape_proto;
     shape_proto.add_dim()->set_size(2);
@@ -116,12 +165,11 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     }
   }
 
-  // Constructs a graph by calling BuildAbsGraph, then executes it and returns
-  // r1, r2, and scoped_allocator_1_2_Abs:0.
-  void BuildAndExecuteAbsGraph(bool forward, std::vector<Tensor>* outputs) {
-    GrapplerItem item;
-    BuildAbsGraph(&item.graph, forward);
-
+  // Invokes ScopedAllocatorOptimizer on `graph_def`, then executes it and
+  // returns the outputs specifed by `output_names` in `outputs`.
+  void ExecuteGraph(const GraphDef& graph_def,
+                    const std::vector<string>& output_names,
+                    std::vector<Tensor>* outputs) {
     // Turn off all optimization except the ScopedAllocatorOptimizer
     // to avoid anything that would alter the expected graph input/output,
     // e.g. by constant folding away all calculations.
@@ -136,36 +184,22 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     rwcfg->clear_optimizers();
     (*rwcfg->add_optimizers()) = "scoped_allocator";
     rwcfg->mutable_scoped_allocator_opts()->add_enable_op("Abs");
-    std::unique_ptr<Session> session(CreateSession(item.graph, config));
+    std::unique_ptr<Session> session(CreateSession(graph_def, config));
 
-    // Request two targets: one fetch output and one non-fetched output.
-    std::vector<string> output_names = {"r1:0", "r2:0"};
-    if (!forward) {
-      output_names.push_back("scoped_allocator_1_2_Abs:0");
-    }
     std::vector<std::pair<string, Tensor>> inputs;
     std::vector<string> target_nodes = {};
     Status s = session->Run(inputs, output_names, target_nodes, outputs);
     TF_ASSERT_OK(s);
-    ASSERT_EQ(outputs->size(), forward ? 2 : 3);
+    ASSERT_EQ(outputs->size(), output_names.size());
   }
 
-  // Validates that output[0] matches expected0 and outputs[1] matches
-  // expected1.
+  // Validates that outputs match expected.
   void ValidateValues(const std::vector<Tensor>& outputs,
-                      const std::vector<float>& expected0,
-                      const std::vector<float>& expected1) {
-    for (int oi = 0; oi < outputs.size(); ++oi) {
-      if (oi == 0) {
-        ASSERT_EQ(expected0.size(), outputs[oi].NumElements());
-        for (int i = 0; i < expected0.size(); ++i) {
-          EXPECT_EQ(expected0[i], outputs[oi].flat<float>()(i));
-        }
-      } else if (oi == 1) {
-        ASSERT_EQ(expected1.size(), outputs[oi].NumElements());
-        for (int i = 0; i < expected1.size(); ++i) {
-          EXPECT_EQ(expected1[i], outputs[oi].flat<float>()(i));
-        }
+                      const std::vector<std::vector<float>>& expected) {
+    for (int i = 0; i < expected.size(); ++i) {
+      EXPECT_EQ(expected[i].size(), outputs[i].NumElements());
+      for (int j = 0; j < expected[i].size(); ++j) {
+        EXPECT_EQ(expected[i][j], outputs[i].flat<float>()(j));
       }
     }
   }
@@ -230,13 +264,29 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
 TEST_F(ScopedAllocatorOptimizerTest, UnaryExecute) {
   // Builds the same graph as UnaryRewriteOnly but also executes it and
   // validates the output.
+  GraphDef graph_def;
+  BuildAbsGraph(&graph_def, /*forward=*/false);
+  SetShapes(&graph_def);
   std::vector<Tensor> outputs;
-  BuildAndExecuteAbsGraph(false, &outputs);
+  ExecuteGraph(graph_def,
+               /*output_names=*/{"r1:0", "r2:0", "scoped_allocator_1_2_Abs:0"},
+               &outputs);
   // a + b == 2, -2, 3, 3
   // b + c == -4, -4, 3, 2
-  std::vector<float> expected_r1({2, 2, 3, 3});
-  std::vector<float> expected_r2({4, 4, 3, 2});
-  ValidateValues(outputs, expected_r1, expected_r2);
+  ValidateValues(outputs, /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}});
+}
+
+TEST_F(ScopedAllocatorOptimizerTest, MultipleScopes) {
+  GraphDef graph_def;
+  BuildGraphWithMultipleScopes(&graph_def);
+  SetShapes(&graph_def);
+  std::vector<Tensor> outputs;
+  ExecuteGraph(graph_def,
+               /*output_names=*/{"r1:0", "r2:0", "sub/r3:0", "sub/r4:0"},
+               &outputs);
+  ValidateValues(
+      outputs,
+      /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}, {2, 2, 3, 3}, {4, 4, 3, 2}});
 }
 
 // Tests static ScopedAllocatorOptimizer::ExtendNodeAttr.
@@ -264,13 +314,14 @@ TEST_F(ScopedAllocatorOptimizerTest, Extend) {
 TEST_F(ScopedAllocatorOptimizerTest, ForwardInputToOutput) {
   // Test that kernels that forward the input to output using `set_output` work
   // well with scoped allocator optimization.
+  GraphDef graph_def;
+  BuildAbsGraph(&graph_def, /*forward=*/true);
+  SetShapes(&graph_def);
   std::vector<Tensor> outputs;
-  BuildAndExecuteAbsGraph(true, &outputs);
+  ExecuteGraph(graph_def, /*output_names=*/{"r1:0", "r2:0"}, &outputs);
   // a + b == 2, -2, 3, 3
   // b + c == -4, -4, 3, 2
-  std::vector<float> expected_r1({2, 2, 3, 3});
-  std::vector<float> expected_r2({4, 4, 3, 2});
-  ValidateValues(outputs, expected_r1, expected_r2);
+  ValidateValues(outputs, /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}});
 }
 
 }  // namespace

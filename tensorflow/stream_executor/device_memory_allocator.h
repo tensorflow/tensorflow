@@ -202,8 +202,6 @@ class DeviceMemoryAllocator {
 
 // Default memory allocator for a platform which uses
 // StreamExecutor::Allocate/Deallocate.
-//
-// Holds a mapping from device ordinals
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   // Create an allocator supporting a single device, corresponding to the passed

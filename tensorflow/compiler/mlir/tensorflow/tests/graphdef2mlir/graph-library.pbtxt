@@ -1,0 +1,50 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "unnamed"
+  op: "foo"
+  experimental_debug_info {
+  }
+}
+node {
+  name: "unnamed1"
+  op: "bar"
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "bar"
+    }
+  }
+  function {
+    signature {
+      name: "foo"
+    }
+    node_def {
+      name: "unnamed"
+      op: "bar"
+      experimental_debug_info {
+        original_node_names: "unnamed"
+      }
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# CHECK:       func @main() {
+# CHECK-NEXT:    %0 = "_tf.foo0"() {device = "", name = "unnamed"} : () -> !_tf.control
+# CHECK-NEXT:    %1 = "_tf.bar0"() {device = "", name = "unnamed1"} : () -> !_tf.control
+# CHECK-NEXT:    return
+# CHECK-NEXT:  }
+# CHECK:  func @foo0() {
+# CHECK-NEXT:    %0 = "_tf.bar0"() {device = "", name = "unnamed"} : () -> !_tf.control
+# CHECK-NEXT:    return
+# CHECK-NEXT:  }
+# CHECK:  func @bar0() {
+# CHECK-NEXT:    return
+# CHECK-NEXT:  }

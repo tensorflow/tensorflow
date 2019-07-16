@@ -56,6 +56,17 @@ py_test(
     ],
 )
 
+py_test(
+    name = "module_test",
+    srcs = ["module_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 tf_cc_binary(
     name = "convert_from_multiline",
     srcs = ["convert_from_multiline.cc"],

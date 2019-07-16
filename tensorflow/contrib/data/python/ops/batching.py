@@ -346,13 +346,13 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
       output_classes = nest.pack_sequence_as(
           output_types, nest.flatten(input_classes))
 
-    self._structure = structure.convert_legacy_structure(
+    self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 

@@ -367,6 +367,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",
@@ -406,6 +407,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",
@@ -612,7 +614,7 @@ cc_library(
             ":sse_tensor_utils",
         ],
         ":darwin": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":darwin_x86_64": [
             ":sse_tensor_utils",

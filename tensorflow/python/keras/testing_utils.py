@@ -147,9 +147,28 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                           expected_output_dtype,
                           kwargs))
 
+  def assert_shapes_equal(expected, actual):
+    """Asserts that the output shape from the layer matches the actual shape."""
+    if len(expected) != len(actual):
+      raise AssertionError(
+          'When testing layer %s, for input %s, found output_shape='
+          '%s but expected to find %s.\nFull kwargs: %s' %
+          (layer_cls.__name__, x, actual, expected, kwargs))
+
+    for expected_dim, actual_dim in zip(expected, actual):
+      if isinstance(expected_dim, tensor_shape.Dimension):
+        expected_dim = expected_dim.value
+      if isinstance(actual_dim, tensor_shape.Dimension):
+        actual_dim = actual_dim.value
+      if expected_dim is not None and expected_dim != actual_dim:
+        raise AssertionError(
+            'When testing layer %s, for input %s, found output_shape='
+            '%s but expected to find %s.\nFull kwargs: %s' %
+            (layer_cls.__name__, x, actual, expected, kwargs))
+
   if expected_output_shape is not None:
-    compare_shapes(tensor_shape.TensorShape(expected_output_shape), y.shape,
-                   layer_cls, x, kwargs)
+    assert_shapes_equal(tensor_shape.TensorShape(expected_output_shape),
+                        y.shape)
 
   # check shape inference
   model = keras.models.Model(x, y)
@@ -160,10 +179,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       tensor_spec.TensorSpec(shape=input_shape, dtype=input_dtype))
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
-  compare_shapes(computed_output_shape, actual_output_shape, layer_cls, x,
-                 kwargs)
-  compare_shapes(computed_output_signature.shape, actual_output_shape,
-                 layer_cls, x, kwargs)
+  assert_shapes_equal(computed_output_shape, actual_output_shape)
+  assert_shapes_equal(computed_output_signature.shape, actual_output_shape)
   if computed_output_signature.dtype != actual_output.dtype:
     raise AssertionError(
         'When testing layer %s, for input %s, found output_dtype='
@@ -185,7 +202,6 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
-  # train(). This was causing some error for layer with Defun as it body.
   # See b/120160788 for more details. This should be mitigated after 2.0.
   if validate_training:
     model = keras.models.Model(x, layer(x))
@@ -242,29 +258,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   return actual_output
 
 
-def compare_shapes(expected, actual, layer_cls, inputs, kwargs):
-  """Asserts that the output shape from the layer matches the actual shape."""
-  if len(expected) != len(actual):
-    raise AssertionError(
-        'When testing layer %s, for input %s, found output_shape='
-        '%s but expected to find %s.\nFull kwargs: %s' %
-        (layer_cls.__name__, inputs, actual, expected, kwargs))
-
-  for expected_dim, actual_dim in zip(expected, actual):
-    if isinstance(expected_dim, tensor_shape.Dimension):
-      expected_dim = expected_dim.value
-    if isinstance(actual_dim, tensor_shape.Dimension):
-      actual_dim = actual_dim.value
-    if expected_dim is not None and expected_dim != actual_dim:
-      raise AssertionError(
-          'When testing layer %s, for input %s, found output_shape='
-          '%s but expected to find %s.\nFull kwargs: %s' %
-          (layer_cls.__name__, inputs, actual, expected, kwargs))
-
-
 _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
+_thread_local_data.run_distributed = None
 
 
 @tf_contextlib.contextmanager
@@ -318,6 +315,38 @@ def should_run_eagerly():
                      'decorator.')
 
   return _thread_local_data.run_eagerly and context.executing_eagerly()
+
+
+@tf_contextlib.contextmanager
+def run_distributed_scope(value):
+  """Provides a scope within which we compile models to run with distribution.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should run models with default distribution
+     in the active test. Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.run_distributed
+  try:
+    _thread_local_data.run_distributed = value
+    yield value
+  finally:
+    # Restore model type to initial value.
+    _thread_local_data.run_distributed = previous_value
+
+
+def should_run_distributed():
+  """Returns whether the models we are testing should be run distributed."""
+  if _thread_local_data.run_distributed is None:
+    raise ValueError('Cannot call `should_run_distributed()` outside of a '
+                     '`run_distributed_scope()` or `run_all_keras_modes` '
+                     'decorator.')
+
+  return _thread_local_data.run_distributed and context.executing_eagerly()
 
 
 def get_model_type():

@@ -107,7 +107,7 @@ class IteratorResource : public ResourceBase {
       tf_shared_lock l(mu_);
       captured_state = iterator_state_;
     }
-    if (captured_state) {
+    if (captured_state->iterator) {
       return captured_state->iterator->Save(ctx, writer);
     } else {
       return errors::FailedPrecondition(
@@ -617,7 +617,14 @@ void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
-  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+  Status s = ctx->resource_manager()->Delete(handle);
+  if (errors::IsNotFound(s)) {
+    // TODO(b/135948230): Investigate why is the above statement not true and
+    // then get rid of the special case.
+    ctx->SetStatus(Status::OK());
+    return;
+  }
+  ctx->SetStatus(s);
 }
 
 namespace {

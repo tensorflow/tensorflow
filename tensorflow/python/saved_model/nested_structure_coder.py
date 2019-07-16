@@ -423,6 +423,7 @@ class _TensorSpecCodec(object):
     return value.HasField("tensor_spec_value")
 
   def do_decode(self, value, decode_fn):
+    name = value.tensor_spec_value.name
     return tensor_spec.TensorSpec(
         shape=decode_fn(
             struct_pb2.StructuredValue(
@@ -430,7 +431,7 @@ class _TensorSpecCodec(object):
         dtype=decode_fn(
             struct_pb2.StructuredValue(
                 tensor_dtype_value=value.tensor_spec_value.dtype)),
-        name=value.tensor_spec_value.name)
+        name=(name if name else None))
 
 
 StructureCoder.register_codec(_TensorSpecCodec())

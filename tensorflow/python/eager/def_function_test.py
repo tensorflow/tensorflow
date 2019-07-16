@@ -458,6 +458,7 @@ class DefFunctionTest(test.TestCase):
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testErrorMessageWhenGraphTensorIsPassedToEager(self):
 
     @def_function.function
@@ -577,6 +578,7 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  # TODO(b/137148281): reenable
   @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
     a = []
@@ -588,13 +590,13 @@ class DefFunctionTest(test.TestCase):
             (2, 2), maxval=1000000, dtype=dtypes.int64)
 
       if not a:
-        with ops.device("CPU:0"):
+        with ops.device('CPU:0'):
           a.append(resource_variable_ops.ResourceVariable(initial_value))
 
       return a[0].read_value()
 
     created_variable_read = create_variable()
-    self.assertRegexpMatches(created_variable_read.device, "CPU")
+    self.assertRegexpMatches(a[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)

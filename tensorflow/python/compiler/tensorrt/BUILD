@@ -111,6 +111,7 @@ cuda_py_tests(
         "test/combined_nms_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
+        "test/conv2d_test.py",
         "test/dynamic_input_shapes_test.py",
         "test/identity_output_test.py",
         "test/int32_test.py",
@@ -136,25 +137,6 @@ cuda_py_tests(
         "no_rocm",
         "no_windows",
         "nomac",
-    ],
-    xla_enable_strict_auto_jit = True,
-)
-
-cuda_py_test(
-    name = "conv_2d_test",
-    srcs = ["test/conv2d_test.py"],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    main = "test/conv2d_test.py",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_rocm",
-        "no_windows",
-        "nomac",
-        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
