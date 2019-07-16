@@ -536,15 +536,31 @@ class FunctionLibraryRuntime {
     std::vector<string> input_devices;
 
     // For multi-device functions, a vector of canonical device names for
-    // function's outputs. The device of resource outputs should be the CPU
-    // device, not the device backing the resource.
-    // If specified, must have the same length as the number of function
-    // outputs.
-    // If not specified, output devices are picked automatically. If operations
-    // producing the output tensors have explicit device specification, they
-    // will be respected. These device specifications must identify a unique
-    // device, i.e.  a general specification like "job:foo" matching multiple
-    // devices will result in an error.
+    // function's outputs.
+    //
+    // (a) If specified (must have the same length as number of outputs):
+    //
+    // Specified devices will be assigned to Retval nodes inserted into the
+    // function body graph in place of function outputs. It is allowed to
+    // specify output device as empty string, in this case Retval device
+    // assignment will be inferred later when function graph will be placed
+    // before partitioning (this is required for resource outputs). Placer will
+    // respect colocation constraints.
+    //
+    // (b) If not specified:
+    //
+    // Function runtime will infer Retval device by following input edges, until
+    // it will reach a node with a device specification. This device
+    // specification must identify a unique device, i.e. a general specification
+    // like "job:foo" matching multiple devices will result in an error.
+    //
+    // IMPORTANT: Resource outputs
+    //
+    // Multi device functions might return resources on a devices different from
+    // the function call device. If output device is not specified for the
+    // resource output, and node producing that resource is a function call,
+    // runtime will leave device specification empty and will rely on Placer to
+    // infer correct device.
     std::vector<string> output_devices;
 
     // This interface is EXPERIMENTAL and subject to change.
