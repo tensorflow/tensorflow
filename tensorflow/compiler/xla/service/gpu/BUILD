@@ -962,7 +962,7 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_compiler",
+    name = "nvptx_compiler_impl",
     srcs = ["nvptx_compiler.cc"],
     hdrs = ["nvptx_compiler.h"],
     deps = [
@@ -1054,6 +1054,12 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ],
+)
+
+cc_library(
+    name = "nvptx_compiler",
+    srcs = ["nvptx_compiler_registration.cc"],
+    deps = [":nvptx_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
 

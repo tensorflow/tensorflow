@@ -31,3 +31,15 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
+
+cc_library(
+    name = "mlir_compiler",
+    srcs = ["mlir_compiler.cc"],
+    hdrs = ["mlir_compiler.h"],
+    deps = [
+        ":failover_compiler",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+    ],
+    alwayslink = True,  # Contains compiler registration
+)

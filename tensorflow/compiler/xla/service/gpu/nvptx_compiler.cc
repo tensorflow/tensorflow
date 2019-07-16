@@ -773,11 +773,3 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 
 }  // namespace gpu
 }  // namespace xla
-
-static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
-  return true;
-}
-static bool module_initialized = InitModule();
