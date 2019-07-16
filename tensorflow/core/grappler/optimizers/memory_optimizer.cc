@@ -58,12 +58,30 @@ const char* kRecomputeHint = "_recompute_hint";
 // Ops which we wouldn't mind recomputing to save memory.
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
-  std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",       "BiasAdd",        "Cast",   "Fill",
-      "FloorDiv", "FloorMod",   "FusedBatchNorm", "Mul",    "Neg",
-      "RealDiv",  "Reciprocal", "Relu",           "Relu6",  "Reshape",
-      "Rsqrt",    "Sigmoid",    "Sqrt",           "Square", "SquaredDifference",
-      "Sub",      "Tile",       "Transpose"};
+  std::unordered_set<string> cheap_ops = {"Add",
+                                          "AddN",
+                                          "BiasAdd",
+                                          "Cast",
+                                          "Fill",
+                                          "FloorDiv",
+                                          "FloorMod",
+                                          "FusedBatchNorm",
+                                          "LeakyRelu",
+                                          "Mul",
+                                          "Neg",
+                                          "RealDiv",
+                                          "Reciprocal",
+                                          "Relu",
+                                          "Relu6",
+                                          "Reshape",
+                                          "Rsqrt",
+                                          "Sigmoid",
+                                          "Sqrt",
+                                          "Square",
+                                          "SquaredDifference",
+                                          "Sub",
+                                          "Tile",
+                                          "Transpose"};
   return cheap_ops;
 }
 
@@ -172,9 +190,10 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
                        should_recompute, &unpruned_recompute_nodes);
     visited_nodes.insert(unpruned_recompute_nodes.begin(),
                          unpruned_recompute_nodes.end());
-    for (const NodeDef* recompute_node : unpruned_recompute_nodes) {
+    for (const NodeDef* unpruned_recompute_node : unpruned_recompute_nodes) {
       bool inserted_feed = false;
-      for (NodeDef* output : node_map.GetOutputs(recompute_node->name())) {
+      for (NodeDef* output :
+           node_map.GetOutputs(unpruned_recompute_node->name())) {
         if (is_target(*output)) {
           current_recomputation.target_nodes.insert(output);
           if (!inserted_feed) {
@@ -182,7 +201,7 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
             // and nodes which feed into them will define the recomputed
             // subgraph.
             current_recomputation.recomputed_source_nodes.insert(
-                recompute_node);
+                unpruned_recompute_node);
             inserted_feed = true;
           }
         }

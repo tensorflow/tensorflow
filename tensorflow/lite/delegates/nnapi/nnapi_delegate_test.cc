@@ -71,6 +71,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
     interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
   }
 
+  TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
+
  protected:
   void SetData(int index, TensorType type, const std::vector<float>& data) {
     switch (type) {
@@ -202,15 +204,27 @@ TEST(NNAPIDelegate, AddWithRelu) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.4, 1.0, 1.3}));
 }
 
-// Verify that resize attempts fail.
-// TODO(b/113110851): Verify success after the delegate supports resizing.
-TEST(NNAPIDelegate, ResizeFails) {
+// Verify that resize attempts succeed.
+TEST(NNAPIDelegate, ResizeInputTensorsWorks) {
   FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 3, 1}), kTfLiteError);
+
+  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 3, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 0.9, 0.7});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 0.2, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 1.1, 1.5}));
+
+  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input1(), {0.7, 0.8, 0.9, 0.7});
+  m.PopulateTensor<float>(m.input2(), {0.3, 0.5, 0.2, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 1.3, 1.1, 1.5}));
 }
 
 // Sanity check for the state-ful NNAPI delegate.
@@ -1950,20 +1964,6 @@ TEST(NNAPIDelegate, Relu6) {
                                  0, 0, 2, 4,  //
                                  3, 0, 6, 1,  //
                              }));
-}
-
-TEST(NNAPIDelegate, Tanh) {
-  FloatActivationsOpModel m(BuiltinOperator_TANH,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
-  m.SetInput({
-      0, -6, 2, 4,   //
-      3, -2, 10, 1,  //
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0, -0.9999877, 0.9640275, 0.999329,    //
-                                 0.99505475, -0.9640275, 1, 0.7615941,  //
-                             })));
 }
 
 TEST(NNAPIDelegate, LogisticFloat) {

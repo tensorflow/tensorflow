@@ -85,8 +85,11 @@ class TraceModelCallTest(keras_parameterized.TestCase):
   def test_trace_model_outputs_after_fitting(self):
     input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
     model = testing_utils.get_small_mlp(10, 3, input_dim)
-    model.compile(optimizer='sgd', loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x=np.random.random((8, 5)),
               y=np.random.random((8, 3)), epochs=2)
 
@@ -123,8 +126,11 @@ class TraceModelCallTest(keras_parameterized.TestCase):
                                    'input shapes have not been set'):
         saving_utils.trace_model_call(model)
 
-    model.compile(optimizer='sgd', loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
                  np.random.random((8, input_dim)).astype(np.float32)],
               y=[np.random.random((8, num_classes)).astype(np.float32),
@@ -303,7 +309,8 @@ class ExtractModelMetricsTest(keras_parameterized.TestCase):
             keras.metrics.mean_squared_error
         ],
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     extract_metrics = saving_utils.extract_model_metrics(model)
     self.assertEqual(set(model_metric_names), set(model.metrics_names))
     self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))

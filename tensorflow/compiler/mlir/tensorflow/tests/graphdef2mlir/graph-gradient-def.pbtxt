@@ -1,0 +1,294 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.25
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "foo"
+  op: "foo"
+  input: "Const"
+  attr {
+    key: "_disable_call_shape_inference"
+    value {
+      b: true
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "gradients/Shape"
+  op: "Shape"
+  input: "foo"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "out_type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "gradients/grad_ys_0"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "gradients/Fill"
+  op: "Fill"
+  input: "gradients/Shape"
+  input: "gradients/grad_ys_0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index_type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "gradients/foo_grad/SymbolicGradient"
+  op: "SymbolicGradient"
+  input: "Const"
+  input: "gradients/Fill"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "foo"
+        attr {
+          key: "_disable_call_shape_inference"
+          value {
+            b: true
+          }
+        }
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "foo"
+      input_arg {
+        name: "foo"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "foo1"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "Exp"
+      op: "Exp"
+      input: "foo"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Exp"
+      }
+    }
+    node_def {
+      name: "Neg"
+      op: "Neg"
+      input: "foo"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Neg"
+      }
+    }
+    node_def {
+      name: "Exp_1"
+      op: "Exp"
+      input: "Neg:y:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Exp_1"
+      }
+    }
+    node_def {
+      name: "sub_0"
+      op: "Sub"
+      input: "Exp:y:0"
+      input: "Exp_1:y:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "sub_0"
+      }
+    }
+    ret {
+      key: "foo1"
+      value: "sub_0:z:0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+  }
+  function {
+    signature {
+      name: "foo_grad"
+      input_arg {
+        name: "foo_grad"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "foo_grad1"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "foo_grad2"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "mul_0"
+      op: "Mul"
+      input: "foo_grad"
+      input: "foo_grad1"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "mul_0"
+      }
+    }
+    ret {
+      key: "foo_grad2"
+      value: "mul_0:z:0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+  }
+  gradient {
+    function_name: "foo"
+    gradient_func: "foo_grad"
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# CHECK:      func @main() {
+# CHECK-NEXT:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "Const", value = dense<2.500000e-01> : tensor<f32>} : () -> (tensor<f32>, !_tf.control)
+# CHECK-NEXT:   %1:2 = "_tf.foo0"(%0#0) {_disable_call_shape_inference = true, device = "", name = "foo"} : (tensor<f32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   %2:2 = "_tf.Shape"(%1#0) {T = "tfdtype$DT_FLOAT", device = "", name = "gradients/Shape", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> (tensor<?xi32>, !_tf.control)
+# CHECK-NEXT:   %3:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "gradients/grad_ys_0", value = dense<1.000000e+00> : tensor<f32>} : () -> (tensor<f32>, !_tf.control)
+# CHECK-NEXT:   %4:2 = "_tf.Fill"(%2#0, %3#0) {T = "tfdtype$DT_FLOAT", device = "", index_type = "tfdtype$DT_INT32", name = "gradients/Fill"} : (tensor<?xi32>, tensor<f32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   %5:2 = "_tf.SymbolicGradient"(%0#0, %4#0) {Tin = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], device = "", f = @foo0, f._disable_call_shape_inference = true, name = "gradients/foo_grad/SymbolicGradient"} : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, !_tf.control)
+# CHECK-NEXT:   return
+# CHECK-NEXT: }
+# CHECK: func @foo_grad0(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
+# CHECK-NEXT:   attributes  {tf._disable_call_shape_inference = true} {
+# CHECK-NEXT:   %0:2 = "_tf.Mul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", device = "", name = "mul_0"} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   return %0#0 : tensor<*xf32>
+# CHECK-NEXT: }
+# CHECK: func @foo0(%arg0: tensor<*xf32>) -> tensor<*xf32>
+# CHECK-NEXT:   attributes  {tf._disable_call_shape_inference = true, tf.gradient = @foo_grad0} {
+# CHECK-NEXT:   %0:2 = "_tf.Exp"(%arg0) {T = "tfdtype$DT_FLOAT", device = "", name = "Exp"} : (tensor<*xf32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   %1:2 = "_tf.Neg"(%arg0) {T = "tfdtype$DT_FLOAT", device = "", name = "Neg"} : (tensor<*xf32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   %2:2 = "_tf.Exp"(%1#0) {T = "tfdtype$DT_FLOAT", device = "", name = "Exp_1"} : (tensor<*xf32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   %3:2 = "_tf.Sub"(%0#0, %2#0) {T = "tfdtype$DT_FLOAT", device = "", name = "sub_0"} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, !_tf.control)
+# CHECK-NEXT:   return %3#0 : tensor<*xf32>
+# CHECK-NEXT: }

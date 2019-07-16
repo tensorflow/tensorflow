@@ -564,7 +564,7 @@ void LogFusedConvForwardAutotuneResults(
   for (const auto& result : results) {
     *log.add_results() = result;
   }
-  Logger::Singleton()->LogProto(log);
+  Logger::GetSingleton()->LogProto(log);
 }
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,

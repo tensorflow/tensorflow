@@ -1,0 +1,222 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -mlir-print-debuginfo %s -o - | FileCheck %s
+
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while_context"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/Add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/Add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/Add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+    original_node_names: "while"
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 27
+}
+
+# CHECK:       func @main() {
+# CHECK-NEXT:    %0:2 = "_tf.NextIteration.source"() {T = "tfdtype$DT_INT32", device = "", name = "while/NextIteration"} : () -> (tensor<*xi32>, !_tf.control) loc("while/NextIteration")
+# CHECK-NEXT:    %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control) loc("Const")
+# CHECK-NEXT:    %2:2 = "_tf.Enter"(%1#0) {T = "tfdtype$DT_INT32", device = "", frame_name = "while/while_context", is_constant = false, name = "while/Enter", parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>, !_tf.control) loc("while/Enter")
+# CHECK-NEXT:    %3:3 = "_tf.Merge"(%2#0, %0#0) {N = 2 : i64, T = "tfdtype$DT_INT32", device = "", name = "while/Merge"} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<i32>, !_tf.control) loc("while/Merge")
+# CHECK-NEXT:    %4:2 = "_tf.Const"(%3#2) {device = "", dtype = "tfdtype$DT_INT32", name = "while/Less/y", value = dense<10> : tensor<i32>} : (!_tf.control) -> (tensor<i32>, !_tf.control) loc("while/Less/y")
+# CHECK-NEXT:    %5:2 = "_tf.Less"(%3#0, %4#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Less"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi1>, !_tf.control) loc("while/Less")
+# CHECK-NEXT:    %6:2 = "_tf.LoopCond"(%5#0) {device = "", name = "while/LoopCond"} : (tensor<*xi1>) -> (tensor<i1>, !_tf.control) loc("while/LoopCond")
+# CHECK-NEXT:    %7:3 = "_tf.Switch"(%3#0, %6#0) {T = "tfdtype$DT_INT32", _class = ["loc:@while/Merge"], device = "", name = "while/Switch"} : (tensor<*xi32>, tensor<i1>) -> (tensor<*xi32>, tensor<*xi32>, !_tf.control) loc("while/Switch")
+# CHECK-NEXT:    %8:2 = "_tf.Exit"(%7#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Exit"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control) loc("while/Exit")
+# CHECK-NEXT:    %9:2 = "_tf.Identity"(%7#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Identity"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control) loc("while/Identity")
+# CHECK-NEXT:    %10:2 = "_tf.Const"(%9#1) {device = "", dtype = "tfdtype$DT_INT32", name = "while/Add/y", value = dense<1> : tensor<i32>} : (!_tf.control) -> (tensor<i32>, !_tf.control) loc("while/Add/y")
+# CHECK-NEXT:    %11:2 = "_tf.Add"(%9#0, %10#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Add"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control) loc("while/Add")
+# CHECK-NEXT:    %12 = "_tf.NextIteration.sink"(%11#0) {T = "tfdtype$DT_INT32", device = "", name = "while/NextIteration"} : (tensor<*xi32>) -> !_tf.control loc("while/NextIteration")
+# CHECK-NEXT:    return loc(unknown)
+# CHECK-NEXT:  }
+

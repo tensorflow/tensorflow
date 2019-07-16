@@ -142,8 +142,6 @@ def _sequence_like(instance, args):
   elif _is_type_spec(instance):
     # Pack a CompositeTensor's components according to a TypeSpec.
     assert len(args) == 1
-    if args[0] and _is_type_spec(args[0][0]):
-      raise ValueError("Can not pack TypeSpec into a TypeSpec.")
     return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
@@ -507,15 +505,13 @@ def map_structure(func, *structure, **kwargs):
   if not structure:
     raise ValueError("Must provide at least one structure")
 
-  check_types = True
-  expand_composites = False
+  check_types = kwargs.pop("check_types", True)
+  expand_composites = kwargs.pop("expand_composites", False)
+
   if kwargs:
-    check_types = kwargs.pop("check_types", check_types)
-    expand_composites = kwargs.pop("expand_composites", expand_composites)
-    if kwargs:
-      raise ValueError(
-          "Only valid keyword arguments are `check_types` and "
-          "`expand_composites`, not: `%s`" % ("`, `".join(kwargs.keys())))
+    raise ValueError(
+        "Only valid keyword arguments are `check_types` and "
+        "`expand_composites`, not: `%s`" % ("`, `".join(kwargs.keys())))
 
   for other in structure[1:]:
     assert_same_structure(structure[0], other, check_types=check_types,

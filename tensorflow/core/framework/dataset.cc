@@ -419,12 +419,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
-  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-    s = errors::Internal(
-        "Iterator \"", params_.prefix,
-        "\" returned OutOfRange without setting `*end_of_sequence`. This "
-        "indicates that an error may have occurred. Original message: ",
-        s.error_message());
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
     LOG(ERROR) << s;
   }
   return s;

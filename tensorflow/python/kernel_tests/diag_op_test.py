@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import numpy as np
 
 from tensorflow.python.compat import compat
@@ -312,7 +314,10 @@ class MatrixDiagTest(test.TestCase):
       self.assertEqual((3, 3), v_diag.get_shape())
       self.assertAllEqual(v_diag.eval(), mat)
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # {Sub,Super}diagonals.
         for offset in [1, -2, 5]:
           mat = np.diag(v, offset)
@@ -337,7 +342,10 @@ class MatrixDiagTest(test.TestCase):
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # {Sub,Super}diagonals.
         for offset in [1, -2, 5]:
           v_batch_diag = array_ops.matrix_diag(v_batch, k=offset)
@@ -369,7 +377,10 @@ class MatrixDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testRectangularBatch(self):
-    if compat.forward_compatible(2019, 7, 4):
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 7, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
       with self.cached_session(use_gpu=True):
         # Stores expected num_rows and num_cols (when the other is given).
         # expected[(d_lower, d_upper)] = (expected_num_rows, expected_num_cols)
@@ -478,7 +489,10 @@ class MatrixDiagTest(test.TestCase):
                                                         y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
-    if compat.forward_compatible(2019, 7, 4):
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 7, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
       # {Sub,super}diagonals/band.
       tests = dict()  # tests[shape] = (d_lower, d_upper)
       tests[(3,)] = (-1, -1)
@@ -507,7 +521,10 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, self.evaluate(output))
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands.
         _, tests = square_cases()
         for diags, pair in tests.items():
@@ -536,7 +553,10 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((3, 2), output.get_shape())
       self.assertAllEqual(expected, self.evaluate(output))
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands.
         for _, tests in [tall_cases(), fat_cases()]:
           for diags, pair in tests.items():
@@ -564,7 +584,10 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands.
         _, tests = square_cases()
         for diags, pair in tests.items():
@@ -598,7 +621,10 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((2, 2, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands.
         for _, tests in [tall_cases(), fat_cases()]:
           for diags, pair in tests.items():
@@ -628,7 +654,11 @@ class MatrixSetDiagTest(test.TestCase):
         array_ops.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
       with self.assertRaisesOpError("diagonal must be at least 1-dim"):
         array_ops.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
-      if compat.forward_compatible(2019, 7, 4):
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         d = array_ops.placeholder(dtype=dtypes_lib.float32)
         with self.assertRaisesOpError(
             "first dimensions of diagonal don't match"):
@@ -637,27 +667,45 @@ class MatrixSetDiagTest(test.TestCase):
               d: np.ones((2, 4))
           })
 
+  def _testGrad(self, input_shape, diag_shape, diags):
+    with self.session(use_gpu=True):
+      x = constant_op.constant(
+          np.random.rand(*input_shape), dtype=dtypes_lib.float32)
+      x_diag = constant_op.constant(
+          np.random.rand(*diag_shape), dtype=dtypes_lib.float32)
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+        y = array_ops.matrix_set_diag(x, x_diag, k=diags)
+      else:
+        y = array_ops.matrix_set_diag(x, x_diag)
+      error_x = gradient_checker.compute_gradient_error(x,
+                                                        x.get_shape().as_list(),
+                                                        y,
+                                                        y.get_shape().as_list())
+      self.assertLess(error_x, 1e-4)
+      error_x_diag = gradient_checker.compute_gradient_error(
+          x_diag,
+          x_diag.get_shape().as_list(), y,
+          y.get_shape().as_list())
+      self.assertLess(error_x_diag, 1e-4)
+
   @test_util.run_deprecated_v1
   def testGrad(self):
-    shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
-    with self.session(use_gpu=True):
-      for shape in shapes:
-        x = constant_op.constant(
-            np.random.rand(*shape), dtype=dtypes_lib.float32)
-        diag_shape = shape[:-2] + (min(shape[-2:]),)
-        x_diag = constant_op.constant(
-            np.random.rand(*diag_shape), dtype=dtypes_lib.float32)
-        y = array_ops.matrix_set_diag(x, x_diag)
-        error_x = gradient_checker.compute_gradient_error(
-            x,
-            x.get_shape().as_list(), y,
-            y.get_shape().as_list())
-        self.assertLess(error_x, 1e-4)
-        error_x_diag = gradient_checker.compute_gradient_error(
-            x_diag,
-            x_diag.get_shape().as_list(), y,
-            y.get_shape().as_list())
-        self.assertLess(error_x_diag, 1e-4)
+    input_shapes = [(3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8)]
+    diag_bands = [(0, 0)]
+
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 7, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+      diag_bands.append((-1, 1))
+    for input_shape, diags in itertools.product(input_shapes, diag_bands):
+      lower_diag_index, upper_diag_index = diags
+      num_diags = upper_diag_index - lower_diag_index + 1
+      num_diags_dim = () if num_diags == 1 else (num_diags,)
+      diag_shape = input_shape[:-2] + num_diags_dim + (min(input_shape[-2:]),)
+      self._testGrad(input_shape, diag_shape, diags)
 
   @test_util.run_deprecated_v1
   def testGradWithNoShapeInformation(self):
@@ -691,7 +739,9 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
         for offset in [-2, 3]:
           mat = np.diag(v, offset)
           mat_diag = array_ops.matrix_diag_part(mat, k=offset)
@@ -716,7 +766,10 @@ class MatrixDiagPartTest(test.TestCase):
       mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands.
         for mat, tests in [tall_cases(), fat_cases()]:
           for diags, pair in tests.items():
@@ -736,7 +789,10 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands with padding_value.
         mat, tests = square_cases()
         for padding_value in [0, 555, -11]:
@@ -768,7 +824,10 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((2, 2), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
-      if compat.forward_compatible(2019, 7, 4):
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 7, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
         # Diagonal bands with padding_value.
         for padding_value in [0, 555, -11]:
           for mat, tests in [tall_cases(), fat_cases()]:

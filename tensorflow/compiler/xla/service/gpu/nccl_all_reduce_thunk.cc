@@ -177,13 +177,13 @@ class NcclComm {
 // * Only ops with the same opcode can communicate with each other.  At the
 //   moment we only support kAllReduce, so we don't check for this explicitly.
 //
-// * For cross-module all-reduces (i.e. instr->all_reduce_id().has_value()),
-//   only ops with the same value for all_reduce_id() can communicate with each
+// * For cross-module all-reduces (i.e. instr->channel_id().has_value()),
+//   only ops with the same value for channel_id() can communicate with each
 //   other.
 //
 // * For cross-replica (i.e. same-module) all-reduces (i.e.
-//   !all_reduce_id().has_value()), only ops from the same module (as identified
-//   by its unique_id()) can communicate with each other.
+//   !channel_id().has_value()), only ops from the same module (as
+//   identified by its unique_id()) can communicate with each other.
 //
 struct RendezvousKey {
   enum AllReduceKind {
@@ -196,8 +196,8 @@ struct RendezvousKey {
                          const HloAllReduceInstruction* instr)
       : run_id(run_id), participating_replicas(participating_replicas) {
     std::tie(all_reduce_kind, op_id) =
-        instr->all_reduce_id().has_value()
-            ? std::make_pair(kCrossModule, instr->all_reduce_id().value())
+        instr->channel_id().has_value()
+            ? std::make_pair(kCrossModule, instr->channel_id().value())
             : std::make_pair(
                   kCrossReplica,
                   static_cast<int64>(instr->GetModule()->unique_id()));

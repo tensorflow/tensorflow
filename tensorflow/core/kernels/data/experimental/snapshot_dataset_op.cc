@@ -53,6 +53,7 @@ const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 const size_t kHeaderSize = sizeof(uint64);
 
 const char kSnapshotFilename[] = "snapshot.metadata";
+constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 
 class SnapshotWriter {
  public:
@@ -91,12 +92,7 @@ class SnapshotWriter {
 
     TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
 
-    // TODO(frankchn): Remove after ZlibOutputBuffer Cord support is added.
-    if (compression_type_.empty()) {
-      return dest_->Append(data);
-    } else {
-      return dest_->Append(data.ToString());
-    }
+    return dest_->Append(data);
   }
 #endif  // PLATFORM_GOOGLE
 
@@ -277,6 +273,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_size_bytes", &shard_size_bytes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("pending_snapshot_expiry_seconds",
                                      &pending_snapshot_expiry_seconds_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("num_reader_threads", &num_reader_threads_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("reader_buffer_size", &reader_buffer_size_));
 
     if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
 
@@ -284,6 +284,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     if (pending_snapshot_expiry_seconds_ == -1) {
       pending_snapshot_expiry_seconds_ = 86400;
     }
+
+    if (num_reader_threads_ == -1) num_reader_threads_ = 1;
+    if (reader_buffer_size_ == -1) reader_buffer_size_ = 1;
 
     OP_REQUIRES(
         ctx,
@@ -321,7 +324,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     *output = new Dataset(ctx, input, path, graph_hash, reader_path_prefix_,
                           writer_path_prefix_, compression_, shard_size_bytes_,
-                          pending_snapshot_expiry_seconds_);
+                          pending_snapshot_expiry_seconds_, num_reader_threads_,
+                          reader_buffer_size_);
   }
 
  private:
@@ -331,7 +335,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             const string& graph_hash, const string& reader_path_prefix,
             const string& writer_path_prefix, const string& compression,
             const uint64 shard_size_bytes,
-            const uint64 pending_snapshot_expiry_seconds)
+            const uint64 pending_snapshot_expiry_seconds,
+            const uint64 num_reader_threads, const uint64 reader_buffer_size)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
@@ -340,7 +345,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           writer_path_prefix_(writer_path_prefix),
           compression_(compression),
           shard_size_bytes_(shard_size_bytes),
-          pending_snapshot_expiry_seconds_(pending_snapshot_expiry_seconds) {
+          pending_snapshot_expiry_seconds_(pending_snapshot_expiry_seconds),
+          num_reader_threads_(num_reader_threads),
+          reader_buffer_size_(reader_buffer_size) {
       input_->Ref();
     }
 
@@ -390,6 +397,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue<int64>(pending_snapshot_expiry_seconds_,
                                &pending_snapshot_expiry_seconds_attr);
 
+      AttrValue num_reader_threads_attr;
+      b->BuildAttrValue<int64>(num_reader_threads_, &num_reader_threads_attr);
+
+      AttrValue reader_buffer_size_attr;
+      b->BuildAttrValue<int64>(reader_buffer_size_, &reader_buffer_size_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           /*inputs=*/
@@ -402,7 +415,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
            {"writer_path_prefix", writer_path_prefix_attr},
            {"shard_size_bytes", shard_size_bytes_attr},
            {"pending_snapshot_expiry_seconds",
-            pending_snapshot_expiry_seconds_attr}},
+            pending_snapshot_expiry_seconds_attr},
+           {"num_reader_threads", num_reader_threads_attr},
+           {"reader_buffer_size", reader_buffer_size_attr}},
           output));
       return Status::OK();
     }
@@ -414,39 +429,43 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
         hash_dir_ = absl::StrCat(dataset()->dir_, "/", dataset()->graph_hash_);
-
-        experimental::SnapshotMetadataRecord metadata;
-        Status s = ReadMetadataFile(hash_dir_, &metadata);
-        state_ = DetermineOpState(s, metadata,
-                                  dataset()->pending_snapshot_expiry_seconds_);
-
-        switch (state_) {
-          case WRITER:
-            iterator_ = absl::make_unique<SnapshotWriterIterator>(
-                SnapshotWriterIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")},
-                hash_dir_);
-            break;
-          case READER:
-            iterator_ = absl::make_unique<SnapshotReaderIterator>(
-                SnapshotReaderIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")},
-                hash_dir_, metadata);
-            break;
-          case PASSTHROUGH:
-            iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
-                SnapshotPassthroughIterator::Params{
-                    dataset(), strings::StrCat(prefix(), "Impl")});
-            break;
-        }
-
-        return iterator_->Initialize(ctx);
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        mutex_lock l(mu_);
+        if (iterator_ == nullptr) {
+          experimental::SnapshotMetadataRecord metadata;
+          Status s = ReadMetadataFile(hash_dir_, &metadata);
+          state_ = DetermineOpState(
+              s, metadata, dataset()->pending_snapshot_expiry_seconds_);
+
+          switch (state_) {
+            case WRITER:
+              iterator_ = absl::make_unique<SnapshotWriterIterator>(
+                  SnapshotWriterIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")},
+                  hash_dir_);
+              break;
+            case READER:
+              iterator_ = absl::make_unique<SnapshotReaderIterator>(
+                  SnapshotReaderIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")},
+                  hash_dir_, metadata);
+              break;
+            case PASSTHROUGH:
+              iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
+                  SnapshotPassthroughIterator::Params{
+                      dataset(), strings::StrCat(prefix(), "Impl")});
+              break;
+          }
+          TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
+        }
+
         return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
@@ -470,7 +489,17 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             const experimental::SnapshotMetadataRecord& metadata)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              metadata_(metadata) {}
+              metadata_(metadata) {
+          thread_pool_ = absl::make_unique<thread::ThreadPool>(
+              Env::Default(), ThreadOptions(), kSnapshotReaderWorkerPool,
+              params.dataset->num_reader_threads_, /*low_latency_hint=*/false);
+        }
+
+        ~SnapshotReaderIterator() override {
+          mutex_lock l(mu_);
+          cancelled_ = true;
+          cond_var_.notify_all();
+        }
 
         Status Initialize(IteratorContext* ctx) override {
           mutex_lock l(mu_);
@@ -493,83 +522,164 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                bool* end_of_sequence) override {
           absl::Time start = absl::Now();
           mutex_lock l(mu_);
-          do {
-            if (current_reader_) {
-#if !defined(PLATFORM_GOOGLE)
-              string record_bytes;
-              Status s = current_reader_->ReadRecord(&record_bytes);
-#else
-              absl::Cord record_cord;
-              Status s = current_reader_->ReadRecord(&record_cord);
-#endif
-              if (s.ok()) {
-                *end_of_sequence = false;
-                experimental::SnapshotRecord record;
-#if !defined(PLATFORM_GOOGLE)
-                record.ParseFromString(record_bytes);
-#else
-                record.ParseFromCord(record_cord);
-#endif
-                int64 num_bytes = 0;
-                for (int i = 0; i < record.tensor_size(); ++i) {
-                  Tensor t;
-                  if (!t.FromProto(record.tensor(i))) {
-                    return errors::DataLoss(
-                        "Unable to parse Tensor from proto.");
-                  }
-                  out_tensors->push_back(t);
-                  num_bytes += t.TotalBytes();
-                }
-                absl::Time end = absl::Now();
-                absl::Duration d = end - start;
-                time_spent_micros_ += absl::ToInt64Microseconds(d);
-                kbytes_written_ += static_cast<double>(num_bytes) / 1024.0;
-                next_index_++;
+          if (!background_threads_started_) {
+            for (int i = 0; i < dataset()->num_reader_threads_; ++i) {
+              thread_pool_->Schedule([this]() { ReadingFilesLoop(); });
+            }
+            background_threads_started_ = true;
+          }
 
-                if (next_index_ % 10000 == 0) {
-                  LOG(INFO) << "Current read throughput (MBPS): "
-                            << (kbytes_written_ * 1000000.0) /
-                                   (time_spent_micros_ * 1024.0);
-                }
-                return Status::OK();
-              } else if (!errors::IsOutOfRange(s)) {
-                // Report non-EOF errors to the caller.
-                return s;
+          // Wait till the buffer has something in it.
+          while (!cancelled_ && buffer_.empty() &&
+                 !background_threads_finished_) {
+            cond_var_.wait(l);
+          }
+
+          if (cancelled_) {
+            return errors::Cancelled(
+                "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::GetNext");
+          }
+
+          if (!buffer_.empty()) {
+            Status s = buffer_.front().status;
+            if (s.ok()) {
+              *end_of_sequence = false;
+              *out_tensors = std::move(buffer_.front().value);
+
+              // Printing some statistics along the way.
+              int64 num_bytes = 0;
+              for (int i = 0; i < out_tensors->size(); ++i) {
+                num_bytes += (*out_tensors)[i].TotalBytes();
               }
-              // Now that we're reached the end of the current file, lets move
-              // on to the next file.
-              ResetReaderLocked();
-              ++current_file_index_;
+              absl::Time end = absl::Now();
+              absl::Duration d = end - start;
+              time_spent_micros_ += absl::ToInt64Microseconds(d);
+              kbytes_read_ += static_cast<double>(num_bytes) / 1024.0;
+              elements_produced_++;
+              if (elements_produced_ % 10000 == 0) {
+                VLOG(2) << "Current read throughput (MBPS): "
+                        << ((kbytes_read_ / 1024.0) /
+                            (time_spent_micros_ / 1000000.0));
+              }
             }
+            buffer_.pop_front();
+            cond_var_.notify_all();
+            return s;
+          }
 
-            if (current_file_index_ == filenames_.size()) {
-              *end_of_sequence = true;
-              return Status::OK();
-            }
+          if (background_threads_finished_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
 
-            TF_RETURN_IF_ERROR(SetupReaderLocked(ctx->env()));
-          } while (true);
+          return errors::Internal("Unreachable point in SnapshotReader");
         }
 
        private:
-        Status SetupReaderLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          if (current_file_index_ >= filenames_.size()) {
-            return errors::InvalidArgument("current_files_index_...");
-          }
-          const string filename = absl::StrCat(dataset()->reader_path_prefix_,
-                                               filenames_[current_file_index_]);
-          TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename,
-                                                          &current_read_file_));
+        // Reads one file end to end.
+        Status ReadFile(const string& filename) {
+          std::unique_ptr<RandomAccessFile> file;
+          TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename, &file));
+          std::unique_ptr<SnapshotReader> reader(
+              new SnapshotReader(file.get(), dataset()->compression_));
 
-          current_reader_ = absl::make_unique<SnapshotReader>(
-              current_read_file_.get(), dataset()->compression_);
+          while (true) {
+            // Wait for a slot in the buffer.
+            {
+              mutex_lock l(mu_);
+              while (!cancelled_ &&
+                     buffer_.size() >= dataset()->reader_buffer_size_) {
+                cond_var_.wait(l);
+              }
+
+              if (cancelled_) {
+                return errors::Cancelled(
+                    "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::"
+                    "ReadFile");
+              }
+            }
+#if !defined(PLATFORM_GOOGLE)
+            string record_bytes;
+            Status s = reader->ReadRecord(&record_bytes);
+#else
+            absl::Cord record_cord;
+            Status s = reader->ReadRecord(&record_cord);
+#endif
+            if (s.ok()) {
+              experimental::SnapshotRecord record;
+#if !defined(PLATFORM_GOOGLE)
+              record.ParseFromString(record_bytes);
+#else
+              record.ParseFromCord(record_cord);
+#endif
+              std::vector<Tensor> out_tensors;
+              for (int i = 0; i < record.tensor_size(); ++i) {
+                Tensor t;
+                if (!t.FromProto(record.tensor(i))) {
+                  return errors::DataLoss("Unable to parse tensor from proto.");
+                }
+                out_tensors.push_back(t);
+              }
+              BufferElement elem;
+              std::swap(elem.value, out_tensors);
+              elem.status = Status::OK();
+              mutex_lock l(mu_);
+              buffer_.push_back(std::move(elem));
+              cond_var_.notify_all();
+            } else if (errors::IsOutOfRange(s)) {
+              return Status::OK();
+            } else {
+              return s;
+            }
+          }
           return Status::OK();
         }
 
-        void ResetReaderLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          current_reader_.reset();
-          current_read_file_.reset();
+        // Pulls one file off the filenames_ list and reads it through. When
+        // all files are read, terminates.
+        void ReadingFilesLoop() {
+          while (true) {
+            string filename = "";
+            {
+              mutex_lock l(mu_);
+              if (next_file_index_ >= filenames_.size()) {
+                return;
+              }
+              filename = absl::StrCat(dataset()->reader_path_prefix_,
+                                      filenames_[next_file_index_]);
+              VLOG(2) << "Starting to read: " << filename;
+              next_file_index_++;
+            }
+            Status s = ReadFile(filename);
+            // If we get to the end of the file, it's a clean termination and
+            // we are at the end of the file. If all files have been processed,
+            // then we insert an end_of_sequence marker in the buffer and
+            // terminate the loop.
+            if (s.ok()) {
+              VLOG(2) << "Finished reading: " << filename;
+              mutex_lock l(mu_);
+              num_files_done_++;
+              if (num_files_done_ >= filenames_.size()) {
+                background_threads_finished_ = true;
+                cond_var_.notify_all();
+                return;
+              }
+            } else {
+              LOG(ERROR) << "Encountered an error: " << s.ToString();
+              BufferElement elem;
+              elem.status = s;
+              mutex_lock l(mu_);
+              buffer_.push_back(std::move(elem));
+              cond_var_.notify_all();
+              return;
+            }
+          }
         }
+
+        struct BufferElement {
+          Status status;
+          std::vector<Tensor> value;
+        };
 
         const string hash_dir_;
         const experimental::SnapshotMetadataRecord metadata_;
@@ -577,15 +687,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string run_dir_ GUARDED_BY(mu_);
         std::vector<string> filenames_;
 
-        std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-
-        std::unique_ptr<RandomAccessFile> current_read_file_ GUARDED_BY(mu_);
-        std::unique_ptr<SnapshotReader> current_reader_ GUARDED_BY(mu_);
-
-        uint64 next_index_ GUARDED_BY(mu_) = 0;
+        uint64 elements_produced_ GUARDED_BY(mu_) = 0;
         int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
-        double kbytes_written_ GUARDED_BY(mu_) = 0;
-        size_t current_file_index_ GUARDED_BY(mu_) = 0;
+        double kbytes_read_ GUARDED_BY(mu_) = 0;
+        size_t next_file_index_ GUARDED_BY(mu_) = 0;
+        int64 num_files_done_ GUARDED_BY(mu_) = 0;
+
+        std::unique_ptr<thread::ThreadPool> thread_pool_;
+        condition_variable cond_var_;
+        std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
+        bool cancelled_ GUARDED_BY(mu_) = false;
+        bool background_threads_started_ GUARDED_BY(mu_) = false;
+        bool background_threads_finished_ GUARDED_BY(mu_) = false;
 
         mutex mu_;
       };
@@ -691,9 +804,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           next_index_++;
 
           if (next_index_ % 10000 == 0) {
-            LOG(INFO) << "Current write throughput (MBPS): "
-                      << (bytes_written_ * 1000000.0) /
-                             (time_spent_micros_ * 1024.0 * 1024.0);
+            VLOG(2) << "Current write throughput (MBPS): "
+                    << (bytes_written_ * 1000000.0) /
+                           (time_spent_micros_ * 1024.0 * 1024.0);
           }
           return Status::OK();
         }
@@ -735,10 +848,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_;
       };
 
-      string hash_dir_;
-      SnapshotMode state_;
+      string hash_dir_ GUARDED_BY(mu_);
+      SnapshotMode state_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
 
-      std::unique_ptr<IteratorBase> iterator_;
+      mutex mu_;
     };
 
     const DatasetBase* const input_;
@@ -751,6 +865,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     const uint64 shard_size_bytes_;
     const uint64 pending_snapshot_expiry_seconds_;
+    const uint64 num_reader_threads_;
+    const uint64 reader_buffer_size_;
   };
 
   const int graph_def_version_;
@@ -763,6 +879,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
   int64 shard_size_bytes_;
   int64 pending_snapshot_expiry_seconds_;
+  int64 num_reader_threads_;
+  int64 reader_buffer_size_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

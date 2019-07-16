@@ -75,14 +75,14 @@ TensorFlow coding style.
     non-backward-compatible API changes without a major release. Reviewers of
     your pull request will comment on any API compatibility issues.
 *   When you contribute a new feature to TensorFlow, the maintenance burden is
-    (by default) transferred to the TensorFlow team. This means that benefit of
-    the contribution must be compared against the cost of maintaining the
+    (by default) transferred to the TensorFlow team. This means that the benefit
+    of the contribution must be compared against the cost of maintaining the
     feature.
 *   Full new features (e.g., a new op implementing a cutting-edge algorithm)
     typically will live in
     [tensorflow/addons](https://github.com/tensorflow/addons) to get some
-    airtime before decision is made regarding whether they are to be migrated to
-    the core.
+    airtime before a decision is made regarding whether they are to be migrated
+    to the core.
 
 #### License
 

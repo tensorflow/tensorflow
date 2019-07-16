@@ -220,33 +220,21 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
   const size_t proto_size = in.ByteSizeLong();
-  void* buf = tensorflow::port::Malloc(proto_size);
+  void* buf = port::Malloc(proto_size);
   if (buf == nullptr) {
     return tensorflow::errors::ResourceExhausted(
         "Failed to allocate memory to serialize message of type '",
         in.GetTypeName(), "' and size ", proto_size);
   }
-  // SerializeToArray takes size as an int.
-  // This next 'if' is a workaround till we update to depend on a version
-  // of protocol buffers that includes
-  // https://github.com/google/protobuf/pull/4739
-  if (proto_size > std::numeric_limits<int>::max()) {
-    return InvalidArgument("Cannot serialize protocol buffer of type ",
-                           in.GetTypeName(), " as the serialized size (",
-                           proto_size,
-                           "bytes) would be larger than the limit (",
-                           std::numeric_limits<int>::max(), " bytes)");
-  }
-  if (!in.SerializeToArray(buf, proto_size)) {
+  if (!in.SerializeWithCachedSizesToArray(static_cast<uint8*>(buf))) {
+    port::Free(buf);
     return InvalidArgument("Unable to serialize ", in.GetTypeName(),
                            " protocol buffer, perhaps the serialized size (",
                            proto_size, " bytes) is too large?");
   }
   out->data = buf;
   out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
+  out->data_deallocator = [](void* data, size_t length) { port::Free(data); };
   return Status::OK();
 }
 

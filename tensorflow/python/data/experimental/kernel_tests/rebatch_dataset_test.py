@@ -17,12 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.example import example_pb2
+from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.kernel_tests import test_base
@@ -31,8 +36,10 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -389,6 +396,41 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                      [ts.as_list() for ts in _flat_shapes(dataset)])
     expected_output = [[i * 2 for i in range(j*5, (j+1)*5)] for j in range(8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
+
+  def testMakeBatchedFeaturesDataset(self, drop_remainder):
+    # Set up
+    fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
+    writer = python_io.TFRecordWriter(fn)
+    for i in range(1024):
+      writer.write(
+          example_pb2.Example(
+              features=feature_pb2.Features(
+                  feature={
+                      "value":
+                          feature_pb2.Feature(
+                              int64_list=feature_pb2.Int64List(value=[i]))
+                  })).SerializeToString())
+    writer.close()
+
+    dataset = readers.make_batched_features_dataset(
+        file_pattern=fn,
+        batch_size=32,
+        features={"value": parsing_ops.FixedLenFeature([], dtypes.int64)},
+        shuffle=False,
+        num_epochs=1,
+        drop_final_batch=drop_remainder)
+
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+
+    self.assertEqual([[32 if drop_remainder else None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    self.assertEqual([[8 if drop_remainder else None]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+
+    expected_output = [{
+        "value": [k for k in range(i, i + 8)]
+    } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
 
 
 if __name__ == "__main__":

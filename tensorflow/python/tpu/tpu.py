@@ -543,7 +543,7 @@ def replicate(computation,
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
       have the same number of inputs. Each input can be a nested structure
       containing values that are convertible to tensors. Note that passing an
-      N-dimension list of compatible values will result in a N-dimention list of
+      N-dimension list of compatible values will result in a N-dimension list of
       scalar tensors rather than a single Rank-N tensors. If you need different
       behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
@@ -560,10 +560,8 @@ def replicate(computation,
       should be padded. Any unknown dimensions (e.g.
       tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
       object) will be padded to the maximum size of that dimension over all
-      replicas. Note that if the input dimension is already static, we won't do
-      padding on it and we require the maximum_shapes to have the same value or
-      None on that dimension. The structure of `maximum_shapes` needs to be the
-      same as `inputs[0]`.
+      replicas. The structure of `maximum_shapes` needs to be the same as
+      `inputs[0]`.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -608,11 +606,16 @@ def _pad_all_input(inputs, padded_shapes):
     dimension to the real shape argument index.
   """
   input_shape_tensors = []
+  need_padding = []
   for core_idx, inputs_per_core in enumerate(inputs):
     for idx, input_tensor in enumerate(inputs_per_core):
       if core_idx == 0:
         input_shape_tensors.append([])
+        need_padding.append(not input_tensor.get_shape().is_fully_defined())
       input_shape_tensors[idx].append(array_ops.shape(input_tensor))
+
+      if input_tensor.get_shape() != inputs[0][idx].get_shape():
+        need_padding[idx] = True
 
   maximum_shapes = []
   for shapes_per_input in input_shape_tensors:
@@ -631,15 +634,7 @@ def _pad_all_input(inputs, padded_shapes):
       input_shape = input_tensor.get_shape()
       padded_shape = padded_shapes[idx]
 
-      # The static shape of inputs should be compatible with the given padded
-      # shapes.
-      input_shape.assert_is_compatible_with(padded_shape)
-
-      if input_shape.is_fully_defined():
-        # Do nothing if the shape of the whole tensor is already static.
-        padded_inputs[core_idx].append(input_tensor)
-      else:
-        # Only pad the non static shape dimension.
+      if need_padding[idx]:
         for i, s in enumerate(input_shape.dims):
           if s.value is None:
             if core_idx == 0:
@@ -654,21 +649,25 @@ def _pad_all_input(inputs, padded_shapes):
 
         paddings = []
         for i, s in enumerate(padded_shape.dims):
+          # Use static input shape dimension if possible.
           if input_shape.dims[i].value:
-            # Don't pad if input shape is already static.
-            padding = [0, 0]
+            input_shape_dim = input_shape.dims[i].value
           else:
-            if s.value:
-              # Pad to the given maximum value.
-              padding = [0, s.value - input_shape_tensor[i]]
-            else:
-              # If maximum value is not given, then pad to the maximum dimension
-              # among all the cores.
-              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
+            input_shape_dim = input_shape_tensor[i]
+
+          if s.value:
+            # Pad to the given maximum value.
+            padding = [0, s.value - input_shape_dim]
+          else:
+            # If maximum value is not given, then pad to the maximum dimension
+            # among all the cores.
+            padding = [0, maximum_shapes[idx][i] - input_shape_dim]
           paddings.append(padding)
 
         padded_input = array_ops.pad(input_tensor, paddings)
         padded_inputs[core_idx].append(padded_input)
+      else:
+        padded_inputs[core_idx].append(input_tensor)
 
   num_replicas = len(padded_inputs)
   for i in range(num_replicas):
@@ -698,7 +697,7 @@ def split_compile_and_replicate(computation,
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
       have the same number of inputs. Each input can be a nested structure
       containing values that are convertible to tensors. Note that passing an
-      N-dimension list of compatible values will result in a N-dimention list of
+      N-dimension list of compatible values will result in a N-dimension list of
       scalar tensors rather than a single Rank-N tensors. If you need different
       behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
@@ -718,10 +717,8 @@ def split_compile_and_replicate(computation,
       should be padded. Any unknown dimensions (e.g.
       tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
       object) will be padded to the maximum size of that dimension over all
-      replicas. Note that if the input dimension is already static, we won't do
-      padding on it and we require the maximum_shapes to have the same value or
-      None on that dimension. The structure of `maximum_shapes` needs to be the
-      same as `inputs[0]`.
+      replicas. The structure of `maximum_shapes` needs to be the same as
+      `inputs[0]`.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1624,7 +1621,9 @@ def prune_unconnected_ops_from_xla(prune_graph):
       removing the tpu_replicate attribute.
   """
   # Scan over the top level graph and all function graphs.
-  for graph in [prune_graph] + list(prune_graph._functions.values()):  # pylint: disable=protected-access
+  for graph in [prune_graph] + [
+      f for f in prune_graph._functions.values() if isinstance(f, ops.Graph)  # pylint: disable=protected-access
+  ]:
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue

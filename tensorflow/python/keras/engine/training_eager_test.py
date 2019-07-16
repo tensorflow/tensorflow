@@ -64,6 +64,8 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_multi_io(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not context.executing_eagerly():
       # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
       # symbolic tensors has different requirements.
@@ -88,6 +90,7 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=metrics,
         loss_weights=loss_weights,
         run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed(),
         sample_weight_mode=None)
 
     input_a = array_ops.zeros(shape=(10, 3))
@@ -143,6 +146,8 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_single_io(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     if not context.executing_eagerly():
       # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
       # symbolic tensors has different requirements.
@@ -157,7 +162,8 @@ class TrainingTest(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = array_ops.zeros(shape=(10, 3))
     targets = array_ops.zeros(shape=(10, 4))
@@ -248,9 +254,11 @@ class CorrectnessTest(keras_parameterized.TestCase):
                            kernel_initializer='ones'),
         keras.layers.Dense(2, activation='softmax', kernel_initializer='ones')]
     model = testing_utils.get_model_from_layers(layers, input_shape=(4,))
-    model.compile(loss='sparse_categorical_crossentropy',
-                  optimizer=rmsprop.RMSprop(learning_rate=0.001),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='sparse_categorical_crossentropy',
+        optimizer=rmsprop.RMSprop(learning_rate=0.001),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.ones((100, 4))
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))
@@ -260,6 +268,8 @@ class CorrectnessTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_loss_correctness_with_iterator(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
     layers = [
@@ -270,7 +280,8 @@ class CorrectnessTest(keras_parameterized.TestCase):
     model.compile(
         loss='sparse_categorical_crossentropy',
         optimizer=rmsprop.RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.ones((100, 4), dtype=np.float32)
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))

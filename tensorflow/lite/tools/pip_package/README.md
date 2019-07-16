@@ -18,8 +18,8 @@ pip install --upgrade <wheel>
 Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
 You can then use the Tensorflow Lite interpreter as.
 ```
-import tflite_runtime as tflr
-interpreter = tflr.lite.Interpreter(model_path="foo.tflite")
+from tflite_runtime import interpreter as tflr
+interpreter = tflr.Interpreter(model_path="foo.tflite")
 ```
 
 This currently works to build on Linux machines including Raspberry Pi. In

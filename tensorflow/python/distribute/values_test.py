@@ -644,6 +644,24 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     after_restore = self.evaluate(v)
     self.assertAllClose(before_save, after_restore)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph"]))
+  def testTraceback(self, distribution):
+    with distribution.scope():
+      variable_scope.get_variable(
+          name="testVar", initializer=1., use_resource=True)
+      with self.assertRaisesRegex(
+          ValueError, "Variable testVar already exists"):
+        variable_scope.get_variable(
+            name="testVar", initializer=1., use_resource=True)
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -908,6 +926,37 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         return distribution.experimental_local_results(
             distribution.experimental_run_v2(update_fn))
     updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
+        [x for x in itertools.product(updates, aggregations, [True, False])
+         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    for update, aggregation, cross_replica in options:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      fn, update_value = update
+      self.evaluate(assign(fn, v, update_value, cross_replica))
+      for component in v._values:
+        self.assertAllEqual(self.evaluate(component.read_value()),
+                            self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignDtypeConversion(self, distribution):
+    def assign(fn, v, update_value, cross_replica):
+      update_fn = lambda: getattr(v, fn)(update_value)
+      if cross_replica:
+        return update_fn()
+      else:
+        return distribution.experimental_local_results(
+            distribution.experimental_run_v2(update_fn))
+    updates = [("assign", 1), ("assign_add", 1), ("assign_sub", -1)]
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,

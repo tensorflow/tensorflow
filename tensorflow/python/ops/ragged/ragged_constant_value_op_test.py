@@ -24,14 +24,12 @@ import numpy as np
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                                 parameterized.TestCase):
-
   @parameterized.parameters(
       #=========================================================================
       # 0-dimensional tensors.
@@ -190,7 +188,7 @@ class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
     # Normalize the pylist, i.e., convert all np.arrays to list.
     # E.g., [np.array((1,2))] --> [[1,2]]
-    pylist = self._normalize_pylist(pylist)
+    pylist = _normalize_pylist(pylist)
     # If dtype was explicitly specified, check it.
     if dtype is not None:
       self.assertEqual(rt.dtype, dtype)
@@ -313,6 +311,15 @@ class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
         dtype=dtype,
         ragged_rank=ragged_rank,
         inner_shape=inner_shape)
+
+
+def _normalize_pylist(item):
+  """Convert all (possibly nested) np.arrays contained in item to list."""
+  # convert np.arrays in current level to list
+  if np.ndim(item) == 0:
+    return item
+  level = (x.tolist() if isinstance(x, np.ndarray) else x for x in item)
+  return [_normalize_pylist(el) if np.ndim(el) != 0 else el for el in level]
 
 
 if __name__ == '__main__':

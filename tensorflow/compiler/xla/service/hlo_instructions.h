@@ -206,13 +206,37 @@ class HloCholeskyInstruction : public HloInstruction {
   CholeskyOptions cholesky_options_;
 };
 
-class HloSendRecvInstruction : public HloInstruction {
+// Class that represents instructions that synchronize and transfer data between
+// partitioned devices. Send/Recv and collective instructions (AllReduce,
+// AllToAll, CollectivePermute) belong to this instruction type. A group of
+// instructions (of the same opcode) with the same channel_id communicate during
+// execution.
+class HloChannelInstruction : public HloInstruction {
  public:
   // Returns the channel id associated with the instruction. The id is
-  // shared between each Send/Recv pair and is globally unique to identify each
-  // channel.
-  int64 channel_id() const { return channel_id_; }
+  // shared between each Send/Recv pair or a group of collective instructions
+  // and is globally unique to identify each channel.
+  absl::optional<int64> channel_id() const { return channel_id_; }
+  void set_channel_id(const absl::optional<int64>& channel_id);
 
+ protected:
+  explicit HloChannelInstruction(HloOpcode opcode, const Shape& shape,
+                                 const absl::optional<int64>& channel_id);
+
+  HloInstructionProto ToProto() const override;
+
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  absl::optional<int64> channel_id_;
+};
+
+class HloSendRecvInstruction : public HloChannelInstruction {
+ public:
   // Returns whether this send/recv instruction sends data to/from the host.
   bool is_host_transfer() const { return is_host_transfer_; }
 
@@ -230,9 +254,6 @@ class HloSendRecvInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  int64 channel_id_;
-
   // Whether this send/recv instruction sends data to/from the host.
   bool is_host_transfer_;
 };
@@ -285,7 +306,7 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
       HloCloneContext* context) const override;
 };
 
-class HloCollectiveInstruction : public HloInstruction {
+class HloCollectiveInstruction : public HloChannelInstruction {
  public:
   const std::vector<ReplicaGroup>& replica_groups() const {
     return replica_groups_;
@@ -295,7 +316,8 @@ class HloCollectiveInstruction : public HloInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups);
+      const std::vector<ReplicaGroup>& replica_groups,
+      const absl::optional<int64>& channel_id);
 
   HloInstructionProto ToProto() const override;
 
@@ -315,21 +337,13 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& all_reduce_id);
-
-  absl::optional<int64> all_reduce_id() const { return all_reduce_id_; }
-  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
-
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
+      const absl::optional<int64>& channel_id);
 
   // Returns true if the AllReduce does no communication, so it's equivalent
   // to a mem copy.
   bool IsNoop() const;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -339,11 +353,6 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  // For Allreduce nodes from different modules, if they have the same
-  // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross modules.
-  absl::optional<int64> all_reduce_id_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
@@ -359,11 +368,12 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
       HloCloneContext* context) const override;
 };
 
-class HloCollectivePermuteInstruction : public HloInstruction {
+class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
   explicit HloCollectivePermuteInstruction(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
 
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const {
     return source_target_pairs_;
@@ -567,6 +577,27 @@ class HloBroadcastInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::vector<int64> dimensions_;
+};
+
+class HloReshapeInstruction : public HloInstruction {
+ public:
+  explicit HloReshapeInstruction(const Shape& shape, HloInstruction* operand,
+                                 int64 inferred_dimension);
+  int64 inferred_dimension() const { return inferred_dimension_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+  int64 inferred_dimension_;
 };
 
 class HloMapInstruction : public HloInstruction {

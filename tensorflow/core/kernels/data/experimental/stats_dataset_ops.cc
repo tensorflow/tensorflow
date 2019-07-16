@@ -258,12 +258,17 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
-    LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("BytesProducedStatsDataset").Device(DEVICE_CPU),
+                        BytesProducedStatsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalBytesProducedStatsDataset").Device(DEVICE_CPU),
     BytesProducedStatsDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("LatencyStatsDataset").Device(DEVICE_CPU),
+                        LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
+    LatencyStatsDatasetOp);
 
 }  // namespace
 }  // namespace data

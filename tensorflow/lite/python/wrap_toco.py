@@ -17,24 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python import pywrap_tensorflow
+
+# TODO(b/137402359): Remove lazy loading wrapper
 
 
-# TODO(b/131123224): Lazy load since some of the performance benchmark skylark
-# rules and monolithic build break dependencies.
-_toco_python = LazyLoader(
-    "tensorflow_wrap_toco", globals(),
-    "tensorflow.lite.toco.python."
-    "tensorflow_wrap_toco")
-del LazyLoader
-
-
-def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str):
+def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
+                         debug_info_str, enable_mlir_converter):
   """Wraps TocoConvert with lazy loader."""
-  return _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                  input_data_str)
+  return pywrap_tensorflow.TocoConvert(
+      model_flags_str,
+      toco_flags_str,
+      input_data_str,
+      False,  # extended_return
+      debug_info_str,
+      enable_mlir_converter)
 
 
 def wrapped_get_potentially_supported_ops():
   """Wraps TocoGetPotentiallySupportedOps with lazy loader."""
-  return _toco_python.TocoGetPotentiallySupportedOps()
+  return pywrap_tensorflow.TocoGetPotentiallySupportedOps()

@@ -144,6 +144,15 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
   Note that in case of ties the identity of the return value is not guaranteed.
 
+  For example:
+  ```python
+  A=tf.constant([2,20,30,3,6]) # Constant 1-D Tensor
+  tf.math.argmax(A) # output 2 as index 2 (A[2]) is maximum in tensor A
+  B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
+  tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
+  tf.math.argmax(B,1) # [2, 2, 1]
+  ```
+   
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -322,7 +331,7 @@ def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -522,6 +531,7 @@ def real(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
@@ -555,6 +565,7 @@ def imag(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -594,6 +605,7 @@ def angle(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Angle", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -1261,6 +1273,28 @@ ops.Tensor._override_operator("__lt__", gen_math_ops.less)
 ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
 ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
+
+
+def tensor_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    return gen_math_ops.equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is other
+
+
+def tensor_not_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    return gen_math_ops.not_equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is not other
+
+
+ops.Tensor._override_operator("__eq__", tensor_equals)
+ops.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
@@ -2777,6 +2811,22 @@ def _calc_mat_mul_flops(graph, node):
     k = int(a_shape[0])
   else:
     k = int(a_shape[1])
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (k * output_count * 2))
+
+
+@ops.RegisterStatistics("BatchMatMul", "flops")
+def _calc_batch_mat_mul_flops(graph, node):
+  """Calculates the compute resources needed for BatchMatMul."""
+  transpose_a = node.attr["transpose_a"].b
+  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  a_shape.assert_is_fully_defined()
+  if transpose_a:
+    k = int(a_shape[-2])
+  else:
+    k = int(a_shape[-1])
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())

@@ -75,10 +75,7 @@ static hm01b0_cfg_t s_HM01B0Cfg = {
   pfnGpioIsr : NULL,
 };
 
-static constexpr int kDebugRowLenElements = 16;
-// Each byte takes two characters plus a space, and the offset takes an
-// additional 8 characters plus a space.
-static constexpr int kDebugLineLenBytes = kDebugRowLenElements * 3 + 9;
+static constexpr int kFramesToInitialize = 4;
 
 bool g_is_camera_initialized = false;
 
@@ -178,6 +175,11 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {
       return init_status;
+    }
+    // Drop a few frames until auto exposure is calibrated.
+    for (int i = 0; i < kFramesToInitialize; ++i) {
+      hm01b0_blocking_read_oneframe_scaled(frame, frame_width, frame_height,
+                                           channels);
     }
     g_is_camera_initialized = true;
   }

@@ -7,6 +7,7 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
+load("//third_party/mlir:mlir_configure.bzl", "mlir_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
@@ -73,6 +74,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
+    mlir_configure(name = "local_config_mlir")
     remote_execution_configure(name = "local_config_remote_execution")
 
     initialize_third_party()
@@ -91,31 +93,31 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     mkl_repository(
         name = "mkl_linux",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "f4129843d5c2996419f96f10928edd02b2150998861a088dc7cfa1b6a058102a",
-        strip_prefix = "mklml_lnx_2019.0.3.20190220",
+        sha256 = "a936d6b277a33d2a027a024ea8e65df62bd2e162c7ca52c48486ed9d5dc27160",
+        strip_prefix = "mklml_lnx_2019.0.5.20190502",
         urls = [
-            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.18/mklml_lnx_2019.0.3.20190220.tgz",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.18/mklml_lnx_2019.0.3.20190220.tgz",
+            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_lnx_2019.0.5.20190502.tgz",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_lnx_2019.0.5.20190502.tgz",
         ],
     )
     mkl_repository(
         name = "mkl_windows",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "eae0c49a7ed738f0ed97b897e952eaa881feddfa665017a8d5d9d79fd38964b4",
-        strip_prefix = "mklml_win_2019.0.3.20190220",
+        sha256 = "535857b17643d7f7546b58fc621244e7cfcc4fff2aa2ebd3fc5b4e126bfc36cf",
+        strip_prefix = "mklml_win_2019.0.5.20190502",
         urls = [
-            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.18/mklml_win_2019.0.3.20190220.zip",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.18/mklml_win_2019.0.3.20190220.zip",
+            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_win_2019.0.5.20190502.zip",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_win_2019.0.5.20190502.zip",
         ],
     )
     mkl_repository(
         name = "mkl_darwin",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "53fdcd7e31c309bb6af869d82987d9c6414c1b957d63d10a9caa9ad077643d99",
-        strip_prefix = "mklml_mac_2019.0.3.20190220",
+        sha256 = "2fbb71a0365d42a39ea7906568d69b1db3bfc9914fee75eedb06c5f32bf5fa68",
+        strip_prefix = "mklml_mac_2019.0.5.20190502",
         urls = [
-            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.18/mklml_mac_2019.0.3.20190220.tgz",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.18/mklml_mac_2019.0.3.20190220.tgz",
+            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_mac_2019.0.5.20190502.tgz",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_mac_2019.0.5.20190502.tgz",
         ],
     )
 
@@ -131,11 +133,22 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "38a1c02104ee9f630c1ad68164119cd58ad0aaf59e04ccbe7bd5781add7bfbea",
-        strip_prefix = "mkl-dnn-0.18",
+        sha256 = "26f720ed912843ba293e8a1e0822fe5318e93c529d80c87af1cf555d68e642d0",
+        strip_prefix = "mkl-dnn-0.20.1",
         urls = [
-            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v0.18.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/v0.18.tar.gz",
+            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v0.20.1.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/v0.20.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "mkl_dnn_v1",
+        build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
+        sha256 = "fcc2d951f7170eade0cfdd0d8d1d58e3e7785bd326bca6555f3722f8cba71811",
+        strip_prefix = "mkl-dnn-1.0-pc2",
+        urls = [
+            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v1.0-pc2.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/v1.0-pc2.tar.gz",
         ],
     )
 
@@ -154,11 +167,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "e87a5b2e7febd15e56bb95639af77170d5d502014edc64871fc1606ef66e2960",
-        strip_prefix = "eigen-eigen-0eeb60526ce0",
+        sha256 = "f3d69ac773ecaf3602cb940040390d4e71a501bb145ca9e01ce5464cf6d4eb68",
+        strip_prefix = "eigen-eigen-049af2f56331",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/0eeb60526ce0.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/0eeb60526ce0.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/049af2f56331.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/049af2f56331.tar.gz",
         ],
     )
 
@@ -304,14 +317,25 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "functools32_archive",
+        build_file = clean_dep("//third_party:functools32.BUILD"),
+        sha256 = "f6253dfbe0538ad2e387bd8fdfd9293c925d63553f5813c4e587745416501e6d",
+        strip_prefix = "functools32-3.2.3-2",
+        urls = [
+            "http://mirror.tensorflow.org/pypi.python.org/packages/c5/60/6ac26ad05857c601308d8fb9e87fa36d0ebf889423f47c3502ef034365db/functools32-3.2.3-2.tar.gz",
+            "https://pypi.python.org/packages/c5/60/6ac26ad05857c601308d8fb9e87fa36d0ebf889423f47c3502ef034365db/functools32-3.2.3-2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "gast_archive",
         build_file = clean_dep("//third_party:gast.BUILD"),
-        sha256 = "7068908321ecd2774f145193c4b34a11305bd104b4551b09273dfd1d6a374930",
-        strip_prefix = "gast-0.2.0",
+        sha256 = "fe939df4583692f0512161ec1c880e0a10e71e6a232da045ab8edd3756fbadf0",
+        strip_prefix = "gast-0.2.2",
         system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
-            "https://pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
+            "http://mirror.tensorflow.org/pypi.python.org/packages/4e/35/11749bf99b2d4e3cceb4d55ca22590b0d7c2c62b9de38ac4a4a7f4687421/gast-0.2.2.tar.gz",
+            "https://files.pythonhosted.org/packages/4e/35/11749bf99b2d4e3cceb4d55ca22590b0d7c2c62b9de38ac4a4a7f4687421/gast-0.2.2.tar.gz",
         ],
     )
 
@@ -324,6 +348,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "http://mirror.tensorflow.org/pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
             "https://pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "opt_einsum_archive",
+        build_file = clean_dep("//third_party:opt_einsum.BUILD"),
+        sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
+        strip_prefix = "opt_einsum-2.3.2",
+        system_build_file = clean_dep("//third_party/systemlibs:opt_einsum.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+            "https://pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
         ],
     )
 
@@ -507,11 +543,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "842b7629689b863d5ef196a63e7a24fb9b61ad08f9b2c61851ae5cc5698a01bc",
-        strip_prefix = "llvm-6e11f192fc555ebfca595403b0f5cdc3aa47a4de",
+        sha256 = "9257e111ae3d5b9d80925ef1329666440460abf4d052e701fa587f5236be6fcc",
+        strip_prefix = "llvm-df22a5e50a3d36a7b68eea106970dfa5df6d2453",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/6e11f192fc555ebfca595403b0f5cdc3aa47a4de.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/6e11f192fc555ebfca595403b0f5cdc3aa47a4de.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/df22a5e50a3d36a7b68eea106970dfa5df6d2453.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/df22a5e50a3d36a7b68eea106970dfa5df6d2453.tar.gz",
         ],
     )
 

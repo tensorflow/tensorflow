@@ -65,6 +65,6 @@ def get_single_element(dataset):
 
   # pylint: disable=protected-access
   return structure.from_compatible_tensor_list(
-      dataset._element_structure,
+      dataset.element_spec,
       gen_dataset_ops.dataset_to_single_element(
           dataset._variant_tensor, **dataset._flat_structure))  # pylint: disable=protected-access

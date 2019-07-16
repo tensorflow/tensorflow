@@ -45,6 +45,18 @@ limitations under the License.
 
 namespace tensorflow {
 
+std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
+    const {
+  if (runner_) {
+    return runner_;
+  } else {
+    static auto* default_runner =
+        new std::function<void(std::function<void()>)>(
+            [](std::function<void()> f) { f(); });
+    return default_runner;
+  }
+}
+
 KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   if (handle_ != kInvalidHandle) {
     Status status = pflr_->ReleaseHandle(handle_);
@@ -274,7 +286,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     params.stats_collector = step_stats_collector.get();
     params.graph_collector = graph_collector;
   }
-  params.runner = runner_ != nullptr ? runner_ : &default_runner_;
+  params.runner = get_runner();
 
   params.step_container = step_container;
   params.collective_executor =
@@ -301,8 +313,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
@@ -314,8 +325,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
@@ -324,9 +334,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   }
   if (!context.status().ok()) return context.status();
 
-  outputs->clear();
-  for (int i = 0; i < context.num_outputs(); ++i) {
-    outputs->push_back(Tensor(*context.mutable_output(i)));
+  if (outputs != nullptr) {
+    outputs->clear();
+    for (int i = 0; i < context.num_outputs(); ++i) {
+      outputs->push_back(Tensor(*context.mutable_output(i)));
+    }
   }
   if (stats != nullptr) {
     UpdateStats(&context, step_stats_collector.get(), stats);
@@ -360,7 +372,7 @@ Status KernelAndDeviceFunc::Run(
     step_stats_collector.reset(new StepStatsCollector(step_stats));
   }
   opts.stats_collector = step_stats_collector.get();
-  opts.runner = (runner_ == nullptr) ? &default_runner_ : runner_;
+  opts.runner = get_runner();
 
   Notification done;
   Status status;

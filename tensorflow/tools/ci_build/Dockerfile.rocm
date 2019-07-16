@@ -87,6 +87,6 @@ RUN /install/install_golang.sh
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
 
-# Configure the build for our CUDA configuration.
+# Configure the build for our ROCm configuration.
 ENV TF_NEED_ROCM 1
 

@@ -182,7 +182,9 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kIota ||
           instr.opcode() == HloOpcode::kPad ||
           (instr.opcode() == HloOpcode::kReduce &&
-           !IsReductionFromOrToContiguousDimensions(instr)) ||
+           !IsReductionFromOrToContiguousDimensions(instr) &&
+           !instr.shape().IsTuple()) ||  // TODO(b/129089333): Don't fuse
+                                         // variadic reductions.
           instr.opcode() == HloOpcode::kReduceWindow ||
           instr.opcode() == HloOpcode::kReshape ||
           instr.opcode() == HloOpcode::kReverse ||
@@ -239,6 +241,11 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                           const HloInstruction& consumer) {
+  // Skip multiple output fusion. It's not yet supported.
+  if (producer.IsMultiOutputFusion()) {
+    return false;
+  }
+
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
@@ -326,6 +333,12 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
          (IsInputFusibleReduction(instr) ||
           instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
           instr.IsElementwise());
+}
+
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
+                                            const HloInstruction& consumer) {
+  return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
+                                  : HloInstruction::FusionKind::kLoop;
 }
 
 }  // namespace gpu

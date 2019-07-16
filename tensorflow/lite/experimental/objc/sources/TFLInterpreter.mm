@@ -248,7 +248,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     NSString *tensorType = [TFLTensor stringForTensorType:tensor.type];
     NSString *errorDescription =
         [NSString stringWithFormat:@"Failed to get data from %@ tensor at index (%lu).", tensorType,
-                                   (unsigned long)index];
+                                   (unsigned long)tensor.index];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeFailedToGetDataFromTensor
                                    description:errorDescription
                                          error:error];
@@ -269,7 +269,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   if (rank <= 0) {
     NSString *errorDescription =
         [NSString stringWithFormat:@"%@ tensor at index (%lu) has invalid rank (%d).", tensorType,
-                                   (unsigned long)index, rank];
+                                   (unsigned long)tensor.index, rank];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeInvalidTensor
                                    description:errorDescription
                                          error:error];
@@ -282,7 +282,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     if (dimension <= 0) {
       NSString *errorDescription =
           [NSString stringWithFormat:@"%@ tensor at index (%lu) has invalid %d-th dimension (%d).",
-                                     tensorType, (unsigned long)index, dimIndex, dimension];
+                                     tensorType, (unsigned long)tensor.index, dimIndex, dimension];
       [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeInvalidTensor
                                      description:errorDescription
                                            error:error];

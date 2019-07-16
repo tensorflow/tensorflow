@@ -78,7 +78,7 @@ class RecursiveCompilabilityChecker {
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
-    // their memory effects in jit/resource_variable_safety_analysis.
+    // their memory effects in jit/resource_operation_safety_analysis.
     bool allow_resource_ops_in_called_functions;
 
     // Whether Stack operations are allowed.  We avoid auto-clustering Stack
@@ -129,26 +129,21 @@ class RecursiveCompilabilityChecker {
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
-  // Returns a list of uncompilable nodes.
+  // Returns a list of uncompilable nodes. When `node` is inside a function
+  // body, users can set `node_stack_trace` to provide an additional
+  // context for `node`'s placement within the outer most graph.
   std::vector<UncompilableNodeInfo> FindUncompilableNodes(
-      const Node& node, FunctionLibraryRuntime* lib_runtime) const {
-    std::vector<StackFrameView> stack_trace;
-    stack_trace.emplace_back(StackFrameView{node.name(), ""});
-    std::vector<UncompilableNodeInfo> uncompilable_nodes;
-    IsCompilableNode(node, lib_runtime, &stack_trace, &uncompilable_nodes);
-    return uncompilable_nodes;
-  }
+      const Node& node, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
   // Returns a list of uncompilable nodes in `call_def` that cannot be
   // compiled by XLA. It is assumed that `call_def` is a call operation.
+  // When `node` is inside a function body, users can set
+  // `node_stack_trace` to provide an additional context for `node`'s
+  // placement within the outer most graph.
   std::vector<UncompilableNodeInfo> FindUncompilableNodes(
-      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime) const {
-    std::vector<StackFrameView> stack_trace;
-    stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
-    std::vector<UncompilableNodeInfo> uncompilable_nodes;
-    IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
-    return uncompilable_nodes;
-  }
+      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
   // Returns true if `node` can be compiled by XLA.
   bool IsCompilableNode(const Node& node,
@@ -186,8 +181,20 @@ class RecursiveCompilabilityChecker {
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
       std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
+  bool IsCompilableIf(
+      const Node& if_node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
   bool IsCompilableWhile(
       const Node& while_node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
+
+  // Returns compilability of node def retrieved from `node`'s attribute with
+  // name `attr_name`.
+  bool ExtractNodeDefAndCheckCompilability(
+      const Node& node, const std::string& attr_name,
+      const std::string& call_name, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
       std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
 

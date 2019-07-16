@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/pack.h"
 
+#include "tensorflow/lite/experimental/ruy/platform.h"
+
 namespace ruy {
 
-#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                             const void* src_ptr2, const void* src_ptr3,
@@ -1329,6 +1331,6 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
             "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
             "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31");
 }
-#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy

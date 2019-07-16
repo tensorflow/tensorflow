@@ -195,12 +195,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
                             {lhs_input_type, rhs_input_type}, output_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
-    PrimitiveType prim_type, llvm::Value* value) {
-  return EmitDeviceMathCall(TargetDeviceFunctionID::kErfcinv, {value},
-                            {prim_type}, prim_type);
-}
-
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(PrimitiveType prim_type,
                                                       llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kLog, {value}, {prim_type},
@@ -277,6 +271,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   llvm::Value* input = FPCast(value, type);
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
   return FPCast(fast_tanh, value->getType());
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
+                            {EmitExtractReal(value), EmitExtractImag(value)},
+                            {prim_type, prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(

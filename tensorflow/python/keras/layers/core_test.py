@@ -79,6 +79,16 @@ class DropoutLayersTest(keras_parameterized.TestCase):
         kwargs={'rate': 0.5, 'data_format': 'channels_first'},
         input_shape=(2, 3, 4, 4, 5))
 
+  def test_dropout_partial_noise_shape(self):
+    inputs = keras.Input(shape=(5, 10))
+    layer = keras.layers.Dropout(0.5, noise_shape=(None, 1, None))
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    out = model(np.ones((20, 5, 10)), training=True)
+    out_np = keras.backend.get_value(out)
+    # Test that dropout mask is shared across second dim.
+    self.assertAllClose(out_np[:, 0, :], out_np[:, 1, :])
+
 
 @keras_parameterized.run_all_keras_modes
 class LambdaLayerTest(keras_parameterized.TestCase):
@@ -278,7 +288,8 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     model.compile(
         keras.optimizer_v2.gradient_descent.SGD(0.1),
         'mae',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x, y = np.ones((10, 10), 'float32'), 2 * np.ones((10, 10), 'float32')
     model.fit(x, y, batch_size=2, epochs=2, validation_data=(x, y))
     self.assertLen(model.trainable_weights, 1)

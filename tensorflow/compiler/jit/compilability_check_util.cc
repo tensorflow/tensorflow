@@ -20,6 +20,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <limits>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -70,7 +72,56 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
           << reason;
 }
 
+Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
+                                 NodeDef* node_def) {
+  const NameAttrList* name_attr;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
+  node_def->set_op(name_attr->name());
+  *(node_def->mutable_attr()) = name_attr->attr();
+  return Status::OK();
+}
+
 }  // anonymous namespace
+
+std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+RecursiveCompilabilityChecker::FindUncompilableNodes(
+    const Node& node, FunctionLibraryRuntime* lib_runtime,
+    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
+        node_stack_trace) const {
+  std::vector<StackFrameView> stack_trace;
+  // If `node_stack_trace` is provided, that means `node` is inside
+  // a function body, and therefore, arg nodes and retval nodes are
+  // not considered uncompilable.
+  if (node_stack_trace != nullptr) {
+    for (const auto& frame : *node_stack_trace) {
+      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+    }
+  }
+  stack_trace.emplace_back(StackFrameView{node.name(), ""});
+  std::vector<UncompilableNodeInfo> uncompilable_nodes;
+  IsCompilableNode(node, lib_runtime, &stack_trace, &uncompilable_nodes);
+  return uncompilable_nodes;
+}
+
+std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+RecursiveCompilabilityChecker::FindUncompilableNodes(
+    const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
+        node_stack_trace) const {
+  // If `node_stack_trace` is provided, that means `call_def` is inside
+  // a function body, and therefore, arg nodes and retval nodes are
+  // not considered uncompilable.
+  std::vector<StackFrameView> stack_trace;
+  if (node_stack_trace != nullptr) {
+    for (const auto& frame : *node_stack_trace) {
+      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+    }
+  }
+  stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
+  std::vector<UncompilableNodeInfo> uncompilable_nodes;
+  IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
+  return uncompilable_nodes;
+}
 
 bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
@@ -98,6 +149,25 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   return FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr).ok();
 }
 
+// Tests whether 'if_node' is compilable. Every operator in the then_branch and
+// else_branch functions must be compilable for 'if_node' to be compilable.
+bool RecursiveCompilabilityChecker::IsCompilableIf(
+    const Node& if_node, FunctionLibraryRuntime* lib_runtime,
+    std::vector<StackFrameView>* stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
+  bool is_compilable = true;
+  is_compilable &= ExtractNodeDefAndCheckCompilability(
+      if_node, "then_branch", "if_then", lib_runtime, stack_trace,
+      uncompilable_nodes);
+  if (!uncompilable_nodes && !is_compilable) return is_compilable;
+
+  is_compilable &= ExtractNodeDefAndCheckCompilability(
+      if_node, "else_branch", "if_else", lib_runtime, stack_trace,
+      uncompilable_nodes);
+
+  return is_compilable;
+}
+
 // Tests whether 'while_node' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
@@ -105,45 +175,38 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
     const Node& while_node, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
     std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
-  const NameAttrList* name_attr;
+  bool is_compilable = true;
+  is_compilable &= ExtractNodeDefAndCheckCompilability(
+      while_node, "cond", "while_cond", lib_runtime, stack_trace,
+      uncompilable_nodes);
+  if (!uncompilable_nodes && !is_compilable) return is_compilable;
+
+  is_compilable &= ExtractNodeDefAndCheckCompilability(
+      while_node, "body", "while_body", lib_runtime, stack_trace,
+      uncompilable_nodes);
+
+  return is_compilable;
+}
+
+bool RecursiveCompilabilityChecker::ExtractNodeDefAndCheckCompilability(
+    const Node& node, const std::string& attr_name,
+    const std::string& call_name, FunctionLibraryRuntime* lib_runtime,
+    std::vector<StackFrameView>* stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   NodeDef call;
-  Status status;
-  status = GetNodeAttr(while_node.attrs(), "cond", &name_attr);
-  if (!status.ok()) {
-    const std::string uncompilable_reason =
-        "missing 'cond' attribute on While node";
+  call.set_name(call_name);
+  if (!MakeCallNodeFromAttribute(node, attr_name, &call).ok()) {
+    const auto uncompilable_reason = absl::StrCat(
+        "missing '", attr_name, "' attribute from node", node.name());
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               uncompilable_nodes);
-    VLOG(2) << "Rejecting While " << while_node.name() << ": "
-            << uncompilable_reason << ".";
+    VLOG(2) << "Rejecting node " << node.name() << ": " << uncompilable_reason
+            << ".";
     return false;
   }
-  const string cond_func = name_attr->name();
-  call.set_name("while_cond");
-  call.set_op(cond_func);
-  *call.mutable_attr() = name_attr->attr();
   if (!IsCompilableCall(call, lib_runtime, stack_trace, uncompilable_nodes)) {
-    VLOG(2) << "Rejecting While " << while_node.name()
-            << ": can't compile loop condition: " << cond_func;
-    return false;
-  }
-  status = GetNodeAttr(while_node.attrs(), "body", &name_attr);
-  if (!status.ok()) {
-    const std::string uncompilable_reason =
-        "missing 'body' attribute on While node";
-    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
-                              uncompilable_nodes);
-    VLOG(2) << "Rejecting While " << while_node.name() << ": "
-            << uncompilable_reason << ".";
-    return false;
-  }
-  const string body_func = name_attr->name();
-  call.set_name("while_body");
-  call.set_op(body_func);
-  *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, lib_runtime, stack_trace, uncompilable_nodes)) {
-    VLOG(2) << "Rejecting While " << while_node.name()
-            << ": can't compile loop body: " << body_func;
+    VLOG(2) << "Rejecting node " << node.name()
+            << ": can't compile : " << call.op();
     return false;
   }
   return true;
@@ -184,7 +247,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
     stack_trace->emplace_back(StackFrameView{node->name(), call_def.op()});
     is_compilable &=
         IsCompilableNode(*node, lib_runtime, stack_trace, uncompilable_nodes);
-    if (is_compilable) stack_trace->pop_back();
+    stack_trace->pop_back();
     if (!uncompilable_nodes && !is_compilable) return is_compilable;
   }
 
@@ -199,8 +262,10 @@ bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
 
 bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
+  // b/135640736: MatrixInverse performance issues.
   return node.type_string() == "SelfAdjointEigV2" ||
-         node.type_string() == "Svd" || node.type_string() == "Qr";
+         node.type_string() == "Svd" || node.type_string() == "Qr" ||
+         node.type_string() == "MatrixInverse";
 }
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
@@ -256,6 +321,12 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (node.type_string() == "While" &&
       !IsCompilableWhile(node, lib_runtime, stack_trace, uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported while");
+    return false;
+  }
+
+  if (node.IsIfNode() &&
+      !IsCompilableIf(node, lib_runtime, stack_trace, uncompilable_nodes)) {
+    LogNotCompilable(node, "unsupported if");
     return false;
   }
 

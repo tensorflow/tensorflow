@@ -40,7 +40,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
@@ -155,8 +154,7 @@ def get_model_from_layers_with_input(layers,
 
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
-class CompositeTensorInternalTest(keras_parameterized.TestCase,
-                                  ragged_test_util.RaggedTensorTestCase):
+class CompositeTensorInternalTest(keras_parameterized.TestCase):
 
   def test_internal_ragged_tensors(self):
     # Create a model that accepts an input, converts it to Ragged, and
@@ -183,7 +181,9 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output)
 
   def test_training_internal_ragged_tensors(self):
-
+    if testing_utils.should_run_distributed():
+      # Training loop stall without clear reason.
+      self.skipTest("b/137397816")
     # Create a model that implements y=Mx. This is easy to learn and will
     # demonstrate appropriate gradient passing. (We have to use RaggedTensors
     # for this test, as ToSparse() doesn't support gradient propagation through
@@ -197,7 +197,8 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase,
     model.compile(
         loss="mse",
         optimizer="adam",
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     history = model.fit(input_data, expected_data, epochs=10, verbose=0)
 
     # If the model trained, the loss stored at history[0] should be different
@@ -207,8 +208,7 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase,
 
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
-class CompositeTensorOutputTest(keras_parameterized.TestCase,
-                                ragged_test_util.RaggedTensorTestCase):
+class CompositeTensorOutputTest(keras_parameterized.TestCase):
 
   def test_ragged_tensor_outputs(self):
     # Create a model that accepts an input, converts it to Ragged, and
@@ -221,7 +221,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase,
     output = model.predict(input_data)
 
     expected_values = [[1], [2, 3]]
-    self.assertRaggedEqual(expected_values, output)
+    self.assertAllEqual(expected_values, output)
 
   def test_ragged_tensor_rebatched_outputs(self):
     # Create a model that accepts an input, converts it to Ragged, and
@@ -234,7 +234,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase,
     output = model.predict(input_data, batch_size=2)
 
     expected_values = [[1], [2, 3], [4], [5, 6]]
-    self.assertRaggedEqual(expected_values, output)
+    self.assertAllEqual(expected_values, output)
 
   def test_sparse_tensor_outputs(self):
     # Create a model that accepts an input, converts it to Ragged, and
@@ -315,8 +315,7 @@ def prepare_inputs(data, use_dict, use_dataset, action, input_name):
         use_dict=[True, False],
         use_dataset=[True, False],
         action=["predict", "evaluate", "fit"]))
-class SparseTensorInputTest(keras_parameterized.TestCase,
-                            ragged_test_util.RaggedTensorTestCase):
+class SparseTensorInputTest(keras_parameterized.TestCase):
 
   def test_sparse_tensors(self, use_dict, use_dataset, action):
     data = [(sparse_tensor.SparseTensor([[0, 0, 0], [1, 0, 0], [1, 0, 1]],
@@ -357,7 +356,7 @@ class SparseTensorInputTest(keras_parameterized.TestCase,
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 class ScipySparseTensorInputTest(keras_parameterized.TestCase,
-                                 ragged_test_util.RaggedTensorTestCase):
+                                 test_util.TensorFlowTestCase):
 
   def test_sparse_scipy_predict_inputs_via_input_layer_args(self):
     # Create a model that accepts a sparse input and converts the sparse tensor
@@ -473,7 +472,7 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
         use_dataset=[True, False],
         action=["predict", "evaluate", "fit"]))
 class RaggedTensorInputTest(keras_parameterized.TestCase,
-                            ragged_test_util.RaggedTensorTestCase):
+                            test_util.TensorFlowTestCase):
 
   def test_ragged_input(self, use_dict, use_dataset, action):
     data = [(ragged_factory_ops.constant([[[1]], [[2, 3]]]),
@@ -510,7 +509,7 @@ class RaggedTensorInputTest(keras_parameterized.TestCase,
     *test_util.generate_combinations_with_testcase_name(
         use_dict=[True, False], use_dataset=[True, False]))
 class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
-                                      ragged_test_util.RaggedTensorTestCase):
+                                      test_util.TensorFlowTestCase):
 
   def test_ragged_tensor_input_with_one_none_dimension(self, use_dict,
                                                        use_dataset):
@@ -596,8 +595,7 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
 # subclassed models, so we run a separate parameterized test for them.
 @keras_parameterized.run_with_all_model_types(exclude_models=["subclass"])
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
-class SparseTensorInputValidationTest(keras_parameterized.TestCase,
-                                      ragged_test_util.RaggedTensorTestCase):
+class SparseTensorInputValidationTest(keras_parameterized.TestCase):
 
   def test_sparse_scipy_input_checks_shape(self):
     model_input = input_layer.Input(shape=(3,), sparse=True, dtype=dtypes.int32)
@@ -647,8 +645,7 @@ class SparseTensorInputValidationTest(keras_parameterized.TestCase,
 @keras_parameterized.run_with_all_model_types(
     exclude_models=["functional"])
 @keras_parameterized.run_all_keras_modes
-class UndefinedCompositeTensorInputsTest(keras_parameterized.TestCase,
-                                         ragged_test_util.RaggedTensorTestCase):
+class UndefinedCompositeTensorInputsTest(keras_parameterized.TestCase):
 
   def test_subclass_implicit_sparse_inputs_fails(self):
     # Create a model that accepts a sparse input and converts the sparse tensor

@@ -27,7 +27,7 @@ namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 DeviceSimple::DeviceSimple() : DeviceBase(Env::Default()) {
-  eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
+  eigen_worker_threads_.num_threads = port::MaxParallelism();
   eigen_worker_threads_.workers = new thread::ThreadPool(
       Env::Default(), "evaluation_utils", eigen_worker_threads_.num_threads);
   eigen_device_.reset(new Eigen::ThreadPoolDevice(

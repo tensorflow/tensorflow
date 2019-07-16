@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -49,7 +50,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
           scan_func,
           self._transformation_name(),
           input_structure=(self._state_structure,
-                           input_dataset._element_structure),  # pylint: disable=protected-access
+                           input_dataset.element_spec),
           add_to_graph=False)
       if not (
           isinstance(wrapped_func.output_types, collections.Sequence) and
@@ -91,7 +92,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
       old_state_shapes = nest.map_structure(
           lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
           self._state_structure)
-      self._structure = structure.convert_legacy_structure(
+      self._element_spec = structure.convert_legacy_structure(
           output_types, output_shapes, output_classes)
 
       flat_state_shapes = nest.flatten(old_state_shapes)
@@ -122,21 +123,30 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
     # pylint: disable=protected-access
-    variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
-        self._input_dataset._variant_tensor,
-        structure.to_tensor_list(self._state_structure, self._initial_state),
-        self._scan_func.function.captured_inputs,
-        f=self._scan_func.function,
-        preserve_cardinality=True,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = gen_experimental_dataset_ops.scan_dataset(
+          self._input_dataset._variant_tensor,
+          structure.to_tensor_list(self._state_structure, self._initial_state),
+          self._scan_func.function.captured_inputs,
+          f=self._scan_func.function,
+          preserve_cardinality=True,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
+          self._input_dataset._variant_tensor,
+          structure.to_tensor_list(self._state_structure, self._initial_state),
+          self._scan_func.function.captured_inputs,
+          f=self._scan_func.function,
+          preserve_cardinality=True,
+          **self._flat_structure)
     super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._scan_func]
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _transformation_name(self):
     return "tf.data.experimental.scan()"

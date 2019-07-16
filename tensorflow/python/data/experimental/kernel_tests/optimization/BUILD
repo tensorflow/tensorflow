@@ -28,6 +28,26 @@ py_test(
 )
 
 py_test(
+    name = "inject_prefetch_test",
+    size = "small",
+    srcs = ["inject_prefetch_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "filter_fusion_test",
     size = "medium",
     srcs = ["filter_fusion_test.py"],
@@ -233,6 +253,7 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "nofwdcompat",
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

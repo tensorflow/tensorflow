@@ -248,9 +248,9 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   OptimizerOptions* optimizer_opts =
       options.config.mutable_graph_options()->mutable_optimizer_options();
   if (cfg.apply_optimizations) {
-    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L1);
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions::L1);
   } else {
-    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions::L0);
   }
   optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 

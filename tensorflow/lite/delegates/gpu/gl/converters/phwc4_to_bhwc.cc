@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/converters/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -85,10 +85,10 @@ Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape, const GlBuffer& source,
 
   // TODO(akulik): simply pass workload as soon as UniformParameter
   // supports uint3
-  RETURN_IF_ERROR(program_.SetParameter(UniformParameter{
-      "sizes_",
-      int4(static_cast<int32_t>(workload.x), static_cast<int32_t>(workload.y),
-           static_cast<int32_t>(workload.z), 0)}));
+  RETURN_IF_ERROR(program_.SetParameter(
+      {"sizes_",
+       int4(static_cast<int32_t>(workload.x), static_cast<int32_t>(workload.y),
+            static_cast<int32_t>(workload.z), 0)}));
   RETURN_IF_ERROR(source.BindToIndex(0));
   RETURN_IF_ERROR(destination->BindToIndex(1));
   if (command_queue) {

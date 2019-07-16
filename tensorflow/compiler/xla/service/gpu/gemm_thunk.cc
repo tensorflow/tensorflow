@@ -66,10 +66,10 @@ struct MatrixDescriptor {
   int64 num_cols;
 };
 
-template <typename Element>
+template <typename Element, typename AlphaType>
 static bool DoGemmWithAlgorithm(
     int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, double alpha, double beta,
+    MatrixDescriptor output_matrix, AlphaType alpha, double beta,
     se::Stream *stream, absl::optional<se::blas::AlgorithmType> algorithm,
     se::blas::ProfileResult *output_profile_result) {
   DCHECK(!output_matrix.transpose);
@@ -259,30 +259,43 @@ Status RunGemm(const HloInstruction *gemm, se::DeviceMemoryBase lhs_buffer,
     return backend_config.selected_algorithm();
   }();
 
-  double alpha = backend_config.alpha();
-  CHECK_NE(alpha, 0);
+  complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
   double beta = backend_config.beta();
 
-  auto fn = [&]() {
+  bool launch_ok = [&]() {
     switch (output_shape.element_type()) {
       case F16:
-        return &DoGemmWithAlgorithm<Eigen::half>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<Eigen::half, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case F32:
-        return &DoGemmWithAlgorithm<float>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<float, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case F64:
-        return &DoGemmWithAlgorithm<double>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<double, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case C64:
-        return &DoGemmWithAlgorithm<std::complex<float>>;
+        return DoGemmWithAlgorithm<complex64, complex64>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix,
+            static_cast<complex64>(alpha), beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case C128:
-        return &DoGemmWithAlgorithm<std::complex<double>>;
+        return DoGemmWithAlgorithm<complex128, complex128>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
+            stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       default:
         LOG(FATAL) << "Unsupported type.";
     }
   }();
-
-  bool launch_ok = fn(batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha,
-                      beta, stream, best_algorithm,
-                      /*output_profile_result=*/profile_result);
 
   if (!launch_ok) {
     return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);

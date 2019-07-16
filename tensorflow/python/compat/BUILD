@@ -35,6 +35,7 @@ tf_py_test(
         ":compat",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["nofwdcompat"],
 )
 
 tf_py_test(

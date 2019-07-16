@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 class EagerOperation {
@@ -61,8 +62,14 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   tensorflow::Device* Device() const { return device_; }
-  tensorflow::Status SetDevice(const char* device);
-  void SetDevice(tensorflow::Device* device) { device_ = device; }
+  void SetDevice(tensorflow::Device* device) {
+    device_ = device;
+    device_name_ = device->parsed_name();
+  }
+  const DeviceNameUtils::ParsedName& GetDeviceName() const {
+    return device_name_;
+  }
+  tensorflow::Status SetDeviceName(const char* device);
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
 
@@ -75,6 +82,7 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* attr_types_;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
+  DeviceNameUtils::ParsedName device_name_;
   bool use_xla_ = false;
   const bool is_function_;
 };

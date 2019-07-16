@@ -26,7 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.training import server_lib
 
 
 class SingleWorkerTest(test.TestCase):
@@ -143,6 +145,38 @@ class MultiWorkersTest(test.TestCase):
       with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
         self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
+  def testMultiDeviceWhileLoopOnRemoteDevice(self):
+    with ops.device('/job:worker/replica:0/task:1'):
+      variable_b = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_function(i):
+
+      def body(i, _):
+        with ops.device('/job:worker/replica:0/task:0'):
+          a = i + variable_b
+        return a + 1.0, 1
+
+      return control_flow_ops.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
   def testSimpleParameterServer(self):
 
     with ops.device('/job:worker/task:2/device:CPU:0'):
@@ -160,6 +194,49 @@ class MultiWorkersTest(test.TestCase):
 
     with ops.device('/job:worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
+
+
+_GRPC_PREFIX = 'grpc://'
+
+
+class MultiJobsTest(test.TestCase):
+
+  def setUp(self):
+    super(MultiJobsTest, self).setUp()
+
+    workers, ps = test_util.create_local_cluster(2, 1)
+
+    cluster = {
+        'my_worker': [
+            _strip_prefix(workers[0].target, _GRPC_PREFIX),
+            _strip_prefix(workers[1].target, _GRPC_PREFIX),
+        ],
+        'my_ps': [_strip_prefix(ps[0].target, _GRPC_PREFIX)],
+    }
+
+    remote.connect_to_cluster(server_lib.ClusterSpec(cluster))
+
+  def testSimpleParameterServer(self):
+
+    with ops.device('/job:my_ps/task:0/device:CPU:0'):
+      v1 = variables.Variable(initial_value=0)
+      v2 = variables.Variable(initial_value=10)
+
+    @def_function.function
+    def worker_fn():
+      v1.assign_add(1)
+      v2.assign_sub(2)
+      return v1.read_value() + v2.read_value()
+
+    with ops.device('/job:my_worker/task:0/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 9)
+
+    with ops.device('/job:my_worker/task:1/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 8)
+
+
+def _strip_prefix(s, prefix):
+  return s[len(prefix):] if s.startswith(prefix) else s
 
 
 if __name__ == '__main__':

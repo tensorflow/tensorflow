@@ -367,6 +367,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",
@@ -406,6 +407,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",
@@ -506,6 +508,25 @@ cc_library(
 )
 
 cc_library(
+    name = "sse_tensor_utils",
+    srcs = [
+        "compatibility.h",
+        "optimized/sse_tensor_utils.cc",
+    ],
+    hdrs = [
+        "optimized/sse_tensor_utils.h",
+        "optimized/sse_tensor_utils_impl.h",
+    ],
+    deps = [
+        ":cpu_check",
+        ":neon_tensor_utils",
+        ":portable_tensor_utils",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:op_macros",
+    ],
+)
+
+cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
@@ -572,7 +593,7 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":haswell": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":ios_armv7": [
             ":neon_tensor_utils",
@@ -581,25 +602,25 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_x86_64": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":x86_64": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":x86": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":k8": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":darwin": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":darwin_x86_64": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         ":freebsd": [
-            ":neon_tensor_utils",
+            ":sse_tensor_utils",
         ],
         "//conditions:default": [
             ":portable_tensor_utils",
@@ -807,6 +828,8 @@ cc_library(
     name = "cpu_check",
     hdrs = [
         "optimized/cpu_check.h",
+        "optimized/neon_check.h",
+        "optimized/sse_check.h",
     ],
     deps = [
         "//tensorflow/lite/kernels:cpu_backend_context",

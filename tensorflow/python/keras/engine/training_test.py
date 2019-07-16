@@ -68,7 +68,8 @@ class CompileTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='adam',
         loss=loss,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(model.loss, loss)
 
     loss = losses.get(loss)
@@ -117,7 +118,8 @@ class CompileTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='adam',
         loss=loss,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(model.loss_functions[0].fn, losses.mean_squared_error)
     self.assertEqual(model.loss_functions[1].fn, losses.mean_absolute_error)
     self.assertAllEqual(model._loss_weights_list, [1., 1.])
@@ -127,7 +129,8 @@ class CompileTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='adam',
         loss=loss,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(model.loss_functions[0].fn, losses.mean_absolute_error)
     self.assertEqual(model.loss_functions[1].fn, losses.mean_squared_error)
     self.assertAllEqual(model._loss_weights_list, [1., 1.])
@@ -140,7 +143,8 @@ class CompileTest(keras_parameterized.TestCase):
         optimizer='adam',
         loss='mse',
         loss_weights=loss_weights,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertAllEqual(model._loss_weights_list, [1., 2.])
 
   def test_compile_with_multi_output_and_loss_weights_dict(self):
@@ -177,7 +181,8 @@ class CompileTest(keras_parameterized.TestCase):
       model.compile(
           optimizer='adam',
           loss=['mse', 'mae'],
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_incorrect_loss_key(self):
@@ -190,7 +195,8 @@ class CompileTest(keras_parameterized.TestCase):
       model.compile(
           optimizer='adam',
           loss={'unknown_output': 'mse'},
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_incorrect_loss_weights_size(self):
@@ -202,7 +208,8 @@ class CompileTest(keras_parameterized.TestCase):
           optimizer='adam',
           loss='mse',
           loss_weights=[1., 2.],
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_incorrect_loss_weights_key(self):
@@ -216,7 +223,8 @@ class CompileTest(keras_parameterized.TestCase):
           optimizer='adam',
           loss='mse',
           loss_weights={'unknown_output': 1.},
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_incorrect_sample_weight_mode(self):
@@ -230,7 +238,8 @@ class CompileTest(keras_parameterized.TestCase):
           optimizer='adam',
           loss='mse',
           sample_weight_mode={'unknown': 'temporal'},
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
 
 class TrainingTest(keras_parameterized.TestCase):
@@ -250,11 +259,13 @@ class TrainingTest(keras_parameterized.TestCase):
     model = keras.Sequential([ReturnTraining()])
     model.compile('sgd', 'mse')
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
-    self.assertAllClose(hist.history['loss'][0], (10000,))
+    self.assertAllClose(hist.history['loss'][0], 10000)
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -273,7 +284,8 @@ class TrainingTest(keras_parameterized.TestCase):
         loss,
         metrics=[metrics_module.CategoricalAccuracy(), 'mae'],
         loss_weights=loss_weights,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     input_a_np = np.random.random((10, 3))
     input_b_np = np.random.random((10, 3))
@@ -393,7 +405,8 @@ class TrainingTest(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=[metrics_module.CategoricalAccuracy(), 'mae'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         epochs=1,
@@ -408,8 +421,13 @@ class TrainingTest(keras_parameterized.TestCase):
           'dense': 'mse',
           'dropout': metrics_module.CategoricalAccuracy()
       }
-      model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights,
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          loss_weights=loss_weights,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
     model.fit(
         [input_a_np, input_b_np], [output_d_np, output_e_np],
         epochs=1,
@@ -445,8 +463,11 @@ class TrainingTest(keras_parameterized.TestCase):
     x = keras.layers.Input(shape=(3,), name='input_a')
     y = keras.layers.Dense(4)(x)
     model = keras.models.Model(x, y)
-    model.compile(optimizer, loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer,
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     # This will work
     model.fit([input_a_np], output_d_np, epochs=1)
     # TODO(gsundeep) Test only works in eager, file ticket
@@ -485,7 +506,8 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         loss_weights=loss_weights,
         sample_weight_mode=None,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     input_a_np = np.random.random((10, 3))
     input_b_np = np.random.random((10, 3))
@@ -567,8 +589,11 @@ class TrainingTest(keras_parameterized.TestCase):
       y = np.ones((10, 1), 'float32')
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
-      model.compile(optimizer, 'binary_crossentropy',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          'binary_crossentropy',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, batch_size=2, epochs=5)
       loss[reg] = model.evaluate(x, y)
     self.assertLess(loss[None], loss['l2'])
@@ -585,8 +610,11 @@ class TrainingTest(keras_parameterized.TestCase):
     x = np.ones((10, 10), 'float32')
     y = np.ones((10, 1), 'float32')
     optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, 'binary_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer,
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.test_on_batch(x, y)
     self.assertAlmostEqual(0.01, loss, places=4)
 
@@ -600,8 +628,11 @@ class TrainingTest(keras_parameterized.TestCase):
     model = keras.Model(inputs, outputs)
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, 'binary_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer,
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((10, 10), 'float32')
     y = np.ones((10, 1), 'float32')
@@ -644,6 +675,8 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_training_on_sparse_data_with_dense_placeholders(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     # TODO(kaftan) Test seems to not work, file ticket
     if testing_utils.should_run_eagerly() and context.executing_eagerly():
       self.skipTest('Skipping running model eagerly.')
@@ -668,7 +701,8 @@ class TrainingTest(keras_parameterized.TestCase):
         optimizer,
         'mse',
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(test_inputs, test_outputs,
               epochs=1, batch_size=2, validation_split=0.5)
     model.evaluate(test_inputs, test_outputs, batch_size=2)
@@ -689,7 +723,8 @@ class TrainingTest(keras_parameterized.TestCase):
         loss='binary_crossentropy',
         optimizer=keras.optimizers.Adam(lr=0.0001),
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_that_trainable_disables_updates(self):
@@ -704,7 +739,11 @@ class TrainingTest(keras_parameterized.TestCase):
     model.trainable = False
     assert not model.updates
 
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     assert not model.updates
 
     x1 = model.predict(val_a)
@@ -713,7 +752,11 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllClose(x1, x2, atol=1e-7)
 
     model.trainable = True
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     assert model.updates
 
     model.train_on_batch(val_a, val_out)
@@ -721,7 +764,11 @@ class TrainingTest(keras_parameterized.TestCase):
     assert np.abs(np.sum(x1 - x2)) > 1e-5
 
     layer.trainable = False
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     assert not model.updates
 
     x1 = model.predict(val_a)
@@ -792,13 +839,17 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_mismatched_output_shape_and_target_shape(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     model = keras.Sequential([
         keras.layers.Dense(2, input_shape=(3, 4)),
         keras.layers.Dense(5),
     ])
-    model.compile(RMSPropOptimizer(learning_rate=0.001),
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        RMSPropOptimizer(learning_rate=0.001),
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     # Test with Numpy data
     x_train = np.random.random((10, 3, 4))
     y_train = np.random.randint(0, 5, size=(10, 3))
@@ -840,8 +891,10 @@ class TrainingTest(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(10, activation='relu'))
     model.add(keras.layers.Dense(1, activation='sigmoid'))
     model.compile(
-        RMSPropOptimizer(learning_rate=0.001), loss='binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly())
+        RMSPropOptimizer(learning_rate=0.001),
+        loss='binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     with test.mock.patch.object(sys, 'stdout', mock_stdout):
       model.fit(
           np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
@@ -1026,7 +1079,11 @@ class TrainingTest(keras_parameterized.TestCase):
   def test_validation_freq(self, validation_freq, expected_runs):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_small_mlp(2, 1, 10)
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     class ValCounter(keras.callbacks.Callback):
 
@@ -1051,7 +1108,11 @@ class TrainingTest(keras_parameterized.TestCase):
   def test_validation_steps_without_data(self):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_small_mlp(2, 1, 10)
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     with self.assertRaisesRegexp(
         ValueError, '`validation_steps` should not be specified if '
@@ -1081,7 +1142,8 @@ class TrainingTest(keras_parameterized.TestCase):
     model.compile(
         keras.optimizer_v2.gradient_descent.SGD(0.025),
         loss=keras.losses.MeanAbsoluteError(),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.array([[0.], [1.], [2.]])
     y = np.array([[0.5], [2.], [3.5]])
@@ -1103,7 +1165,11 @@ class TrainingTest(keras_parameterized.TestCase):
     outputs = layer(inputs)
     model = keras.Model(inputs, outputs)
     self.assertEqual(len(model.losses), 1)
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(loss, 2 * 3)
 
@@ -1180,8 +1246,11 @@ class TrainingTest(keras_parameterized.TestCase):
       model = testing_utils.get_model_from_layers([AssertTypeLayer(dtype)],
                                                   input_shape=(10,),
                                                   input_dtype=dtype)
-      model.compile('sgd', 'mse',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          'sgd',
+          'mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       x = np.ones((10, 10), dtype=dtype)
       y = np.ones((10, 10), dtype=dtype)
@@ -1191,6 +1260,8 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_subclassed_model_with_training_arg(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
 
     class LayerWithTrainingArg(keras.layers.Layer):
 
@@ -1214,7 +1285,8 @@ class TrainingTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, x, epochs=1)
 
     if testing_utils.should_run_eagerly():
@@ -1246,6 +1318,27 @@ class TrainingTest(keras_parameterized.TestCase):
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_batch_dimension(self):
+
+    def custom_reshape(inputs):
+      return keras.backend.reshape(inputs, (-1, 8, 8, 3))
+
+    layer_1 = keras.layers.Lambda(custom_reshape)
+    layer_2 = keras.layers.Conv2D(32, (3, 3))
+
+    model = testing_utils.get_model_from_layers([layer_1, layer_2],
+                                                input_shape=(8, 8, 6))
+    model.compile('sgd', loss='mse')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'Mismatch between expected batch size and model output batch size. '
+        r'Output shape = \(20, 6, 6, 32\), expected output shape = '
+        r'shape \(10, 6, 6, 32\)'):
+      model.predict(np.ones((10, 8, 8, 6)), batch_size=10)
+
   @keras_parameterized.run_all_keras_modes
   def test_invalid_loss(self):
     num_classes = 5
@@ -1273,8 +1366,11 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         model.fit(x_train, y_train)
 
       with self.assertRaises(ValueError):
-        model.compile(optimizer, loss=None,
-                      run_eagerly=testing_utils.should_run_eagerly())
+        model.compile(
+            optimizer,
+            loss=None,
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_warning_for_loss_missing_output(self):
@@ -1295,7 +1391,8 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
                 'dense_2': 'categorical_accuracy',
                 'dense_1': metrics_module.CategoricalAccuracy(),
             },
-            run_eagerly=testing_utils.should_run_eagerly())
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
         msg = ('Output dense_1 missing from loss dictionary. We assume this '
                'was done on purpose. The fit and evaluate APIs will not be '
                'expecting any data to be passed to dense_1.')
@@ -1303,12 +1400,17 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_invalid_steps_per_epoch_usage(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     x = keras.layers.Input(shape=(1,))
     y = keras.layers.Dense(1)(x)
 
     model = keras.Model(x, y)
     model.compile(
-        'sgd', loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+        'sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     err_msg = 'When passing input data as arrays, do not specify'
 
     if testing_utils.should_run_eagerly():
@@ -1355,7 +1457,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
         metrics=['acc', metrics_module.CategoricalAccuracy()],
         weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         optimizer=RMSPropOptimizer(learning_rate=learning_rate),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     np.random.seed(1337)
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -1423,7 +1526,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
         metrics=['acc', metrics_module.CategoricalAccuracy()],
         weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         loss='categorical_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     np.random.seed(43)
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -1534,7 +1638,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
           metrics=['acc', metrics_module.CategoricalAccuracy()],
           weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
           sample_weight_mode='temporal',
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       model.fit(
           temporal_x_train,
@@ -1569,6 +1674,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   def test_fit_with_incorrect_weights(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -1581,7 +1688,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='adam',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.random.random((10, 3))
     y = np.random.random((10, 2))
 
@@ -1601,6 +1709,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_class_weight_invalid_use_case(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     num_classes = 5
     train_samples = 1000
     test_samples = 1000
@@ -1616,8 +1726,11 @@ class LossWeightingTest(keras_parameterized.TestCase):
               input_shape=(timesteps, input_dim)))
       model.add(keras.layers.Activation('softmax'))
       optimizer = RMSPropOptimizer(learning_rate=learning_rate)
-      model.compile(optimizer, loss='binary_crossentropy',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='binary_crossentropy',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=train_samples,
@@ -1635,16 +1748,22 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
       with self.assertRaises(ValueError):
         model.compile(
-            optimizer, loss='binary_crossentropy', sample_weight_mode=[],
-            run_eagerly=testing_utils.should_run_eagerly())
+            optimizer,
+            loss='binary_crossentropy',
+            sample_weight_mode=[],
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
       # Build multi-output model
       x = keras.Input((3,))
       y1 = keras.layers.Dense(4, name='1')(x)
       y2 = keras.layers.Dense(4, name='2')(x)
       model = keras.models.Model(x, [y1, y2])
-      model.compile(optimizer, loss='mse',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       x_np = np.random.random((10, 3))
       y_np = np.random.random((10, 4))
       w_np = np.random.random((10,))
@@ -1674,6 +1793,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_default_sample_weight(self):
     """Verifies that fit works without having to set sample_weight."""
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
 
     num_classes = 5
     input_dim = 5
@@ -1692,19 +1813,30 @@ class LossWeightingTest(keras_parameterized.TestCase):
       optimizer = RMSPropOptimizer(learning_rate=learning_rate)
 
       # sample_weight_mode is a list and mode value is None
-      model.compile(optimizer, loss='mse', sample_weight_mode=[None],
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='mse',
+          sample_weight_mode=[None],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
       # sample_weight_mode is a list and mode value is `temporal`
-      model.compile(optimizer, loss='mse', sample_weight_mode=['temporal'],
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='mse',
+          sample_weight_mode=['temporal'],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
       # sample_weight_mode is a dict and mode value is None
       model.compile(
-          optimizer, loss='mse', sample_weight_mode={'time_distributed': None},
-          run_eagerly=testing_utils.should_run_eagerly())
+          optimizer,
+          loss='mse',
+          sample_weight_mode={'time_distributed': None},
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
       # sample_weight_mode is a dict and mode value is `temporal`
@@ -1712,17 +1844,26 @@ class LossWeightingTest(keras_parameterized.TestCase):
           optimizer,
           loss='mse',
           sample_weight_mode={'time_distributed': 'temporal'},
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
       # sample_weight_mode is a not a list/dict and mode value is None
-      model.compile(optimizer, loss='mse', sample_weight_mode=None,
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='mse',
+          sample_weight_mode=None,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
       # sample_weight_mode is a not a list/dict and mode value is `temporal`
-      model.compile(optimizer, loss='mse', sample_weight_mode='temporal',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer,
+          loss='mse',
+          sample_weight_mode='temporal',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=1, batch_size=10)
 
   def test_sample_weight_tensor(self):
@@ -1801,7 +1942,8 @@ class MaskingTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   @keras_parameterized.run_with_all_model_types
@@ -1846,7 +1988,8 @@ class MaskingTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     y = np.random.random((5, 3))
     model.train_on_batch(x, y)
 
@@ -1862,7 +2005,10 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(2, input_dim=3))
     model.trainable = False
     model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.trainable = True
     model.train_on_batch(x, y)
     self.assertRaises(Warning)
@@ -1875,7 +2021,10 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_dim=3, trainable=False))
       model.compile(
-          'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+          'rmsprop',
+          'mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       out = model.predict(x)
       model.train_on_batch(x, y)
       out_2 = model.predict(x)
@@ -1886,7 +2035,10 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       output = model(inputs)
       model = keras.models.Model(inputs, output)
       model.compile(
-          'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+          'rmsprop',
+          'mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       out = model.predict(x)
       model.train_on_batch(x, y)
       out_2 = model.predict(x)
@@ -2000,13 +2152,21 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     outputs1 = shared_layer(inputs1)
     model1 = keras.Model(inputs1, outputs1)
     shared_layer.trainable = False
-    model1.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model1.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs2 = keras.Input(10)
     outputs2 = shared_layer(inputs2)
     model2 = keras.Model(inputs2, outputs2)
     shared_layer.trainable = True
-    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model2.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x, y = np.ones((10, 10)), np.ones((10, 10))
 
@@ -2039,7 +2199,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = keras.backend.zeros(shape=(10, 3))
     targets = keras.backend.zeros(shape=(10, 4))
@@ -2092,7 +2253,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
         loss,
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         loss_weights=loss_weights,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     input_a_tf = keras.backend.zeros(shape=(10, 3))
     input_b_tf = keras.backend.zeros(shape=(10, 3))
@@ -2619,8 +2781,12 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     metrics = ['mse', metrics_module.BinaryAccuracy()]
-    model.compile(optimizer, loss='mae', metrics=metrics,
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer,
+        loss='mae',
+        metrics=metrics,
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     mse_metric = 'mse' if tf2.enabled() else 'mean_squared_error'
     reference_metric_names = [
@@ -2652,7 +2818,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         loss='mae',
         metrics=[acc_obj],
         optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x_train = np.random.random((100, 4))
     y_train = np.random.random((100, 1))
@@ -2685,7 +2852,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         loss='mse',
         metrics=[keras.metrics.MeanSquaredError()],
         weighted_metrics=[keras.metrics.MeanSquaredError()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     # list of list of metrics.
     model.compile(
@@ -2701,7 +2869,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             [keras.metrics.MeanSquaredError(),
              keras.metrics.Accuracy()]
         ],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     # dict of metrics.
     model.compile(
@@ -2723,10 +2892,13 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
                 keras.metrics.Accuracy()
             ],
         },
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_invalid_metrics(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     num_classes = 5
     input_dim = 5
 
@@ -2740,7 +2912,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           RMSPropOptimizer(learning_rate=0.001),
           loss='categorical_crossentropy',
           metrics=metrics_module.CategoricalAccuracy(),
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
     inp = keras.layers.Input(shape=(1,))
     x = keras.layers.Dense(3, activation='relu')(inp)
@@ -2764,7 +2937,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
               'output_1': 'mse',
               'output_3': 'mse',
           },
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
     with self.assertRaisesRegex(
         ValueError,
@@ -2777,7 +2951,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
               'output_1': 'mse',
               'output_3': 'mse',
           },
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
   @keras_parameterized.run_all_keras_modes
   def test_metrics_masking(self):
@@ -2794,7 +2969,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           RMSPropOptimizer(learning_rate=0.001),
           loss='mse',
           weighted_metrics=['accuracy'],
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       # verify that masking is applied.
       x = np.array([[[1], [1]], [[1], [1]], [[0], [0]]])
@@ -2828,7 +3004,10 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         model.add_metric(metrics_module.Mean(name='metric_2')(y))
 
     model.compile(
-        'sgd', loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+        'sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = np.ones(shape=(10, 1))
     targets = np.ones(shape=(10, 1))
@@ -2850,6 +3029,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_in_model_call(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
 
     class TestModel(keras.Model):
 
@@ -2867,8 +3048,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
-    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -2907,8 +3091,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         keras.layers.Dense(2, kernel_initializer='ones')
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
-    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -2966,7 +3153,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         'sgd',
         loss='mse',
         metrics=[metrics_module.Accuracy('metric_4')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     # Verify that the metrics added using `compile` and `add_metric` API are
     # included
@@ -2993,7 +3181,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         loss='mse',
         optimizer=RMSPropOptimizer(0.01),
         metrics=[metrics_module.Accuracy('acc')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
     model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
@@ -3003,6 +3192,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_multiple_add_metric_calls(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
 
     class TestModel(keras.Model):
 
@@ -3020,8 +3211,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
-    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -3063,7 +3257,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       model.compile(
           loss='mse',
           optimizer=RMSPropOptimizer(0.01),
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
 
   @keras_parameterized.run_all_keras_modes
@@ -3082,8 +3277,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
-    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -3107,8 +3305,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
-    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
 
@@ -3145,7 +3346,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         loss='mae',
         optimizer=keras.optimizer_v2.gradient_descent.SGD(0.1),
         metrics=[metrics_module.MeanAbsoluteError(name='mae_3')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.array([[0.], [1.], [2.]])
     y = np.array([[0.5], [2.], [3.5]])
@@ -3181,7 +3383,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         'sgd',
         loss='mse',
         metrics=[metrics_module.Accuracy('acc')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     self.assertEqual([m.name for m in inner_model.metrics],
                      ['acc', 'mean', 'mean1'])
@@ -3196,7 +3399,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         'sgd',
         loss='mse',
         metrics=[metrics_module.Accuracy('acc2')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual([m.name for m in outer_model.metrics],
                      ['acc2', 'mean', 'mean1', 'mean2'])
 
@@ -3276,7 +3480,11 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(10,))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
@@ -3286,11 +3494,19 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     layer = LambdaUpdateLayer()
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(10,))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
     layer.trainable = False
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
@@ -3300,7 +3516,11 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(10,))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
@@ -3330,7 +3550,11 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers([bn, keras.layers.Dense(1)],
                                                 input_shape=(10,))
     bn.trainable = False
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertAllEqual(self.evaluate(bn.moving_mean), np.zeros((10,)))

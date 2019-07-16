@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -160,16 +159,12 @@ Status EraseCancellableNodes(TransposeContext* context) {
     }
     const auto& regular_fanin_0 = node->GetRegularFanin(0);
     auto* fanin_node = regular_fanin_0.node_view();
-    if (!IsCancellableNodePair(*node, *fanin_node)) {
+    // TODO(lyandy): Lift restriction once original nodes in the graph can be
+    // pruned away.
+    if (fanin_node->node_index() < original_num_nodes) {
       continue;
     }
-    // Skip transpose not added by optimizer.
-    if ((node->GetRegularFanouts().size() != 1 &&
-         node->NumControlledFanouts() != 0) ||
-        (fanin_node->GetRegularFanouts().size() != 1 &&
-         fanin_node->NumControlledFanouts() != 0)) {
-      VLOG(1) << "There is always only a single output for a Transpose "
-                 "node, due to the way it is added by Layout Optimizer.";
+    if (!IsCancellableNodePair(*node, *fanin_node)) {
       continue;
     }
     const auto& fanin_to_forward = fanin_node->GetRegularFanin(0);
@@ -224,8 +219,14 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
       item, cluster, src_format_, dst_format_, target_device_, &context));
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+  if (context.graph.node_size() > context.num_nodes) {
+    TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
+    TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+    // TODO(lyandy): Remove sorting once other optimizers are migrated to using
+    // `utils::GraphView`.
+    TF_RETURN_IF_ERROR(
+        context.graph_view->SortTopologically(/*ignore_cycles=*/false, {}));
+  }
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
   *output = context.graph;
@@ -238,13 +239,6 @@ void GenericLayoutOptimizer::Feedback(Cluster* cluster,
                                       double result) {
   // Takes no feedback.
 }
-
-Status GenericLayoutOptimizer::Init(
-    const RewriterConfig_CustomGraphOptimizer* config) {
-  return Status::OK();
-}
-
-REGISTER_GRAPH_OPTIMIZER_AS(GenericLayoutOptimizer, "GenericLayoutOptimizer");
 
 }  // end namespace grappler
 }  // end namespace tensorflow

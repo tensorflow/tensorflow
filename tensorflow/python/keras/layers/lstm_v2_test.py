@@ -351,7 +351,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
-  def DISABLED_test_implementation_mode_LSTM(self, implementation_mode):
+  def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -552,7 +552,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_1, y_2)
     self.assertAllClose(y_2, y_3)
 
-  def DISABLED_test_return_sequences_LSTM(self):
+  def test_return_sequences_LSTM(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -605,8 +605,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -675,9 +678,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
         rnn.LSTM(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, epochs=1, shuffle=False)
 
   def test_dropout_LSTM(self):
