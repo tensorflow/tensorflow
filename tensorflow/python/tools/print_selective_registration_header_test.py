@@ -24,7 +24,6 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.tools import selective_registration_header_lib
