@@ -917,6 +917,8 @@ mlir::Location Importer::GetLocation(const NodeDef& node_def) {
 
   auto original_nodes =
       node_def.experimental_debug_info().original_node_names();
+  auto original_funcs =
+      node_def.experimental_debug_info().original_func_names();
 
   if (original_nodes.empty()) {
     // If the original nodes are not defined in the node def, but the current
@@ -935,8 +937,12 @@ mlir::Location Importer::GetLocation(const NodeDef& node_def) {
     // call sites, and then fuse them to a single fused location.
     llvm::SmallVector<mlir::Location, 4> node_call_sites;
     node_call_sites.reserve(original_nodes.size());
-    for (const auto& node_name : original_nodes) {
-      node_call_sites.push_back(node_name_to_call_site(node_name));
+    for (int i = 0, e = original_nodes.size(); i != e; ++i) {
+      auto node_name = original_nodes[i];
+      auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
+      // Use the catenation of function and node names as the lookup key. This
+      // is to match the utility of generating the GraphDebugInfo.
+      node_call_sites.push_back(node_name_to_call_site(func_name + node_name));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }
