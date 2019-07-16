@@ -73,31 +73,85 @@ class ScratchBufAllocator : public se::ScratchAllocator {
   bool allocated_ = false;
 };
 
-template <typename T>
-Status RunCudnnConvImpl(const CudnnConvParams& params,
-                        se::ScratchAllocator* scratch_allocator,
-                        se::Stream* stream, RunConvOptions options) {
-  auto input_buf = se::DeviceMemory<T>(params.input_buf);
-  auto filter_buf = se::DeviceMemory<T>(params.filter_buf);
-  auto output_buf = se::DeviceMemory<T>(params.output_buf);
-  AlgorithmConfig algorithm = params.algorithm;
+template <typename ElementType, typename OutputType>
+Status RunCudnnConvForward(CudnnConvParams params,
+                           se::ScratchAllocator* scratch_allocator,
+                           se::Stream* stream, RunConvOptions options,
+                           DeviceMemory<ElementType> input_buf,
+                           DeviceMemory<ElementType> filter_buf,
+                           DeviceMemory<OutputType> output_buf,
+                           AlgorithmConfig algorithm) {
+  if (params.conv_result_scale != 1) {
+    return InternalError(
+        "StreamExecutor doesn't support scaled convolution: %lf.",
+        params.conv_result_scale);
+  }
+  stream->ThenConvolveWithAlgorithm(
+      params.input_descriptor, input_buf, params.filter_descriptor, filter_buf,
+      params.conv_desc, params.output_descriptor, &output_buf,
+      scratch_allocator, algorithm, options.profile_result);
+  return Status::OK();
+}
 
-  if (options.algo_override) {
-    algorithm = AlgorithmConfig(*options.algo_override);
+template <typename ElementType, typename BiasType, typename OutputType>
+Status RunCudnnConvForwardActivation(CudnnConvParams params,
+                                     se::ScratchAllocator* scratch_allocator,
+                                     se::Stream* stream, RunConvOptions options,
+                                     DeviceMemory<ElementType> input_buf,
+                                     DeviceMemory<ElementType> filter_buf,
+                                     DeviceMemory<OutputType> output_buf,
+                                     AlgorithmConfig algorithm) {
+  BatchDescriptor bias_desc;
+  bias_desc.set_count(1)
+      .set_height(1)
+      .set_width(1)
+      .set_feature_map_count(params.output_descriptor.feature_map_count())
+      .set_layout(params.output_descriptor.layout());
+
+  se::DeviceMemory<OutputType> side_input(params.fusion->side_input_buf);
+  // If there is no side input, use output as the side input.
+  if (side_input.is_null()) {
+    if (params.fusion->side_input_scale != 0) {
+      return InternalError(
+          "Side input scale is not 0, yet no side input buffer is "
+          "provided");
+    }
+    // Since side-input scale is 0, the values in the side input don't
+    // matter.  The simplest thing to do would be to pass in a null buffer
+    // for the side input, but cudnn doesn't allow this.  cudnn does promise
+    // that if side-input-scale is 0 the side input won't be read, so we
+    // just pass in the output buffer, since it's handy and has the correct
+    // size.
+    side_input = output_buf;
   }
 
+  stream->ThenFusedConvolveWithAlgorithm(
+      params.input_descriptor, input_buf, params.conv_result_scale,
+      params.filter_descriptor, filter_buf, params.conv_desc, side_input,
+      params.fusion->side_input_scale, bias_desc,
+      DeviceMemory<BiasType>(params.fusion->bias_buf), params.fusion->mode,
+      params.output_descriptor, &output_buf, scratch_allocator, algorithm,
+      options.profile_result);
+
+  return Status::OK();
+}
+
+// Specialization for double, float, and half types.  All kinds of convolutions
+// are supported here.
+template <typename ElementType, typename BiasType, typename OutputType,
+          typename std::enable_if<
+              !std::is_integral<ElementType>::value>::type* = nullptr>
+Status RunCudnnConvInternalImpl(CudnnConvParams params,
+                                se::ScratchAllocator* scratch_allocator,
+                                se::Stream* stream, RunConvOptions options,
+                                DeviceMemory<ElementType> input_buf,
+                                DeviceMemory<ElementType> filter_buf,
+                                DeviceMemory<OutputType> output_buf,
+                                AlgorithmConfig algorithm) {
   switch (params.kind) {
     case CudnnConvKind::kForward:
-      if (params.conv_result_scale != 1) {
-        return InternalError(
-            "StreamExecutor doesn't support scaled convolution: %lf.",
-            params.conv_result_scale);
-      }
-      stream->ThenConvolveWithAlgorithm(
-          params.input_descriptor, input_buf, params.filter_descriptor,
-          filter_buf, params.conv_desc, params.output_descriptor, &output_buf,
-          scratch_allocator, algorithm, options.profile_result);
-      break;
+      return RunCudnnConvForward(params, scratch_allocator, stream, options,
+                                 input_buf, filter_buf, output_buf, algorithm);
     case CudnnConvKind::kBackwardInput:
       if (params.conv_result_scale != 1) {
         return InternalError(
@@ -121,39 +175,59 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
           scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kForwardActivation: {
-      BatchDescriptor bias_desc;
-      bias_desc.set_count(1)
-          .set_height(1)
-          .set_width(1)
-          .set_feature_map_count(params.output_descriptor.feature_map_count())
-          .set_layout(params.output_descriptor.layout());
-
-      se::DeviceMemory<T> side_input(params.fusion->side_input_buf);
-      // If there is no side input, use output as the side input.
-      if (side_input.is_null()) {
-        if (params.fusion->side_input_scale != 0) {
-          return InternalError(
-              "Side input scale is not 0, yet no side input buffer is "
-              "provided");
-        }
-        // Since side-input scale is 0, the values in the side input don't
-        // matter.  The simplest thing to do would be to pass in a null buffer
-        // for the side input, but cudnn doesn't allow this.  cudnn does promise
-        // that if side-input-scale is 0 the side input won't be read, so we
-        // just pass in the output buffer, since it's handy and has the correct
-        // size.
-        side_input = output_buf;
-      }
-
-      stream->ThenFusedConvolveWithAlgorithm(
-          params.input_descriptor, input_buf, params.conv_result_scale,
-          params.filter_descriptor, filter_buf, params.conv_desc, side_input,
-          params.fusion->side_input_scale, bias_desc,
-          DeviceMemory<T>(params.fusion->bias_buf), params.fusion->mode,
-          params.output_descriptor, &output_buf, scratch_allocator, algorithm,
-          options.profile_result);
-      break;
+      return RunCudnnConvForwardActivation<ElementType, BiasType, OutputType>(
+          params, scratch_allocator, stream, options, input_buf, filter_buf,
+          output_buf, algorithm);
     }
+  }
+  return Status::OK();
+}
+
+// Specialization for integer types.  Only two forward convolutions are allowed.
+template <typename ElementType, typename BiasType, typename OutputType,
+          typename std::enable_if<std::is_integral<ElementType>::value>::type* =
+              nullptr>
+Status RunCudnnConvInternalImpl(CudnnConvParams params,
+                                se::ScratchAllocator* scratch_allocator,
+                                se::Stream* stream, RunConvOptions options,
+                                DeviceMemory<ElementType> input_buf,
+                                DeviceMemory<ElementType> filter_buf,
+                                DeviceMemory<OutputType> output_buf,
+                                AlgorithmConfig algorithm) {
+  switch (params.kind) {
+    case CudnnConvKind::kForward:
+      return RunCudnnConvForward(params, scratch_allocator, stream, options,
+                                 input_buf, filter_buf, output_buf, algorithm);
+      break;
+    case CudnnConvKind::kForwardActivation: {
+      return RunCudnnConvForwardActivation<ElementType, BiasType, OutputType>(
+          params, scratch_allocator, stream, options, input_buf, filter_buf,
+          output_buf, algorithm);
+    }
+  }
+  return Status::OK();
+}
+
+template <typename ElementType, typename BiasType, typename OutputType>
+Status RunCudnnConvImpl(const CudnnConvParams& params,
+                        se::ScratchAllocator* scratch_allocator,
+                        se::Stream* stream, RunConvOptions options) {
+  auto input_buf = se::DeviceMemory<ElementType>(params.input_buf);
+  auto filter_buf = se::DeviceMemory<ElementType>(params.filter_buf);
+  auto output_buf = se::DeviceMemory<OutputType>(params.output_buf);
+  AlgorithmConfig algorithm = params.algorithm;
+
+  if (options.algo_override) {
+    algorithm = AlgorithmConfig(*options.algo_override);
+  }
+
+  Status run_status =
+      RunCudnnConvInternalImpl<ElementType, BiasType, OutputType>(
+          params, scratch_allocator, stream, options, input_buf, filter_buf,
+          output_buf, algorithm);
+
+  if (run_status != Status::OK()) {
+    return run_status;
   }
 
   if (!stream->ok()) {
@@ -366,6 +440,19 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                       stream, options);
 }
 
+// CuDNN Convolutions all go through and are dispatched from this function.
+// Dispatching are based on three conditions: input data type, output data type,
+// and convolution kind. Although these three conditions are independent, not
+// all combinations are supported: convolutions with float, double, and half
+// input must have the same output type and support all kinds of convolutions;
+// convolutions with int8 input allow both int8 and float output type, but only
+// support two kinds: kForward and kForwardActivation.
+//
+// This function itself dispatches convolutions for input and output data types;
+// RunCudnnConvInternalImpl later dispatches for convolution kind.
+// RunCudnnConvInternalImpl has two template specializations for floating point
+// types and for integer types, respectively, and only invoke the supported
+// convolutions.
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
@@ -374,18 +461,31 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
 
-  PrimitiveType output_primitive_type =
-      conv->shape().tuple_shapes(0).element_type();
-  switch (output_primitive_type) {
+  PrimitiveType input_primitive_type = conv->operand(0)->shape().element_type();
+  switch (input_primitive_type) {
     case F16:
-      return RunCudnnConvImpl<Eigen::half>(params, scratch_allocator, stream,
-                                           options);
+      return RunCudnnConvImpl<Eigen::half, Eigen::half, Eigen::half>(
+          params, scratch_allocator, stream, options);
     case F32:
-      return RunCudnnConvImpl<float>(params, scratch_allocator, stream,
-                                     options);
+      return RunCudnnConvImpl<float, float, float>(params, scratch_allocator,
+                                                   stream, options);
     case F64:
-      return RunCudnnConvImpl<double>(params, scratch_allocator, stream,
-                                      options);
+      return RunCudnnConvImpl<double, double, double>(params, scratch_allocator,
+                                                      stream, options);
+    case S8: {
+      PrimitiveType output_primitive_type =
+          conv->shape().tuple_shapes(0).element_type();
+      switch (output_primitive_type) {
+        case F32:
+          return RunCudnnConvImpl<int8, float, float>(params, scratch_allocator,
+                                                      stream, options);
+        case S8:
+          return RunCudnnConvImpl<int8, float, int8>(params, scratch_allocator,
+                                                     stream, options);
+        default:
+          LOG(FATAL) << conv->ToString();
+      }
+    }
     default:
       LOG(FATAL) << conv->ToString();
   }

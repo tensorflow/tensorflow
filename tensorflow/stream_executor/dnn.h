@@ -1239,7 +1239,25 @@ class DnnSupport {
     return false;
   }
 
-  template <typename ElementType>
+  // This is the int8 version of DoFusedConvolve.
+  // The output, bias input and scaling parameters are floats.
+  virtual bool DoFusedConvolve(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<float>& side_input_data, float side_input_scale,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  template <typename ElementType, typename OutputType>
   port::Status PrepareForConvolution(
       ConvolutionKind kind, Stream* stream,
       const BatchDescriptor& batch_descriptor,
@@ -1247,7 +1265,7 @@ class DnnSupport {
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<ElementType> filter_data,
       const BatchDescriptor& output_descriptor,
-      DeviceMemory<ElementType> output_data,
+      DeviceMemory<OutputType> output_data,
       const ConvolutionDescriptor& convolution_descriptor,
       const AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
@@ -1294,31 +1312,32 @@ class DnnSupport {
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
   virtual port::Status DoConvolve(
-      ConvolutionKind kind, DataType element_type, Stream* stream,
-      const BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
-      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+      ConvolutionKind kind, DataType element_type, DataType output_type,
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
       const ConvolutionDescriptor& convolution_descriptor,
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  template <typename ElementType>
+  template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<ElementType>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
                   const DeviceMemory<ElementType>& filter_data,
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<ElementType>* output_data,
+                  DeviceMemory<OutputType>* output_data,
                   const dnn::AlgorithmDesc& algorithm_desc,
                   DeviceMemory<uint8>* scratch_memory,
                   ProfileResult* output_profile_result) {
     return IsStatusOk(
         DoConvolve(ConvolutionKind::FORWARD, ToDataType<ElementType>::value,
-                   stream, input_descriptor, input_data, filter_descriptor,
-                   filter_data, output_descriptor, *output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+                   ToDataType<OutputType>::value, stream, input_descriptor,
+                   input_data, filter_descriptor, filter_data,
+                   output_descriptor, *output_data, convolution_descriptor,
+                   algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
@@ -1406,12 +1425,12 @@ class DnnSupport {
       DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) {
     return IsStatusOk(
-        DoConvolve(ConvolutionKind::BACKWARD_DATA,
-                   ToDataType<ElementType>::value, stream, input_descriptor,
-                   *backward_input_data, filter_descriptor, filter_data,
-                   output_descriptor, backward_output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+        DoConvolve(
+            ConvolutionKind::BACKWARD_DATA, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            *backward_input_data, filter_descriptor, filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
@@ -1453,12 +1472,12 @@ class DnnSupport {
       DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) {
     return IsStatusOk(
-        DoConvolve(ConvolutionKind::BACKWARD_FILTER,
-                   ToDataType<ElementType>::value, stream, input_descriptor,
-                   input_data, filter_descriptor, *backward_filter_data,
-                   output_descriptor, backward_output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+        DoConvolve(
+            ConvolutionKind::BACKWARD_FILTER, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            input_data, filter_descriptor, *backward_filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
