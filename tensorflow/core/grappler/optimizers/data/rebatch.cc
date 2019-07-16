@@ -46,20 +46,20 @@ constexpr char kIdentityOp[] = "Identity";
 constexpr char kSubOp[] = "Sub";
 constexpr char kTruncateDivOp[] = "TruncateDiv";
 
-constexpr std::array<const char*, 5> kBatchDatasetOps = {
+constexpr std::array<const char*, 6> kBatchDatasetOps = {
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
     "PaddedBatchDataset",
-    "PaddedBatchDatasetV2"
-};
+    "PaddedBatchDatasetV2"};
 
 constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ConcatenateDataset",
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 19> kPassThroughOps = {
+constexpr std::array<const char*, 20> kPassThroughOps = {
     "CacheDataset",
     "ExperimentalScanDataset",
     "ExperimentalParseExampleDataset",
@@ -73,6 +73,7 @@ constexpr std::array<const char*, 19> kPassThroughOps = {
     "PrefetchDataset",
     "ReduceDataset",
     "RepeatDataset",
+    "ScanDataset",
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
@@ -80,9 +81,10 @@ constexpr std::array<const char*, 19> kPassThroughOps = {
     "TakeDataset",
     "WindowDataset"};
 
-constexpr std::array<const char*, 4> kFuncDatasetOps = {
+constexpr std::array<const char*, 5> kFuncDatasetOps = {
     "ExperimentalGroupByWindowDataset",
     "FlatMapDataset",
+    "GroupByWindowDataset",
     "InterleaveDataset",
     "ParallelInterleaveDatasetV2",
 };
@@ -91,6 +93,7 @@ const std::map<string, const char*>* kFuncDatasetOpFuncs =
     new std::map<string, const char*>({
         {"ExperimentalGroupByWindowDataset", "reduce_func"},
         {"FlatMapDataset", "f"},
+        {"GroupByWindowDataset", "reduce_func"},
         {"InterleaveDataset", "f"},
         {"ParallelInterleaveDatasetV2", "f"},
     });
