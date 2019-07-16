@@ -993,6 +993,15 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   // We treat BF16 and F32 as compatible types if mixed precision is allowed,
   // but only when the instruction defines the BF16/F32 buffer.
   bool equal = [&] {
+    auto default_checks = [&]() {
+      if (allow_mixed_precision_) {
+        return ShapeUtil::CompatibleIgnoringFpPrecision(instruction->shape(),
+                                                        inferred_shape);
+      } else {
+        return ShapeUtil::Compatible(instruction->shape(), inferred_shape);
+      }
+    };
+
     switch (instruction->opcode()) {
       // The opcodes below can't have implicit layout conversions, nor can they
       // implicitly transform f32 -> bf16.  Fundamentally these are either
@@ -1018,17 +1027,20 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kWhile:
         return ShapesSame(instruction->shape(), inferred_shape,
                           only_compare_minor_to_major_in_layout);
-
+      // Convolution allows integer inputs and float outputs
+      case HloOpcode::kConvolution:
+        if (primitive_util::IsIntegralType(inferred_shape.element_type()) &&
+            instruction->shape().element_type() == xla::F32) {
+          return ShapeUtil::CompatibleIgnoringElementType(instruction->shape(),
+                                                          inferred_shape);
+        } else {
+          return default_checks();
+        }
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion
       // in b/112709536.
       default:
-        if (allow_mixed_precision_) {
-          return ShapeUtil::CompatibleIgnoringFpPrecision(instruction->shape(),
-                                                          inferred_shape);
-        } else {
-          return ShapeUtil::Compatible(instruction->shape(), inferred_shape);
-        }
+        return default_checks();
     }
   }();
   if (!equal) {

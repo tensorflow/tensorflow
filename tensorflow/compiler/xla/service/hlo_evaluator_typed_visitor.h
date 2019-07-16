@@ -1009,199 +1009,22 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleConvolution(HloInstruction* conv) override {
-    auto lhs = conv->operand(0);
-    auto rhs = conv->operand(1);
-    const auto& window = conv->window();
-    const Shape& result_shape = conv->shape();
-    const Shape& lhs_shape = lhs->shape();
-    const Shape& rhs_shape = rhs->shape();
-
-    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
-    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
-    CHECK(lhs_shape.IsArray());
-    CHECK(rhs_shape.IsArray());
-    CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
-    CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
-
-    const auto& dnums = conv->convolution_dimension_numbers();
-    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
-    CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
-    CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
-    CHECK_GE(num_spatial_dims, 0);
-    CHECK_EQ(window.dimensions_size(), num_spatial_dims);
-
-    const auto lhs_rank = lhs_shape.rank();
-    const auto rhs_rank = rhs_shape.rank();
-
-    CHECK_EQ(num_spatial_dims + 2, lhs_rank);
-    CHECK_EQ(num_spatial_dims + 2, rhs_rank);
-
-    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
-                        ShapeInference::InferConvolveShape(
-                            lhs_shape, rhs_shape, conv->feature_group_count(),
-                            conv->batch_group_count(), window, dnums));
-    CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
-        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
-        << " but is inferred to be: "
-        << ShapeUtil::HumanString(inferred_return_shape);
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-
-    std::vector<int64> window_dimension_sizes;
-    for (auto i : dnums.kernel_spatial_dimensions()) {
-      window_dimension_sizes.push_back(ShapeUtil::GetDimension(rhs_shape, i));
+    auto input_element_type = conv->operand(0)->shape().element_type();
+    auto result_element_type = primitive_util::NativeToPrimitiveType<ReturnT>();
+    if (input_element_type == xla::S8) {
+      // For integer input convolution, we define the semantics to match
+      // CuDNN, i.e. input type int8, elementwise type int32, and output type
+      // float.
+      return HandleConvolutionImpl<int8, int32>(conv);
     }
-
-    const Shape& window_shape =
-        ShapeUtil::MakeShape(rhs_shape.element_type(), window_dimension_sizes);
-
-    DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
-    DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
-
-    auto lhs_literal_data = lhs_literal.data<ReturnT>();
-    auto rhs_literal_data = rhs_literal.data<ReturnT>();
-
-    const int64 feature_group_count = conv->feature_group_count();
-    const int64 batch_group_count = conv->batch_group_count();
-
-    auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
-                 &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
-                 rhs_literal_data, feature_group_count,
-                 batch_group_count](const absl::Span<const int64> out_index) {
-      // Dimension number applicable for input (lhs).
-      const int64 input_batch_dim = dnums.input_batch_dimension();
-      const int64 input_z_dim = dnums.input_feature_dimension();
-      // Dimension number applicable for kernel (rhs).
-      const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
-      const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
-      // Dimension number applicable for output.
-      const int64 output_batch_dim = dnums.output_batch_dimension();
-      const int64 output_z_dim = dnums.output_feature_dimension();
-
-      const int64 input_z_size =
-          ShapeUtil::GetDimension(lhs_shape, input_z_dim);
-
-      const int64 input_batch_size =
-          ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
-
-      const int64 batch_group_size = input_batch_size / batch_group_count;
-
-      // The size of an input feature group.
-      const int64 input_feature_group_size = input_z_size / feature_group_count;
-
-      const int64 output_z_size =
-          ShapeUtil::GetDimension(rhs_shape, kernel_output_z_dim);
-      // The output feature dimension is a concatenation of convolution results
-      // from the different groups.
-      const int64 output_feature_group_size =
-          output_z_size / feature_group_count;
-
-      // Calculate the group index to which the current output index
-      // belongs.
-      const int64 feature_group_index =
-          out_index[output_z_dim] / output_feature_group_size;
-
-      const int64 batch_group_index = out_index[output_z_dim];
-
-      ElementwiseT result_val = static_cast<ElementwiseT>(0);
-      DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
-                                        0);
-
-      // Convolve input feature with kernel.
-      // The mechanism indexes into the correct LHS (input) and RHS (kernel)
-      // locations and accumulates multiplications for a given output index.
-      do {
-        // Find corresponding spatial dimension index for input (lhs).
-        int64 lhs_linear_spatial_index = 0;
-        int64 rhs_linear_spatial_index = 0;
-        for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
-          // Spatial dimension number for input (lhs) and output.
-          const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
-          const int64 output_spatial_dim = dnums.output_spatial_dimensions(ki);
-
-          // Calculate lhs (input) index without taking base dilation into
-          // account.
-          const auto& window_dim = window.dimensions(ki);
-          const int64 undilated_index =
-              out_index[output_spatial_dim] * window_dim.stride() -
-              window_dim.padding_low() +
-              rhs_spatial_index[ki] * window_dim.window_dilation();
-          // Skip if the lhs (input) index is to be dilated.  As an
-          // optimization, skip this mod if there's no dilation.
-          if (window_dim.base_dilation() > 1 &&
-              undilated_index % window_dim.base_dilation() != 0) {
-            goto cnt;
-          }
-
-          // Calculate the actual lhs (input) index after dilation.  As an
-          // optimization, skip this integer divide if there's no dilation.
-          int64 lhs_spatial_index;
-          if (window_dim.base_dilation() > 1) {
-            lhs_spatial_index = undilated_index / window_dim.base_dilation();
-          } else {
-            lhs_spatial_index = undilated_index;
-          }
-
-          // Skip if input index is not in bounds.
-          if (!(lhs_spatial_index >= 0 &&
-                lhs_spatial_index < lhs_shape.dimensions(input_spatial_dim))) {
-            goto cnt;
-          }
-
-          lhs_linear_spatial_index +=
-              lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
-          rhs_linear_spatial_index +=
-              (window_dim.window_reversal()
-                   ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
-                   : rhs_spatial_index[ki]) *
-              rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
-        }
-
-        for (int64 rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
-          const int64 iz =
-              feature_group_index * input_feature_group_size + rhs_iz;
-
-          int64 lhs_linear_index = lhs_linear_spatial_index;
-
-          lhs_linear_index += out_index[output_batch_dim] *
-                              lhs_dim_multipliers[input_batch_dim];
-
-          // We are scraping only the diagonal elements in the resultant
-          // convolution output when batch_group_count is greater than 1,
-          // where 1 is the default. No scraping is done in that case.
-          // This approach works out automatically for 'groups' in batches
-          // with group_size > 1, because we already descend down the batch
-          // dimension for the 'output_batch_dim' above.
-          lhs_linear_index +=
-              ((batch_group_index * batch_group_size) % input_batch_size) *
-              lhs_dim_multipliers[input_batch_dim];
-
-          lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
-
-          int64 rhs_linear_index = rhs_linear_spatial_index;
-
-          rhs_linear_index += out_index[output_z_dim] *
-                              rhs_dim_multipliers[kernel_output_z_dim];
-          rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
-
-          result_val +=
-              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
-              static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
-        }
-      cnt : {}
-      } while (IndexUtil::BumpIndices(window_shape,
-                                      absl::MakeSpan(rhs_spatial_index)));
-
-      return static_cast<ReturnT>(result_val);
-    };
-
-    Literal result(result_shape);
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
-
-    parent_->evaluated_[conv] = std::move(result);
-    return Status::OK();
-  }
+    if (result_element_type == input_element_type) {
+      return HandleConvolutionImpl<ReturnT, ElementwiseT>(conv);
+    }
+    return Unimplemented(
+        "Convolution doesn't support: input type %s and output type %s",
+        xla::PrimitiveType_Name(input_element_type),
+        xla::PrimitiveType_Name(result_element_type));
+  };
 
   Status HandleDot(HloInstruction* dot) override {
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
@@ -2851,6 +2674,205 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
     UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
     return rhs_unsigned >= lhs_size_unsigned;
+  }
+
+  template <typename InputT, typename AccumulatorT>
+  Status HandleConvolutionImpl(HloInstruction* conv) {
+    auto lhs = conv->operand(0);
+    auto rhs = conv->operand(1);
+    const auto& window = conv->window();
+    const Shape& result_shape = conv->shape();
+    const Shape& lhs_shape = lhs->shape();
+    const Shape& rhs_shape = rhs->shape();
+
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    CHECK(lhs_shape.IsArray());
+    CHECK(rhs_shape.IsArray());
+    CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
+
+    const auto& dnums = conv->convolution_dimension_numbers();
+    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+    CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
+    CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
+    CHECK_GE(num_spatial_dims, 0);
+    CHECK_EQ(window.dimensions_size(), num_spatial_dims);
+
+    const auto lhs_rank = lhs_shape.rank();
+    const auto rhs_rank = rhs_shape.rank();
+
+    CHECK_EQ(num_spatial_dims + 2, lhs_rank);
+    CHECK_EQ(num_spatial_dims + 2, rhs_rank);
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, conv->feature_group_count(),
+                            conv->batch_group_count(), window, dnums));
+    CHECK(ShapeUtil::CompatibleIgnoringElementType(result_shape,
+                                                   inferred_return_shape) &&
+          ShapeUtil::HigherPrecisionElementType(result_shape,
+                                                inferred_return_shape) ==
+              result_shape.element_type())
+        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+        << " but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+
+    std::vector<int64> window_dimension_sizes;
+    for (auto i : dnums.kernel_spatial_dimensions()) {
+      window_dimension_sizes.push_back(ShapeUtil::GetDimension(rhs_shape, i));
+    }
+
+    const Shape& window_shape =
+        ShapeUtil::MakeShape(rhs_shape.element_type(), window_dimension_sizes);
+
+    DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
+    DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
+
+    auto lhs_literal_data = lhs_literal.data<InputT>();
+    auto rhs_literal_data = rhs_literal.data<InputT>();
+
+    const int64 feature_group_count = conv->feature_group_count();
+    const int64 batch_group_count = conv->batch_group_count();
+
+    auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
+                 &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
+                 rhs_literal_data, feature_group_count,
+                 batch_group_count](const absl::Span<const int64> out_index) {
+      // Dimension number applicable for input (lhs).
+      const int64 input_batch_dim = dnums.input_batch_dimension();
+      const int64 input_z_dim = dnums.input_feature_dimension();
+      // Dimension number applicable for kernel (rhs).
+      const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+      const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+      // Dimension number applicable for output.
+      const int64 output_batch_dim = dnums.output_batch_dimension();
+      const int64 output_z_dim = dnums.output_feature_dimension();
+
+      const int64 input_z_size =
+          ShapeUtil::GetDimension(lhs_shape, input_z_dim);
+
+      const int64 input_batch_size =
+          ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
+
+      const int64 batch_group_size = input_batch_size / batch_group_count;
+
+      // The size of an input feature group.
+      const int64 input_feature_group_size = input_z_size / feature_group_count;
+
+      const int64 output_z_size =
+          ShapeUtil::GetDimension(rhs_shape, kernel_output_z_dim);
+      // The output feature dimension is a concatenation of convolution results
+      // from the different groups.
+      const int64 output_feature_group_size =
+          output_z_size / feature_group_count;
+
+      // Calculate the group index to which the current output index
+      // belongs.
+      const int64 feature_group_index =
+          out_index[output_z_dim] / output_feature_group_size;
+
+      const int64 batch_group_index = out_index[output_z_dim];
+
+      AccumulatorT result_val = static_cast<AccumulatorT>(0);
+      DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
+                                        0);
+
+      // Convolve input feature with kernel.
+      // The mechanism indexes into the correct LHS (input) and RHS (kernel)
+      // locations and accumulates multiplications for a given output index.
+      do {
+        // Find corresponding spatial dimension index for input (lhs).
+        int64 lhs_linear_spatial_index = 0;
+        int64 rhs_linear_spatial_index = 0;
+        for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+          // Spatial dimension number for input (lhs) and output.
+          const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
+          const int64 output_spatial_dim = dnums.output_spatial_dimensions(ki);
+
+          // Calculate lhs (input) index without taking base dilation into
+          // account.
+          const auto& window_dim = window.dimensions(ki);
+          const int64 undilated_index =
+              out_index[output_spatial_dim] * window_dim.stride() -
+              window_dim.padding_low() +
+              rhs_spatial_index[ki] * window_dim.window_dilation();
+          // Skip if the lhs (input) index is to be dilated.  As an
+          // optimization, skip this mod if there's no dilation.
+          if (window_dim.base_dilation() > 1 &&
+              undilated_index % window_dim.base_dilation() != 0) {
+            goto cnt;
+          }
+
+          // Calculate the actual lhs (input) index after dilation.  As an
+          // optimization, skip this integer divide if there's no dilation.
+          int64 lhs_spatial_index;
+          if (window_dim.base_dilation() > 1) {
+            lhs_spatial_index = undilated_index / window_dim.base_dilation();
+          } else {
+            lhs_spatial_index = undilated_index;
+          }
+
+          // Skip if input index is not in bounds.
+          if (!(lhs_spatial_index >= 0 &&
+                lhs_spatial_index < lhs_shape.dimensions(input_spatial_dim))) {
+            goto cnt;
+          }
+
+          lhs_linear_spatial_index +=
+              lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
+          rhs_linear_spatial_index +=
+              (window_dim.window_reversal()
+                   ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                   : rhs_spatial_index[ki]) *
+              rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
+        }
+
+        for (int64 rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
+          const int64 iz =
+              feature_group_index * input_feature_group_size + rhs_iz;
+
+          int64 lhs_linear_index = lhs_linear_spatial_index;
+
+          lhs_linear_index += out_index[output_batch_dim] *
+                              lhs_dim_multipliers[input_batch_dim];
+
+          // We are scraping only the diagonal elements in the resultant
+          // convolution output when batch_group_count is greater than 1,
+          // where 1 is the default. No scraping is done in that case.
+          // This approach works out automatically for 'groups' in batches
+          // with group_size > 1, because we already descend down the batch
+          // dimension for the 'output_batch_dim' above.
+          lhs_linear_index +=
+              ((batch_group_index * batch_group_size) % input_batch_size) *
+              lhs_dim_multipliers[input_batch_dim];
+
+          lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
+
+          int64 rhs_linear_index = rhs_linear_spatial_index;
+
+          rhs_linear_index += out_index[output_z_dim] *
+                              rhs_dim_multipliers[kernel_output_z_dim];
+          rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
+
+          result_val +=
+              static_cast<AccumulatorT>(lhs_literal_data[lhs_linear_index]) *
+              static_cast<AccumulatorT>(rhs_literal_data[rhs_linear_index]);
+        }
+      cnt : {}
+      } while (IndexUtil::BumpIndices(window_shape,
+                                      absl::MakeSpan(rhs_spatial_index)));
+
+      return static_cast<ReturnT>(result_val);
+    };
+
+    Literal result(result_shape);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
+
+    parent_->evaluated_[conv] = std::move(result);
+    return Status::OK();
   }
 
   HloEvaluator* parent_;
