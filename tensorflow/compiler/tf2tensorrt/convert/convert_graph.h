@@ -56,10 +56,6 @@ Status ConvertAfterShapes(const ConversionParams& params);
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
-/*Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
-                                                const GraphDef& segment,
-                                                const string& engine_name);
-                                                */
 Status ModifyGraphForFunctionDef(Graph* graph,
                                  const GraphDef& segment,
                                  Graph* sgraph);
