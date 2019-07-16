@@ -1402,7 +1402,8 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")
-                            .TypeConstraint<float>("U"),
+                            .TypeConstraint<float>("U")
+                            .TypeConstraint<float>("V"),
                         FusedBatchNormGradOp<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
@@ -1414,7 +1415,8 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
-                            .TypeConstraint<float>("U"),
+                            .TypeConstraint<float>("U")
+                            .TypeConstraint<float>("V"),
                         FusedBatchNormGradOp<GPUDevice, Eigen::half, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
@@ -1432,7 +1434,8 @@ REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")
-                            .TypeConstraint<float>("U"),
+                            .TypeConstraint<float>("U")
+                            .TypeConstraint<float>("V"),
                         FusedBatchNormGradOpV3<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
@@ -1450,7 +1453,8 @@ REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
-                            .TypeConstraint<float>("U"),
+                            .TypeConstraint<float>("U")
+                            .TypeConstraint<float>("V"),
                         FusedBatchNormGradOpV3<GPUDevice, Eigen::half, float>);
 
 #endif
