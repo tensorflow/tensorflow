@@ -40,6 +40,7 @@ constexpr int64 kAutotune = -1;
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
+  GRADIENT_DESCENT = 1,
 };
 
 // Represents thread-safe state that can be shared between an input pipeline and
@@ -542,6 +543,15 @@ class Model {
   // time is less than or equal to the processing time needed to produce an
   // element divided by CPU budget.
   void OptimizeHillClimb(int64 cpu_budget);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to the minimum value. It then improves current parameters by
+  // making a step in the direction opposite to the gradient of `OutputTime` and
+  // projecting resulting values on the feasible intervals. Improvement step is
+  // repeated until either the output time improvement is smaller than threshold
+  // value or the output time is less than the processing time needed to produce
+  // an element divided by CPU budget.
+  void OptimizeGradientDescent(int64 cpu_budget);
 
   // Collects the output time and if `gradient` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given

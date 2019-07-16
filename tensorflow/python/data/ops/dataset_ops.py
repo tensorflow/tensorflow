@@ -97,6 +97,7 @@ tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 class AutotuneAlgorithm(enum.Enum):
   HILL_CLIMB = 0
+  GRADIENT_DESCENT = 1
 
 
 @tf_export("data.Dataset", v1=[])
@@ -371,7 +372,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return DatasetStructure(self.element_spec)
+    return DatasetSpec(self.element_spec)
 
   @staticmethod
   def from_tensors(tensors):
@@ -2370,10 +2371,10 @@ class SparseTensorSliceDataset(DatasetSource):
     indices_shape = self._sparse_tensor.indices.get_shape()
     shape_shape = self._sparse_tensor.dense_shape.get_shape()
     rank = (indices_shape.dims[1] - 1).merge_with(shape_shape.dims[0] - 1)
-    self._structure = (structure.TensorStructure(dtypes.int64, [None, rank]),
-                       structure.TensorStructure(self._sparse_tensor.dtype,
-                                                 [None]),
-                       structure.TensorStructure(dtypes.int64, [rank]))
+    self._structure = (tensor_spec.TensorSpec([None, rank], dtypes.int64),
+                       tensor_spec.TensorSpec([None],
+                                              self._sparse_tensor.dtype),
+                       tensor_spec.TensorSpec([rank], dtypes.int64))
 
     variant_tensor = gen_dataset_ops.sparse_tensor_slice_dataset(
         self._sparse_tensor.indices, self._sparse_tensor.values,
@@ -2409,7 +2410,7 @@ class _NestedVariant(composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return DatasetStructure(self._element_spec, self._dataset_shape)
+    return DatasetSpec(self._element_spec, self._dataset_shape)
 
 
 @tf_export("data.experimental.from_variant")
@@ -2440,9 +2441,10 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
-# TODO(b/133606651) Rename this class to DatasetSpec
-@tf_export("data.DatasetSpec", "data.experimental.DatasetStructure")
-class DatasetStructure(type_spec.BatchableTypeSpec):
+@tf_export(
+    "data.DatasetSpec",
+    v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
+class DatasetSpec(type_spec.BatchableTypeSpec):
   """Type specification for `tf.data.Dataset`."""
 
   __slots__ = ["_element_spec", "_dataset_shape"]
@@ -2483,17 +2485,17 @@ class DatasetStructure(type_spec.BatchableTypeSpec):
 
   @staticmethod
   def from_value(value):
-    return DatasetStructure(value.element_spec)  # pylint: disable=protected-access
+    return DatasetSpec(value.element_spec)  # pylint: disable=protected-access
 
   def _batch(self, batch_size):
-    return DatasetStructure(
+    return DatasetSpec(
         self._element_spec,
         tensor_shape.TensorShape([batch_size]).concatenate(self._dataset_shape))
 
   def _unbatch(self):
     if self._dataset_shape.ndims == 0:
       raise ValueError("Unbatching a dataset is only supported for rank >= 1")
-    return DatasetStructure(self._element_spec, self._dataset_shape[1:])
+    return DatasetSpec(self._element_spec, self._dataset_shape[1:])
 
   def _to_batched_tensor_list(self, value):
     if self._dataset_shape.ndims == 0:
@@ -2877,7 +2879,7 @@ class RangeDataset(DatasetSource):
   def __init__(self, *args):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
-    self._structure = structure.TensorStructure(dtypes.int64, [])
+    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3364,7 +3366,7 @@ class FlatMapDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetStructure):
+    if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
           "`map_func` must return a `Dataset` object. Got {}".format(
               type(self._map_func.output_structure)))
@@ -3395,7 +3397,7 @@ class InterleaveDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetStructure):
+    if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
           "`map_func` must return a `Dataset` object. Got {}".format(
               type(self._map_func.output_structure)))
@@ -3434,7 +3436,7 @@ class ParallelInterleaveDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetStructure):
+    if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
           "`map_func` must return a `Dataset` object. Got {}".format(
               type(self._map_func.output_structure)))
@@ -3479,7 +3481,7 @@ class FilterDataset(UnaryUnchangedStructureDataset):
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
     if not wrapped_func.output_structure.is_compatible_with(
-        structure.TensorStructure(dtypes.bool, [])):
+        tensor_spec.TensorSpec([], dtypes.bool)):
       error_msg = ("`predicate` return type must be convertible to a scalar "
                    "boolean tensor. Was {}.").format(
                        wrapped_func.output_structure)
@@ -3542,7 +3544,7 @@ class WindowDataset(UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
     self._structure = nest.pack_sequence_as(
         get_legacy_output_classes(input_dataset), [
-            DatasetStructure(  # pylint: disable=g-complex-comprehension
+            DatasetSpec(  # pylint: disable=g-complex-comprehension
                 structure.convert_legacy_structure(
                     output_type, output_shape, output_class))
             for output_class, output_shape, output_type in zip(

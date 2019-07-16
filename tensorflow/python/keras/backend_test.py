@@ -790,8 +790,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
   def test_pool3d(self):
     if test.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     val = np.random.random((10, 3, 10, 10, 10))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
@@ -1667,6 +1666,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):

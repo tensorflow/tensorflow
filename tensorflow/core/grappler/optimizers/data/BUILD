@@ -17,6 +17,7 @@ cc_library(
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",
+        ":inject_prefetch",
         ":latency_all_edges",
         ":make_sloppy",
         ":map_and_batch_fusion",
@@ -286,6 +287,26 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
     ] + tf_protos_all(),
+)
+
+cc_library(
+    name = "inject_prefetch",
+    srcs = ["inject_prefetch.cc"],
+    hdrs = ["inject_prefetch.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 cc_library(

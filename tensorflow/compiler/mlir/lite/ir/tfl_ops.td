@@ -51,6 +51,13 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
              BuildableType<"getType<mlir::TF::StringType>()">;
 
 //===----------------------------------------------------------------------===//
+// TFLite dialect uint8 type - uses the TF uint8 type as implementation
+//===----------------------------------------------------------------------===//
+def TFL_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
+                    "TFLite uint8 type">,
+              BuildableType<"getType<mlir::TF::Uint8Type>()">;
+
+//===----------------------------------------------------------------------===//
 // Activation function enum definitions.
 //===----------------------------------------------------------------------===//
 
@@ -77,9 +84,15 @@ def TFL_AFAttr : StrEnumAttr<
 // These should match the padding enum in TFLite schema.
 def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
 def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
+def TFL_MIRRORPAD_Reflect : StrEnumAttrCase<"REFLECT">;
+def TFL_MIRRORPAD_Symmetric : StrEnumAttrCase<"SYMMETRIC">;
 
 def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
       TFL_PAD_Same, TFL_PAD_Valid
+    ]>;
+
+def TFL_MirrorPaddingAttr : StrEnumAttr<"Padding", "Mirror pad enum", [
+      TFL_MIRRORPAD_Reflect, TFL_MIRRORPAD_Symmetric
     ]>;
 
 //===----------------------------------------------------------------------===//
@@ -105,20 +118,24 @@ class TFL_QuantizedType<string n, list<int> params, bit signed>
   : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
               CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageTypeIntegralWidth() == " # !head(params)>]>,
-    "quantized type with " # !head(params) # " bits storage type"> {
+    "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
   string asTraitArgsStr =
     StrJoinInt<params>.result # !if(signed, ", true", ", false");
 }
 
-// Uniform quantized type. Two integers "smantissa" and "sexp" are used to
+// Uniform quantized types. Two integers "smantissa" and "sexp" are used to
 // express the Mantissa and Exponent components of the floating-point scale so
 // the scale of the quantized type is "smantissa * 10 ^ sexp".
 class TFL_UInt8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
     : TFL_QuantizedType<"Uniform",
                         [8, zero_pt, smantissa, sexp, 0, 255], 0>;
+class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
+    : TFL_QuantizedType<"Uniform",
+                        [8, zero_pt, smantissa, sexp, -128, 127], 1>;
 
-// A 8bits quantized type. This definition can be used to specify tensor types.
+// 8-bits quantized types. The definitions can be used to specify tensor types.
+def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
 
 //===----------------------------------------------------------------------===//
@@ -406,6 +423,27 @@ def TFL_AveragePool2DOp:
   let customOption = "Pool2DOptions";
 }
 
+def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
+  let summary = "ArgMin operator";
+
+  let description = [{
+    Returns the index with the smallest value across dimensions of a tensor."
+      a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+      b = tf.math.argmin(input = a)
+      c = tf.keras.backend.eval(b)
+  }];
+
+  let arguments = (
+    // TODO(pkanwar): Add support for uint8.
+    ins TensorOf<[F32, I32, I8]>:$input,
+    TFL_I32OrI64Tensor:$dim
+  );
+
+  let results = (outs
+    TFL_I32OrI64Tensor:$output
+  );
+}
+
 def TFL_CeilOp: TFL_Op<"ceil", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Ceil operator";
 
@@ -432,13 +470,15 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   }];
 
   let arguments = (
-    ins Variadic<TensorOf<[F32, I64, I32, I16, I8, TFL_QI8]>>:$values,
+    ins Variadic<TensorOf<
+      [F32, I64, I32, I16, I8, TFL_QI8, TFL_QUI8, TFL_Uint8]>>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
-    TensorOf<[F32, I64, I32, I16, I8, TFL_QI8]>:$output
+    TensorOf<
+      [F32, I64, I32, I16, I8, TFL_QI8, TFL_QUI8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -553,9 +593,8 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [Broadcastable, NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO(haoliang): missing Uint8
-      ins TensorOf<[F32, I32, I64, I8]>:$lhs,
-      TensorOf<[F32, I32, I64, I8]>:$rhs);
+      ins TensorOf<[F32, I32, I64, I8, TFL_Uint8]>:$lhs,
+      TensorOf<[F32, I32, I64, I8, TFL_Uint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -665,10 +704,9 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, Broadcastable,
   }];
 
   let arguments = (
-    // TODO: missing Uint8
     ins
-    TensorOf<[I1, F32, I32, I64, I8]>:$x,
-    TensorOf<[I1, F32, I32, I64, I8]>:$y
+    TensorOf<[I1, F32, I32, I64, I8, TFL_Uint8]>:$x,
+    TensorOf<[I1, F32, I32, I64, I8, TFL_Uint8]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -977,7 +1015,9 @@ def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<127, 625, -4>>]> {
+    // zero_point = max_value
+    // scale = -log_softmax_output_min / (max_value + 1)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<255, 625, -4>>]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -1003,7 +1043,7 @@ def MaxPoolOperandAndResultConstraints : PredOpTrait<"MaxPool2D operand and "
   And<[
     // The input and output tensors should have the same elemental type
     // and they should be one of the specified types below.
-    TCopVTEtIs<0, AnyTypeOf<[F32, TFL_QI8]>>,
+    TCopVTEtIs<0, AnyTypeOf<[F32, TFL_QI8, TFL_QUI8]>>,
     TFL_TCresVTEtIsSameAsOp<0, 0>]>>;
 
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
@@ -1066,8 +1106,7 @@ def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    // TODO: missing uint8
-    TensorOf<[F32, I8, I32, I64]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
     TensorOf<[I32, I64]>:$axis,
     BoolAttr:$keep_dims
   );
@@ -1584,7 +1623,9 @@ def TFL_SinOp: TFL_Op<"sin", [NoSideEffect, SameOperandsAndResultType]> {
 def TFL_SoftmaxOp : TFL_Op<"softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<-128, 390625, -8>>]> {
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 390625, -8>>]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -1679,16 +1720,20 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [Broadcastable, NoSid
 def TFL_TanhOp: TFL_Op<"tanh", [
     NoSideEffect,
     SameOperandsAndResultType,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 78125, -7>>]> {
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<128, 78125, -7>>]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  // TODO(haoliang): missing Uint8.
+  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TensorOf<[F32, I16, I8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -1958,6 +2003,61 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   let hasOptions = 1;
 }
 
+def TFL_CastOp : TFL_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Cast operator";
+
+  let description = [{
+    Casts input from input type to output type.
+  }];
+
+  // TODO(b/135538711): Add complex types here.
+  let arguments = (ins
+    TensorOf<[F32, I1, I32, I64]>:$input
+  );
+
+  let results = (outs TensorOf<[F32, I1, I32, I64]>:$output);
+
+  // TFLite's cast op does not utilize CastOptions, instead derives types
+  // from the TfLiteTensors.
+  let hasOptions = 0;
+}
+
+
+def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
+                     NoSideEffect, TFL_OperandHasRank<1, 2>]> {
+  let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
+
+  let description = [{
+    This operation pads a input with mirrored values according to the paddings
+    you specify. paddings is an integer tensor with shape [n, 2],
+    where n is the rank of input.
+    For each dimension D of input, paddings[D, 0] indicates how many values
+    to add before the contents of input in that dimension,
+    and paddings[D, 1] indicates how many values to add after the contents of
+    input in that dimension.
+
+    Both paddings[D, 0] and paddings[D, 1] must be no greater than
+    input.dim_size(D) (or input.dim_size(D) - 1)
+    if copy_border is true (if false, respectively).
+
+    The padded size of each dimension D of the output is:
+
+    paddings(D, 0) + input.dim_size(D) + paddings(D, 1)
+  }];
+
+  let arguments = (ins
+    // TODO: add uint8 support when ready.
+    TensorOf<[F32, I32, I64]>:$input,
+    TensorOf<[I32, I64]>:$pad,
+    TFL_MirrorPaddingAttr:$mode
+  );
+
+  let results = (outs
+    TensorOf<[F32, I32, I64]>:$output
+  );
+
+  let hasOptions = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Quantization ops.

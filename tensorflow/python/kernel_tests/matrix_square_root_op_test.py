@@ -59,9 +59,8 @@ class SquareRootOpTest(test.TestCase):
     self._verifySquareRootReal(matrix1)
     self._verifySquareRootReal(matrix2)
     self._verifySquareRootReal(self._makeBatch(matrix1, matrix2))
-
-    # ROCm doesn't support complex GEMM yet
-    if not test_util.IsBuiltWithROCm():
+    if not test.is_built_with_rocm():
+      # ROCm does not support BLAS operations for complex types
       # Complex
       matrix1 = matrix1.astype(np.complex64)
       matrix2 = matrix2.astype(np.complex64)

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -61,7 +61,7 @@ class GlProgram {
   // into this program.
   Status GetBinary(BinaryShader* binary_shader);
 
-  Status SetParameter(const UniformParameter& param);
+  Status SetParameter(const Variable& param);
 
   // Executes program
   Status Dispatch(const uint3& workgroups) const;

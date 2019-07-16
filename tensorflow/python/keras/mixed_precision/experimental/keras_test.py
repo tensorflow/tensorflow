@@ -39,6 +39,7 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
@@ -205,17 +206,6 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
-  def test_variable_not_casted_for_int_inputs(self, strategy_fn):
-    x = constant_op.constant([[1]], dtype=dtypes.int32)
-    with strategy_fn().scope():
-      with policy.policy_scope('infer_float32_vars'):
-        layer = layers.Embedding(input_dim=10, output_dim=32)
-        y = layer(x)
-        self.assertEqual(layer.embeddings.dtype, dtypes.float32)
-        self.assertEqual(y.dtype, dtypes.float32)
-
-  @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def test_layer_regularizer_runs_in_float32(self, strategy_fn):
     x = constant_op.constant([1.], dtype=dtypes.float16)
     with strategy_fn().scope():
@@ -347,22 +337,17 @@ class KerasModelTest(keras_parameterized.TestCase):
       'testcase_name': 'nocloning',
       'strategy_fn': create_mirrored_strategy,
       'cloning': False
-  }, {
-      'testcase_name': 'function',
-      'strategy_fn': create_mirrored_strategy,
-      'layer_with_tf_function': True
   })
   def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
-                 cloning=True, layer_with_tf_function=False):
+                 cloning=True):
     if not self._is_strategy_supported(strategy_fn):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
-    layer_class = AddLayerWithFunction if layer_with_tf_function else AddLayer
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
         x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
-        layer = layer_class(assert_type=dtypes.float16,
-                            use_operator=use_operator, regularizer=regularizer)
+        layer = AddLayer(assert_type=dtypes.float16, use_operator=use_operator,
+                         regularizer=regularizer)
         y = layer(x)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
@@ -730,6 +715,53 @@ class KerasModelTest(keras_parameterized.TestCase):
     model.load_weights(save_prefix)
     self.assertEqual(backend.get_value(loss_scale()), 2)
     self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+
+
+class RnnTest(keras_parameterized.TestCase):
+  """Test mixed precision with RNNs."""
+
+  # TODO(b/136512020): Support and test recurrent_v2.GRU.
+  @parameterized.named_parameters({
+      'testcase_name': 'base_simple',
+      'strategy_fn': default_strategy_fn,
+      'rnn_class': recurrent.SimpleRNN,
+  }, {
+      'testcase_name': 'distribute_simple',
+      'strategy_fn': create_mirrored_strategy,
+      'rnn_class': recurrent.SimpleRNN,
+  }, {
+      'testcase_name': 'base_gru',
+      'strategy_fn': default_strategy_fn,
+      'rnn_class': recurrent.GRU,
+  }, {
+      'testcase_name': 'distribute_gru',
+      'strategy_fn': create_mirrored_strategy,
+      'rnn_class': recurrent.GRU,
+  })
+  @test_util.run_in_graph_and_eager_modes
+  # RNNs do not work properly with GradientTape in graph mode when V1 control
+  # flow is used.
+  @test_util.enable_control_flow_v2
+  def test_rnn(self, strategy_fn, rnn_class):
+    x = array_ops.ones((2, 3, 4), dtype=dtypes.float16)
+    strategy = strategy_fn()
+    with strategy.scope(), policy.policy_scope('infer_float32_vars'):
+      layer = rnn_class(units=4)
+      def run_fn():
+        with backprop.GradientTape() as tape:
+          y = layer(x)
+          self.assertEqual(y.dtype, dtypes.float16)
+        opt = gradient_descent.SGD(1.)
+        grads = tape.gradient(y, layer.trainable_weights)
+        return opt.apply_gradients(zip(grads, layer.trainable_weights))
+
+      op = strategy.experimental_run(run_fn)
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(op)
+
+      for v in layer.weights:
+        self.assertEqual(v.dtype, dtypes.float32)
 
 
 if __name__ == '__main__':

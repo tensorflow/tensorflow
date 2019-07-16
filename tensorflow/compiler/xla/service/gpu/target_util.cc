@@ -120,6 +120,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kRound: {
       return {"__nv_round", "__ocml_round"};
     }
+    case TargetDeviceFunctionID::kHypot: {
+      return {"__nv_hypot", "__ocml_hypot"};
+    }
   }
 }
 }  // namespace

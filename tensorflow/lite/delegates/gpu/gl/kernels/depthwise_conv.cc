@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/ideal_workgroup_picker.h"
 
 namespace tflite {
@@ -49,7 +50,7 @@ class DepthwiseConvolution : public NodeShader {
                              h * attr.dilations.h - attr.padding.prepended.h);
       }
     }
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
         {"offsets_count", offsets_count},

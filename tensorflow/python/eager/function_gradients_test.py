@@ -19,11 +19,11 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,6 +48,17 @@ _COS_DERIVATIVES = [math_ops.cos,
 
 
 class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(FunctionGradientsTest, self).setUp()
+    cpus = config.list_physical_devices('CPU')
+    # Set 4 virtual CPUs
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
 
   def testGraphModeWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
@@ -215,7 +226,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(-math_ops.sin(x), gg)
 
   def testSymGradGatherNd(self):
-    with ops.Graph().as_default(), self.cached_session() as sess:
+    with ops.Graph().as_default(), self.cached_session():
 
       @def_function.function
       def f(x):
@@ -897,6 +908,5 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  ops.enable_eager_execution()
   test.main()

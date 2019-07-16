@@ -399,9 +399,9 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
 #else
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
 #endif
@@ -461,8 +461,8 @@ TEST_F(GpuKernelTilingTest,
 #else
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
 #endif
@@ -539,11 +539,11 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
 #else
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
 #endif
@@ -585,7 +585,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
 #else
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
 #endif
@@ -669,7 +669,7 @@ TEST_F(GpuKernelTilingTest,
 #else
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
 #endif

@@ -56,6 +56,10 @@ and the following optional parameters:
     Optionally, the computed accuracies can be output to a file as a
     string-serialized instance of tflite::evaluation::TopkAccuracyEvalMetrics.
 
+*   `num_ranks`: `int` (default=10) \
+    The number of top-K accuracies to return. For example, if num_ranks=5, top-1
+    to top-5 accuracy fractions are returned.
+
 The following optional parameters can be used to modify the inference runtime:
 
 *   `num_interpreter_threads`: `int` (default=1) \

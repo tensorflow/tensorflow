@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -277,10 +278,14 @@ void buildComparisonBinOp(Builder *builder, OperationState *result, Value *lhs,
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
   result->addOperands({lhs, rhs});
-  auto resultShape = result_type.cast<ShapedType>().getShape();
   // Comparison binary ops always return i1 tensor.
-  result->types.push_back(
-      builder->getTensorType(resultShape, builder->getI1Type()));
+  if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
+    auto resultShape = shaped_type.getShape();
+    result->types.push_back(
+        builder->getTensorType(resultShape, builder->getI1Type()));
+  } else {
+    result->types.push_back(builder->getTensorType(builder->getI1Type()));
+  }
 }
 
 void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,

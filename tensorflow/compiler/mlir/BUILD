@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/core:lib",
         "@llvm//:support",
+        "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:MlirOptLib",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:QuantOps",

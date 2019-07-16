@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import shape_ops
@@ -143,11 +144,21 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   Raises:
     ValueError: If `num_mel_bins`/`num_spectrogram_bins`/`sample_rate` are not
       positive, `lower_edge_hertz` is negative, frequency edges are incorrectly
-      ordered, or `upper_edge_hertz` is larger than the Nyquist frequency.
+      ordered, `upper_edge_hertz` is larger than the Nyquist frequency, or
+      `sample_rate` is neither a Python float nor a constant Tensor.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
+    # Convert Tensor `sample_rate` to float, if possible.
+    if isinstance(sample_rate, ops.Tensor):
+      maybe_const_val = tensor_util.constant_value(sample_rate)
+      if maybe_const_val is not None:
+        sample_rate = maybe_const_val
+      else:
+        raise ValueError('`sample_rate` was a non-constant Tensor. Must be a '
+                         'Python float or a constant Tensor.')
+
     # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
     # and the validation is already done in linspace (both in shape function
     # and in kernel), there is no need to validate num_spectrogram_bins here.

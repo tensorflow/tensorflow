@@ -298,8 +298,8 @@ def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
 
   let arguments = (ins
     Variadic<XLA_TensorOrTuple>:$val,
-    FunctionAttr:$cond,
-    FunctionAttr:$body
+    SymbolRefAttr:$cond,
+    SymbolRefAttr:$body
   );
 
   let results = (outs Variadic<XLA_TensorOrTuple>:$res);
@@ -320,7 +320,7 @@ def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]> {
 
   let arguments = (ins
     Variadic<XLA_TensorOrTuple>:$operands_and_init,
-    FunctionAttr:$computation,
+    SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );
 

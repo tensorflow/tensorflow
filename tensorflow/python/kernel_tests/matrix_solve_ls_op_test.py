@@ -353,10 +353,10 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
 
 if __name__ == "__main__":
-  dtypes_to_test = [np.float32, np.float64, np.complex64, np.complex128]
-  if test_lib.is_built_with_rocm():
-    # rocBLAS on ROCm stack does not support batched GEMM for complex types
-    dtypes_to_test = [np.float32, np.float64]
+  dtypes_to_test = [np.float32, np.float64]
+  if not test_lib.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for dtype_ in dtypes_to_test:
     # TF2 does not support placeholders under eager so we skip it
     for use_placeholder_ in set([False, not tf2.enabled()]):

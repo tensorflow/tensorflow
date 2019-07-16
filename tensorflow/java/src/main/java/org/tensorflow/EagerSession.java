@@ -179,7 +179,12 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
 
     /** Builds an eager session with the selected options. */
     public EagerSession build() {
-      return new EagerSession(this);
+      return new EagerSession(this, new ReferenceQueue<Object>());
+    }
+
+    // For garbage-collection tests only
+    EagerSession buildForGcTest(ReferenceQueue<Object> gcQueue) {
+      return new EagerSession(this, gcQueue);
     }
 
     private boolean async;
@@ -344,6 +349,10 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     return nativeHandle;
   }
 
+  ResourceCleanupStrategy resourceCleanupStrategy() {
+    return resourceCleanupStrategy;
+  }
+
   /**
    * A reference to one or more allocated native resources.
    *
@@ -411,6 +420,10 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * longer needed.
    */
   private static class NativeResourceCollector {
+
+    NativeResourceCollector(ReferenceQueue<Object> garbageQueue) {
+      this.garbageQueue = garbageQueue;
+    }
 
     void attach(NativeReference nativeRef) {
       synchronized (nativeRefs) {
@@ -484,17 +497,18 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
 
     private final ExecutorService cleanupService = Executors.newSingleThreadExecutor();
     private final Map<NativeReference, Void> nativeRefs = new IdentityHashMap<>();
-    private final ReferenceQueue<Object> garbageQueue = new ReferenceQueue<>();
+    private final ReferenceQueue<Object> garbageQueue;
     private volatile boolean cleanupInBackground = false;
   }
 
   private static volatile EagerSession defaultSession = null;
 
-  private final NativeResourceCollector nativeResources = new NativeResourceCollector();
+  private final NativeResourceCollector nativeResources;
   private final ResourceCleanupStrategy resourceCleanupStrategy;
   private long nativeHandle;
 
-  private EagerSession(Options options) {
+  private EagerSession(Options options, ReferenceQueue<Object> garbageQueue) {
+    this.nativeResources = new NativeResourceCollector(garbageQueue);
     this.nativeHandle = allocate(options.async, options.devicePlacementPolicy.code, options.config);
     this.resourceCleanupStrategy = options.resourceCleanupStrategy;
 
@@ -507,11 +521,6 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     if (nativeHandle == 0L) {
       throw new IllegalStateException("Eager session has been closed");
     }
-  }
-
-  // For tests
-  ResourceCleanupStrategy resourceCleanupStrategy() {
-    return resourceCleanupStrategy;
   }
 
   private static native long allocate(boolean async, int devicePlacementPolicy, byte[] config);

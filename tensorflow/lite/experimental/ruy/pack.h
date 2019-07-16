@@ -158,7 +158,7 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if (defined RUY_NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                             const void* src_ptr2, const void* src_ptr3,
@@ -384,7 +384,7 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
   }
 };
 
-#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // (defined RUY_NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 // Main entry point for packing.
 template <Path ThePath, typename FixedKernelLayout, typename Scalar,

@@ -808,6 +808,7 @@ cc_library(
         ":AffineOps",
         ":Analysis",
         ":IR",
+        ":StandardDialectRegistration",
         ":StandardOps",
         ":Support",
         "@llvm//:support",
@@ -823,6 +824,7 @@ cc_library(
         "lib/Transforms/DmaGeneration.cpp",
         "lib/Transforms/LoopFusion.cpp",
         "lib/Transforms/LoopInvariantCodeMotion.cpp",
+        "lib/Transforms/LoopParametricTiling.cpp",
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
@@ -857,18 +859,19 @@ cc_library(
 )
 
 cc_library(
-    name = "AffineToGPU",
+    name = "LoopsToGPU",
     srcs = [
-        "lib/Conversion/AffineToGPU/AffineToGPU.cpp",
+        "lib/Conversion/LoopsToGPU/LoopsToGPU.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/AffineToGPU/AffineToGPU.h",
+        "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOps",
         ":GPUDialect",
         ":IR",
+        ":Linalg",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -878,17 +881,35 @@ cc_library(
 )
 
 cc_library(
-    name = "AffineToGPUPass",
+    name = "ControlFlowToCFG",
     srcs = [
-        "lib/Conversion/AffineToGPU/AffineToGPUPass.cpp",
+        "lib/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/AffineToGPU/AffineToGPUPass.h",
+        "include/mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":StandardOps",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
+    name = "LoopsToGPUPass",
+    srcs = [
+        "lib/Conversion/LoopsToGPU/LoopsToGPUPass.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOps",
-        ":AffineToGPU",
+        ":Linalg",
+        ":LoopsToGPU",
         ":Pass",
         "@llvm//:support",
     ],
@@ -906,6 +927,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":ControlFlowToCFG",
         ":IR",
         ":LLVMDialect",
         ":Pass",
@@ -1186,13 +1208,13 @@ cc_binary(
     name = "mlir-opt",
     deps = [
         ":AffineDialectRegistration",
-        ":AffineToGPUPass",
         ":Analysis",
         ":FxpMathOps",
         ":FxpMathOpsDialectRegistration",
         ":GPUDialectRegistration",
         ":IR",
         ":LinalgDialectRegistration",
+        ":LoopsToGPUPass",
         ":MlirOptLib",
         ":MlirOptMain",
         ":QuantOps",

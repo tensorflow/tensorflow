@@ -43,7 +43,11 @@ class TensorFlowDialect : public Dialect {
   // string description of gradient attribute.
   static StringRef GetGradientAttrName() { return "tf.gradient"; }
 
-  // Parses a type registered to this dialect.
+  // This attribute marks if a function is stateful.
+  // Returns the string description of stateful attribute.
+  static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
+
+  // Parse a type registered to this dialect.
   Type parseType(StringRef data, Location loc) const override;
 
   // Prints a type registered to this dialect.
@@ -119,11 +123,11 @@ class IfOp : public Op<IfOp, TensorFlowOp, OpTrait::AtLeastNOperands<1>::Impl,
 
   // TODO(b/132271680): This is not following Google naming style
   StringRef getThen() {
-    return getAttrOfType<FunctionAttr>("then_branch").getValue();
+    return getAttrOfType<SymbolRefAttr>("then_branch").getValue();
   }
 
   StringRef getElse() {
-    return getAttrOfType<FunctionAttr>("else_branch").getValue();
+    return getAttrOfType<SymbolRefAttr>("else_branch").getValue();
   }
 
   LogicalResult verify();
@@ -157,8 +161,12 @@ class WhileOp : public Op<WhileOp, TensorFlowOp, OpTrait::VariadicOperands,
   using Op::Op;
   static StringRef getOperationName() { return "tf.While"; }
 
-  StringRef getCond() { return getAttrOfType<FunctionAttr>("cond").getValue(); }
-  StringRef getBody() { return getAttrOfType<FunctionAttr>("body").getValue(); }
+  StringRef getCond() {
+    return getAttrOfType<SymbolRefAttr>("cond").getValue();
+  }
+  StringRef getBody() {
+    return getAttrOfType<SymbolRefAttr>("body").getValue();
+  }
 
   LogicalResult verify();
 };

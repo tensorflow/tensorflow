@@ -1347,7 +1347,7 @@ class Context(object):
     if self._context_handle is not None:
       return pywrap_tensorflow.TFE_ContextGetMirroringPolicy(self._handle)
 
-    return self._device_policy
+    return self._mirroring_policy
 
   @mirroring_policy.setter
   def mirroring_policy(self, policy):

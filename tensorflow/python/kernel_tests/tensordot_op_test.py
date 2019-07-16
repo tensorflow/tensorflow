@@ -221,12 +221,10 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
 
 
 if __name__ == "__main__":
-  dtypes_to_test = [np.float16, np.float32, np.float64, np.complex64,
-                    np.complex128]
-  if test_lib.is_built_with_rocm():
-    # rocBLAS library on ROCm stack doesn't properly support fp16 and
-    # complex numbers yet
-    dtypes_to_test = [np.float32, np.float64]
+  dtypes_to_test = [np.float16, np.float32, np.float64]
+  if not test_lib.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for dtype in dtypes_to_test:
     for rank_a in 1, 2, 4, 5:
       for rank_b in 1, 2, 4, 5:

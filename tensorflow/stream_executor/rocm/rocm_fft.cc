@@ -110,7 +110,7 @@ namespace wrap {
   __macro(hipfftExecC2C)             \
   __macro(hipfftExecC2R)             \
   __macro(hipfftExecZ2Z)             \
-  __macro(hipfftExecR2C)             \
+  __macro(hipfftExecR2C)
 
 // clang-format on
 

@@ -103,6 +103,7 @@ cc_library(
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "translate/control_to_executor_dialect.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
@@ -280,6 +281,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
     ],
 )
 
@@ -471,6 +473,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
+        "@local_config_mlir//:Pass",
     ],
 )
 

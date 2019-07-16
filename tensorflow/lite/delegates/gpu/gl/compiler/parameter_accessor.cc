@@ -68,7 +68,7 @@ struct UniformTypeGetter {
 };
 
 // Returns GLSL uniform type of the given parameter.
-std::string GetUniformType(const UniformParameter::ValueType& value) {
+std::string GetUniformType(const Variable::ValueType& value) {
   return absl::visit(UniformTypeGetter(), value);
 }
 
@@ -138,7 +138,7 @@ struct ConstGenerator {
 };
 
 // Appends string representation of a parameter value.
-void GetValue(const UniformParameter::ValueType& value, std::string* result) {
+void GetValue(const Variable::ValueType& value, std::string* result) {
   absl::visit(ConstGenerator{result}, value);
 }
 
@@ -155,11 +155,11 @@ struct UniformDeclarationGenerator {
                     param.name, "[", v.size(), "];\n");
   }
 
-  const UniformParameter& param;
+  const Variable& param;
   std::string* result;
 };
 
-void GenerateUniformDeclaration(const UniformParameter& parameter,
+void GenerateUniformDeclaration(const Variable& parameter,
                                 std::string* result) {
   absl::visit(UniformDeclarationGenerator{parameter, result}, parameter.value);
 }
@@ -176,7 +176,7 @@ struct VariableLengthGetter {
 };
 
 // Returns true if value is a vector
-bool IsVariableLength(const UniformParameter::ValueType& value) {
+bool IsVariableLength(const Variable::ValueType& value) {
   return absl::visit(VariableLengthGetter(), value);
 }
 
@@ -222,7 +222,7 @@ struct FieldAccessor {
 };
 
 // Appends formatted value of the given field.
-void GetValue(const UniformParameter::ValueType& value, Field field,
+void GetValue(const Variable::ValueType& value, Field field,
               std::string* result) {
   absl::visit(FieldAccessor{field, result}, value);
 }
@@ -262,7 +262,7 @@ struct FieldChecker {
 };
 
 // Returns true if field has field access and field is not out of bounds.
-bool HasField(const UniformParameter::ValueType& value, Field field) {
+bool HasField(const Variable::ValueType& value, Field field) {
   return absl::visit(FieldChecker{field}, value);
 }
 
@@ -322,7 +322,7 @@ RewriteStatus ParameterAccessor::Rewrite(absl::string_view input,
   return RewriteStatus::SUCCESS;
 }
 
-bool ParameterAccessor::AddParameter(UniformParameter param) {
+bool ParameterAccessor::AddParameter(Variable param) {
   std::string name = param.name;
   return name_to_param_.insert({name, std::move(param)}).second;
 }
@@ -353,8 +353,8 @@ std::string ParameterAccessor::GetUniformDeclarations() const {
   return declarations;
 }
 
-std::vector<UniformParameter> ParameterAccessor::GetUniformParameters() const {
-  std::vector<UniformParameter> params;
+std::vector<Variable> ParameterAccessor::GetUniformParameters() const {
+  std::vector<Variable> params;
   if (!inline_values_) {
     for (auto& param : name_to_param_) {
       params.push_back(param.second);

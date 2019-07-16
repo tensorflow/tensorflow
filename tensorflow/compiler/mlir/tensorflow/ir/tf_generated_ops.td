@@ -79,6 +79,12 @@ def TF_AddNOp : TF_Op<"AddN", [Commutative, NoSideEffect]> {
   let summary = "Add all input tensors element wise.";
 
   let description = [{
+Inputs must be of same size and shape.
+
+  ```python
+  x = [9, 7, 10]
+  tf.math.add_n(x) ==> 26
+  ```
   }];
 
   let arguments = (ins
@@ -115,6 +121,39 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_ArgMinOp : TF_Op<"ArgMin", [NoSideEffect]> {
+  let summary = [{
+Returns the index with the smallest value across dimensions of a tensor.
+  }];
+
+  let description = [{
+Note that in case of ties the identity of the return value is not guaranteed.
+
+Usage:
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmin(input = a)
+  c = tf.keras.backend.eval(b)  
+  # c = 0
+  # here a[0] = 1 which is the smallest element of a across axis 0
+  ```
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$dimension
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
@@ -467,6 +506,15 @@ def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes cos of x element-wise.";
 
   let description = [{
+Given an input tensor, this function computes cosine of every
+  element in the tensor. Input range is `(-inf, inf)` and
+  output range is `[-1,1]`. If input lies outside the boundary, `nan`
+  is returned.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10000, float("inf")])
+  tf.math.cos(x) ==> [nan -0.91113025 0.87758255 0.5403023 0.36235774 0.48718765 -0.95215535 nan]
+  ```
   }];
 
   let arguments = (ins
@@ -1027,6 +1075,43 @@ Invert (flip) each bit of supported types; for example, type `uint8` value 01010
   let description = [{
 Flip each bit of supported types.  For example, type `int8` (decimal 2) binary 00000010 becomes (decimal -3) binary 11111101.
 This operation is performed on each element of the tensor argument `x`.
+
+Example:
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+
+# flip 2 (00000010) to -3 (11111101)
+tf.assert_equal(-3, bitwise_ops.invert(2))
+
+dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+              dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
+
+inputs = [0, 5, 3, 14]
+for dtype in dtype_list:
+  # Because of issues with negative numbers, let's test this indirectly.
+  # 1. invert(a) and a = 0
+  # 2. invert(a) or a = invert(0)
+  input_tensor = tf.constant([0, 5, 3, 14], dtype=dtype)
+  not_a_and_a, not_a_or_a, not_0 = [bitwise_ops.bitwise_and(
+                                      input_tensor, bitwise_ops.invert(input_tensor)),
+                                    bitwise_ops.bitwise_or(
+                                      input_tensor, bitwise_ops.invert(input_tensor)),
+                                    bitwise_ops.invert(
+                                      tf.constant(0, dtype=dtype))]
+
+  expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
+  tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
+
+  expected = tf.cast([not_0] * 4, tf.float32)
+  tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
+
+  # For unsigned dtypes let's also check the result directly.
+  if dtype.is_unsigned:
+    inverted = bitwise_ops.invert(input_tensor)
+    expected = tf.constant([dtype.max - x for x in inputs], dtype=tf.float32)
+    tf.assert_equal(tf.cast(inverted, tf.float32), tf.cast(expected, tf.float32))
+```
   }];
 
   let arguments = (ins
@@ -1346,6 +1431,52 @@ def TF_MinimumOp : TF_Op<"Minimum", [Broadcastable, NoSideEffect]>,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect]> {
+  let summary = "Pads a tensor with mirrored values.";
+
+  let description = [{
+This operation pads a `input` with mirrored values according to the `paddings`
+you specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many values to add before the contents of `input` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of `input`
+in that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater
+than `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true
+(if false, respectively).
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1]], [2, 2]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
+                      [2, 1, 1, 2, 3, 3, 2]
+                      [5, 4, 4, 5, 6, 6, 5]
+                      [5, 4, 4, 5, 6, 6, 5]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    TF_AnyStrAttrOf<["REFLECT", "SYMMETRIC"]>:$mode
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
@@ -2194,9 +2325,17 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 }
 
 def TF_SinOp : TF_Op<"Sin", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Computes sin of x element-wise.";
+  let summary = "Computes sine of x element-wise.";
 
   let description = [{
+Given an input tensor, this function computes sine of every
+  element in the tensor. Input range is `(-inf, inf)` and
+  output range is `[-1,1]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10, float("inf")])
+  tf.math.sin(x) ==> [nan -0.4121185 -0.47942555 0.84147096 0.9320391 -0.87329733 -0.54402107 nan]
+  ```
   }];
 
   let arguments = (ins
@@ -2591,6 +2730,31 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes hyperbolic tangent of `x` element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes hyperbolic tangent of every
+  element in the tensor. Input range is `[-inf, inf]` and
+  output range is `[-1,1]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
+  tf.math.tanh(x) ==> [-1. -0.99990916 -0.46211717 0.7615942 0.8336547 0.9640276 0.9950547 1.]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.
@@ -2633,34 +2797,6 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
-  let summary = "List of the given size with empty elements.";
-
-  let description = [{
-element_shape: the shape of the future elements of the list
-num_elements: the number of elements to reserve
-handle: the output list
-element_dtype: the desired type of elements in the list.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements,
-
-    TypeAttr:$element_dtype
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

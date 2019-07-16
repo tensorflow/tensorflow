@@ -21,6 +21,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
@@ -67,7 +68,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     return self._element_spec
 
 
-def _AutoShardDatasetV1(input_dataset, num_workers, index):
+def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=invalid-name
   return dataset_ops.DatasetV1Adapter(
       _AutoShardDataset(input_dataset, num_workers, index))
 
@@ -110,6 +111,41 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+class _RemoteDataset(dataset_ops.DatasetSource):
+  """Creates a dataset on a given `device` given a graph def."""
+
+  def __init__(self, graph_def, device, element_spec):
+    self._elem_spec = element_spec
+    with ops.device(device):
+      variant_tensor = ged_ops.dataset_from_graph(graph_def)
+    super(_RemoteDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._elem_spec
+
+
+def replicate(dataset, devices):
+  """A transformation that replicates `dataset` onto a list of devices.
+
+  Args:
+    dataset: A `tf.data.Dataset` object.
+    devices: A list of devices to replicate the dataset on.
+
+  Returns:
+    A dictionary mapping device name to a dataset on that device.
+  """
+  if not isinstance(dataset, dataset_ops.DatasetV2):
+    raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+
+  graph_def = dataset._as_serialized_graph()  # pylint: disable=protected-access
+  datasets = {}
+  for device in devices:
+    ds = _RemoteDataset(graph_def, device, dataset.element_spec)
+    datasets[device] = ds
+  return datasets
 
 
 _AutoShardDatasetV1.__doc__ = _AutoShardDataset.__doc__

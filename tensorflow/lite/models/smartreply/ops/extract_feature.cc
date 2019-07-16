@@ -59,8 +59,6 @@ bool IsValidNgram(const tflite::StringRef& strref) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteIntArray* outputSize1 = TfLiteIntArrayCreate(1);
-  TfLiteIntArray* outputSize2 = TfLiteIntArrayCreate(1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   int dim = input->dims->data[0];
   if (dim == 0) {
@@ -68,6 +66,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     dim = 1;
   }
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteString);
+  TfLiteIntArray* outputSize1 = TfLiteIntArrayCreate(1);
+  TfLiteIntArray* outputSize2 = TfLiteIntArrayCreate(1);
   outputSize1->data[0] = dim;
   outputSize2->data[0] = dim;
   context->ResizeTensor(context, GetOutput(context, node, 0), outputSize1);

@@ -198,6 +198,14 @@ func @fill(%arg0: tensor<3xi32>, %arg1: tensor<f32>) -> tensor<?x?x?xf32> {
 // CHECK:  %0 = "tfl.fill"(%arg0, %arg1) : (tensor<3xi32>, tensor<f32>) -> tensor<?x?x?xf32>
 }
 
+func @argmin(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.ArgMin"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+
+// CHECK-LABEL: argmin
+// CHECK:  %0 = "tfl.arg_min"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+}
+
 func @sigmoid(%arg0: tensor<?x88xf16>) -> tensor<?x88xf16> {
   %0 = "tf.Sigmoid"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
   return %0 : tensor<?x88xf16>
@@ -828,4 +836,40 @@ func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor
   return %0 : tensor<?x3x5xf32>
   // CHECK-LABEL: slice1Tensor
   // CHECK: "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+}
+
+func @mirror_pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
+  %0 = "tf.MirrorPad"(%arg0, %arg1) { mode = "SYMMETRIC" }: (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: mirror_pad
+  // CHECK:  %0 = "tfl.mirror_pad"(%arg0, %arg1) {mode = "SYMMETRIC"} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  return %0 : tensor<?xf32>
+}
+
+func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
+  %0 = "tf.MirrorPad"(%arg0, %arg1) { mode = "REFLECT" }: (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: mirror_pad_reflect
+  // CHECK:  %0 = "tfl.mirror_pad"(%arg0, %arg1) {mode = "REFLECT"} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  return %0 : tensor<?xf32>
+}
+
+func @Tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  %2 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %2: tensor<1xf32>
+
+// CHECK-LABEL: Tanh
+// CHECK:  %0 = "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+}
+
+func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
+  %0 = "tf.Cast"(%arg0) : (tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32>
+  return %0 : tensor<1x2x2x5xf32>
+
+  // CHECK-LABEL: cast
+  // CHECK: "tfl.cast"(%arg0) : (tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32>
 }

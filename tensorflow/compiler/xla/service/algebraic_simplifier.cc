@@ -168,13 +168,8 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
 // more general case a worklist based approach would be needed.
-class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
+class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
-  // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
-  }
-
   Status HandleAdd(HloInstruction* add) override;
 
   Status HandleAnd(HloInstruction* logical_and) override;
@@ -249,9 +244,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleSubtract(HloInstruction* sub) override;
 
   Status HandleMap(HloInstruction* map) override;
-
-  // Returns whether algebraic simplification has occurred.
-  const bool changed() const { return changed_; }
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
@@ -350,35 +342,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
       HloInstruction* broadcast);
 
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceWithNewInstruction(
-      HloInstruction* old_instruction,
-      std::unique_ptr<HloInstruction> new_instruction) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        old_instruction, std::move(new_instruction)));
-    changed_ = true;
-    return Status::OK();
-  }
-
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(
-        computation_->ReplaceInstruction(old_instruction, new_instruction));
-    changed_ = true;
-    return Status::OK();
-  }
-
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
       const HloInstruction& dot, HloInstruction* lhs, int64 lhs_contracting_dim,
@@ -445,7 +408,7 @@ bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      AlgebraicSimplifier* simplifier) {
   AlgebraicSimplifierVisitor visitor(computation, options, simplifier);
   TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_;
+  return visitor.changed_ || visitor.changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -1723,6 +1686,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 }
 
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
+  CHECK(computation_ == dot->parent());
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
   if (options_.is_layout_sensitive()) {
@@ -2660,6 +2624,11 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
   HloInstruction *a, *b;
   CHECK(Match(remainder, m::Remainder(m::Op(&a), m::Op(&b))));
 
+  // (A % B) % B == A % B.
+  if (Match(a, m::Remainder(m::Op(), m::Op().Is(b)))) {
+    return ReplaceInstruction(remainder, a);
+  }
+
   // A % B => A & (B - 1) if B is a power of 2.
   switch (remainder->shape().element_type()) {
     case S8:
@@ -3356,12 +3325,6 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return Status::OK();
   }
 
-  // Bail on dilation.
-  if (window_util::HasDilation(window)) {
-    VLOG(10) << "Not folding pad into reduce-window as there is dilation.";
-    return Status::OK();
-  }
-
   VLOG(10) << "Considering folding Pad: " << pad->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString()
            << (convert != nullptr
@@ -3371,8 +3334,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   // Do not fold interior padding into ReduceWindow since the backends do not
   // support it.
   const PaddingConfig& pad_config = pad->padding_config();
-  if (HasInteriorPadding(pad_config)) {
-    VLOG(10) << "Not folding pad into reduce-window due to interior padding.";
+  if (HasInteriorPadding(pad_config) && window_util::HasBaseDilation(window)) {
+    VLOG(10) << "Not folding interior pad into base-dilated reduce-window.";
     return Status::OK();
   }
 
@@ -3415,6 +3378,10 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
     if (!window_util::HasSymmetricPadding(pad_config)) {
       VLOG(10) << "Window has uneven padding.";
+      return false;
+    }
+    if (HasInteriorPadding(pad_config)) {
+      VLOG(10) << "Window has interior padding.";
       return false;
     }
     for (int64 i = 0; i < pad_config.dimensions_size(); ++i) {
@@ -3487,6 +3454,10 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                                pad_dim.edge_padding_low());
     window_dim.set_padding_high(window_dim.padding_high() +
                                 pad_dim.edge_padding_high());
+    if (pad_dim.interior_padding() != 0) {
+      CHECK_EQ(window_dim.base_dilation(), 1);
+      window_dim.set_base_dilation(1 + pad_dim.interior_padding());
+    }
   }
 
   return ReplaceWithNewInstruction(

@@ -1083,7 +1083,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testParallelExecution(self):
     """Verify disjoint branches across while iterations are run in parallel."""
     if test.is_built_with_rocm():
-      self.skipTest('Disable subtest on ROCm due to missing Cholesky op support')
+      self.skipTest(
+          "Disable subtest on ROCm due to missing Cholesky op support")
 
     with ops.Graph().as_default() as g:
       nbranches = 7

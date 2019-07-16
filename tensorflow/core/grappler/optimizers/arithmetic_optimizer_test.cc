@@ -2728,6 +2728,7 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
   auto y2 = ops::Const(s.WithOpName("y2"), {2.0f, 2.0f}, {1, 2});
+  auto y3 = ops::Const(s.WithOpName("y3"), {3.0f, 3.0f}, {1, 2});
   auto y1 = ops::Const(s.WithOpName("y1"), {1.0f, 1.0f}, {1, 2});
   auto yPoint5 = ops::Const(s.WithOpName("y.5"), {0.5f, 0.5f}, {1, 2});
   auto y0 = ops::Const(s.WithOpName("y0"), {0.0f, 0.0f}, {1, 2});
@@ -2738,6 +2739,8 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   auto ones = ops::Const(s.WithOpName("ones"), {1.0f, 1.0f, 1.0f}, {1, 3});
   auto zeros = ops::Const(s.WithOpName("zeros"), {0.0f, 0.0f, 0.0f}, {1, 3});
   Output out2 = ops::Pow(s.WithOpName("out2"), x, y2);
+  Output out3 =
+      ops::Pow(s.WithOpName("out3").WithDevice("/device:CPU:0"), x, y3);
   Output out1 = ops::Pow(s.WithOpName("out1"), x, y1);
   Output outPoint5 = ops::Pow(s.WithOpName("out.5"), x, yPoint5);
   Output out0 = ops::Pow(s.WithOpName("out0"), x, y0);
@@ -2748,18 +2751,18 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   Output out_bcast2 = ops::Pow(s.WithOpName("out_bcast2"), z, zeros);
 
   GrapplerItem item;
-  item.fetch = {"out2",  "out1", "out.5",      "out0",      "out_.5",
-                "out_1", "out",  "out_bcast1", "out_bcast2"};
+  item.fetch = {"out2",   "out3",  "out1", "out.5",      "out0",
+                "out_.5", "out_1", "out",  "out_bcast1", "out_bcast2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  ASSERT_EQ(tensors_expected.size(), 9);
+  ASSERT_EQ(tensors_expected.size(), 10);
 
   GraphDef got;
   ArithmeticOptimizer optimizer;
   EnableOnlyConvertPow(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &got);
   auto tensors = EvaluateNodes(got, item.fetch);
-  ASSERT_EQ(tensors.size(), 9);
+  ASSERT_EQ(tensors.size(), 10);
 
   for (int i = 0; i < tensors.size(); ++i) {
     EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
@@ -2773,6 +2776,12 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("ones", "Const", {}, {}, &want);
   AddNode("zeros", "Const", {}, {}, &want);
   AddNode("out2", "Square", {"x"}, {}, &want);
+  AddNode("ArithmeticOptimizer/ConvertPow__inner_out3", "Square", {"x"}, {},
+          &want)
+      ->set_device("/device:CPU:0");
+  AddNode("out3", "Mul", {"x", "ArithmeticOptimizer/ConvertPow__inner_out3"},
+          {}, &want)
+      ->set_device("/device:CPU:0");
   AddNode("out1", "Identity", {"x"}, {}, &want);
   AddNode("out.5", "Sqrt", {"x"}, {}, &want);
   AddNode("out0", "Const", {AsControlDependency("x")}, {}, &want);
