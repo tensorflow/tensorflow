@@ -28,7 +28,7 @@
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
-// CHECK-NEXT:       shape: [  ],
+// CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       type: BOOL,
 // CHECK-NEXT:       buffer: 3,
 // CHECK-NEXT:       name: "tfl.less",
@@ -36,7 +36,7 @@
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
-// CHECK-NEXT:       shape: [  ],
+// CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 4,
 // CHECK-NEXT:       name: "tf.If",
 // CHECK-NEXT:       quantization: {

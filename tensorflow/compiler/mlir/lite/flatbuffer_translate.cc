@@ -507,9 +507,10 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   auto type = value->getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
+  // However, we output all known shapes for better round-tripping
   std::vector<int32_t> shape;
   if (auto* inst = value->getDefiningOp()) {
-    if (IsConstOrInput(inst)) {
+    if (type.hasStaticShape()) {
       auto shape_ref = type.getShape();
       auto is_out_of_range = [](int64_t dim) {
         return dim > std::numeric_limits<int32_t>::max();
