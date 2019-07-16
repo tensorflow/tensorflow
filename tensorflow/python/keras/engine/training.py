@@ -144,6 +144,10 @@ class Model(network.Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
+    # In v2, model will use default strategy if user don't specify any. This
+    # flag is a stop gap that helps the existing logic to correctly fallback to
+    # use training loops that doesn't use distribution strategy.
+    self._infer_default_stragtegy = False
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
@@ -249,6 +253,7 @@ class Model(network.Network):
     if self._run_distributed:
       self._distribution_strategy = (
           distribution_strategy_context.get_strategy())
+      self._infer_default_stragtegy = True
     elif distribute is not None:
       if tf2.enabled():
         raise ValueError(
@@ -475,6 +480,11 @@ class Model(network.Network):
             self._distribution_strategy)
         and not getattr(self, '_cloning', False)):
       return training_v2.Loop()
+
+    # Falling back to use existing v1 loops. Before choosing the loop, the
+    # default inferred distribution strategy need to be removed.
+    if self._infer_default_stragtegy:
+      self._distribution_strategy = None
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:

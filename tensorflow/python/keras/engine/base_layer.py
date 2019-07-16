@@ -2149,8 +2149,11 @@ class Layer(module.Module):
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
-    if (isinstance(value, Layer) or
-        trackable_layer_utils.has_weights(value)):
+
+    # Sequential models use a separate layer tracking mechanism, so skip the
+    # logic defined here for tracking layers.
+    if (self.__class__.__name__ != 'Sequential' and
+        (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.

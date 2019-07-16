@@ -54,15 +54,19 @@ class BufferDefinitionEvent {
   BufferDefinitionEvent() = default;
 
   // Sets the definition event of the buffer to 'event', which is recorded
-  // on 'stream'. Must be called at most once.
+  // on 'stream'. Must be called at most once. Unblocks any other host threads
+  // are blocked in WaitForEventOnStream.
   void SetDefinitionEvent(EventPool::Handle event, se::Stream* stream);
 
   // Adds synchronization events to 'stream' that wait for this event to be
   // defined on 'stream'. Does nothing if the event is already known to have
-  // occurred by the tail of 'stream'.
+  // occurred by the tail of 'stream'. If RecordOnStream has not yet been
+  // called, blocks the calling thread until the event has been recorded.
   void WaitForEventOnStream(se::Stream* stream);
 
  private:
+  bool EventHasBeenRecorded() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // An event that is triggered when the content of one or more buffers is
   // ready. If this event is nullptr, it is assumed that the buffer's content is
   // always defined.

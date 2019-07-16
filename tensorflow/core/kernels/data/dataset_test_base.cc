@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,6 +73,7 @@ Status WriteDataToFile(const string& filename, const char* data,
                              zlib_compression_options);
     TF_RETURN_IF_ERROR(out.Init());
     TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
   } else {
     return tensorflow::errors::InvalidArgument(
@@ -81,6 +83,26 @@ Status WriteDataToFile(const string& filename, const char* data,
   TF_RETURN_IF_ERROR(file_writer->Flush());
   TF_RETURN_IF_ERROR(file_writer->Close());
 
+  return Status::OK();
+}
+
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params) {
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> file_writer;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
+  auto options = io::RecordWriterOptions::CreateRecordWriterOptions(
+      ToString(params.compression_type));
+  options.zlib_options.input_buffer_size = params.input_buffer_size;
+  io::RecordWriter record_writer(file_writer.get(), options);
+  for (const auto& record : records) {
+    TF_RETURN_IF_ERROR(record_writer.WriteRecord(record));
+  }
+  TF_RETURN_IF_ERROR(record_writer.Flush());
+  TF_RETURN_IF_ERROR(record_writer.Close());
+  TF_RETURN_IF_ERROR(file_writer->Flush());
+  TF_RETURN_IF_ERROR(file_writer->Close());
   return Status::OK();
 }
 

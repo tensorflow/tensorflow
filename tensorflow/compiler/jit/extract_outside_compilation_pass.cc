@@ -640,8 +640,8 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
 Status ConstructHostGraph(
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
-    FunctionLibraryDefinition* fld, const string& host_graph_func_name) {
-  Graph host_graph(fld);
+    FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
+  host_graph->reset(new Graph(fld));
 
   // Create sequencer node in host graph.
   NodeDefBuilder sequencer_builder(absl::StrCat(xla_cluster_name, "_sequencer"),
@@ -650,13 +650,13 @@ Status ConstructHostGraph(
   NodeDef sequencer_def;
   TF_RETURN_IF_ERROR(sequencer_builder.Finalize(&sequencer_def));
   Status s;
-  Node* sequencer = host_graph.AddNode(sequencer_def, &s);
+  Node* sequencer = (*host_graph)->AddNode(sequencer_def, &s);
   TF_RETURN_IF_ERROR(s);
 
   // Create key placeholder in host graph.
   TF_ASSIGN_OR_RETURN(
       Node * key_placeholder,
-      AddHostComputeKeyPlaceholder(xla_cluster_name, &host_graph));
+      AddHostComputeKeyPlaceholder(xla_cluster_name, host_graph->get()));
 
   // For each outside compilation graph, copy them to host graph with the
   // following changes:
@@ -685,8 +685,8 @@ Status ConstructHostGraph(
     FixupSourceAndSinkEdges(host_fbody->graph);
 
     std::map<const Node*, Node*> node_map;
-    node_map[host_fbody->graph->source_node()] = host_graph.source_node();
-    node_map[host_fbody->graph->sink_node()] = host_graph.sink_node();
+    node_map[host_fbody->graph->source_node()] = (*host_graph)->source_node();
+    node_map[host_fbody->graph->sink_node()] = (*host_graph)->sink_node();
     Status s;
     ReverseDFS(
         *host_fbody->graph, /*enter=*/nullptr,
@@ -708,7 +708,7 @@ Status ConstructHostGraph(
             NodeDef copy_def = n->def();
             // Change c).
             copy_def.clear_device();
-            copy = host_graph.AddNode(copy_def, &s);
+            copy = (*host_graph)->AddNode(copy_def, &s);
             if (!s.ok()) {
               return;
             }
@@ -723,13 +723,14 @@ Status ConstructHostGraph(
                                    e->src()->DebugString());
               return;
             }
-            host_graph.AddEdge(node_map[e->src()], e->src_output(), copy,
-                               e->dst_input());
+            (*host_graph)
+                ->AddEdge(node_map[e->src()], e->src_output(), copy,
+                          e->dst_input());
           }
 
           // Change b).
           if (HasNodeAttr(copy->def(), kXlaHasHostTransferAttrName)) {
-            host_graph.AddControlEdge(copy, sequencer);
+            (*host_graph)->AddControlEdge(copy, sequencer);
           }
         },
         NodeComparatorID());
@@ -739,7 +740,7 @@ Status ConstructHostGraph(
     }
   }
   // Reset "device_ordinal" to placeholder value.
-  TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(&host_graph));
+  TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(host_graph->get()));
 
   // sequencer and key_placeholder might be dead nodes. Prune them if necessary.
   // - sequencer should be pruned iff it has no input control edges from
@@ -748,32 +749,23 @@ Status ConstructHostGraph(
   // - key_placeholder should be pruned iff there's no RecvAtHost/SendFromHost.
   //   We don't need to do anything special.
   if (!sequencer->in_edges().empty()) {
-    host_graph.AddControlEdge(sequencer, host_graph.sink_node());
+    (*host_graph)->AddControlEdge(sequencer, (*host_graph)->sink_node());
   }
   PruneForReverseReachability(
-      &host_graph, std::unordered_set<const Node*>{host_graph.sink_node()});
+      host_graph->get(),
+      std::unordered_set<const Node*>{(*host_graph)->sink_node()});
 
   // Postprocess edges between different outside compilations.
   TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
-      &host_graph, outside_compilation_attr_name));
+      host_graph->get(), outside_compilation_attr_name));
 
   // Postprocess lifted arg nodes.
-  TF_RETURN_IF_ERROR(PostprocessLiftedArgs(&host_graph, fld));
+  TF_RETURN_IF_ERROR(PostprocessLiftedArgs(host_graph->get(), fld));
 
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
                                  xla_cluster_name),
-                    host_graph, fld);
-  }
-
-  FunctionDef host_graph_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(host_graph, host_graph_func_name, &host_graph_fdef));
-  if (fld->Find(host_graph_func_name)) {
-    TF_RETURN_IF_ERROR(
-        fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));
-  } else {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(host_graph_fdef));
+                    **host_graph, fld);
   }
 
   return Status::OK();
@@ -890,14 +882,14 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   }
 
   // See if the SendFromHost node exists in `host_graph`.
-  Node* send_from_host_main_graph = nullptr;
+  Node* send_node_in_host_graph = nullptr;
   for (Node* n : host_graph->nodes()) {
     if (n->name() == send_from_host->name()) {
-      send_from_host_main_graph = n;
+      send_node_in_host_graph = n;
       break;
     }
   }
-  if (send_from_host_main_graph) {
+  if (send_node_in_host_graph) {
     // This is an "top-level" outside compilation. Clear the graph, and copy
     // SendFromHost and all its predecessors from `host_graph`.
     std::vector<Node*> nodes;
@@ -913,7 +905,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       Node* n;
       bool is_exiting;
     };
-    std::vector<Visit> stack{{send_from_host_main_graph, false}};
+    std::vector<Visit> stack{{send_node_in_host_graph, false}};
     std::map<Node*, Node*> node_map;
     node_map[host_graph->source_node()] = g->source_node();
     while (!stack.empty()) {
@@ -948,9 +940,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       }
     }
 
-    send_from_host = node_map[send_from_host_main_graph];
+    send_from_host = node_map[send_node_in_host_graph];
   } else {
-    // This is an outside compilation embedded in If/While/gradient/etc.
+    // This is an outside compilation generated for If/While/gradient/etc.
     // It will be enough for shape inference. Leave `g` unchanged.
   }
 
@@ -1802,6 +1794,7 @@ Status ExtractOutsideCompilationForFunction(
   // Replace outside_compilation function nodes with HostCompute ops.
   std::vector<Node*> outside_compilation_nodes;
   std::vector<string> outside_compilation_host_graphs;
+  std::vector<string> shape_inference_graphs_to_rewrite;
   for (Node* n : graph_out->nodes()) {
     if (HasNodeAttr(n->def(), "_outside_compilation_subgraph")) {
       outside_compilation_nodes.push_back(n);
@@ -1815,6 +1808,8 @@ Status ExtractOutsideCompilationForFunction(
                                      &shape_inference_graph));
       if (!shape_inference_graph.name().empty()) {
         shape_inference_graphs->push_back(shape_inference_graph.name());
+        shape_inference_graphs_to_rewrite.push_back(
+            shape_inference_graph.name());
 
         const FunctionDef* xla_fdef = fld->Find(n->name());
         if (!xla_fdef) {
@@ -1871,9 +1866,29 @@ Status ExtractOutsideCompilationForFunction(
       has_outside_compilation));
 
   // Construct host graph.
-  TF_RETURN_IF_ERROR(ConstructHostGraph(
-      xla_cluster_name, outside_compilation_attr_name,
-      outside_compilation_host_graphs, fld, host_graph_func_name));
+  std::unique_ptr<Graph> host_graph;
+  TF_RETURN_IF_ERROR(
+      ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
+                         outside_compilation_host_graphs, fld, &host_graph));
+  FunctionDef host_graph_fdef;
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*host_graph, host_graph_func_name, &host_graph_fdef));
+  if (fld->Find(host_graph_func_name)) {
+    TF_RETURN_IF_ERROR(
+        fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));
+  } else {
+    TF_RETURN_IF_ERROR(fld->AddFunctionDef(host_graph_fdef));
+  }
+
+  // Shape inference graphs might contain Placeholder nodes for outside
+  // compilation to outside compilation edges. Rewrite shape inference graphs
+  // to remove such nodes.
+  for (const string& shape_inference_graph :
+       shape_inference_graphs_to_rewrite) {
+    TF_RETURN_IF_ERROR(RewriteShapeInferenceGraph(shape_inference_graph,
+                                                  host_graph.get(),
+                                                  /*pivot_node=*/nullptr, fld));
+  }
 
   // Remove the outside compilation graphs from function library.
   for (const string& func : outside_compilation_host_graphs) {

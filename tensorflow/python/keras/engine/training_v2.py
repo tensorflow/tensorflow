@@ -371,8 +371,8 @@ class Loop(training_utils.TrainingLoop):
 def _get_distribution_strategy(model):
   if model._distribution_strategy:
     return model._distribution_strategy
-  # TODO(scottzhu): might want to just get the default strategy in future.
-  elif distribution_strategy_context.has_strategy():
+  elif not distribution_strategy_context.has_strategy():
+    # Use the default strategy if no strategy is specified.
     return distribution_strategy_context.get_strategy()
   else:
     return None

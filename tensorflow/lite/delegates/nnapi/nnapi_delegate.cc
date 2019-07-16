@@ -1263,8 +1263,9 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinL2Normalization: {
         if (version == 1) {
+          const auto& input = context->tensors[node->inputs->data[0]];
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
-              !IsFloatOperator(context, node)) {
+              (!IsFloatOperator(context, node) || input.dims->size != 4)) {
             return nullptr;
           }
           auto builtin =
@@ -1578,6 +1579,20 @@ class NNAPIDelegateKernel {
           };
         }
         break;
+      case kTfLiteBuiltinSpaceToDepth: {
+        const TfLiteType input_type =
+            context->tensors[node->inputs->data[0]].type;
+        if (version == 1 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8)) {
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            auto builtin = reinterpret_cast<TfLiteSpaceToDepthParams*>(
+                mapping_args.node->builtin_data);
+            mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+            return ANEURALNETWORKS_SPACE_TO_DEPTH;
+          };
+        }
+      } break;
       case kTfLiteBuiltinSvdf:
         // NNAPI only support float32 weights.
         // Only delegate to NNAPI 1.1, as SVDF does not support rank > 1 on 1.0.

@@ -269,6 +269,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_batch_norm_v2 = "FusedBatchNormV2";
     csinfo_.fused_batch_norm_grad_v2 = "FusedBatchNormGradV2";
+    csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
+    csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
@@ -453,6 +455,20 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v2),
          CopyAttrsFusedBatchNormV2, AlwaysRewrite,
          kRewriteForLayoutPropagation});
+
+    // Using CopyAttrsFusedBatchNormV2 for V3 on CPU, as there are no additional
+    // attributes.
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
+         kRewriteForLayoutPropagation});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
+         kRewriteForLayoutPropagation});
+
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
@@ -870,6 +886,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_batch_norm_grad;
     string fused_batch_norm_v2;
     string fused_batch_norm_grad_v2;
+    string fused_batch_norm_v3;
+    string fused_batch_norm_grad_v3;
     string fused_conv2d;
     string identity;
     string leakyrelu;

@@ -105,4 +105,4 @@ if __name__ == "__main__":
   if unparsed:
     print("Usage: %s <path out> <zip file to generate>")
   else:
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

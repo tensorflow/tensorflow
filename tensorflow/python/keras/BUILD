@@ -569,7 +569,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 12,
+    shard_count = 16,
     tags = ["notsan"],
 )
 
@@ -1230,7 +1230,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = ["no_windows"],  # b/135752236
 )
 

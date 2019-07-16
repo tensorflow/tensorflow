@@ -205,7 +205,8 @@ def run_all_keras_modes(test_or_class=None,
       loss = 'mse'
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics,
-                    run_eagerly=testing_utils.should_run_eagerly())
+                    run_eagerly=testing_utils.should_run_eagerly(),
+                    run_distributed=testing_utils.should_run_distributed())
 
       inputs = np.zeros((10, 3))
       targets = np.zeros((10, 4))

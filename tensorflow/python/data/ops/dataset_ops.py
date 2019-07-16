@@ -1377,7 +1377,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     For example:
 
-    - `tf.data.Dataset.from_tensor_slices((range(4), range(4)).window(2)`
+    - `tf.data.Dataset.from_tensor_slices((range(4), range(4))).window(2)`
       produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
     - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
       produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
@@ -2449,12 +2449,9 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   __slots__ = ["_element_spec", "_dataset_shape"]
 
-  def __init__(self, element_spec, dataset_shape=None):
+  def __init__(self, element_spec, dataset_shape=()):
     self._element_spec = element_spec
-    if dataset_shape:
-      self._dataset_shape = dataset_shape
-    else:
-      self._dataset_shape = tensor_shape.TensorShape([])
+    self._dataset_shape = tensor_shape.as_shape(dataset_shape)
 
   @property
   def value_type(self):

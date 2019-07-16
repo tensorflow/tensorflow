@@ -1892,7 +1892,7 @@ compute the max and the argmax of a 1-D array in parallel:
 ```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
-  if value >= argmax:
+  if value >= max:
     return (value, index)
   else:
     return (max, argmax)

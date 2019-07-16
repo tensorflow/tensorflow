@@ -31,6 +31,7 @@ from tensorflow.python.platform import test
 linalg = linalg_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -71,14 +72,13 @@ class SquareLinearOperatorFullMatrixTest(
     # Auto-detected.
     self.assertTrue(operator.is_square)
 
-  @test_util.run_deprecated_v1
   def test_assert_non_singular_raises_if_cond_too_big_but_finite(self):
     with self.cached_session():
       tril = linear_operator_test_util.random_tril_matrix(
           shape=(50, 50), dtype=np.float32)
       diag = np.logspace(-2, 2, 50).astype(np.float32)
       tril = array_ops.matrix_set_diag(tril, diag)
-      matrix = math_ops.matmul(tril, tril, transpose_b=True).eval()
+      matrix = self.evaluate(math_ops.matmul(tril, tril, transpose_b=True))
       operator = linalg.LinearOperatorFullMatrix(matrix)
       with self.assertRaisesOpError("Singular matrix"):
         # Ensure that we have finite condition number...just HUGE.
@@ -111,6 +111,7 @@ class SquareLinearOperatorFullMatrixTest(
         operator.assert_positive_definite().run()
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest.
@@ -201,6 +202,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
         operator.assert_positive_definite().run()
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class NonSquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""

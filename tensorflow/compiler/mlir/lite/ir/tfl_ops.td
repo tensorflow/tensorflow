@@ -148,6 +148,7 @@ def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
 class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
+class DerivedTFLiteTypeAttr<code body> : DerivedAttr<"tflite::TensorType", body>;
 
 def TFL_Int32Or64 : IntOfWidths<[32, 64]>;
 
@@ -2055,6 +2056,35 @@ def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
   let results = (outs
     TensorOf<[F32, I32, I64]>:$output
   );
+
+  let hasOptions = 1;
+}
+
+def TFL_UniqueOp: TFL_Op<"unique", [NoSideEffect]> {
+  let summary = "Unique Op.";
+
+  let description = [{
+  This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. In other words:
+  }];
+
+  let arguments = (ins
+    // TODO: add uint8 support after quantize support.
+    TensorOf<[I8, I16, I32, I64, F32]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[I8, I16, I32, I64, F32]>:$output,
+    TensorOf<[I32, I64]>:$idx
+  );
+
+  DerivedTFLiteTypeAttr idx_out_type = DerivedTFLiteTypeAttr<[{
+    return getResult(1)->getType().cast<TensorType>().getElementType().
+        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+            tflite::TensorType_INT32;
+    }]>;
 
   let hasOptions = 1;
 }

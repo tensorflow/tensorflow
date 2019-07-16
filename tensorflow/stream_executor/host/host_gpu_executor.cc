@@ -163,9 +163,10 @@ bool HostExecutor::AllocateStream(Stream *stream) { return true; }
 void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+  auto event = std::make_shared<absl::Notification>();
+  AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
-  AsHostStream(dependent)->BlockUntilDone();
+      [event]() { event->WaitForNotification(); });
   return true;
 }
 

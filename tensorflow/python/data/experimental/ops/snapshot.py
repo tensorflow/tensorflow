@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,7 +38,9 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
                reader_path_prefix=None,
                writer_path_prefix=None,
                shard_size_bytes=None,
-               pending_snapshot_expiry_seconds=None):
+               pending_snapshot_expiry_seconds=None,
+               num_reader_threads=None,
+               reader_buffer_size=None):
 
     self._compression = compression if compression is not None else ""
     self._reader_path_prefix = (
@@ -49,19 +52,37 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._pending_snapshot_expiry_seconds = (
         pending_snapshot_expiry_seconds
         if pending_snapshot_expiry_seconds is not None else -1)
+    self._num_reader_threads = (
+        num_reader_threads if num_reader_threads is not None else -1)
+    self._reader_buffer_size = (
+        reader_buffer_size if reader_buffer_size is not None else -1)
 
     self._input_dataset = input_dataset
     self._path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
 
-    variant_tensor = ged_ops.snapshot_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        path=self._path,
-        compression=self._compression,
-        reader_path_prefix=self._reader_path_prefix,
-        writer_path_prefix=self._writer_path_prefix,
-        shard_size_bytes=self._shard_size_bytes,
-        pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 15):
+      variant_tensor = ged_ops.snapshot_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          path=self._path,
+          compression=self._compression,
+          reader_path_prefix=self._reader_path_prefix,
+          writer_path_prefix=self._writer_path_prefix,
+          shard_size_bytes=self._shard_size_bytes,
+          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
+          num_reader_threads=self._num_reader_threads,
+          reader_buffer_size=self._reader_buffer_size,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.snapshot_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          path=self._path,
+          compression=self._compression,
+          reader_path_prefix=self._reader_path_prefix,
+          writer_path_prefix=self._writer_path_prefix,
+          shard_size_bytes=self._shard_size_bytes,
+          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
+          **self._flat_structure)
+
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -70,7 +91,9 @@ def snapshot(path,
              reader_path_prefix=None,
              writer_path_prefix=None,
              shard_size_bytes=None,
-             pending_snapshot_expiry_seconds=None):
+             pending_snapshot_expiry_seconds=None,
+             num_reader_threads=None,
+             reader_buffer_size=None):
   """Writes to/reads from a snapshot of a dataset.
 
   This function attempts to determine whether a valid snapshot exists at the
@@ -91,6 +114,14 @@ def snapshot(path,
       dataset op. Defaults to 10 GiB.
     pending_snapshot_expiry_seconds: How long to wait (in seconds) before
       the snapshot op considers a previously unfinished snapshot to be stale.
+    num_reader_threads: Number of threads to parallelize reading from snapshot.
+      Especially useful if compression is turned on since the decompression
+      operation tends to be intensive. Defaults to 1. If > 1, then this might
+      introduce non-determinism i.e. the order in which the elements are
+      read from the snapshot are different from the order they're written.
+    reader_buffer_size: Maximum number of elements we can prefetch reading from
+      the snapshot. Defaults to 1. Increasing this might improve performance
+      but will increase memory consumption.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -100,6 +131,7 @@ def snapshot(path,
   def _apply_fn(dataset):
     return _SnapshotDataset(dataset, path, compression, reader_path_prefix,
                             writer_path_prefix, shard_size_bytes,
-                            pending_snapshot_expiry_seconds)
+                            pending_snapshot_expiry_seconds, num_reader_threads,
+                            reader_buffer_size)
 
   return _apply_fn

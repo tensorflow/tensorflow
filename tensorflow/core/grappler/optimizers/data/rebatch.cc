@@ -59,15 +59,17 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 17> kPassThroughOps = {
+constexpr std::array<const char*, 19> kPassThroughOps = {
     "CacheDataset",
     "ExperimentalScanDataset",
+    "ExperimentalParseExampleDataset",
     "FilterDataset",
     "Identity",
     "MapDataset",
     "ModelDataset",
     "OptimizeDataset",
     "ParallelMapDataset",
+    "ParseExampleDataset",
     "PrefetchDataset",
     "ReduceDataset",
     "RepeatDataset",

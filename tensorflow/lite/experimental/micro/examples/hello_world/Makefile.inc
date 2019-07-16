@@ -10,7 +10,8 @@ tensorflow/lite/experimental/micro/examples/hello_world/output_handler_test.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/output_handler.cc
 
 OUTPUT_HANDLER_TEST_HDRS := \
-tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h
+tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h \
+tensorflow/lite/experimental/micro/examples/hello_world/constants.h
 
 HELLO_WORLD_SRCS := \
 tensorflow/lite/experimental/micro/examples/hello_world/main.cc \

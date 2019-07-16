@@ -247,8 +247,7 @@ BenchmarkTfLiteModel::BenchmarkTfLiteModel()
     : BenchmarkTfLiteModel(DefaultParams()) {}
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
-    : BenchmarkModel(std::move(params)) {
-}
+    : BenchmarkModel(std::move(params)) {}
 
 void BenchmarkTfLiteModel::CleanUp() {
   if (inputs_data_.empty()) {
@@ -424,15 +423,10 @@ void BenchmarkTfLiteModel::Init() {
   model->error_reporter();
   TFLITE_LOG(INFO) << "resolved reporter";
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  tflite::MutableOpResolver resolver;
-  RegisterSelectedOps(&resolver);
-#else
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-#endif
+  auto resolver = GetOpResolver();
 
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter, num_threads);
+  tflite::InterpreterBuilder(*model, *resolver)(&interpreter, num_threads);
   if (!interpreter) {
     TFLITE_LOG(FATAL) << "Failed to construct interpreter";
   }
@@ -520,6 +514,19 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     }
   }
   return delegates;
+}
+
+std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
+    const {
+  tflite::OpResolver* resolver = nullptr;
+#ifdef TFLITE_CUSTOM_OPS_HEADER
+  resolver = new tflite::MutableOpResolver();
+  RegisterSelectedOps(resolver);
+#else
+  resolver = new tflite::ops::builtin::BuiltinOpResolver();
+#endif
+
+  return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 
 void BenchmarkTfLiteModel::RunImpl() {

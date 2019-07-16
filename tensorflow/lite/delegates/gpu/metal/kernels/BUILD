@@ -45,6 +45,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "add_test_lib",
+    testonly = 1,
+    srcs = ["add_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":add",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "add_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":add_test_lib"],
+)
+
 cc_library(
     name = "concat",
     srcs = ["concat.cc"],
@@ -57,6 +79,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],
+)
+
+objc_library(
+    name = "concat_test_lib",
+    testonly = 1,
+    srcs = ["concat_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":concat",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "concat_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":concat_test_lib"],
 )
 
 cc_library(
@@ -339,28 +383,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
     ],
-)
-
-objc_library(
-    name = "add_test_lib",
-    testonly = 1,
-    srcs = ["add_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":add",
-        ":test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "add_test",
-    testonly = 1,
-    minimum_os_version = "9.0",
-    tags = [
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":add_test_lib"],
 )
 
 tflite_portable_test_suite()

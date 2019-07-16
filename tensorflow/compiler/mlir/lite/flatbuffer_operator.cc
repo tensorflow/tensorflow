@@ -35,6 +35,16 @@ static tflite::ActivationFunctionType ConvertTFL_AFAttrForOptionWriter(
       .Case("SIGN_BIT", tflite::ActivationFunctionType_SIGN_BIT);
 }
 
+static tflite::TensorType ConvertDerivedTFLiteTypeAttrForOptionWriter(
+    tflite::TensorType type, flatbuffers::FlatBufferBuilder* builder) {
+  if (type == tflite::TensorType_INT64) {
+    return tflite::TensorType_INT64;
+  } else if (type == tflite::TensorType_INT32) {
+    return tflite::TensorType_INT32;
+  }
+  llvm_unreachable("invalid type in conversion.");
+}
+
 static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
     llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
   return llvm::StringSwitch<tflite::Padding>(str)
