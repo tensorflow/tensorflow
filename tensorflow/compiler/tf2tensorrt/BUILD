@@ -191,6 +191,21 @@ tf_gen_op_libs(
         "get_calibration_data_op",
         "trt_engine_resource_ops",
     ],
+    deps = [
+        ":utils",
+        ":trt_plugin_shapes",
+    ],
+)
+
+tf_cuda_library(
+    name = "trt_plugin_shapes",
+    srcs = ["utils/trt_plugin_shape_function.cc"],
+    hdrs = ["utils/trt_plugin_shape_function.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib_proto_parsing",
+        ":utils"
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 cc_library(
@@ -198,6 +213,8 @@ cc_library(
     deps = [
         ":get_calibration_data_op_op_lib",
         ":trt_engine_op_op_lib",
+        ":trt_logging",
+        ":trt_plugin_shapes"
     ],
 )
 
@@ -474,7 +491,9 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+        "trt_logging",
+        
+    ] 
 )
 
 tf_proto_library(

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_plugin_shape_function.h"
 
 namespace tensorflow {
 
@@ -65,7 +66,7 @@ REGISTER_OP("TRTPluginOp")
     .Attr("subsegment: string")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(tensorflow::tensorrt::shape_inference::TRTPluginShapeFunction);
 
 }  // namespace tensorflow
 

@@ -18,8 +18,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/node_def_util.h"  // NOLINT
 #include "tensorflow/core/lib/core/status.h"
 
+namespace nvinfer1{
+  class IPluginV2;
+}
 namespace tensorflow {
 namespace tensorrt {
 
@@ -38,6 +42,10 @@ enum class TrtPrecisionMode { FP32, FP16, INT8 };
 Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
 
 Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
+void InitializeTrtPlugins();
+
+Status ConstructPlugin(const AttrSlice& attrs, const string& name,nvinfer1::IPluginV2*& plugin,
+                       bool validation_only);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
