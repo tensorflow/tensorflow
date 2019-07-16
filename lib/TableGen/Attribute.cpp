@@ -96,6 +96,14 @@ StringRef tblgen::Attribute::getConstBuilderTemplate() const {
   return getValueAsString(init);
 }
 
+tblgen::Attribute tblgen::Attribute::getBaseAttr() const {
+  if (const auto *defInit =
+          llvm::dyn_cast<llvm::DefInit>(def->getValueInit("baseAttr"))) {
+    return Attribute(defInit).getBaseAttr();
+  }
+  return *this;
+}
+
 bool tblgen::Attribute::hasDefaultValueInitializer() const {
   const auto *init = def->getValueInit("defaultValue");
   return !getValueAsString(init).empty();
@@ -111,8 +119,9 @@ bool tblgen::Attribute::isOptional() const {
 }
 
 StringRef tblgen::Attribute::getAttrDefName() const {
-  if (def->isAnonymous() && (isOptional() || hasDefaultValueInitializer()))
-    return getValueAsString(def->getValueInit("baseAttr"));
+  if (def->isAnonymous()) {
+    return getBaseAttr().def->getName();
+  }
   return def->getName();
 }
 

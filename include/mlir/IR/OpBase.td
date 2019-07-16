@@ -518,6 +518,17 @@ class Attr<Pred condition, string descr = ""> :
   // convertFromStorage method to handle the case where the attribute is
   // not present.
   bit isOptional = 0;
+
+  // What is the base-level Attr instantiation that this Attr is built upon.
+  // Unset means this is a base-level Attr.
+  //
+  // This field is used by attribute wrapper classes (DefaultValuedAttr,
+  // OptionalAttr, etc.) to retrive the base-level attribute definition.
+  // This can be used for getting its name; otherwise, we will see
+  // "anonymous_<number>" as the attribute def name because of template
+  // instantiation.
+  // TOOD(b/132458159): deduplicate the fields in attribute wrapper classes.
+  Attr baseAttr = ?;
 }
 
 //===----------------------------------------------------------------------===//
@@ -535,9 +546,7 @@ class DefaultValuedAttr<Attr attr, string val> :
   let constBuilderCall = attr.constBuilderCall;
   let defaultValue = val;
 
-  // Remember `attr`'s def name.
-  // TOOD(b/132458159): consider embedding Attr as a field.
-  string baseAttr = !cast<string>(attr);
+  let baseAttr = attr;
 }
 
 // Decorates an attribute as optional. The return type of the generated
@@ -551,9 +560,7 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
                            attr.convertFromStorage # ") : (llvm::None)";
   let isOptional = 1;
 
-  // Remember `attr`'s def name.
-  // TOOD(b/132458159): consider embedding Attr as a field.
-  string baseAttr = !cast<string>(attr);
+  let baseAttr = attr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -891,6 +898,8 @@ class Confined<Attr attr, list<AttrConstraint> constraints> : Attr<
   let constBuilderCall = attr.constBuilderCall;
   let defaultValue = attr.defaultValue;
   let isOptional = attr.isOptional;
+
+  let baseAttr = attr;
 }
 
 // An AttrConstraint that holds if all attr constraints specified in
