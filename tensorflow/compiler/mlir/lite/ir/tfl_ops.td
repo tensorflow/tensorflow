@@ -1018,6 +1018,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     SameOperandsAndResultShape,
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
+    TFL_FixedResultScale<TFL_Int8UniformQuantizedType<127, 625, -4>>,
     TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<255, 625, -4>>]> {
   let summary = "Log softmax operator";
 
@@ -1626,6 +1627,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     SameOperandsAndResultShape,
     // zero_point = 0
     // scale = 1. / (max_value + 1)
+    TFL_FixedResultScale<TFL_Int8UniformQuantizedType<-128, 390625, -8>>,
     TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 390625, -8>>]> {
   let summary = "Softmax operator";
 
@@ -1724,6 +1726,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
+    TFL_FixedResultScale<TFL_Int8UniformQuantizedType<0, 78125, -7>>,
     TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<128, 78125, -7>>]> {
   let summary = "Hyperbolic tangent operator";
 
