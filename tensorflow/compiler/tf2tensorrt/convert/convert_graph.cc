@@ -441,7 +441,6 @@ Status CreateTRTNode(const ConversionParams& params,
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
   } else {
-    //segment_string = info.segment_graph_def.SerializeAsString();
     segment_string = "";
   }
 
@@ -540,7 +539,8 @@ Status CreateTRTNode(const ConversionParams& params,
 Status ModifyGraphForFunctionDef(Graph* graph,
                                  const GraphDef& segment,
                                  Graph* sgraph) {
-  //Graph sgraph(graph->flib_def());
+  // sgraph is a graph for the segment, to be modified by this function
+  // graph is the input graph to be optimized by TRT.
   GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, sgraph));
   std::map<string, Node*> io_nodes;
