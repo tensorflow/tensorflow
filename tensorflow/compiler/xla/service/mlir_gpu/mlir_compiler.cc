@@ -15,12 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
 
+#include "mlir/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace mlir {
+
+using ::mlir::MLIRContext;
+using ::mlir::LLVM::LLVMDialect;
+
+namespace {
+int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
+  LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
+  llvm::Module& module = dialect->getLLVMModule();
+  module.setTargetTriple(gpu::nvptx::kTargetTriple);
+  module.setDataLayout(gpu::nvptx::kDataLayout);
+  return module.getDataLayout().getPointerSize();
+}
+}  // namespace
+
+MlirCompiler::MlirCompiler()
+    : pointer_size_(ConfigureLLVMModuleAndGetPointerSize(&context_)) {}
 
 se::Platform::Id MlirCompiler::PlatformId() const {
   return stream_executor::cuda::kCudaPlatformId;

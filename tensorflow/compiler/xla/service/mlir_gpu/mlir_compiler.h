@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/compiler.h"
 
 namespace xla {
@@ -26,7 +27,7 @@ namespace mlir {
 // generation of a think suitable for XLAs runtime.
 class MlirCompiler : public Compiler {
  public:
-  MlirCompiler() {}
+  MlirCompiler();
 
   se::Platform::Id PlatformId() const override;
 
@@ -58,12 +59,15 @@ class MlirCompiler : public Compiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // TODO(herhut): Get this from the LLVMDialect in MLIR.
-    int64 pointer_size = 8;
+    int64 pointer_size = pointer_size_;
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
   }
+
+ private:
+  ::mlir::MLIRContext context_;
+  int64 pointer_size_;
 };
 
 }  // namespace mlir
