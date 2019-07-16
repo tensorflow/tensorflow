@@ -30,7 +30,7 @@ namespace mlir {
 class DialectConversion;
 class FuncOp;
 class LLVMTypeConverter;
-class LogicalResult;
+struct LogicalResult;
 class MLIRContext;
 class ModuleOp;
 class ModulePassBase;
