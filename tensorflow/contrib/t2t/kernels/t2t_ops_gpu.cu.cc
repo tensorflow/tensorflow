@@ -18,8 +18,6 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-//template struct CustomL2NormFunctor<Eigen::GpuDevice, float>;
-
 template <typename T>
 __global__ void CustomL2NormFunctor_kernel_stage1(int N, int k, const T* in, float* out, float averager, const float* _eps)
 {
@@ -167,7 +165,6 @@ __global__ void CustomL2NormGradFunctor_kernel_stage2(int N, int k, const T* in,
   const float* _bias, const float* _scale)
 {
   float scale = *_scale;
-  //float inv_scale = a / (scale*scale);
   for(int idx = threadIdx.x + 1024*blockIdx.x; idx<N; idx+=1024*1024)
   {
     float mean = temp[idx*2+0];
@@ -198,7 +195,6 @@ void CustomL2NormFunctor<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevice
     const float* eps, const float* bias, const float* scale)
 {
   uint64_t blocks = max(1ul,min(1024ul, (N+1023)>>10));
-  //printf("CustomL2NormFunctor %lu x %lu\n", N, k);
 
   if(k>=2 && k<=1024)
   {
@@ -210,11 +206,6 @@ void CustomL2NormFunctor<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevice
 
     threads = dim3(k, 1024/k, 1);
     blocks=dim3( max(1ul, uint64_t((N+threads.y-1) / threads.y)), 1, 1);
-    if(blocks.x > 1024*1024)
-    {
-      printf("Too many threads\n");
-      exit(-1);
-    }
     if(blocks.x>1024)
       blocks=dim3(1024, (blocks.x+1023)/1024, 1);
     CustomL2NormFunctor_kernel_stage2_v2<T> <<<blocks, threads, 0, d.stream()>>> (N, in, temp, out, bias, scale);
@@ -234,7 +225,6 @@ void CustomL2NormGradFunctor<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDe
     const T* in, 
     const T* outgrad,
     float* temp,
-    //T* temp2,
     T* out,
     const float* eps, const float* bias, const float* scale)
 {
@@ -244,6 +234,8 @@ void CustomL2NormGradFunctor<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDe
     int thrRound = (k+31)&~31;
     threads=dim3(thrRound, 1024/thrRound, 1);
     blocks=dim3( max(1ul, uint64_t((N+threads.y-1) / threads.y)), 1, 1);
+    if(blocks.x>1024)
+      blocks=dim3(1024, (blocks.x+1023)/1024, 1);
     CustomL2NormFunctor_kernel_stage1_v2<T> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
     CustomL2NormGradFunctor_kernel_stage2_v2<T> <<<blocks, threads, 0, d.stream()>>> (N, k, in, outgrad, temp, out, 1./k, bias, scale);
   }
