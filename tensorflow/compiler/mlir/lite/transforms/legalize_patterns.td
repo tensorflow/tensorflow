@@ -270,3 +270,5 @@ def : Pat<
   (TFL_StridedSliceOp $input, $begin, $end, $strides,
     (convertIntAttrTo32Bit $begin_mask), (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;

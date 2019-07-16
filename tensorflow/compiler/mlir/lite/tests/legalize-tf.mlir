@@ -882,3 +882,21 @@ func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
   // CHECK-LABEL: cast
   // CHECK: "tfl.cast"(%arg0) : (tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32>
 }
+
+func @unique(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  return %0, %1 : tensor<?xf32> , tensor<?xi32>
+
+  // CHECK-LABEL: unique
+  // CHECK: %0:2 = "tfl.unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  // CHECK: %0
+}
+
+func @unique64(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>) {
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>)
+  return %0, %1 : tensor<?xf32> , tensor<?xi64>
+
+  // CHECK-LABEL: unique64
+  // CHECK: %0:2 = "tfl.unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>)
+  // CHECK: %0
+}
