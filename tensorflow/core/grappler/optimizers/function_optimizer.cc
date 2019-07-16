@@ -1102,7 +1102,26 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 
   VLOG(3) << "Add a frame forwarding control edge: from=" << frame->name()
           << " to=" << caller->name();
-  g->AddControlEdge(g->FindNodeId(frame->id()), caller);
+  Node* enter = g->FindNodeId(frame->id());
+  bool is_constant_enter = enter->attrs().Find("is_constant")->b();
+  if (is_constant_enter) {
+    // Enter[is_constant=true] is always alive. So we directly add a control
+    // edge from that.
+    g->AddControlEdge(enter, caller);
+  } else {
+    // Enter[is_constant=false] activates nodes only in 0th iteration so we
+    // add an edge from the Merge node which is activated in every iteration.
+    // A non-constant Enter node must have an edge to a Merge node.
+    auto it = absl::c_find_if(enter->out_edges(), [](const Edge* e) {
+      return !e->IsControlEdge() && e->dst()->IsMerge();
+    });
+    if (it != enter->out_edges().end()) {
+      g->AddControlEdge((*it)->dst(), caller);
+    } else {
+      LOG(WARNING) << "Enter[is_constant=false] node: " << enter->name()
+                   << " does not have an outgoing edge to a Merge.";
+    }
+  }
 }
 
 // Inlines all function calls that are safe for inlining into the main graph.
