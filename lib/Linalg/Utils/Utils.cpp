@@ -52,7 +52,7 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
   auto step = rangeOp.step();
   auto forOp = OperationHandle::createOp<ForOp>(lb, ub, step);
   *iv = ValueHandle(forOp.getInductionVar());
-  auto *body = forOp.body();
+  auto *body = forOp.getBody();
   enter(body, /*prev=*/1);
 }
 
@@ -61,7 +61,7 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
   auto forOp =
       OperationHandle::createOp<ForOp>(range.min, range.max, range.step);
   *iv = ValueHandle(forOp.getInductionVar());
-  auto *body = forOp.body();
+  auto *body = forOp.getBody();
   enter(body, /*prev=*/1);
 }
 

@@ -38,8 +38,8 @@ using llvm::dbgs;
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<AffineApplyOp, AffineDmaStartOp, AffineDmaWaitOp, AffineForOp,
-                AffineIfOp, AffineLoadOp, AffineStoreOp,
+  addOperations<AffineApplyOp, AffineDmaStartOp, AffineDmaWaitOp, AffineLoadOp,
+                AffineStoreOp,
 #define GET_OP_LIST
 #include "mlir/AffineOps/AffineOps.cpp.inc"
                 >();
@@ -1030,40 +1030,41 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
   return build(builder, result, {}, lbMap, {}, ubMap, step);
 }
 
-LogicalResult AffineForOp::verify() {
-  auto &bodyRegion = getOperation()->getRegion(0);
+static LogicalResult verify(AffineForOp op) {
+  auto &bodyRegion = op.region();
 
   // The body region must contain a single basic block.
   if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
-    return emitOpError("expected body region to have a single block");
+    return op.emitOpError("expected body region to have a single block");
 
   // Check that the body defines as single block argument for the induction
   // variable.
-  auto *body = getBody();
+  auto *body = op.getBody();
   if (body->getNumArguments() != 1 ||
       !body->getArgument(0)->getType().isIndex())
-    return emitOpError("expected body to have a single index argument for the "
-                       "induction variable");
+    return op.emitOpError(
+        "expected body to have a single index argument for the "
+        "induction variable");
 
-  if (failed(checkHasAffineTerminator(*this, *body)))
+  if (failed(checkHasAffineTerminator(op, *body)))
     return failure();
 
   // Verify that there are enough operands for the bounds.
-  AffineMap lowerBoundMap = getLowerBoundMap(),
-            upperBoundMap = getUpperBoundMap();
-  if (getNumOperands() !=
+  AffineMap lowerBoundMap = op.getLowerBoundMap(),
+            upperBoundMap = op.getUpperBoundMap();
+  if (op.getNumOperands() !=
       (lowerBoundMap.getNumInputs() + upperBoundMap.getNumInputs()))
-    return emitOpError(
+    return op.emitOpError(
         "operand count must match with affine map dimension and symbol count");
 
   // Verify that the bound operands are valid dimension/symbols.
   /// Lower bound.
-  if (failed(verifyDimAndSymbolIdentifiers(*this, getLowerBoundOperands(),
-                                           getLowerBoundMap().getNumDims())))
+  if (failed(verifyDimAndSymbolIdentifiers(op, op.getLowerBoundOperands(),
+                                           op.getLowerBoundMap().getNumDims())))
     return failure();
   /// Upper bound.
-  if (failed(verifyDimAndSymbolIdentifiers(*this, getUpperBoundOperands(),
-                                           getUpperBoundMap().getNumDims())))
+  if (failed(verifyDimAndSymbolIdentifiers(op, op.getUpperBoundOperands(),
+                                           op.getUpperBoundMap().getNumDims())))
     return failure();
   return success();
 }
@@ -1160,7 +1161,7 @@ static ParseResult parseBound(bool isLower, OperationState *result,
       "expected valid affine map representation for loop bounds");
 }
 
-ParseResult AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult parseAffineForOp(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   OpAsmParser::OperandType inductionVariable;
   // Parse the induction variable followed by '='.
@@ -1176,13 +1177,14 @@ ParseResult AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the optional loop step, we default to 1 if one is not present.
   if (parser->parseOptionalKeyword("step")) {
     result->addAttribute(
-        getStepAttrName(),
+        AffineForOp::getStepAttrName(),
         builder.getIntegerAttr(builder.getIndexType(), /*value=*/1));
   } else {
     llvm::SMLoc stepLoc = parser->getCurrentLocation();
     IntegerAttr stepAttr;
     if (parser->parseAttribute(stepAttr, builder.getIndexType(),
-                               getStepAttrName().data(), result->attributes))
+                               AffineForOp::getStepAttrName().data(),
+                               result->attributes))
       return failure();
 
     if (stepAttr.getValue().getSExtValue() < 0)
@@ -1248,23 +1250,23 @@ static void printBound(AffineMapAttr boundMap,
                         map.getNumDims(), p);
 }
 
-void AffineForOp::print(OpAsmPrinter *p) {
+void print(OpAsmPrinter *p, AffineForOp op) {
   *p << "affine.for ";
-  p->printOperand(getBody()->getArgument(0));
+  p->printOperand(op.getBody()->getArgument(0));
   *p << " = ";
-  printBound(getLowerBoundMapAttr(), getLowerBoundOperands(), "max", p);
+  printBound(op.getLowerBoundMapAttr(), op.getLowerBoundOperands(), "max", p);
   *p << " to ";
-  printBound(getUpperBoundMapAttr(), getUpperBoundOperands(), "min", p);
+  printBound(op.getUpperBoundMapAttr(), op.getUpperBoundOperands(), "min", p);
 
-  if (getStep() != 1)
-    *p << " step " << getStep();
-  p->printRegion(getRegion(),
+  if (op.getStep() != 1)
+    *p << " step " << op.getStep();
+  p->printRegion(op.region(),
                  /*printEntryBlockArgs=*/false,
                  /*printBlockTerminators=*/false);
-  p->printOptionalAttrDict(getAttrs(),
-                           /*elidedAttrs=*/{getLowerBoundAttrName(),
-                                            getUpperBoundAttrName(),
-                                            getStepAttrName()});
+  p->printOptionalAttrDict(op.getAttrs(),
+                           /*elidedAttrs=*/{op.getLowerBoundAttrName(),
+                                            op.getUpperBoundAttrName(),
+                                            op.getStepAttrName()});
 }
 
 namespace {
@@ -1329,11 +1331,6 @@ struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
   results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
-}
-
-OpBuilder AffineForOp::getBodyBuilder() {
-  Block *body = getBody();
-  return OpBuilder(body, std::prev(body->end()));
 }
 
 AffineBound AffineForOp::getLowerBound() {
@@ -1438,9 +1435,6 @@ bool AffineForOp::matchingBoundOperandList() {
   return true;
 }
 
-/// Returns the induction variable for this loop.
-Value *AffineForOp::getInductionVar() { return getBody()->getArgument(0); }
-
 /// Returns if the provided value is the induction variable of a AffineForOp.
 bool mlir::isForInductionVar(Value *val) {
   return getForInductionVarOwner(val) != AffineForOp();
@@ -1469,48 +1463,53 @@ void mlir::extractForInductionVars(ArrayRef<AffineForOp> forInsts,
 // AffineIfOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AffineIfOp::verify() {
+static LogicalResult verify(AffineIfOp op) {
   // Verify that we have a condition attribute.
-  auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
+  auto conditionAttr =
+      op.getAttrOfType<IntegerSetAttr>(op.getConditionAttrName());
   if (!conditionAttr)
-    return emitOpError("requires an integer set attribute named 'condition'");
+    return op.emitOpError(
+        "requires an integer set attribute named 'condition'");
 
   // Verify that there are enough operands for the condition.
   IntegerSet condition = conditionAttr.getValue();
-  if (getNumOperands() != condition.getNumOperands())
-    return emitOpError("operand count and condition integer set dimension and "
-                       "symbol count must match");
+  if (op.getNumOperands() != condition.getNumOperands())
+    return op.emitOpError(
+        "operand count and condition integer set dimension and "
+        "symbol count must match");
 
   // Verify that the operands are valid dimension/symbols.
-  if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           condition.getNumDims())))
+  if (failed(verifyDimAndSymbolIdentifiers(
+          op, op.getOperation()->getNonSuccessorOperands(),
+          condition.getNumDims())))
     return failure();
 
   // Verify that the entry of each child region does not have arguments.
-  for (auto &region : getOperation()->getRegions()) {
+  for (auto &region : op.getOperation()->getRegions()) {
     if (region.empty())
       continue;
 
     // TODO(riverriddle) We currently do not allow multiple blocks in child
     // regions.
     if (std::next(region.begin()) != region.end())
-      return emitOpError("expects only one block per 'then' or 'else' regions");
-    if (failed(checkHasAffineTerminator(*this, region.front())))
+      return op.emitOpError(
+          "expects only one block per 'then' or 'else' regions");
+    if (failed(checkHasAffineTerminator(op, region.front())))
       return failure();
 
     for (auto &b : region)
       if (b.getNumArguments() != 0)
-        return emitOpError(
+        return op.emitOpError(
             "requires that child entry blocks have no arguments");
   }
   return success();
 }
 
-ParseResult AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult parseAffineIfOp(OpAsmParser *parser, OperationState *result) {
   // Parse the condition attribute set.
   IntegerSetAttr conditionAttr;
   unsigned numDims;
-  if (parser->parseAttribute(conditionAttr, getConditionAttrName(),
+  if (parser->parseAttribute(conditionAttr, AffineIfOp::getConditionAttrName(),
                              result->attributes) ||
       parseDimAndSymbolList(parser, result->operands, numDims))
     return failure();
@@ -1551,17 +1550,18 @@ ParseResult AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void AffineIfOp::print(OpAsmPrinter *p) {
-  auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
+void print(OpAsmPrinter *p, AffineIfOp op) {
+  auto conditionAttr =
+      op.getAttrOfType<IntegerSetAttr>(op.getConditionAttrName());
   *p << "affine.if " << conditionAttr;
-  printDimAndSymbolList(operand_begin(), operand_end(),
+  printDimAndSymbolList(op.operand_begin(), op.operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
-  p->printRegion(getOperation()->getRegion(0),
+  p->printRegion(op.thenRegion(),
                  /*printEntryBlockArgs=*/false,
                  /*printBlockTerminators=*/false);
 
   // Print the 'else' regions if it has any blocks.
-  auto &elseRegion = getOperation()->getRegion(1);
+  auto &elseRegion = op.elseRegion();
   if (!elseRegion.empty()) {
     *p << " else";
     p->printRegion(elseRegion,
@@ -1570,8 +1570,8 @@ void AffineIfOp::print(OpAsmPrinter *p) {
   }
 
   // Print the attribute list.
-  p->printOptionalAttrDict(getAttrs(),
-                           /*elidedAttrs=*/getConditionAttrName());
+  p->printOptionalAttrDict(op.getAttrs(),
+                           /*elidedAttrs=*/op.getConditionAttrName());
 }
 
 IntegerSet AffineIfOp::getIntegerSet() {
@@ -1580,12 +1580,6 @@ IntegerSet AffineIfOp::getIntegerSet() {
 void AffineIfOp::setIntegerSet(IntegerSet newSet) {
   setAttr(getConditionAttrName(), IntegerSetAttr::get(newSet));
 }
-
-/// Returns the list of 'then' blocks.
-Region &AffineIfOp::getThenBlocks() { return getOperation()->getRegion(0); }
-
-/// Returns the list of 'else' blocks.
-Region &AffineIfOp::getElseBlocks() { return getOperation()->getRegion(1); }
 
 //===----------------------------------------------------------------------===//
 // AffineLoadOp

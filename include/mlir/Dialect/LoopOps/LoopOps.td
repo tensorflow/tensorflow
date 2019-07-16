@@ -79,10 +79,10 @@ def ForOp : Loop_Op<"for"> {
   ];
 
   let extraClassDeclaration = [{
-    Block *body() { return &region().front(); }
-    Value *getInductionVar() { return body()->getArgument(0); }
+    Block *getBody() { return &region().front(); }
+    Value *getInductionVar() { return getBody()->getArgument(0); }
     OpBuilder getBodyBuilder() {
-      return OpBuilder(body(), std::prev(body()->end()));
+      return OpBuilder(getBody(), std::prev(getBody()->end()));
     }
     void setLowerBound(Value *bound) { getOperation()->setOperand(0, bound); }
     void setUpperBound(Value *bound) { getOperation()->setOperand(1, bound); }

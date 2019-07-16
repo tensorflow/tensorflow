@@ -825,22 +825,22 @@ static void tile(MutableArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes) {
     auto outerForOp =
         builder.create<loop::ForOp>(forOps[i].getLoc(), forOps[i].lowerBound(),
                                     forOps[i].upperBound(), newSteps[i]);
-    builder.setInsertionPointToStart(outerForOp.body());
+    builder.setInsertionPointToStart(outerForOp.getBody());
     outerForOps.push_back(outerForOp);
   }
 
   // Move the outermost original loop into the innermost new outer loop.  Thus
   // the body of the original loops does not need updating.
   auto lastOuterForOp = outerForOps.back();
-  lastOuterForOp.body()->getOperations().splice(
-      lastOuterForOp.body()->getOperations().begin(),
+  lastOuterForOp.getBody()->getOperations().splice(
+      lastOuterForOp.getBody()->getOperations().begin(),
       rootForOp.getOperation()->getBlock()->getOperations(),
       rootForOp.getOperation());
 
   // Immediately before the (now sunk) outermost original loop, insert the
   // computation of the upper bounds of the inner loops.  Update the bounds of
   // the orginial loops to make them point loops.
-  builder.setInsertionPointToStart(lastOuterForOp.body());
+  builder.setInsertionPointToStart(lastOuterForOp.getBody());
   for (unsigned i = 0, e = sizes.size(); i < e; ++i) {
     Value *stepped = builder.create<AddIOp>(
         forOps[i].getLoc(), outerForOps[i].getInductionVar(), newSteps[i]);
@@ -992,7 +992,7 @@ static void normalizeLoop(loop::ForOp loop, loop::ForOp outer,
 
   // Insert code computing the value of the original loop induction variable
   // from the "normalized" one.
-  builder.setInsertionPointToStart(inner.body());
+  builder.setInsertionPointToStart(inner.getBody());
   Value *scaled =
       isStepOne ? loop.getInductionVar()
                 : builder.create<MulIOp>(loc, loop.getInductionVar(), step);
@@ -1025,7 +1025,7 @@ void mlir::coalesceLoops(MutableArrayRef<loop::ForOp> loops) {
     upperBound = builder.create<MulIOp>(loc, upperBound, loop.upperBound());
   outermost.setUpperBound(upperBound);
 
-  builder.setInsertionPointToStart(outermost.body());
+  builder.setInsertionPointToStart(outermost.getBody());
 
   // 3. Remap induction variables.  For each original loop, the value of the
   // induction variable can be obtained by dividing the induction variable of
@@ -1052,9 +1052,9 @@ void mlir::coalesceLoops(MutableArrayRef<loop::ForOp> loops) {
   // 4. Move the operations from the innermost just above the second-outermost
   // loop, delete the extra terminator and the second-outermost loop.
   loop::ForOp second = loops[1];
-  innermost.body()->back().erase();
-  outermost.body()->getOperations().splice(
+  innermost.getBody()->back().erase();
+  outermost.getBody()->getOperations().splice(
       Block::iterator(second.getOperation()),
-      innermost.body()->getOperations());
+      innermost.getBody()->getOperations());
   second.erase();
 }

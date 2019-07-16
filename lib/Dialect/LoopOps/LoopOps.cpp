@@ -81,7 +81,7 @@ LogicalResult verify(ForOp op) {
 
   // Check that the body defines as single block argument for the induction
   // variable.
-  auto *body = op.body();
+  auto *body = op.getBody();
   if (body->getNumArguments() != 1 ||
       !body->getArgument(0)->getType().isIndex())
     return op.emitOpError("expected body to have a single index argument for "

@@ -318,7 +318,7 @@ public:
     Value *step = rewriter.create<ConstantIndexOp>(loc, op.getStep());
     auto f = rewriter.create<loop::ForOp>(loc, lowerBound, upperBound, step);
     f.region().getBlocks().clear();
-    rewriter.inlineRegionBefore(op.getRegion(), f.region(), f.region().end());
+    rewriter.inlineRegionBefore(op.region(), f.region(), f.region().end());
     rewriter.replaceOp(op, {});
     return matchSuccess();
   }
@@ -335,7 +335,7 @@ public:
     // Now we just have to handle the condition logic.
     auto integerSet = op.getIntegerSet();
     Value *zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
-    SmallVector<Value *, 8> operands(op.getOperands());
+    SmallVector<Value *, 8> operands(op.getOperation()->getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
     // Calculate cond as a conjunction without short-circuiting.
@@ -360,13 +360,12 @@ public:
     cond = cond ? cond
                 : rewriter.create<ConstantIntOp>(loc, /*value=*/1, /*width=*/1);
 
-    bool hasElseRegion = !op.getElseBlocks().empty();
+    bool hasElseRegion = !op.elseRegion().empty();
     auto ifOp = rewriter.create<loop::IfOp>(loc, cond, hasElseRegion);
-    rewriter.inlineRegionBefore(op.getThenBlocks(), &ifOp.thenRegion().back());
+    rewriter.inlineRegionBefore(op.thenRegion(), &ifOp.thenRegion().back());
     ifOp.thenRegion().back().erase();
     if (hasElseRegion) {
-      rewriter.inlineRegionBefore(op.getElseBlocks(),
-                                  &ifOp.elseRegion().back());
+      rewriter.inlineRegionBefore(op.elseRegion(), &ifOp.elseRegion().back());
       ifOp.elseRegion().back().erase();
     }
 

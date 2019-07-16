@@ -96,12 +96,6 @@ static Value *getOrEmitUpperBound(ForOp forOp, OpBuilder &) {
   return forOp.upperBound();
 }
 
-// TODO(ntv): uniformize back once AffineForOp is in ODS.
-static Region &getRegion(ForOp op) { return op.region(); }
-static Region &getRegion(AffineForOp op) { return op.getRegion(); }
-static Block *getBody(ForOp op) { return op.body(); }
-static Block *getBody(AffineForOp op) { return op.getBody(); }
-
 // Check the structure of the loop nest:
 //   - there are enough loops to map to numBlockDims + numThreadDims;
 //   - the loops are perfectly nested;
@@ -127,9 +121,9 @@ LogicalResult checkLoopNestMappable(OpTy forOp, unsigned numBlockDims,
   }
 
   OpTy currentLoop = forOp;
-  Region &limit = getRegion(forOp);
+  Region &limit = forOp.region();
   for (unsigned i = 0, e = numBlockDims + numThreadDims; i < e; ++i) {
-    Operation *nested = &getBody(currentLoop)->front();
+    Operation *nested = &currentLoop.getBody()->front();
     if (!areValuesDefinedAbove(getLowerBoundOperands(currentLoop), limit) ||
         !areValuesDefinedAbove(getUpperBoundOperands(currentLoop), limit))
       return currentLoop.emitError(
@@ -141,9 +135,9 @@ LogicalResult checkLoopNestMappable(OpTy forOp, unsigned numBlockDims,
     if (i == e - 1)
       break;
 
-    auto begin = getBody(currentLoop)->begin(),
-         end = getBody(currentLoop)->end();
-    if (getBody(currentLoop)->empty() || std::next(begin, 2) != end)
+    auto begin = currentLoop.getBody()->begin(),
+         end = currentLoop.getBody()->end();
+    if (currentLoop.getBody()->empty() || std::next(begin, 2) != end)
       return currentLoop.emitError(
           "expected perfectly nested loops in the body");
 
@@ -216,7 +210,7 @@ Optional<OpTy> LoopToGpuConverter::collectBounds(OpTy forOp,
     steps.push_back(step);
 
     if (i != numLoops - 1)
-      currentLoop = cast<OpTy>(&getBody(currentLoop)->front());
+      currentLoop = cast<OpTy>(&currentLoop.getBody()->front());
   }
   return currentLoop;
 }
@@ -248,7 +242,7 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   // Still assuming perfect nesting so there are no values other than induction
   // variables that are defined in one loop and used in deeper loops.
   llvm::SetVector<Value *> valuesToForwardSet;
-  getUsedValuesDefinedAbove(getRegion(innermostForOp), getRegion(rootForOp),
+  getUsedValuesDefinedAbove(innermostForOp.region(), rootForOp.region(),
                             valuesToForwardSet);
   auto valuesToForward = valuesToForwardSet.takeVector();
   auto originallyForwardedValues = valuesToForward.size();
@@ -263,14 +257,14 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   // gpu return and move the operations from the loop body block to the gpu
   // launch body block.  Do not move the entire block because of the difference
   // in block arguments.
-  Operation &terminator = getBody(innermostForOp)->back();
+  Operation &terminator = innermostForOp.getBody()->back();
   Location terminatorLoc = terminator.getLoc();
   terminator.erase();
-  builder.setInsertionPointToEnd(getBody(innermostForOp));
+  builder.setInsertionPointToEnd(innermostForOp.getBody());
   builder.create<gpu::Return>(terminatorLoc);
   launchOp.getBody().front().getOperations().splice(
       launchOp.getBody().front().begin(),
-      getBody(innermostForOp)->getOperations());
+      innermostForOp.getBody()->getOperations());
 
   // Remap the loop iterators to use block/thread identifiers instead.  Loops
   // may iterate from LB with step S whereas GPU thread/block ids always iterate
