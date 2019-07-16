@@ -569,12 +569,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     int index = 0;
     VLOG(3) << "Requested input devices:";
     for (const string& device : options.input_devices) {
-      VLOG(3) << "    " << device << " for input at index " << index++;
+      VLOG(3) << "    [input " << index++ << "] " << device;
     }
     index = 0;
     VLOG(3) << "Requested output devices:";
     for (const string& device : options.output_devices) {
-      VLOG(3) << "    " << device << " for output at index " << index++;
+      VLOG(3) << "    [output " << index++ << "] " << device;
     }
   }
 
