@@ -586,9 +586,9 @@ class Strategy(object):
     ```
 
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
 
     Returns:
       A `tf.data.Dataset` representing `numpy_input`.
@@ -628,6 +628,10 @@ class Strategy(object):
       strategy.experimental_run_v2(train_step, args=(x,))
     ```
 
+    We will assume that the input dataset is batched by the
+    global batch size. With this assumption, we will make a best effort to
+    divide each batch across all the replicas (one or more workers).
+
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
     ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
@@ -644,12 +648,16 @@ class Strategy(object):
     if this method of sharding is selected. In this case, consider using
     `experimental_distribute_datasets_from_function` instead.
 
-    You can disable dataset distribution using the `auto_shard` option in
-    `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the `auto_shard`
+    option in `tf.data.experimental.DistributeOptions`.
 
-    Within each host, we will also split the data among all the worker devices
-    (if more than one a present), and this will happen even if multi-worker
-    sharding is disabled using the method above.
+    Within each worker, we will also split the data among all the worker
+    devices (if more than one a present), and this will happen even if
+    multi-worker sharding is disabled using the method above.
+
+    If the above batch splitting and dataset sharding logic is undesirable,
+    please use `experimental_distribute_datasets_from_function` instead, which
+    does not do any automatic splitting or sharding.
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -677,6 +685,9 @@ class Strategy(object):
     fallback behavior in `experimental_distribute_dataset`). In cases where the
     dataset is infinite, this sharding can be done by creating dataset replicas
     that differ only in their random seed.
+    `experimental_distribute_dataset` may also sometimes fail to split the
+    batch across replicas on a worker. In that case, this method can be used
+    where that limitation does not exist.
 
     The `dataset_fn` should take an `tf.distribute.InputContext` instance where
     information about batching and input replication can be accessed:
@@ -1032,9 +1043,9 @@ class StrategyV1(Strategy):
     ```
 
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
       session: (TensorFlow v1.x graph execution only) A session used for
         initialization.
 
