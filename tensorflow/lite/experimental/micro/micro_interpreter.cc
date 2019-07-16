@@ -102,9 +102,9 @@ TfLiteStatus MicroInterpreter::Invoke() {
   }
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
-  for (int i = 0; i < operators_->size(); ++i) {
+  for (flatbuffers::uoffset_t i = 0; i < operators_->size(); ++i) {
     const auto* op = operators_->Get(i);
-    int index = op->opcode_index();
+    uint32_t index = op->opcode_index();
     if (index < 0 || index >= opcodes->size()) {
       error_reporter_->Report("Missing registration for opcode_index %d\n",
                               index);
@@ -207,7 +207,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
 TfLiteTensor* MicroInterpreter::input(int index) {
   const flatbuffers::Vector<int32_t>* inputs = subgraph_->inputs();
   const size_t length = inputs->size();
-  if ((index < 0) || (index >= length)) {
+  if ((index < 0) || (index >= (int)length)) {
     error_reporter_->Report("Input index %d out of range (length is %d)", index,
                             length);
     return nullptr;
@@ -218,7 +218,7 @@ TfLiteTensor* MicroInterpreter::input(int index) {
 TfLiteTensor* MicroInterpreter::output(int index) {
   const flatbuffers::Vector<int32_t>* outputs = subgraph_->outputs();
   const size_t length = outputs->size();
-  if ((index < 0) || (index >= outputs->size())) {
+  if ((index < 0) || (index >= (int)outputs->size())) {
     error_reporter_->Report("Output index %d out of range (length is %d)",
                             index, length);
     return nullptr;
