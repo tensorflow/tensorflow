@@ -38725,6 +38725,20 @@ op {
       i: 86400
     }
   }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "Softmax"
