@@ -2,10 +2,9 @@
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
-  // CHECK: Model version: 3
-  // CHECK-NEXT: Subgraph name: main
-  // CHECK-NEXT:   Subgraph input: 0
-  // CHECK-NEXT:   Subgraph output: 6
+  // CHECK: func @main(%arg0: tensor<4xf32>)
+  // CHECK-NEXT:   return
+  // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_input" (%arg0) : (tensor<4xf32>) -> tensor<4xf32> loc("Input")
   %1 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")

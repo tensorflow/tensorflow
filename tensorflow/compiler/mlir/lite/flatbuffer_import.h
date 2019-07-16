@@ -25,6 +25,7 @@ namespace tflite {
 // Converts a TFLite flatbuffer stored in `buffer` to a MLIR module
 // The buffer must live for the duration of the function call,
 // The caller receives ownership of the module.
+// `base_loc` is used for error reporting and debug info.
 // Returns nullptr on failure, and more specific errors will be emitted
 // via the context.
 mlir::OwningModuleRef FlatBufferToMlir(absl::string_view buffer,
