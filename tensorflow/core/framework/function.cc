@@ -1082,7 +1082,12 @@ bool FunctionLibraryDefinition::Contains(const string& func) const {
 
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
-  return &(FindHelper(func)->fdef);
+  auto result = FindHelper(func);
+  if (result) {
+    return &result->fdef;
+  } else {
+    return nullptr;
+  }
 }
 
 std::shared_ptr<FunctionLibraryDefinition::FunctionDefAndOpRegistration>
