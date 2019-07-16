@@ -23,8 +23,8 @@
 //
 // Specifically, it combines the following concerns, each of which would be
 // independent variables in a more generic setup:
-//   - num_bits implies storage data type (quint8, int16)
-//   - num_bits < 8 is promoted to quint8
+//   - numBits and isSigned imply storage data type (uint8, int8, int16)
+//   - numBits < 8 is promoted to uint8 or int8
 //   - "narrow_range" narrows the lower bound of the storage type's range by
 //     1
 //   - the specified min/max values are "nudged" so that the result has a zero
@@ -59,7 +59,8 @@ namespace quant {
 /// originating op.
 UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
                                           double rmin, double rmax,
-                                          bool narrowRange, Type expressedType);
+                                          bool narrowRange, Type expressedType,
+                                          bool isSigned = false);
 
 } // namespace quant
 } // namespace mlir
