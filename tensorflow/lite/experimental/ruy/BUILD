@@ -13,6 +13,11 @@ package(
 )
 
 cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
+)
+
+cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     deps = ["//tensorflow/lite/kernels/internal:compatibility"],
@@ -60,6 +65,7 @@ cc_library(
     ],
     deps = [
         ":opt_set",
+        ":platform",
         ":time",
     ],
 )
@@ -164,7 +170,10 @@ cc_library(
     name = "path",
     hdrs = ["path.h"],
     visibility = ruy_visibility(),
-    deps = [":size_util"],
+    deps = [
+        ":platform",
+        ":size_util",
+    ],
 )
 
 cc_library(
@@ -238,6 +247,7 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":path",
+        ":platform",
     ],
 )
 
@@ -255,6 +265,7 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":size_util",
         ":spec",
         ":tune",
@@ -276,6 +287,7 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":spec",
         ":tune",
         "@gemmlowp//:profiler",
@@ -371,6 +383,7 @@ cc_library(
         ":ruy",
         ":time",
         "@com_google_googletest//:gtest",
+        ":platform",
     ] + ruy_test_ext_deps(),
 )
 
