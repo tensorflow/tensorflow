@@ -342,35 +342,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
-
-  WARNING: tf.Variable objects by default have a non-intuitive memory model. A
-  Variable is represented internally as a mutable Tensor which can
-  non-deterministically alias other Tensors in a graph. The set of operations
-  which consume a Variable and can lead to aliasing is undetermined and can
-  change across TensorFlow versions. Avoid writing code which relies on the
-  value of a Variable either changing or not changing as other operations
-  happen. For example, using Variable objects or simple functions thereof as
-  predicates in a `tf.cond` is dangerous and error-prone:
-
-  ```
-  v = tf.Variable(True)
-  tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
-  ```
-
-  Here, adding `use_resource=True` when constructing the variable will
-  fix any nondeterminism issues:
-
-  ```
-  v = tf.Variable(True, use_resource=True)
-  tf.cond(v, lambda: v.assign(False), my_false_fn)
-  ```
-
-  To use the replacement for variables which does
-  not have these issues:
-
-  * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
-    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,
