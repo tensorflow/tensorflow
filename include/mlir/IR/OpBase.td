@@ -1172,6 +1172,13 @@ class TCopVTEtIs<int idx, Type type> : And<[
 
 // Predicate to verify that a named argument or result's element type matches a
 // given type.
+class TypeIsPred<string name, Type type> :
+   SubstLeaves<"$_self", "$" # name # ".getType()", type.predicate>;
+class TypeIs<string name, Type type> : PredOpTrait<
+  "'" # name # "' is " # type.description, TypeIsPred<name, type>>;
+
+// Predicate to verify that a named argument or result's element type matches a
+// given type.
 class ElementTypeIsPred<string name, Type type> : And<[
    SubstLeaves<"$_self", "$" # name # ".getType()", IsShapedTypePred>,
    SubstLeaves<"$_self", "getElementTypeOrSelf($" # name # ")",

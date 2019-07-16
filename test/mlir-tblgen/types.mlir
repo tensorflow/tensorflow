@@ -174,3 +174,11 @@ func @same_types_shape_mismatch(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) 
   %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<2x1xi32>
   return
 }
+
+// -----
+
+func @does_not_have_i32(%arg0: tensor<1x2xi32>, %arg1: none) {
+  // expected-error@+1 {{either both none type operands or first is not none}}
+  "test.if_first_operand_is_none_then_so_is_second"(%arg1, %arg0) : (none, tensor<1x2xi32>) -> ()
+  return
+}

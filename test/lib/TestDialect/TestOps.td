@@ -187,6 +187,15 @@ def OperandOneAndResultHaveSameType :
   let results = (outs AnyTensor:$res);
 }
 
+def IfFirstOperandIsNoneThenSoIsSecond :
+    TEST_Op<"if_first_operand_is_none_then_so_is_second", [PredOpTrait<
+    "has either both none type operands or first is not none",
+     Or<[
+        And<[TypeIsPred<"x", NoneType>, TypeIsPred<"y", NoneType>]>,
+        Neg<TypeIsPred<"x", NoneType>>]>>]> {
+  let arguments = (ins AnyType:$x, AnyType:$y);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
