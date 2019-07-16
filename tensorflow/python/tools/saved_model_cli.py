@@ -166,13 +166,21 @@ def _show_inputs_outputs(
 
 
 def _show_defined_functions(saved_model_dir, indent=0):
+  """Prints the function definition of SavedModel2.0 located at saved_model_dir
+
+     Args:
+       saved_model_dir: Directory containing the SavedModel to inspect.
+       indent: How far (in increments of 2 spaces) to indent each line of output.
+  """
   if context.executing_eagerly():
+    # Disable eager execution to prevent loading of checkpoints
     ops_lib.disable_eager_execution()
   trackable_object = load.load(saved_model_dir)
   indent_str = '  ' * indent
 
   def in_print(s):
     print(indent_str + s)
+
   print('Defined Functions:')
   functions = save._AugmentedGraphView(
       trackable_object).list_functions(trackable_object)
@@ -184,9 +192,18 @@ def _show_defined_functions(saved_model_dir, indent=0):
       in_print('Option #%d' % index)
       in_print('  Callable with:')
       _print_args(args, indent=3)
+      if kwargs:
+        _print_args(args, "Named Argument", indent=3)
 
 
-def _print_args(arguments, indent=0):  # Level is indent
+def _print_args(arguments, argument_type="Argument", indent=0):
+  """Formats and prints the argument of the concrete functions defined in the model
+
+     Args:
+       arguments: Arguments of the concrete functions.
+       argument_type: Type of Argument List to Format and print.
+       indent: How far (in increments of 2 spaces) to indent each line of output.
+  """
   indent_str = '  ' * indent
 
   def quotes(value):
@@ -201,7 +218,7 @@ def _print_args(arguments, indent=0):  # Level is indent
   if is_nested(arguments):
     for index, element in enumerate(arguments, 1):
       if indent == 3:
-        in_print('Argument #%d' % index)
+        in_print('%s #%d' % (argument_type, index))
       if isinstance(element, tensor_spec.TensorSpec):
         _print_tensor_spec(element, indent)
       elif is_nested(element):
@@ -226,6 +243,12 @@ def _print_args(arguments, indent=0):  # Level is indent
 
 
 def _print_tensor_spec(tensor_spec, indent=0):
+  """Prints details of the given tensor_spec.
+
+     Args:
+       tensor_spec: TensorSpec object to be printed.
+       indent: How far (in increments of 2 spaces) to indent each line output
+  """
   indent_str = '  ' * indent
 
   def in_print(s):
