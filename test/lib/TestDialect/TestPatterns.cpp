@@ -177,8 +177,8 @@ struct TestLegalizePatternDriver
 
     TestTypeConverter converter;
     TestConversionTarget target(getContext());
-    if (failed(applyConversionPatterns(getModule(), target, converter,
-                                       std::move(patterns))))
+    if (failed(applyPartialConversion(getModule(), target, converter,
+                                      std::move(patterns))))
       signalPassFailure();
   }
 };

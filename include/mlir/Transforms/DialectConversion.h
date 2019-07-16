@@ -349,31 +349,61 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
-// Conversion Application
+// Op Conversion Entry Points
 //===----------------------------------------------------------------------===//
 
-/// Convert the given module with the provided conversion patterns and type
-/// conversion object. This function returns failure if a type conversion
-/// failed.
-LLVM_NODISCARD LogicalResult applyConversionPatterns(
+/// Apply a partial conversion on the given operations, and all nested
+/// operations. This method converts as many operations to the target as
+/// possible, ignoring operations that failed to legalize. This method only
+/// returns failure if there are unreachable blocks in any of the regions nested
+/// within 'ops'.
+LLVM_NODISCARD LogicalResult
+applyPartialConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
+                       OwningRewritePatternList &&patterns);
+LLVM_NODISCARD LogicalResult
+applyPartialConversion(Operation *op, ConversionTarget &target,
+                       OwningRewritePatternList &&patterns);
+
+/// Apply a complete conversion on the given operations, and all nested
+/// operations. This method returns failure if the conversion of any operation
+/// fails, or if there are unreachable blocks in any of the regions nested
+/// within 'ops'.
+LLVM_NODISCARD LogicalResult
+applyFullConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
+                    OwningRewritePatternList &&patterns);
+LLVM_NODISCARD LogicalResult
+applyFullConversion(Operation *op, ConversionTarget &target,
+                    OwningRewritePatternList &&patterns);
+
+//===----------------------------------------------------------------------===//
+// Op + Type Conversion Entry Points
+//===----------------------------------------------------------------------===//
+
+/// Apply a partial conversion on the function operations within the given
+/// module. This method returns failure if a type conversion was encountered.
+LLVM_NODISCARD LogicalResult applyPartialConversion(
     ModuleOp module, ConversionTarget &target, TypeConverter &converter,
     OwningRewritePatternList &&patterns);
 
-/// Convert the given functions with the provided conversion patterns. This
-/// function returns failure if a type conversion failed.
-LLVM_NODISCARD
-LogicalResult applyConversionPatterns(MutableArrayRef<FuncOp> fns,
-                                      ConversionTarget &target,
-                                      TypeConverter &converter,
-                                      OwningRewritePatternList &&patterns);
+/// Apply a partial conversion on the given function operations. This method
+/// returns failure if a type conversion was encountered.
+LLVM_NODISCARD LogicalResult applyPartialConversion(
+    MutableArrayRef<FuncOp> fns, ConversionTarget &target,
+    TypeConverter &converter, OwningRewritePatternList &&patterns);
 
-/// Convert the given function with the provided conversion patterns. This will
-/// convert as many of the operations within 'fn' as possible given the set of
-/// patterns.
-LLVM_NODISCARD
-LogicalResult applyConversionPatterns(FuncOp fn, ConversionTarget &target,
-                                      OwningRewritePatternList &&patterns);
+/// Apply a full conversion on the function operations within the given
+/// module. This method returns failure if a type conversion was encountered, or
+/// if the conversion of any operations failed.
+LLVM_NODISCARD LogicalResult applyFullConversion(
+    ModuleOp module, ConversionTarget &target, TypeConverter &converter,
+    OwningRewritePatternList &&patterns);
 
+/// Apply a partial conversion on the given function operations. This method
+/// returns failure if a type conversion was encountered, or if the conversion
+/// of any operation failed.
+LLVM_NODISCARD LogicalResult applyFullConversion(
+    MutableArrayRef<FuncOp> fns, ConversionTarget &target,
+    TypeConverter &converter, OwningRewritePatternList &&patterns);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_DIALECTCONVERSION_H_

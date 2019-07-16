@@ -421,8 +421,7 @@ LogicalResult linalg::convertToLLVM(mlir::ModuleOp module) {
 
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
-  return applyConversionPatterns(module, target, converter,
-                                 std::move(patterns));
+  return applyFullConversion(module, target, converter, std::move(patterns));
 }
 
 namespace {

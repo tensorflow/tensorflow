@@ -521,8 +521,8 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
     populateAffineToStdConversionPatterns(patterns, &getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<loop::LoopOpsDialect, StandardOpsDialect>();
-    if (failed(applyConversionPatterns(getFunction(), target,
-                                       std::move(patterns))))
+    if (failed(
+            applyPartialConversion(getFunction(), target, std::move(patterns))))
       signalPassFailure();
   }
 };

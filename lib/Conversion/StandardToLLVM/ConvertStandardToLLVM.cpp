@@ -1064,13 +1064,13 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    if (failed(applyConversionPatterns(m, target, *typeConverter,
-                                       std::move(patterns))))
+    if (failed(applyPartialConversion(m, target, *typeConverter,
+                                      std::move(patterns))))
       signalPassFailure();
   }
 
   // Callback for creating a list of patterns.  It is called every time in
-  // runOnModule since applyConversionPatterns consumes the list.
+  // runOnModule since applyPartialConversion consumes the list.
   LLVMPatternListFiller patternListFiller;
 
   // Callback for creating an instance of type converter.  The converter

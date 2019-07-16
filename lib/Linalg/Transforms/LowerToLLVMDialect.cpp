@@ -763,8 +763,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
 
   ConversionTarget target(getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
-  if (failed(applyConversionPatterns(module, target, converter,
-                                     std::move(patterns)))) {
+  if (failed(applyPartialConversion(module, target, converter,
+                                    std::move(patterns)))) {
     signalPassFailure();
   }
 
