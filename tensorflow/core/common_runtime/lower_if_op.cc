@@ -38,11 +38,12 @@ class CondBuilder {
   enum Branch { kElseBranch = 0, kThenBranch = 1 };
 
   // Create a CondBuilder to create the lowered form of `if_op` with then and
-  // else functions named `then_fn_name` and `else_fn_name` respectively in the
-  // `graph`. The functions should be available in `flib`.
-  CondBuilder(Node* if_op, const string& then_fn_name,
-              const string& else_fn_name, const FunctionLibraryDefinition& flib,
-              bool keep_node_fetchable, Graph* graph);
+  // else functions `then_fn` and `else_fn` respectively in the `graph`. The
+  // functions should be available in `flib`.
+  CondBuilder(Node* if_op, const NameAttrList& then_fn,
+              const NameAttrList& else_fn,
+              const FunctionLibraryDefinition& flib, bool keep_node_fetchable,
+              Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
   Status CreatePivotNodes();
@@ -103,8 +104,8 @@ class CondBuilder {
   NodeBuilder else_call_builder_;
 };
 
-CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
-                         const string& else_fn_name,
+CondBuilder::CondBuilder(Node* if_op, const NameAttrList& then_fn,
+                         const NameAttrList& else_fn,
                          const FunctionLibraryDefinition& flib,
                          bool keep_node_fetchable, Graph* graph)
     : if_op_(if_op),
@@ -113,15 +114,21 @@ CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
       name_(if_op->name()),
       keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*if_op_),
-      then_call_builder_(NewName("then"), then_fn_name, graph->op_registry(),
+      then_call_builder_(NewName("then"), then_fn.name(), graph->op_registry(),
                          &debug_info_),
-      else_call_builder_(NewName("else"), else_fn_name, graph->op_registry(),
+      else_call_builder_(NewName("else"), else_fn.name(), graph->op_registry(),
                          &debug_info_) {
   TF_CHECK_OK(if_op_->input_tensor(0, &pred_));
   then_call_builder_.Device(if_op_->requested_device());
   then_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : then_fn.attr()) {
+    then_call_builder_.Attr(i.first, i.second);
+  }
   else_call_builder_.Device(if_op_->requested_device());
   else_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : else_fn.attr()) {
+    else_call_builder_.Attr(i.first, i.second);
+  }
 }
 
 Status CondBuilder::CreatePivotNodes() {
@@ -279,7 +286,7 @@ Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
     return errors::InvalidArgument("Else branch function missing");
   }
 
-  CondBuilder cb(n, then_attr->func().name(), else_attr->func().name(), flib,
+  CondBuilder cb(n, then_attr->func(), else_attr->func(), flib,
                  keep_node_fetchable, g);
   TF_RETURN_IF_ERROR(cb.CreatePivotNodes());
   TF_RETURN_IF_ERROR(cb.AddInputs());
