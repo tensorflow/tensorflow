@@ -168,9 +168,9 @@ class TFModuleWrapper(types.ModuleType):
       attr = getattr(self._tfmw_wrapped_module, name)
     except AttributeError as e:
       if not self._tfmw_public_apis:
-        raise e
+        raise
       if name not in self._tfmw_public_apis:
-        raise e
+        raise
       attr = self._tfmw_import_module(name)
 
     if self._tfmw_print_deprecation_warnings:
