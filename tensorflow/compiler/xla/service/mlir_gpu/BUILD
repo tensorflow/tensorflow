@@ -40,6 +40,7 @@ cc_library(
         ":failover_compiler",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/core:lib",
     ],
     alwayslink = True,  # Contains compiler registration
 )
