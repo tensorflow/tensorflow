@@ -57,13 +57,6 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 
-// Registers e as the type of the ResourceVariable class.
-// Returns Py_None if registration succeeds, else throws a TypeError and returns
-// NULL.
-//
-// This function is not thread-safe.
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
-
 // Registers e as the VSpace to use.
 // `vspace` must be a imperative_grad.py:VSpace named tuple.
 PyObject* TFE_Py_RegisterVSpace(PyObject* e);

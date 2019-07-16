@@ -1779,7 +1779,7 @@ class UninitializedVariable(BaseResourceVariable):
         synchronization=synchronization, aggregation=aggregation)
 
 
-pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
+pywrap_tensorflow.RegisterType("ResourceVariable", ResourceVariable)
 math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 

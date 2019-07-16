@@ -716,8 +716,6 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-PyTypeObject* resource_variable_type = nullptr;
-
 tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
 tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
 
@@ -770,23 +768,6 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
 
   Py_INCREF(e);
   exception_class = e;
-  Py_RETURN_NONE;
-}
-
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e) {
-  if (!PyType_Check(e)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        "TFE_Py_RegisterResourceVariableType: Need to register a type.");
-    return nullptr;
-  }
-
-  if (resource_variable_type != nullptr) {
-    Py_DECREF(resource_variable_type);
-  }
-
-  Py_INCREF(e);
-  resource_variable_type = reinterpret_cast<PyTypeObject*>(e);
   Py_RETURN_NONE;
 }
 
@@ -2132,7 +2113,7 @@ PyObject* GetPythonObjectFromString(const char* s) {
 }
 
 bool CheckResourceVariable(PyObject* item) {
-  if (PyObject_TypeCheck(item, resource_variable_type)) {
+  if (tensorflow::swig::IsResourceVariable(item)) {
     tensorflow::Safe_PyObjectPtr handle(
         PyObject_GetAttrString(item, "_handle"));
     return EagerTensor_CheckExact(handle.get());
