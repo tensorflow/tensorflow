@@ -153,6 +153,15 @@ MatchBackwardFilter(HloInstruction* conv) {
                "to fold it to a backward filter convolution.";
     return no_match_result;
   }
+  auto rhs_in =
+      conv->mutable_operand(1)->shape().dimensions(kernel_input_feature_dim);
+  if ((conv->feature_group_count() > 1) && (rhs_in == 1) &&
+      (input_batch_dim == output_batch_dim)) {
+    VLOG(1) << conv->ToString()
+            << " is a depthwise forward convolution. No need to fold to "
+               "backward filter.";
+    return no_match_result;
+  }
 
   // Step 3: fuse the matched HLOs into a backward convolution instruction.
   //
@@ -279,6 +288,15 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
+  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
+  // for the backward input convolution, but at least for now with version 7.1.4
+  // it is slower. This needs to be re-evaluated for future cuDNN versions.
+  // Note that we already have the necessary code down below, the only thing to
+  // enable it is to remove the following early return.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
+  
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
