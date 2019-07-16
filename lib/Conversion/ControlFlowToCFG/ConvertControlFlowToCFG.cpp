@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to convert std.for, std.if and std.terminator ops
-// into standard CFG ops.
+// This file implements a pass to convert loop.for, loop.if and loop.terminator
+// ops into standard CFG ops.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,7 +54,7 @@ struct ControlFlowToCFGPass : public FunctionPass<ControlFlowToCFGPass> {
 // first/last blocks in the parent region.  The original loop operation is
 // replaced by the initialization operations that set up the initial value of
 // the loop induction variable (%iv) and computes the loop bounds that are loop-
-// invariant for affine loops.  The operations following the original std.for
+// invariant for affine loops.  The operations following the original loop.for
 // are split out into a separate continuation (exit) block. A condition block is
 // created before the continuation block. It checks the exit condition of the
 // loop and branches either to the continuation block, or to the first block of
@@ -108,14 +108,14 @@ struct ForLowering : public ConversionPattern {
                                      PatternRewriter &rewriter) const override;
 };
 
-// Create a CFG subgraph for the std.if operation (including its "then" and
+// Create a CFG subgraph for the loop.if operation (including its "then" and
 // optional "else" operation blocks).  We maintain the invariants that the
 // subgraph has a single entry and a single exit point, and that the entry/exit
 // blocks are respectively the first/last block of the enclosing region. The
-// operations following the std.if are split into a continuation (subgraph
+// operations following the loop.if are split into a continuation (subgraph
 // exit) block. The condition is lowered to a chain of blocks that implement the
 // short-circuit scheme.  Condition blocks are created by splitting out an empty
-// block from the block that contains the std.if operation.  They
+// block from the block that contains the loop.if operation.  They
 // conditionally branch to either the first block of the "then" region, or to
 // the first block of the "else" region.  If the latter is absent, they branch
 // to the continuation block instead.  The last blocks of "then" and "else"
@@ -232,14 +232,14 @@ IfLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   auto ifOp = cast<IfOp>(op);
   auto loc = op->getLoc();
 
-  // Start by splitting the block containing the 'std.if' into two parts.
+  // Start by splitting the block containing the 'loop.if' into two parts.
   // The part before will contain the condition, the part after will be the
   // continuation point.
   auto *condBlock = rewriter.getInsertionBlock();
   auto opPosition = rewriter.getInsertionPoint();
   auto *continueBlock = rewriter.splitBlock(condBlock, opPosition);
 
-  // Move blocks from the "then" region to the region containing 'std.if',
+  // Move blocks from the "then" region to the region containing 'loop.if',
   // place it before the continuation block, and branch to it.
   auto &thenRegion = ifOp.thenRegion();
   auto *thenBlock = &thenRegion.front();
@@ -248,7 +248,7 @@ IfLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   rewriter.inlineRegionBefore(thenRegion, continueBlock);
 
   // Move blocks from the "else" region (if present) to the region containing
-  // 'std.if', place it before the continuation block and branch to it.  It
+  // 'loop.if', place it before the continuation block and branch to it.  It
   // will be placed after the "then" regions.
   auto *elseBlock = continueBlock;
   auto &elseRegion = ifOp.elseRegion();

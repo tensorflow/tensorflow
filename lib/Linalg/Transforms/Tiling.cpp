@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
@@ -41,6 +42,7 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
+using namespace mlir::loop;
 
 #define DEBUG_TYPE "linalg-tiling"
 
@@ -444,7 +446,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   SmallVector<ForOp, 8> loops;
   loops.reserve(ivs.size());
   for (auto iv : ivs)
-    loops.push_back(linalg::getForInductionVarOwner(iv));
+    loops.push_back(loop::getForInductionVarOwner(iv));
 
   return TiledLinalgOp{res, loops};
 }

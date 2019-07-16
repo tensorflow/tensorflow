@@ -16,7 +16,7 @@ func @matmul(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>, %arg2: 
 }
 // TILE-2-LABEL: func @matmul(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>) {
 //       TILE-2: %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
-//       TILE-2: linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
+//       TILE-2: loop.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
 //       TILE-2:   %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-2:   %[[K:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
 //       TILE-2:   %[[sAi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[a]], %{{.*}}, %{{.*}}, %[[K]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -27,7 +27,7 @@ func @matmul(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>, %arg2: 
 
 // TILE-02-LABEL: func @matmul(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>) {
 //       TILE-02: %[[N:.*]] = linalg.dim %arg1, 1 : !linalg.view<?x?xf32>
-//       TILE-02: linalg.for %{{.*}} = %{{.*}} to %[[N]] step %{{.*}} {
+//       TILE-02: loop.for %{{.*}} = %{{.*}} to %[[N]] step %{{.*}} {
 //       TILE-02:   %[[K:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
 //       TILE-02:   %[[b:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-02:   %[[sBj:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[K]], %{{.*}}, %{{.*}}, %[[b]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -38,7 +38,7 @@ func @matmul(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>, %arg2: 
 
 // TILE-002-LABEL: func @matmul(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?x?xf32>) {
 //       TILE-002: %[[K:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
-//       TILE-002: linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
+//       TILE-002: loop.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
 //       TILE-002:   %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
 //       TILE-002:   %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-002:   %[[sAj:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[M]], %{{.*}}, %{{.*}}, %[[a]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -51,9 +51,9 @@ func @matmul(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>, %arg2: 
 //       TILE-234: %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
 //       TILE-234: %[[K:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
 //       TILE-234: %[[N:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
-//       TILE-234:  linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
-//       TILE-234:    linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[N]] step %{{.*}} {
-//       TILE-234:      linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
+//       TILE-234:  loop.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
+//       TILE-234:    loop.for %{{.*}} = %{{.*}}{{.*}} to %[[N]] step %{{.*}} {
+//       TILE-234:      loop.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
 //       TILE-234:        %[[ai:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-234:        %[[ak:.*]] = affine.apply #[[UB2]](%{{.*}})
 //       TILE-234:        %[[sAik:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[ai]], %{{.*}}, %{{.*}}, %[[ak]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -72,7 +72,7 @@ func @matvec(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !l
 }
 // TILE-2-LABEL: func @matvec(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>) {
 //       TILE-2: %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
-//       TILE-2: linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
+//       TILE-2: loop.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
 //       TILE-2:   %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-2:   %[[N:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
 //       TILE-2:   %[[sAi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[a]], %{{.*}}, %{{.*}}, %[[N]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -82,7 +82,7 @@ func @matvec(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !l
 
 // TILE-02-LABEL: func @matvec(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>) {
 //       TILE-02: %[[K:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
-//       TILE-02: linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
+//       TILE-02: loop.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
 //       TILE-02:   %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
 //       TILE-02:   %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-02:   %[[sAj:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[M]], %{{.*}}, %{{.*}}, %[[a]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -91,13 +91,13 @@ func @matvec(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !l
 //       TILE-02:   linalg.matvec(%[[sAj]], %[[sBj]], %{{.*}}) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 
 // TILE-002-LABEL: func @matvec(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>) {
-//   TILE-002-NOT: linalg.for
+//   TILE-002-NOT: loop.for
 
 // TILE-234-LABEL: func @matvec(%{{.*}}: !linalg.view<?x?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>) {
 //       TILE-234: %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?xf32>
 //       TILE-234: %[[K:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
-//       TILE-234:  linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
-//       TILE-234:    linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
+//       TILE-234:  loop.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
+//       TILE-234:    loop.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
 //       TILE-234:      %[[ai:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-234:      %[[aj:.*]] = affine.apply #[[UB1]](%{{.*}})
 //       TILE-234:      %[[sAij:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[ai]], %{{.*}}, %{{.*}}, %[[aj]], %{{.*}}] : !linalg.view<?x?xf32>
@@ -114,7 +114,7 @@ func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg
 }
 // TILE-2-LABEL: func @dot(%{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<f32>) {
 //       TILE-2: %[[M:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?xf32>
-//       TILE-2: linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
+//       TILE-2: loop.for %{{.*}} = %{{.*}}{{.*}} to %[[M]] step %{{.*}} {
 //       TILE-2:   %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-2:   %[[sAi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[a]], %{{.*}}] : !linalg.view<?xf32>
 //       TILE-2:   %[[b:.*]] = affine.apply #[[UB0]](%{{.*}})
@@ -122,14 +122,14 @@ func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg
 //       TILE-2:   linalg.dot(%[[sAi]], %[[sBi]], {{.*}}) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
 
 // TILE-02-LABEL: func @dot(%{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<f32>) {
-//   TILE-02-NOT: linalg.for
+//   TILE-02-NOT: loop.for
 
 // TILE-002-LABEL: func @dot(%{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<f32>) {
-//   TILE-002-NOT: linalg.for
+//   TILE-002-NOT: loop.for
 
 // TILE-234-LABEL: func @dot(%{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<?xf32>, %{{.*}}: !linalg.view<f32>) {
 //       TILE-234: %[[K:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?xf32>
-//       TILE-234:  linalg.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
+//       TILE-234:  loop.for %{{.*}} = %{{.*}}{{.*}} to %[[K]] step %{{.*}} {
 //       TILE-234:    %[[a:.*]] = affine.apply #[[UB0]](%{{.*}})
 //       TILE-234:    %[[sAi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[a]], %{{.*}}] : !linalg.view<?xf32>
 //       TILE-234:    %[[b:.*]] = affine.apply #[[UB0]](%{{.*}})

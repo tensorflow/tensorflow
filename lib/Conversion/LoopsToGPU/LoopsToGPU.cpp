@@ -23,10 +23,10 @@
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/GPU/GPUDialect.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -36,6 +36,7 @@
 #define DEBUG_TYPE "loops-to-gpu"
 
 using namespace mlir;
+using namespace mlir::loop;
 
 // Extract an indexed value from KernelDim3.
 static Value *getDim3Value(const gpu::KernelDim3 &dim3, unsigned pos) {
@@ -56,8 +57,8 @@ static Value *getDim3Value(const gpu::KernelDim3 &dim3, unsigned pos) {
 static Operation::operand_range getLowerBoundOperands(AffineForOp forOp) {
   return forOp.getLowerBoundOperands();
 }
-static SmallVector<Value *, 1> getLowerBoundOperands(linalg::ForOp forOp) {
-  SmallVector<Value *, 1> bounds(1, forOp.getLowerBound());
+static SmallVector<Value *, 1> getLowerBoundOperands(ForOp forOp) {
+  SmallVector<Value *, 1> bounds(1, forOp.lowerBound());
   return bounds;
 }
 
@@ -65,8 +66,8 @@ static SmallVector<Value *, 1> getLowerBoundOperands(linalg::ForOp forOp) {
 static Operation::operand_range getUpperBoundOperands(AffineForOp forOp) {
   return forOp.getUpperBoundOperands();
 }
-static SmallVector<Value *, 1> getUpperBoundOperands(linalg::ForOp forOp) {
-  SmallVector<Value *, 1> bounds(1, forOp.getUpperBound());
+static SmallVector<Value *, 1> getUpperBoundOperands(ForOp forOp) {
+  SmallVector<Value *, 1> bounds(1, forOp.upperBound());
   return bounds;
 }
 
@@ -75,17 +76,15 @@ static SmallVector<Value *, 1> getUpperBoundOperands(linalg::ForOp forOp) {
 static Value *getOrCreateStep(AffineForOp forOp, OpBuilder &builder) {
   return builder.create<ConstantIndexOp>(forOp.getLoc(), forOp.getStep());
 }
-static Value *getOrCreateStep(linalg::ForOp forOp, OpBuilder &) {
-  return forOp.getStep();
-}
+static Value *getOrCreateStep(ForOp forOp, OpBuilder &) { return forOp.step(); }
 
 // Get a Value for the loop lower bound.  If the value requires computation,
 // materialize the instructions using builder.
 static Value *getOrEmitLowerBound(AffineForOp forOp, OpBuilder &builder) {
   return lowerAffineLowerBound(forOp, builder);
 }
-static Value *getOrEmitLowerBound(linalg::ForOp forOp, OpBuilder &) {
-  return forOp.getLowerBound();
+static Value *getOrEmitLowerBound(ForOp forOp, OpBuilder &) {
+  return forOp.lowerBound();
 }
 
 // Get a Value for the loop upper bound.  If the value requires computation,
@@ -93,9 +92,15 @@ static Value *getOrEmitLowerBound(linalg::ForOp forOp, OpBuilder &) {
 static Value *getOrEmitUpperBound(AffineForOp forOp, OpBuilder &builder) {
   return lowerAffineUpperBound(forOp, builder);
 }
-static Value *getOrEmitUpperBound(linalg::ForOp forOp, OpBuilder &) {
-  return forOp.getUpperBound();
+static Value *getOrEmitUpperBound(ForOp forOp, OpBuilder &) {
+  return forOp.upperBound();
 }
+
+// TODO(ntv): uniformize back once AffineForOp is in ODS.
+static Region &getRegion(ForOp op) { return op.region(); }
+static Region &getRegion(AffineForOp op) { return op.getRegion(); }
+static Block *getBody(ForOp op) { return op.body(); }
+static Block *getBody(AffineForOp op) { return op.getBody(); }
 
 // Check the structure of the loop nest:
 //   - there are enough loops to map to numBlockDims + numThreadDims;
@@ -122,9 +127,9 @@ LogicalResult checkLoopNestMappable(OpTy forOp, unsigned numBlockDims,
   }
 
   OpTy currentLoop = forOp;
-  Region &limit = forOp.getRegion();
+  Region &limit = getRegion(forOp);
   for (unsigned i = 0, e = numBlockDims + numThreadDims; i < e; ++i) {
-    Operation *nested = &currentLoop.getBody()->front();
+    Operation *nested = &getBody(currentLoop)->front();
     if (!areValuesDefinedAbove(getLowerBoundOperands(currentLoop), limit) ||
         !areValuesDefinedAbove(getUpperBoundOperands(currentLoop), limit))
       return currentLoop.emitError(
@@ -136,9 +141,9 @@ LogicalResult checkLoopNestMappable(OpTy forOp, unsigned numBlockDims,
     if (i == e - 1)
       break;
 
-    auto begin = currentLoop.getBody()->begin(),
-         end = currentLoop.getBody()->end();
-    if (currentLoop.getBody()->empty() || std::next(begin, 2) != end)
+    auto begin = getBody(currentLoop)->begin(),
+         end = getBody(currentLoop)->end();
+    if (getBody(currentLoop)->empty() || std::next(begin, 2) != end)
       return currentLoop.emitError(
           "expected perfectly nested loops in the body");
 
@@ -211,7 +216,7 @@ Optional<OpTy> LoopToGpuConverter::collectBounds(OpTy forOp,
     steps.push_back(step);
 
     if (i != numLoops - 1)
-      currentLoop = cast<OpTy>(&currentLoop.getBody()->front());
+      currentLoop = cast<OpTy>(&getBody(currentLoop)->front());
   }
   return currentLoop;
 }
@@ -243,7 +248,7 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   // Still assuming perfect nesting so there are no values other than induction
   // variables that are defined in one loop and used in deeper loops.
   llvm::SetVector<Value *> valuesToForwardSet;
-  getUsedValuesDefinedAbove(innermostForOp.getRegion(), rootForOp.getRegion(),
+  getUsedValuesDefinedAbove(getRegion(innermostForOp), getRegion(rootForOp),
                             valuesToForwardSet);
   auto valuesToForward = valuesToForwardSet.takeVector();
   auto originallyForwardedValues = valuesToForward.size();
@@ -258,14 +263,14 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   // gpu return and move the operations from the loop body block to the gpu
   // launch body block.  Do not move the entire block because of the difference
   // in block arguments.
-  Operation &terminator = innermostForOp.getBody()->back();
+  Operation &terminator = getBody(innermostForOp)->back();
   Location terminatorLoc = terminator.getLoc();
   terminator.erase();
-  builder.setInsertionPointToEnd(innermostForOp.getBody());
+  builder.setInsertionPointToEnd(getBody(innermostForOp));
   builder.create<gpu::Return>(terminatorLoc);
   launchOp.getBody().front().getOperations().splice(
       launchOp.getBody().front().begin(),
-      innermostForOp.getBody()->getOperations());
+      getBody(innermostForOp)->getOperations());
 
   // Remap the loop iterators to use block/thread identifiers instead.  Loops
   // may iterate from LB with step S whereas GPU thread/block ids always iterate
@@ -328,11 +333,11 @@ static LogicalResult convertLoopNestToGPULaunch(OpTy forOp,
 LogicalResult mlir::convertAffineLoopNestToGPULaunch(AffineForOp forOp,
                                                      unsigned numBlockDims,
                                                      unsigned numThreadDims) {
-  return convertLoopNestToGPULaunch(forOp, numBlockDims, numThreadDims);
+  return ::convertLoopNestToGPULaunch(forOp, numBlockDims, numThreadDims);
 }
 
-LogicalResult mlir::convertLinalgLoopNestToGPULaunch(linalg::ForOp forOp,
-                                                     unsigned numBlockDims,
-                                                     unsigned numThreadDims) {
-  return convertLoopNestToGPULaunch(forOp, numBlockDims, numThreadDims);
+LogicalResult mlir::convertLoopNestToGPULaunch(ForOp forOp,
+                                               unsigned numBlockDims,
+                                               unsigned numThreadDims) {
+  return ::convertLoopNestToGPULaunch(forOp, numBlockDims, numThreadDims);
 }

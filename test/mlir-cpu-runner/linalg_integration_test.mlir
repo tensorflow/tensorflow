@@ -9,7 +9,7 @@ func @fill_f32(%arg0 : !linalg.buffer<?xf32>, %f : f32) {
   %s = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
   %R = linalg.range %c0:%s:%c1 : !linalg.range
   %V = linalg.view %arg0[%R] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
-  linalg.for %i0 = %c0 to %s step %c1 {
+  loop.for %i0 = %c0 to %s step %c1 {
     linalg.store %f, %V[%i0] : !linalg.view<?xf32>
   }
   return

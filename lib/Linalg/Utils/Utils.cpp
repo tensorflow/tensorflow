@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -29,6 +30,7 @@
 #include "mlir/Linalg/Passes.h"
 #include "mlir/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
 
@@ -37,6 +39,7 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
+using namespace mlir::loop;
 
 mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
                                                ValueHandle range) {
@@ -47,18 +50,18 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
   auto lb = rangeOp.min();
   auto ub = rangeOp.max();
   auto step = rangeOp.step();
-  auto forOp = OperationHandle::createOp<linalg::ForOp>(lb, ub, step);
+  auto forOp = OperationHandle::createOp<ForOp>(lb, ub, step);
   *iv = ValueHandle(forOp.getInductionVar());
-  auto *body = forOp.getBody();
+  auto *body = forOp.body();
   enter(body, /*prev=*/1);
 }
 
 mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
                                                SubViewOp::Range range) {
-  auto forOp = OperationHandle::createOp<linalg::ForOp>(range.min, range.max,
-                                                        range.step);
+  auto forOp =
+      OperationHandle::createOp<ForOp>(range.min, range.max, range.step);
   *iv = ValueHandle(forOp.getInductionVar());
-  auto *body = forOp.getBody();
+  auto *body = forOp.body();
   enter(body, /*prev=*/1);
 }
 

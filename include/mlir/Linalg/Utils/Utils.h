@@ -18,6 +18,7 @@
 #ifndef MLIR_LINALG_UTILS_H_
 #define MLIR_LINALG_UTILS_H_
 
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Support/LLVM.h"
@@ -26,15 +27,16 @@ namespace mlir {
 class AffineExpr;
 class AffineMap;
 class OperationFolder;
+
 namespace edsc {
 
-/// A LoopRangeBuilder is a generic NestedBuilder for linalg.for operations.
+/// A LoopRangeBuilder is a generic NestedBuilder for loop.for operations.
 /// More specifically it is meant to be used as a temporary object for
 /// representing any nested MLIR construct that is "related to" an mlir::Value*
 /// (for now an induction variable).
 class LoopRangeBuilder : public NestedBuilder {
 public:
-  /// Constructs a new linalg::ForOp and captures the associated induction
+  /// Constructs a new loop.for and captures the associated induction
   /// variable. A ValueHandle pointer is passed as the first argument and is the
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
@@ -53,9 +55,9 @@ public:
   ValueHandle operator()(std::function<void(void)> fun = nullptr);
 };
 
-/// Helper class to sugar building linalg.for loop nests from ranges.
+/// Helper class to sugar building loop.for loop nests from ranges.
 /// This is similar to edsc::LoopNestBuilder except it works on ranges directly.
-/// In the current implementation it produces linalg.for operations.
+/// In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
@@ -88,7 +90,7 @@ SmallVector<Value *, 4> applyMapToValues(OpBuilder &b, Location loc,
 
 struct TiledLinalgOp {
   LinalgOp op;
-  SmallVector<ForOp, 8> loops;
+  SmallVector<loop::ForOp, 8> loops;
 };
 
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.

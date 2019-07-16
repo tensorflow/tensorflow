@@ -171,28 +171,6 @@ def RangeIntersectOp : Linalg_Op<"range_intersect", [NoSideEffect]>,
     }]>];
 }
 
-def TerminatorOp :
-    Linalg_Op<"terminator", [NativeOpTrait<"IsTerminator">]> {
-  let summary = "linalg terminator operation";
-  let description = [{
-    "linalg.terminator" is a special terminator operation for blocks inside
-    linalg loops and branches. It unconditionally transmits the control flow to
-    the successor of the operation enclosing the region.
-
-    This operation does _not_ have a custom syntax. However, linalg control
-    operations omit the terminator in their custom syntax for brevity.
-
-       linalg.terminator
-  }];
-
-  // No custom parsing/printing form.
-  let parser = ?;
-  let printer = ?;
-
-  // Fully specified by traits.
-  let verifier = ?;
-}
-
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Arguments<(ins View:$view, Variadic<Index>:$ranges)>,
     Results<(outs View)> {

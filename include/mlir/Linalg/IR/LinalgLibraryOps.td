@@ -98,9 +98,9 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
     Usage:
       linalg.copy(%arg0, %arg1) : !linalg.view<?xf32>, !linalg.view<?xf32>
 
-    One possible lowering to affine form is:
+    One possible lowering to loop form is:
       %0 = linalg.dim %arg0, 0 : index
-      linalg.for %i0 = %c0 to %0 step %c1 {
+      loop.for %i0 = %c0 to %0 step %c1 {
         %1 = linalg.load %arg0[%i0] : !linalg.view<?xf32>
         linalg.store %1, %arg1[%i0] : !linalg.view<?xf32>
       }
@@ -113,13 +113,13 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
                                  outputPermutation : (i, j, k) -> (k, j, i)} :
         !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
 
-    One possible lowering to affine form is:
+    One possible lowering to loop form is:
       %0 = linalg.dim %arg0, 0
       %1 = linalg.dim %arg0, 1
       %2 = linalg.dim %arg0, 2
-      linalg.for %i0 = %c0 to %{{.*}} step %c1 {
-        linalg.for %i1 = %c0 to %{{.*}} step %c1 {
-          linalg.for %i2 = %c0 to %{{.*}} step %c1 {
+      loop.for %i0 = %c0 to %{{.*}} step %c1 {
+        loop.for %i1 = %c0 to %{{.*}} step %c1 {
+          loop.for %i2 = %c0 to %{{.*}} step %c1 {
             %3 = linalg.load %arg0[%i0, %i2, %i1] : !linalg.view<?x?x?xf32>
             linalg.store %3, %arg1[%i2, %i1, %i0] : !linalg.view<?x?x?xf32>
 

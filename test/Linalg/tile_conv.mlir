@@ -14,9 +14,9 @@ func @conv(%arg0: !linalg.view<?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?xf32>, %
 //       TILE-23004:   %[[B:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?x?x?xf32>
 //       TILE-23004:   %[[PaddedInput0:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?x?x?xf32>
 //       TILE-23004:   %[[X0:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?x?x?xf32>
-//       TILE-23004:   linalg.for %{{.*}} = %{{.*}} to %[[B]] step %{{.*}} {
-//       TILE-23004:     linalg.for %{{.*}} = %{{.*}} to %[[X0]] step %{{.*}} {
-//       TILE-23004:       linalg.for %{{.*}} = %{{.*}} to %[[Q]] step %{{.*}} {
+//       TILE-23004:   loop.for %{{.*}} = %{{.*}} to %[[B]] step %{{.*}} {
+//       TILE-23004:     loop.for %{{.*}} = %{{.*}} to %[[X0]] step %{{.*}} {
+//       TILE-23004:       loop.for %{{.*}} = %{{.*}} to %[[Q]] step %{{.*}} {
 //       TILE-23004:       %[[Z0:.*]] = linalg.dim %{{.*}}, 0 : !linalg.view<?x?x?x?xf32>
 //       TILE-23004:         %[[Z1:.*]] = linalg.dim %{{.*}}, 1 : !linalg.view<?x?x?x?xf32>
 //       TILE-23004:         %[[I2p4:.*]] = affine.apply #[[UB2]](%{{.*}})

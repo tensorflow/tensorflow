@@ -118,64 +118,6 @@ func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.ran
 //       CHECK:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.return %{{.*}} : !llvm<"{ i64, i64, i64 }">
 
-func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
-  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
-    %a = muli %i0, %arg0 : index
-  }
-  return
-}
-// CHECK-LABEL: func @linalg_for(%{{.*}}: !llvm.i64, %{{.*}}: !llvm.i64, %{{.*}}: !llvm.i64) {
-//       CHECK:   llvm.br ^bb2(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb1:   // pred: ^bb2
-//       CHECK:   llvm.return
-//       CHECK: ^bb2(%{{.*}}: !llvm.i64):    // 2 preds: ^bb0, ^bb3
-//       CHECK:   %{{.*}} = llvm.icmp "sgt" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.cond_br %{{.*}}, ^bb3, ^bb1
-//       CHECK: ^bb3:   // pred: ^bb2
-//       CHECK:   %{{.*}} = llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.add %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.br ^bb2(%{{.*}} : !llvm.i64)
-
-func @linalg_for_2(%arg0 : index, %arg1 : index, %arg2 : index) {
-  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
-    linalg.for %i1 = %arg0 to %arg1 step %arg2 {
-      %a = muli %i0, %i1 : index
-    }
-    linalg.for %i2 = %arg0 to %arg1 step %arg2 {
-      %b = muli %i0, %i2 : index
-    }
-  }
-  return
-}
-// CHECK-LABEL: func @linalg_for_2(%{{.*}}: !llvm.i64, %{{.*}}: !llvm.i64, %{{.*}}: !llvm.i64) {
-//       CHECK:   llvm.br ^bb2(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb1:   // pred: ^bb2
-//       CHECK:   llvm.return
-//       CHECK: ^bb2(%{{.*}}: !llvm.i64):    // 2 preds: ^bb0, ^bb5
-//       CHECK:   %{{.*}} = llvm.icmp "sgt" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.cond_br %{{.*}}, ^bb3, ^bb1
-//       CHECK: ^bb3:   // pred: ^bb2
-//       CHECK:   llvm.br ^bb8(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb4:   // pred: ^bb8
-//       CHECK:   llvm.br ^bb6(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb5:   // pred: ^bb6
-//       CHECK:   %{{.*}} = llvm.add %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.br ^bb2(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb6(%{{.*}}: !llvm.i64):    // 2 preds: ^bb4, ^bb7
-//       CHECK:   %{{.*}} = llvm.icmp "sgt" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.cond_br %{{.*}}, ^bb7, ^bb5
-//       CHECK: ^bb7:   // pred: ^bb6
-//       CHECK:   %{{.*}} = llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.add %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.br ^bb6(%{{.*}} : !llvm.i64)
-//       CHECK: ^bb8(%{{.*}}: !llvm.i64):    // 2 preds: ^bb3, ^bb9
-//       CHECK:   %{{.*}} = llvm.icmp "sgt" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.cond_br %{{.*}}, ^bb9, ^bb4
-//       CHECK: ^bb9:   // pred: ^bb8
-//       CHECK:   %{{.*}} = llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.add %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   llvm.br ^bb8(%{{.*}} : !llvm.i64)
-
 func @subview(%arg0: !linalg.view<?x?xf32>) {
   %c0 = constant 0 : index
   %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xf32>

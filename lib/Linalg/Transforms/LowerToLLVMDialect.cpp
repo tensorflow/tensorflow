@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/EDSC/Builders.h"
@@ -746,72 +747,17 @@ static void lowerLinalgSubViewOps(FuncOp &f) {
   });
 }
 
-// Converts a `linalg.for` op to CFG form before actual conversion to the LLVM
-// dialect starts.
-static void lowerLinalgForToCFG(FuncOp &f) {
-  // Collect all the For operations. We do this as a prepass to avoid
-  // invalidating the walker with our rewrite.
-  SmallVector<linalg::ForOp, 8> instsToRewrite;
-  f.walk<linalg::ForOp>(
-      [&](linalg::ForOp op) { instsToRewrite.push_back(op); });
-
-  for (auto forOp : llvm::reverse(instsToRewrite)) {
-    auto *op = forOp.getOperation();
-    auto loc = op->getLoc();
-    using namespace edsc::op;
-    OpBuilder builder(op);
-    ScopedContext scope(builder, loc);
-    ValueHandle lb(forOp.getLowerBound()), ub(forOp.getUpperBound()),
-        step(forOp.getStep());
-
-    // 1. Split Block into init and end blocks, create body and condition blocks
-    // with the `iv` block argument.
-    auto *initBlock = op->getBlock();
-    auto *endBlock = initBlock->splitBlock(op);
-    BlockHandle conditionBlock, bodyBlock;
-    ValueHandle iv(IndexType::get(op->getContext()));
-    BlockBuilder(&conditionBlock, {&iv})();
-    BlockBuilder(&bodyBlock, {})();
-
-    // 2. Create and fill the condition block whose sole purpose is to evaluate
-    // iv and branch to either `bodyBlock` or `endBlock`. Add all branches to
-    // the `conditionBlock`.
-    // clang-format off
-    BlockBuilder(conditionBlock, Append())([&] {
-      auto cmp = cmpi(CmpIPredicate::SGT, ub, iv);
-      cond_br(cmp, bodyBlock, {}, endBlock, {});
-    });
-    BlockBuilder(bodyBlock, Append())([&] {
-      br(conditionBlock, addi(iv, step));
-    });
-    BlockBuilder(initBlock, Append())([&] {
-      br(conditionBlock, lb);
-    });
-    // clang-format on
-
-    // 3. Move the instructions from the for loop to the body, update all uses
-    // of the induction variable and clean up.
-    auto *oldBody = forOp.getBody();
-    bodyBlock.getBlock()->getOperations().splice(
-        bodyBlock.getBlock()->begin(), oldBody->getOperations(),
-        oldBody->begin(), std::prev(oldBody->end()));
-    forOp.getInductionVar()->replaceAllUsesWith(iv);
-    forOp.erase();
-  }
-}
-
 void LowerLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
 
-  for (auto f : module.getOps<FuncOp>()) {
+  for (auto f : module.getOps<FuncOp>())
     lowerLinalgSubViewOps(f);
-    lowerLinalgForToCFG(f);
-  }
 
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;
   LinalgTypeConverter converter(&getContext());
   populateAffineToStdConversionPatterns(patterns, &getContext());
+  populateLoopToStdConversionPatterns(patterns, &getContext());
   populateStdToLLVMConversionPatterns(converter, patterns);
   populateLinalgToLLVMConversionPatterns(converter, patterns, &getContext());
 

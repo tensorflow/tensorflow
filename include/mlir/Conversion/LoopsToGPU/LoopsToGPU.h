@@ -21,9 +21,9 @@ namespace mlir {
 class AffineForOp;
 struct LogicalResult;
 
-namespace linalg {
+namespace loop {
 class ForOp;
-}
+} // end namespace loop
 
 /// Convert a perfect affine loop nest with the outermost loop identified by
 /// `forOp` into a gpu::Launch operation.  Map `numBlockDims` outer loops to
@@ -49,9 +49,9 @@ LogicalResult convertAffineLoopNestToGPULaunch(AffineForOp forOp,
 /// parallelization is performed, it is under the responsibility of the caller
 /// to strip-mine the loops and to perform the dependence analysis before
 /// calling the conversion.
-LogicalResult convertLinalgLoopNestToGPULaunch(linalg::ForOp forOp,
-                                               unsigned numBlockDims,
-                                               unsigned numThreadDims);
+LogicalResult convertLoopNestToGPULaunch(loop::ForOp forOp,
+                                         unsigned numBlockDims,
+                                         unsigned numThreadDims);
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPU_H_

@@ -84,26 +84,26 @@ func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.ran
 //  CHECK-NEXT:   return %{{.*}} : !linalg.range
 
 func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
-  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
-    linalg.for %i1 = %arg0 to %arg1 step %arg2 {
+  loop.for %i0 = %arg0 to %arg1 step %arg2 {
+    loop.for %i1 = %arg0 to %arg1 step %arg2 {
       %min_cmp = cmpi "slt", %i0, %i1 : index
       %min = select %min_cmp, %i0, %i1 : index
       %max_cmp = cmpi "sge", %i0, %i1 : index
       %max = select %max_cmp, %i0, %i1 : index
-      linalg.for %i2 = %min to %max step %i1 {
+      loop.for %i2 = %min to %max step %i1 {
       }
     }
   }
   return
 }
 // CHECK-LABEL: func @linalg_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:   linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-//  CHECK-NEXT:     linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:   loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:     loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 //  CHECK-NEXT:       %{{.*}} = cmpi "slt", %{{.*}}, %{{.*}} : index
 //  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
 //  CHECK-NEXT:       %{{.*}} = cmpi "sge", %{{.*}}, %{{.*}} : index
 //  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:       loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 
 func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
   linalg.fill(%arg0, %arg1) : !linalg.view<?xf32>, f32

@@ -18,7 +18,7 @@
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
-#include "mlir/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -26,6 +26,7 @@
 #define PASS_NAME "convert-loops-to-gpu"
 
 using namespace mlir;
+using namespace mlir::loop;
 
 static llvm::cl::OptionCategory clOptionsCategory(PASS_NAME " options");
 static llvm::cl::opt<unsigned>
@@ -52,9 +53,9 @@ struct ForLoopMapper : public FunctionPass<ForLoopMapper> {
           if (failed(convertAffineLoopNestToGPULaunch(forOp, numBlockDims,
                                                       numThreadDims)))
             signalPassFailure();
-        } else if (auto forOp = dyn_cast<linalg::ForOp>(&op)) {
-          if (failed(convertLinalgLoopNestToGPULaunch(forOp, numBlockDims,
-                                                      numThreadDims)))
+        } else if (auto forOp = dyn_cast<ForOp>(&op)) {
+          if (failed(convertLoopNestToGPULaunch(forOp, numBlockDims,
+                                                numThreadDims)))
             signalPassFailure();
         }
       }

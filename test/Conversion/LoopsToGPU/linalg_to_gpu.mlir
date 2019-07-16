@@ -7,10 +7,10 @@ func @foo(%arg0: !linalg.buffer<?xf32>, %arg1 : index) {
   %c3 = constant 3 : index
   // CHECK:      subi %{{.*}}, %{{.*}} : index
   // CHECK-NEXT: %[[range_i:.*]] = divis {{.*}}, %{{.*}} : index
-  linalg.for %i0 = %c0 to %c42 step %c3 {
+  loop.for %i0 = %c0 to %c42 step %c3 {
     // CHECK:      subi %{{.*}}, %{{.*}} : index
     // CHECK-NEXT: %[[range_j:.*]] = divis {{.*}}, %{{.*}} : index
-    linalg.for %i1 = %c3 to %c42 step %arg1 {
+    loop.for %i1 = %c3 to %c42 step %arg1 {
       // CHECK:      gpu.launch
       // CHECK-SAME: blocks
       // CHECK-SAME: threads

@@ -13,9 +13,9 @@ func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
   return
 }
 // TILE-1D-LABEL: func @matmul(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//       TILE-1D:   linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-//       TILE-1D:     linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-//       TILE-1D:       linalg.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//       TILE-1D:   loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//       TILE-1D:     loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//       TILE-1D:       loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 //       TILE-1D:         %[[vA:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>
 //       TILE-1D:         %[[vB:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>
 //       TILE-1D:         %[[vC:.*]] = linalg.subview {{.*}} : !linalg.view<?x?xf32>
