@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SERIALIZATION_H_
-#define MLIR_SPIRV_SERIALIZATION_H_
+#ifndef MLIR_DIALECT_SPIRV_SERIALIZATION_H_
+#define MLIR_DIALECT_SPIRV_SERIALIZATION_H_
 
 #include "mlir/Support/LLVM.h"
 
@@ -46,4 +46,4 @@ Optional<ModuleOp> deserialize(ArrayRef<uint32_t> binary, MLIRContext *context);
 } // end namespace spirv
 } // end namespace mlir
 
-#endif // MLIR_SPIRV_SERIALIZATION_H_
+#endif // MLIR_DIALECT_SPIRV_SERIALIZATION_H_

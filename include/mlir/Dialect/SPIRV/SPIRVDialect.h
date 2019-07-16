@@ -1,4 +1,4 @@
-//===- SPIRVBinaryUtils.cpp - SPIR-V Binary Module Utils --------*- C++ -*-===//
+//===- SPIRVDialect.h - MLIR SPIR-V dialect ---------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,29 +15,32 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines common utilities for SPIR-V binary module.
+// This file declares the SPIR-V dialect in MLIR.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
-#define MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
+#ifndef MLIR_DIALECT_SPIRV_SPIRVDIALECT_H_
+#define MLIR_DIALECT_SPIRV_SPIRVDIALECT_H_
 
-#include "mlir/SPIRV/SPIRVOps.h"
-
-#include <cstdint>
+#include "mlir/IR/Dialect.h"
 
 namespace mlir {
 namespace spirv {
 
-/// SPIR-V binary header word count
-constexpr unsigned kHeaderWordCount = 5;
+class SPIRVDialect : public Dialect {
+public:
+  explicit SPIRVDialect(MLIRContext *context);
 
-/// SPIR-V magic number
-constexpr uint32_t kMagicNumber = 0x07230203;
+  static StringRef getDialectNamespace() { return "spv"; }
 
-#include "mlir/SPIRV/SPIRVSerialization.inc"
+  /// Parses a type registered to this dialect.
+  Type parseType(llvm::StringRef spec, Location loc) const override;
+
+  /// Prints a type registered to this dialect.
+  void printType(Type type, llvm::raw_ostream &os) const override;
+};
 
 } // end namespace spirv
 } // end namespace mlir
 
-#endif // MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
+#endif // MLIR_DIALECT_SPIRV_SPIRVDIALECT_H_

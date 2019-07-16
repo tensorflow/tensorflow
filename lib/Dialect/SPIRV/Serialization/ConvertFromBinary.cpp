@@ -20,11 +20,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
+#include "mlir/Dialect/SPIRV/Serialization.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/SPIRV/SPIRVOps.h"
-#include "mlir/SPIRV/Serialization.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Translation.h"

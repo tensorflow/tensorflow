@@ -10,12 +10,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
+#include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
-#include "mlir/SPIRV/SPIRVOps.h"
-#include "mlir/SPIRV/SPIRVTypes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -25,7 +25,7 @@
 
 namespace mlir {
 namespace spirv {
-#include "mlir/SPIRV/SPIRVOpUtils.inc"
+#include "mlir/Dialect/SPIRV/SPIRVOpUtils.inc"
 } // namespace spirv
 } // namespace mlir
 
@@ -43,7 +43,7 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 
   addOperations<
 #define GET_OP_LIST
-#include "mlir/SPIRV/SPIRVOps.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"
       >();
 
   // Allow unknown operations because SPIR-V is extensible.

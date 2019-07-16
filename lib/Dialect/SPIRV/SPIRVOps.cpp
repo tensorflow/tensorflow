@@ -19,17 +19,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/SPIRV/SPIRVOps.h"
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
 
+#include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/SPIRV/SPIRVTypes.h"
 
 namespace mlir {
 namespace spirv {
-#include "mlir/SPIRV/SPIRVOpUtils.inc"
+#include "mlir/Dialect/SPIRV/SPIRVOpUtils.inc"
 } // namespace spirv
 } // namespace mlir
 
@@ -846,7 +846,7 @@ namespace mlir {
 namespace spirv {
 
 #define GET_OP_CLASSES
-#include "mlir/SPIRV/SPIRVOps.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"
 
 } // namespace spirv
 } // namespace mlir

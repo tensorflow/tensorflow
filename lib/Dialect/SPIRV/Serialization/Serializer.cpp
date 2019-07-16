@@ -19,12 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/SPIRV/Serialization.h"
+#include "mlir/Dialect/SPIRV/Serialization.h"
 
 #include "SPIRVBinaryUtils.h"
-#include "mlir/SPIRV/SPIRVDialect.h"
-#include "mlir/SPIRV/SPIRVOps.h"
-#include "mlir/SPIRV/SPIRVTypes.h"
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
+#include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
 

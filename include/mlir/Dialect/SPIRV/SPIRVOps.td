@@ -32,13 +32,13 @@
 
 #ifdef SPIRV_BASE
 #else
-include "mlir/SPIRV/SPIRVBase.td"
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
 #ifdef SPIRV_STRUCTURE_OPS
 #else
 // Pull in ops for defining the SPIR-V module structure
-include "mlir/SPIRV/SPIRVStructureOps.td"
+include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
 // -----

@@ -1,4 +1,4 @@
-//===- Passes.h - SPIR-V pass entry points ----------------------*- C++ -*-===//
+//===- DialectRegistration.cpp - MLIR SPIR-V dialect registration ---------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,22 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// This header file defines prototypes that expose pass constructors.
-//
-//===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_PASSES_H_
-#define MLIR_SPIRV_PASSES_H_
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 
-#include "mlir/Pass/Pass.h"
-
-namespace mlir {
-namespace spirv {
-
-FunctionPassBase *createStdOpsToSPIRVConversionPass();
-
-} // namespace spirv
-} // namespace mlir
-
-#endif // MLIR_SPIRV_PASSES_H_
+// Static initialization for SPIR-V dialect registration.
+static mlir::DialectRegistration<mlir::spirv::SPIRVDialect> spirvDialect;

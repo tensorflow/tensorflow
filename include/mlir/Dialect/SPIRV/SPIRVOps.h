@@ -1,4 +1,4 @@
-//===- DialectRegistration.cpp - MLIR SPIR-V dialect registration ---------===//
+//===- SPIRVOps.h - MLIR SPIR-V operations ----------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,8 +14,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+//
+// This file declares the operations in the SPIR-V dialect.
+//
+//===----------------------------------------------------------------------===//
 
-#include "mlir/SPIRV/SPIRVDialect.h"
+#ifndef MLIR_DIALECT_SPIRV_SPIRVOPS_H_
+#define MLIR_DIALECT_SPIRV_SPIRVOPS_H_
 
-// Static initialization for SPIR-V dialect registration.
-static mlir::DialectRegistration<mlir::spirv::SPIRVDialect> spirvDialect;
+#include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Function.h"
+
+namespace mlir {
+namespace spirv {
+
+#define GET_OP_CLASSES
+#include "mlir/Dialect/SPIRV/SPIRVOps.h.inc"
+
+} // end namespace spirv
+} // end namespace mlir
+
+#endif // MLIR_DIALECT_SPIRV_SPIRVOPS_H_

@@ -1,4 +1,4 @@
-//===- SPIRVDialect.h - MLIR SPIR-V dialect ---------------------*- C++ -*-===//
+//===- Passes.h - SPIR-V pass entry points ----------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,32 +15,21 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file declares the SPIR-V dialect in MLIR.
+// This header file defines prototypes that expose pass constructors.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SPIRVDIALECT_H_
-#define MLIR_SPIRV_SPIRVDIALECT_H_
+#ifndef MLIR_DIALECT_SPIRV_PASSES_H_
+#define MLIR_DIALECT_SPIRV_PASSES_H_
 
-#include "mlir/IR/Dialect.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace spirv {
 
-class SPIRVDialect : public Dialect {
-public:
-  explicit SPIRVDialect(MLIRContext *context);
+FunctionPassBase *createStdOpsToSPIRVConversionPass();
 
-  static StringRef getDialectNamespace() { return "spv"; }
+} // namespace spirv
+} // namespace mlir
 
-  /// Parses a type registered to this dialect.
-  Type parseType(llvm::StringRef spec, Location loc) const override;
-
-  /// Prints a type registered to this dialect.
-  void printType(Type type, llvm::raw_ostream &os) const override;
-};
-
-} // end namespace spirv
-} // end namespace mlir
-
-#endif // MLIR_SPIRV_SPIRVDIALECT_H_
+#endif // MLIR_DIALECT_SPIRV_PASSES_H_

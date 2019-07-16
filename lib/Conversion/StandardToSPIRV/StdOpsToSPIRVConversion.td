@@ -21,7 +21,7 @@ include "mlir/StandardOps/Ops.td"
 
 #ifdef SPIRV_OPS
 #else
-include "mlir/SPIRV/SPIRVOps.td"
+include "mlir/Dialect/SPIRV/SPIRVOps.td"
 #endif // SPIRV_OPS
 
 def IsScalar : TypeConstraint<CPred<"!($_self.isa<ShapedType>())">, "scalar">;

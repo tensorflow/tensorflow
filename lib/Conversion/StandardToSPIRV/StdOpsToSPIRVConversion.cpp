@@ -20,11 +20,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/SPIRV/Passes.h"
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/SPIRV/Passes.h"
-#include "mlir/SPIRV/SPIRVOps.h"
 #include "mlir/StandardOps/Ops.h"
 
 namespace mlir {

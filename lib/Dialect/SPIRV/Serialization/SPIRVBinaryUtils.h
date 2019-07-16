@@ -1,4 +1,4 @@
-//===- SPIRVOps.h - MLIR SPIR-V operations ----------------------*- C++ -*-===//
+//===- SPIRVBinaryUtils.cpp - SPIR-V Binary Module Utils --------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,23 +15,29 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file declares the operations in the SPIR-V dialect.
+// This file defines common utilities for SPIR-V binary module.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SPIRVOPS_H_
-#define MLIR_SPIRV_SPIRVOPS_H_
+#ifndef MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
+#define MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
 
-#include "mlir/IR/Function.h"
-#include "mlir/SPIRV/SPIRVTypes.h"
+#include "mlir/Dialect/SPIRV/SPIRVOps.h"
+
+#include <cstdint>
 
 namespace mlir {
 namespace spirv {
 
-#define GET_OP_CLASSES
-#include "mlir/SPIRV/SPIRVOps.h.inc"
+/// SPIR-V binary header word count
+constexpr unsigned kHeaderWordCount = 5;
+
+/// SPIR-V magic number
+constexpr uint32_t kMagicNumber = 0x07230203;
+
+#include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 
 } // end namespace spirv
 } // end namespace mlir
 
-#endif // MLIR_SPIRV_SPIRVOPS_H_
+#endif // MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_

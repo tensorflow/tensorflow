@@ -19,15 +19,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SPIRVTYPES_H_
-#define MLIR_SPIRV_SPIRVTYPES_H_
+#ifndef MLIR_DIALECT_SPIRV_SPIRVTYPES_H_
+#define MLIR_DIALECT_SPIRV_SPIRVTYPES_H_
 
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
-#include "mlir/SPIRV/SPIRVEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVEnums.h.inc"
 
 #include <tuple>
 
@@ -196,4 +196,4 @@ public:
 } // end namespace spirv
 } // end namespace mlir
 
-#endif // MLIR_SPIRV_SPIRVTYPES_H_
+#endif // MLIR_DIALECT_SPIRV_SPIRVTYPES_H_
