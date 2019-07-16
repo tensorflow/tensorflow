@@ -1,3 +1,5 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -56,7 +58,7 @@ cc_library(
             "//tensorflow/lite/schema:schema_fbs",
         ],
         ":tflite_gpu_binary_release": [],
-    }),
+    }) + tflite_extra_gles_deps(),
 )
 
 objc_library(
