@@ -585,6 +585,24 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let hasOptions = 1;
 }
 
+def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
+  let summary = "Gather_nd operator";
+
+  let description = [{
+    Gather slices from `params` into a Tensor with shape specified by `indices`.
+  }];
+
+  // TODO: missing Uint8.
+  let arguments = (ins
+    TensorOf<[F32, I8, I64, I32]>:$params,
+    TFL_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I64, I32]>:$output
+  );
+}
+
 // Same type check of lhs and rhs is handled by the Broadcastable trait.
 def TFL_LessEqualOp : TFL_Op<"less_equal", [Broadcastable, NoSideEffect]> {
   let summary = "Less_equal operator";

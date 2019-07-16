@@ -167,6 +167,9 @@ def : Pat<(TF_GreaterEqualOp $l, $r), (TFL_GreaterEqualOp $l, $r)>;
 def : Pat<(TF_GatherOp $params, $indices, $ignored_validate_indices),
           (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
 
+def : Pat<(TF_GatherNdOp $params, $indices),
+          (TFL_GatherNdOp $params, $indices)>;
+
 def : Pat<(TF_GatherV2Op $params, $indices,
                          (ConstantOp ElementsAttr:$axis),
                          ConstantAttr<I64Attr, "0">:$batch_dims),

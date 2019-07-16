@@ -370,6 +370,22 @@ func @gatherHigherRankIndices(%arg0 : tensor<2x3x6xf32>, %arg1 : tensor<4x5xi32>
 // CHECK:  %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<2x3x6xf32>, tensor<4x5xi32>) -> tensor<4x5x3x6xf32>
 }
 
+func @gatherNdVectorIndices(%arg0 : tensor<3x2x2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "tf.GatherNd"(%arg0, %arg1) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+
+// CHECK-LABEL:gatherNdVectorIndices
+// CHECK:  %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+}
+
+func @gatherNdHigherRankIndices(%arg0 : tensor<4x3x2xf32>, %arg1 : tensor<2x2xi32>) -> tensor<2x2xf32> {
+  %0 = "tf.GatherNd"(%arg0, %arg1) : (tensor<4x3x2xf32>, tensor<2x2xi32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL:gatherNdHigherRankIndices
+// CHECK:  %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<4x3x2xf32>, tensor<2x2xi32>) -> tensor<2x2xf32>
+}
+
 func @gatherV2VectorIndices(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x3x5x20xf32> {
   %0 = constant dense<[1]> : tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x3x5x20xf32>
