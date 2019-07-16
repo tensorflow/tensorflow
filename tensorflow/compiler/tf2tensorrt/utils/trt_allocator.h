@@ -46,16 +46,6 @@ class TRTBaseAllocator : public nvinfer1::IGpuAllocator {
   virtual ~TRTBaseAllocator() = default;
 };
 
-class TRTCudaAllocator : public TRTBaseAllocator {
-  // Allocator implementation that is using cuda allocator instead of device
-  // allocator in case we can't get device allocator from TF.
- public:
-  TRTCudaAllocator() {}
-  virtual ~TRTCudaAllocator() {}
-  void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
-  void free(void* memory) override;
-};
-
 class TRTDeviceAllocator : public TRTBaseAllocator {
   // Allocator implementation wrapping TF device allocators.
  public:
