@@ -253,7 +253,6 @@ tf_cuda_library(
         ":utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
-        #"//tensorflow/core:framework",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core:graph",
         "//tensorflow/core:gpu_runtime",
