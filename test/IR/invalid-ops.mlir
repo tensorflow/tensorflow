@@ -811,3 +811,13 @@ func @std_if_illegal_block_argument(%arg0: i1) {
   }, {}): (i1) -> ()
   return
 }
+
+// -----
+
+func @return_not_in_function() {
+  "foo.region"() ({
+    // expected-error@+1 {{must be nested within a 'func' region}}
+    return
+  }): () -> ()
+  return
+}

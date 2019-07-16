@@ -71,7 +71,11 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return state; }
 
-  /// Return the closes surrounding parent operation that is of type 'OpTy'.
+  /// Returns the closest surrounding operation that contains this operation
+  /// or nullptr if this is a top-level operation.
+  Operation *getParentOp() { return getOperation()->getParentOp(); }
+
+  /// Return the closest surrounding parent operation that is of type 'OpTy'.
   template <typename OpTy> OpTy getParentOfType() {
     return getOperation()->getParentOfType<OpTy>();
   }

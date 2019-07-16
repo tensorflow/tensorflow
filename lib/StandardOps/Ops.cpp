@@ -1868,9 +1868,9 @@ static void print(OpAsmPrinter *p, ReturnOp op) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  // TODO(b/137008268): Return op should verify that it is nested directly
-  // within a function operation.
-  auto function = op.getParentOfType<FuncOp>();
+  auto function = dyn_cast_or_null<FuncOp>(op.getParentOp());
+  if (!function)
+    return op.emitOpError() << "must be nested within a 'func' region";
 
   // The operand number and types must match the function signature.
   const auto &results = function.getType().getResults();
