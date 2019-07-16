@@ -783,8 +783,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     engine_segments.push_back(std::move(curr_engine));
     converted_segments.push_back(std::move(curr_segment));
 
-    if (VLOG_IS_ON(8) && 
-        curr_engine.engine_type == EngineInfo::EngineType::TRTStatic) {
+    if (VLOG_IS_ON(8)) {
       string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
