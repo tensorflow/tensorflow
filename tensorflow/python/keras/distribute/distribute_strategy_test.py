@@ -1523,6 +1523,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           mode=['graph', 'eager'],
           cloning=[True, False],
           reduction=[
+              loss_reduction.ReductionV2.AUTO,
               loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
               loss_reduction.ReductionV2.SUM
           ]))
