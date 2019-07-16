@@ -177,11 +177,13 @@ def _show_defined_functions(saved_model_dir, indent=0):
   functions = save._AugmentedGraphView(
       trackable_object).list_functions(trackable_object)
   for name, function in functions.items():
-    for concrete_functions in function._list_all_concrete_functions_for_serialization():
+    in_print('Function Name: \'%s\'' % name)
+    for index, concrete_functions in enumerate(
+            function._list_all_concrete_functions_for_serialization(), 1):
       args, kwargs = (concrete_functions.structured_input_signature)
-      in_print('Function Name: \'%s\'' % name)
-      in_print('Callable with:')
-      _print_args(args, indent=2)
+      in_print('Option #%d' % index)
+      in_print('  Callable with:')
+      _print_args(args, indent=3)
 
 
 def _print_args(arguments, indent=0):  # Level is indent
@@ -198,7 +200,7 @@ def _print_args(arguments, indent=0):  # Level is indent
     return nest.is_nested(args) and not isinstance(args, dict)
   if is_nested(arguments):
     for index, element in enumerate(arguments, 1):
-      if indent == 2:
+      if indent == 3:
         in_print('Argument #%d' % index)
       if isinstance(element, tensor_spec.TensorSpec):
         _print_tensor_spec(element, indent)
