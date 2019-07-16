@@ -408,9 +408,7 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
 TYPED_TEST_CASE(Convolve1D_1x2x5_1x2x2_WithPadding, TestTypes);
 TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithPadding, Types) { this->RunTest(); }
 
-// 5D tensors are not yet supported in ROCm
-XLA_TEST_F(ConvolutionTest,
-           DISABLED_ON_GPU_ROCM(Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid)) {
+XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   XlaBuilder builder(TestName());
   std::vector<int64> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64> filter_dims = {2, 2, 2, 3, 3};

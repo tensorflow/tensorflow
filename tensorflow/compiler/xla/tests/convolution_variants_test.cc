@@ -1330,9 +1330,7 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
   ComputeAndCompareR3<float>(&builder, {{{13, 24, 130}}}, {}, error_spec_);
 }
 
-// 5D tensors are not yet supported in ROCm
-XLA_TEST_F(ConvolutionVariantsTest,
-           DISABLED_ON_GPU_ROCM(BackwardInputEvenPadding3D)) {
+XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
   XlaBuilder builder(TestName());
 
   auto gradients_flat = LiteralUtil::CreateR1<float>({1});
@@ -1356,9 +1354,7 @@ XLA_TEST_F(ConvolutionVariantsTest,
   ComputeAndCompareLiteral(&builder, expected_literal, {}, error_spec_);
 }
 
-// 5D tensors are not yet supported in ROCm
-XLA_TEST_F(ConvolutionVariantsTest,
-           DISABLED_ON_GPU_ROCM(BackwardFilterEvenPadding3D)) {
+XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
   XlaBuilder builder(TestName());
 
   auto activations_flat = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
