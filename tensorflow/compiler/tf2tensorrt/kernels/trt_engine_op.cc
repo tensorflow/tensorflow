@@ -95,9 +95,9 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Construct a function handle for executing native funcdef graph
   // These are the exact same function.
-  Status ConstructFunctionHandle(OpKernelContext* ctx);
 
-  Status ConstructFunctionHandle(OpKernelConstruction* ctx);
+  Status ConstructFunctionHandle(FunctionLibraryRuntime* lib,
+                                 const string& device_name);
 
   // Execute replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
@@ -192,9 +192,10 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
   }
 }
 
-Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
+Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
+                                            const string& device_name) {
   VLOG(1) << "Constructing function handle";
-  auto lib = ctx->function_library();
+  // auto lib = ctx->function_library();
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
   }
@@ -205,30 +206,7 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
   }
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
-  inst_ops.target = ctx->device()->name();
-  native_func_ = 0;
-  return lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()), inst_ops,
-                          &native_func_);
-}
-
-Status TRTEngineOp::ConstructFunctionHandle(OpKernelConstruction* ctx) {
-  VLOG(1) << "Constructing function handle";
-  auto lib = ctx->function_library();
-  if (lib == nullptr) {
-    return errors::Internal("Context function library is null");
-  }
-  auto func_names = lib->GetFunctionLibraryDefinition()->ListFunctionNames();
-  for (auto func_name : func_names) {
-    VLOG(2) << "Func name: " << func_name;
-  }
-  auto fdef = lib->GetFunctionLibraryDefinition()->Find(funcdef_name_);
-  if (fdef == nullptr) {
-    return errors::Internal("Native FunctionDef ", funcdef_name_,
-                            " can't be found in function library");
-  }
-  FunctionLibraryRuntime::InstantiateOptions inst_ops;
-  inst_ops.state_handle = "";
-  inst_ops.target = ctx->device()->name();
+  inst_ops.target = device_name;
   native_func_ = 0;
   return lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()), inst_ops,
                           &native_func_);
@@ -258,7 +236,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("use_calibration", &use_calibration_));
   native_func_ = kInvalidHandle;
   if (!static_engine_) {
-    OP_REQUIRES_OK(context, ConstructFunctionHandle(context));
+    OP_REQUIRES_OK(context, ConstructFunctionHandle(context->function_library(),
+                                                    context->device()->name()));
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
@@ -283,7 +262,9 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {
-    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx), *helper);
+    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx->function_library(),
+                                                      ctx->device()->name()),
+                         *helper);
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
