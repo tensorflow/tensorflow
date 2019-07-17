@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Graph Editor.
-
-See the
-[Graph Editor](https://tensorflow.org/api_guides/python/contrib.graph_editor)
-guide.
 """
 
 from __future__ import absolute_import
