@@ -358,6 +358,10 @@ class _EagerDefinedFunction(object):
     if (graph_output_names is not None
         and all(t in graph_output_names for t in outputs)):
       output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+      if len(set(output_names)) != len(output_names):
+        # There are duplicate names for some reason, probably an invalid
+        # signature. Revert to auto-naming.
+        output_names = []
     else:
       output_names = []
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
