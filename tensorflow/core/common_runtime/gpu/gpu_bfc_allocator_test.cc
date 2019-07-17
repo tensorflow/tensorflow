@@ -568,6 +568,47 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
     EXPECT_EQ(GPUBFCAllocator::RoundedBytes(1LL << 31),
               force_no_allow_growth_allocator.curr_region_allocation_bytes_);
   }
+
+  void TestRegionDeallocation() {
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "unparseable", 1);
+    GPUOptions options;
+    options.set_allow_growth(true);
+
+    // Max of 2GiB, but starts out small.
+    PlatformGpuId platform_gpu_id(0);
+    GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, /*use_unified_memory=*/false, {}, {});
+    GPUBFCAllocator a(sub_allocator, 1LL << 31, options, "GPU_0_bfc");
+
+    // Allocate 128 raw pointers of 4 megs.
+    const size_t size = 1LL << 22;
+    std::vector<void*> initial_ptrs;
+    for (size_t s = 0; s < 128; s++) {
+      void* raw = a.AllocateRaw(1, size);
+      initial_ptrs.push_back(raw);
+    }
+
+    // Make sure there are more than 1 regions in preparation for the test.
+    EXPECT_LT(1, a.region_manager_.regions().size());
+
+    // Deallocate all the memories except the last one.
+    for (size_t i = 0; i < initial_ptrs.size() - 1; i++) {
+      a.DeallocateRaw(initial_ptrs[i]);
+    }
+
+    // Deallocate free regions and there shall be only one region left.
+    EXPECT_EQ(true, a.DeallocateFreeRegions(/*rounded_bytes=*/0));
+    EXPECT_EQ(1, a.region_manager_.regions().size());
+
+    // There should be only one chunk left in bins.
+    size_t num_chunks_in_bins = 0;
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      BFCAllocator::Bin* bin = a.BinFromIndex(i);
+      num_chunks_in_bins += bin->free_chunks.size();
+    }
+    EXPECT_EQ(1, num_chunks_in_bins);
+  }
 };
 
 TEST_F(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
@@ -578,6 +619,10 @@ TEST_F(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
 
 TEST_F(GPUBFCAllocatorPrivateMethodsTest, ForceAllowGrowth) {
   TestForceAllowGrowth();
+}
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, TestRegionDeallocation) {
+  TestRegionDeallocation();
 }
 
 }  // namespace tensorflow

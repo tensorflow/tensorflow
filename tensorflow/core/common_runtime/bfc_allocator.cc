@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
 #include <atomic>
+#include "absl/container/flat_hash_set.h"
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -260,6 +261,76 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
   return rounded_bytes;
 }
 
+bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
+  // Searching for free regions.
+  absl::flat_hash_set<void*> free_region_ptrs;
+  size_t total_free_bytes = 0;
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    bool any_use = false;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        any_use = true;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (!any_use) {
+      VLOG(2) << "Found free region with ptr = " << region.ptr();
+      free_region_ptrs.insert(region.ptr());
+      total_free_bytes += region.memory_size();
+    }
+  }
+
+  if (total_free_bytes == 0) {
+    return false;
+  }
+
+  // Rough estimation to check whether deallocation can help.
+  size_t available_bytes =
+      memory_limit_ - total_region_allocated_bytes_ + total_free_bytes;
+  if (rounded_bytes > available_bytes) {
+    return false;
+  }
+
+  VLOG(INFO) << "Re-allocate memory regions to avoid OOM due to memory"
+             << " fragmentation. If you see this message frequently, note"
+             << " that the re-allocation may incur performance overhead despite"
+             << " better memory utilization. You may try smaller batch sizes"
+             << " to see if it can give you better performance.";
+
+  // Deallocate free regions.
+  auto it = region_manager_.regions().begin();
+  while (it != region_manager_.regions().end()) {
+    if (!free_region_ptrs.contains(it->ptr())) {
+      ++it;
+      continue;
+    }
+
+    VLOG(2) << "Deallocate region with ptr = " << it->ptr();
+    // Remove all chunk registrations from Bins.
+    ChunkHandle h = region_manager_.get_handle(it->ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->bin_num != kInvalidBinNum) {
+        RemoveFreeChunkFromBin(h);
+      }
+      auto h_to_delete = h;
+      h = c->next;
+      DeleteChunk(h_to_delete);
+    }
+
+    // Deallocate the memory.
+    sub_allocator_->Free(it->ptr(), it->memory_size());
+    total_region_allocated_bytes_ -= it->memory_size();
+    it = region_manager_.RemoveAllocationRegion(it);
+  }
+
+  return true;
+}
+
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
                                         bool dump_log_on_failure,
@@ -304,6 +375,18 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       if (ptr != nullptr) {
         return ptr;
       }
+    }
+  }
+
+  // Reaching this point means that no chunks can satisfy the request. Also,
+  // the unallocated bytes cannot satisfy the request. Before giving up, let's
+  // try deallocating free regions so that suballocator can combine them with
+  // the unallocated bytes and form a larger region.
+  if (DeallocateFreeRegions(rounded_bytes) &&
+      Extend(unused_alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+    if (ptr != nullptr) {
+      return ptr;
     }
   }
 

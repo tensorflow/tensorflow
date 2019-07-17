@@ -309,6 +309,11 @@ class BFCAllocator : public Allocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
+    std::vector<AllocationRegion>::const_iterator RemoveAllocationRegion(
+        std::vector<AllocationRegion>::const_iterator it) {
+      return regions_.erase(it);
+    }
+
     ChunkHandle get_handle(const void* p) const {
       return RegionFor(p)->get_handle(p);
     }
@@ -353,6 +358,14 @@ class BFCAllocator : public Allocator {
   // failure.
   bool Extend(size_t alignment, size_t rounded_bytes)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Deallocate free regions to give back the memory to suballocator, so that
+  // we can re-allocate a larger region.  The main use scenario of this function
+  // is when OOM happens but we have free regions and the sum of sizes of free
+  // regions and unallocated bytes is larger than the requested size, implying
+  // (external) memory fragmentation.  Returns true if deallocating any free
+  // regions; false otherwise.
+  bool DeallocateFreeRegions(size_t rounded_bytes);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
