@@ -31,11 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {
+
 // These nodes can always be duplicated into consumers, even if
 // InstructionFusion::may_duplicate_ is false.
 //
@@ -56,6 +58,8 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
 
 /*static*/ bool InstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
+  namespace m = match;
+
   switch (instruction.opcode()) {
     // Cheap instructions.
     case HloOpcode::kAdd:
@@ -117,6 +121,17 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSin:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 
+    // We say that integer div/mod by a constant is cheap because it gets
+    // compiled down to multiplies and shifts, and we consider those to be
+    // cheap.
+    case HloOpcode::kDivide:
+    case HloOpcode::kRemainder:
+      return !ShapeUtil::ElementIsIntegral(instruction.shape()) ||
+             !Match(instruction.operand(1),
+                    m::AnyOf<const HloInstruction>(
+                        m::ConstantEffectiveScalar(),
+                        m::Broadcast(m::ConstantEffectiveScalar())));
+
     // Expensive instructions or unusual instructions for which fusion is
     // nonsensical.
     case HloOpcode::kAddDependency:
@@ -133,7 +148,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDivide:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
@@ -150,7 +164,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRsqrt:
