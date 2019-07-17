@@ -884,11 +884,11 @@ func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> 
 }
 
 func @Tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
-  %2 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
-  return %2: tensor<1xf32>
+  %0 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %0: tensor<1xf32>
 
 // CHECK-LABEL: Tanh
-// CHECK:  %0 = "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK:  "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
 }
 
 func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
@@ -915,4 +915,12 @@ func @unique64(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>) {
   // CHECK-LABEL: unique64
   // CHECK: %0:2 = "tfl.unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>)
   // CHECK: %0
+}
+
+func @ReverseSequence(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>) -> tensor<2x3xf32> {
+  %0 = "tf.ReverseSequence"(%arg0, %arg1) {seq_dim = 0 : i64, batch_dim = 0 : i64}: (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+
+// CHECK-LABEL: ReverseSequence
+// CHECK:  "tfl.reverse_sequence"(%arg0, %arg1) {batch_dim = 0 : i32, seq_dim = 0 : i32} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
 }

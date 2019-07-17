@@ -1500,6 +1500,38 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let hasFolder = 1;
 }
 
+def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [NoSideEffect]> {
+  let summary = "Reverses variable length slices.";
+
+  let description = [{
+This op first slices `input` along the dimension `batch_dim`, and for each
+slice `i`, reverses the first `seq_lengths[i]` elements along
+the dimension `seq_dim`.
+
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
+and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
+
+The output slice `i` along dimension `batch_dim` is then given by input
+slice `i`, with the first `seq_lengths[i]` slices along dimension
+`seq_dim` reversed.
+  }];
+
+  // Missing Uint8.
+  let arguments = (ins
+    TensorOf<[F32, I16, I32, I64]>:$input,
+    TFL_I32OrI64Tensor:$seq_lengths,
+
+    I32Attr:$seq_dim,
+    I32Attr:$batch_dim
+  );
+
+  let results = (outs
+    TensorOf<[F32, I16, I32, I64]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Reciprocal of square root operator";
 
