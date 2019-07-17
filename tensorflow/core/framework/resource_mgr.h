@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -443,6 +444,78 @@ Status ResourceHandlesShape(shape_inference::InferenceContext* c);
 #define REGISTER_RESOURCE_HANDLE_KERNEL(Type)                        \
   REGISTER_KERNEL_BUILDER(Name(#Type "HandleOp").Device(DEVICE_CPU), \
                           ResourceHandleOp<Type>)
+
+// This class is used to guarantee that an anonymous resource is deleted
+// (irrespective of whether a resource deleter op is called explicitly or
+// the execution encounters an error before the op runs).
+//
+// This is achieved by wrapping an instance of this class into a variant
+// tensor which is passed as an input to a resource deleter op. If the
+// execution encounters an error before the op runs, the tensor will be
+// destroyed, essentially triggering the iterator deletion.
+// NOTE: This is not a feature-complete implementation of the DT_VARIANT
+// specification. In particular, we cannot serialize the `ResourceMgr`
+// object, so the `Encode()` and `Decode()` methods are not implemented.
+class ResourceDeleter {
+ public:
+  ResourceDeleter() : deleter_() {}
+
+  ResourceDeleter(ResourceHandle handle, ResourceMgr* resource_manager)
+      : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
+
+  ResourceDeleter(ResourceDeleter&& rhs) : deleter_(std::move(rhs.deleter_)) {
+    VLOG(3) << "ResourceDeleter move constructor called.";
+  }
+
+  ResourceDeleter(const ResourceDeleter& rhs) : deleter_(rhs.deleter_) {
+    VLOG(3) << "ResourceDeleter copy constructor called.";
+  }
+
+  ResourceDeleter& operator=(const ResourceDeleter& rhs) = delete;
+
+  ResourceDeleter& operator=(ResourceDeleter&& rhs) = default;
+
+  virtual ~ResourceDeleter() {
+    VLOG(3) << "ResourceDeleter destructor called.";
+  }
+
+  void Encode(VariantTensorData*) const {
+    LOG(ERROR) << "The Encode() method is not implemented for ResourceDeleter "
+                  "objects.";
+  }
+
+  bool Decode(const VariantTensorData&) {
+    LOG(ERROR) << "The Decode() method is not implemented for ResourceDeleter "
+                  "objects";
+    return false;  // Not supported.
+  }
+
+ private:
+  // Helper that performs reference counting for the parent class and deletes
+  // the iterator resource when the refcount goes to zero.
+  //
+  // NOTE: The object is borrowing a pointer to the resource manager.
+  // Consequently, the tensor containing this object should not escape the
+  // function in which was created (so that it is guaranteed that the resource
+  // manager will outlive it).
+  struct Helper {
+    Helper(ResourceHandle handle, ResourceMgr* resource_manager)
+        : handle(handle), resource_manager(resource_manager) {}
+
+    Helper(const Helper& rhs) = delete;
+    Helper(Helper&& rhs) = delete;
+
+    ~Helper() {
+      VLOG(3) << "Deleting Resource: " << handle.DebugString();
+      resource_manager->Delete(handle).IgnoreError();
+    }
+
+    ResourceHandle handle;
+    ResourceMgr* resource_manager;  // not owned
+  };
+
+  std::shared_ptr<Helper> deleter_;
+};
 
 // Implementation details below.
 

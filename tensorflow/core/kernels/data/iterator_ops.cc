@@ -230,72 +230,6 @@ class IteratorResource : public ResourceBase {
     return output_shapes_;
   }
 
-  // This class is used to guarantee that an anonymous iterator is deleted
-  // (irrespective of whether the DeleteIteratorOp op is called explicitly or
-  // the execution encounters an error before the op runs).
-  //
-  // This is achieved by wrapping an instance of this class into a variant
-  // tensor which is passed as an input to the DeleteIteratorOp. If the
-  // execution encounters an error before the op runs, the tensor will be
-  // destroyed, essentially triggering the iterator deletion.
-  class Deleter {
-   public:
-    Deleter() : deleter_() {}
-
-    Deleter(ResourceHandle handle, ResourceMgr* resource_manager)
-        : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
-
-    Deleter(Deleter&& rhs) : deleter_(std::move(rhs.deleter_)) {
-      VLOG(3) << "IteratorResource::Deleter move constructor called.";
-    }
-
-    Deleter(const Deleter& rhs) : deleter_(rhs.deleter_) {
-      VLOG(3) << "IteratorResource::Deleter copy constructor called.";
-    }
-
-    Deleter& operator=(const Deleter& rhs) = delete;
-
-    Deleter& operator=(Deleter&& rhs) = default;
-
-    virtual ~Deleter() {
-      VLOG(3) << "IteratorResource::Deleter destructor called.";
-    }
-
-    void Encode(VariantTensorData*) const {
-      // Not supported.
-    }
-
-    bool Decode(const VariantTensorData&) {
-      return false;  // Not supported.
-    }
-
-   private:
-    // Helper that performs reference counting for the parent class and deletes
-    // the iterator resource when the refcount goes to zero.
-    //
-    // NOTE: The object is borrowing a pointer to the resource manager.
-    // Consequently, the tensor containing this object should not escape the
-    // function in which was created (so that it is guaranteed that the resource
-    // manager will outlive it).
-    struct Helper {
-      Helper(ResourceHandle handle, ResourceMgr* resource_manager)
-          : handle(handle), resource_manager(resource_manager) {}
-
-      Helper(const Helper& rhs) = delete;
-      Helper(Helper&& rhs) = delete;
-
-      ~Helper() {
-        VLOG(3) << "Deleting IteratorResource: " << handle.DebugString();
-        resource_manager->Delete(handle).IgnoreError();
-      }
-
-      ResourceHandle handle;
-      ResourceMgr* resource_manager;  // not owned
-    };
-
-    std::shared_ptr<Helper> deleter_;
-  };
-
  private:
   struct State {
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
@@ -535,64 +469,30 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 // running them.
 AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
-    : OpKernel(context),
-      graph_def_version_(context->graph_def_version()),
-      op_version_(context->def().op() == "AnonymousIterator" ? 1 : 2) {
-  OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_dtypes_));
-  OP_REQUIRES_OK(context, context->GetAttr("output_shapes", &output_shapes_));
+    : AnonymousIteratorResourceOp<IteratorResource>(context),
+      graph_def_version_(context->graph_def_version()) {
+  create_deleter_ = context->def().op() == "AnonymousIteratorV2";
 }
 
-void AnonymousIteratorHandleOp::Compute(OpKernelContext* ctx) {
-  FunctionLibraryRuntime* lib;
+static std::atomic<int64> current_iterator_id_;
+
+void AnonymousIteratorHandleOp::GenerateContainerNames(string* unique_name,
+                                                       string* container_name) {
+  *unique_name =
+      strings::StrCat("AnonymousIterator", current_iterator_id_.fetch_add(1));
+  *container_name = "AnonymousIterator";
+}
+
+Status AnonymousIteratorHandleOp::CreateResource(
+    OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+    FunctionLibraryRuntime* lib, IteratorResource** resource) {
   std::unique_ptr<DeviceMgr> device_mgr(nullptr);
-  std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
-  OP_REQUIRES_OK(ctx,
-                 ctx->function_library()->Clone(&flib_def, &pflr, &lib, true));
-
-  ResourceMgr* mgr = ctx->resource_manager();
-  const string container_name = "AnonymousIterator";
-  string unique_name;
-  {
-    mutex_lock l(static_resource_lookup_mutex_);
-    while (true) {  // Find an unused name
-      IteratorResource* existing_resource = nullptr;
-      unique_name = strings::StrCat("AnonymousIterator", current_id_++);
-      Status status = mgr->Lookup<IteratorResource>(container_name, unique_name,
-                                                    &existing_resource);
-      if (status.code() == error::NOT_FOUND) {
-        break;
-      }
-      OP_REQUIRES_OK(ctx, status);
-      existing_resource->Unref();
-    }
-    IteratorResource* new_resource = new IteratorResource(
-        ctx->env(), output_dtypes_, output_shapes_, graph_def_version_,
-        std::move(device_mgr), std::move(flib_def), std::move(pflr), lib);
-    // Create the resource with our chosen name under the resource lookup
-    // mutex to avoid another kernel racily creating a resource with this
-    // name.
-    OP_REQUIRES_OK(ctx, mgr->Create<IteratorResource>(
-                            container_name, unique_name, new_resource));
-  }
-  Tensor* handle_t;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle_t));
-  ResourceHandle handle = MakeResourceHandle(ctx, container_name, unique_name,
-                                             MakeTypeIndex<IteratorResource>());
-  handle_t->scalar<ResourceHandle>()() = handle;
-
-  if (op_version_ == 2) {
-    Tensor* deleter_t;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
-    deleter_t->scalar<Variant>()() =
-        IteratorResource::Deleter(handle, ctx->resource_manager());
-  }
+  *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
+                                   graph_def_version_, std::move(device_mgr),
+                                   std::move(flib_def), std::move(pflr), lib);
+  return Status::OK();
 }
-
-// Static initializers for AnonymousIteratorHandleOp id counting.
-mutex AnonymousIteratorHandleOp::static_resource_lookup_mutex_{
-    LINKER_INITIALIZED};
-int64 AnonymousIteratorHandleOp::current_id_(0);
 
 void MakeIteratorOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   DatasetBase* dataset;
