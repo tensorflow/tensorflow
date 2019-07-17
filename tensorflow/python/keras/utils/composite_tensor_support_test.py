@@ -84,7 +84,7 @@ class ToSparse(Layer):
   """Create a sparse tensor based on a given dense tensor."""
 
   def call(self, inputs):
-    indices = array_ops.where(math_ops.not_equal(inputs, 0))
+    indices = array_ops.where_v2(math_ops.not_equal(inputs, 0))
     values = array_ops.gather_nd(inputs, indices)
     shape = array_ops.shape(inputs, out_type=dtypes.int64)
     return sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
