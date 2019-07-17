@@ -479,6 +479,30 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "GPUToCUDATransforms",
+    srcs = [
+        "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
+        "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
+        "lib/Conversion/GPUToCUDA/GenerateCubinAccessors.cpp",
+    ],
+    hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":Support",
+        ":TargetNVVMIR",
+        "@llvm//:core",
+        "@llvm//:nvptx_target",  # buildcleaner: keep
+        "@llvm//:support",
+        "@llvm//:target",
+    ],
+    alwayslink = 1,
+)
+
 gentbl(
     name = "LLVMOpsIncGen",
     tbl_outs = [
@@ -900,6 +924,29 @@ cc_library(
 )
 
 cc_library(
+    name = "CFGTransforms",
+    srcs = [
+        "lib/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":TransformUtils",
+        ":Transforms",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "LLVMTransforms",
     srcs = [
         "lib/Conversion/StandardToLLVM/ConvertStandardToLLVM.cpp",
@@ -910,6 +957,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":CFGTransforms",
         ":IR",
         ":LLVMDialect",
         ":Pass",
