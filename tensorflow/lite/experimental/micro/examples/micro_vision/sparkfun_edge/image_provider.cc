@@ -120,9 +120,6 @@ void boost_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
 }  // namespace
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
-  // Enable the ITM print interface.
-  am_bsp_itm_printf_enable();
-
   error_reporter->Report("Initializing HM01B0...\n");
 
   am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
