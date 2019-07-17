@@ -2535,7 +2535,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
-        ":util",
     ],
 )
 
@@ -2550,6 +2549,17 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "control_flow_v2_toggles",
+    srcs = ["ops/control_flow_v2_toggles.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_util",
+        ":framework_ops",
+        ":util",
     ],
 )
 
