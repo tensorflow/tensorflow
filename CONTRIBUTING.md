@@ -33,12 +33,12 @@ If you want to contribute, start working through the MLIR codebase, navigate to 
 
 ### Contribution guidelines and standards
 
-*   Follow coding style (see below).
+*   Read the [developer guide](g3doc/DeveloperGuide.md).
 *   Ensure that you use the correct license. Examples are provided below.
 *   Include tests when you contribute new features, as they help to a)
     prove that your code works correctly, and b) guard against future breaking
     changes to lower the maintenance cost.
-*   Bug fixes also generally require unit tests, because the presence of bugs
+*   Bug fixes also generally require tests, because the presence of bugs
     usually indicates insufficient test coverage.
 
 #### License
@@ -47,8 +47,3 @@ Include a license at the top of new files.
 
 * [C/C++ license example](https://github.com/tensorflow/mlir/blob/master/examples/toy/Ch1/toyc.cpp)
 * [Python license example](https://github.com/tensorflow/mlir/blob/master/bindings/python/test/test_py2and3.py)
-
-#### C++ coding style
-
-Changes to MLIR C++ code should conform to
-[LLVM Coding standards](https://llvm.org/docs/CodingStandards.html).
