@@ -521,7 +521,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   tflite::OpResolver* resolver = nullptr;
 #ifdef TFLITE_CUSTOM_OPS_HEADER
   resolver = new tflite::MutableOpResolver();
-  RegisterSelectedOps(resolver);
+  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
 #else
   resolver = new tflite::ops::builtin::BuiltinOpResolver();
 #endif
