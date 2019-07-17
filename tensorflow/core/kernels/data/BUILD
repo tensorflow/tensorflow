@@ -1181,6 +1181,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "optimize_dataset_op",
     srcs = ["optimize_dataset_op.cc"],
+    hdrs = ["optimize_dataset_op.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
@@ -1284,6 +1285,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "map_defun_op",
     srcs = ["map_defun_op.cc"],
+    hdrs = ["map_defun_op.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
@@ -1291,5 +1293,26 @@ tf_kernel_library(
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "map_defun_op_test",
+    size = "small",
+    srcs = ["map_defun_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":map_defun_op",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
     ],
 )

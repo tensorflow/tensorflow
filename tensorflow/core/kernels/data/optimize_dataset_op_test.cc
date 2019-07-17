@@ -9,15 +9,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 constexpr char kNodeName[] = "optimize_dataset";
-constexpr char kOpName[] = "OptimizeDataset";
+constexpr char kNoopElimination[] = "noop_elimination";
+constexpr char kIteratorPrefix[] = "Iterator";
 
 class OptimizeDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -28,10 +32,11 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<string>& optimization_configs,
       std::unique_ptr<OpKernel>* optimize_dataset_op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "optimizations"},
-        {{"output_types", output_types},
-         {"output_shapes", output_shapes},
-         {"optimization_configs", optimization_configs}});
+        kNodeName, name_utils::OpName(OptimizeDatasetOp::kDatasetType),
+        {OptimizeDatasetOp::kInputDataset, OptimizeDatasetOp::kOptimizations},
+        {{OptimizeDatasetOp::kOutputTypes, output_types},
+         {OptimizeDatasetOp::kOutputShapes, output_shapes},
+         {OptimizeDatasetOp::kOptimizationConfigs, optimization_configs}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, optimize_dataset_op_kernel));
     return Status::OK();
   }
@@ -55,12 +60,13 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
     GraphConstructorOptions graph_opts;
     graph_opts.allow_internal_ops = true;
     graph_opts.expect_device_spec = false;
-    TF_RETURN_IF_ERROR(RunFunction(
-        test::function::MakeRangeDataset(),
-        /*attrs*/
-        {{"output_types", output_types}, {"output_shapes", output_shapes}},
-        /*inputs*/ {start, stop, step}, graph_opts,
-        /*rets*/ {range_dataset}));
+    TF_RETURN_IF_ERROR(
+        RunFunction(test::function::MakeRangeDataset(),
+                    /*attrs*/
+                    {{RangeDatasetOp::kOutputTypes, output_types},
+                     {RangeDatasetOp::kOutputShapes, output_shapes}},
+                    /*inputs*/ {start, stop, step}, graph_opts,
+                    /*rets*/ {range_dataset}));
     return Status::OK();
   }
 
@@ -74,12 +80,13 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
     graph_opts.expect_device_spec = false;
 
     Tensor count_tensor = CreateTensor<int64>(TensorShape({}), {count});
-    TF_RETURN_IF_ERROR(RunFunction(
-        test::function::MakeTakeDataset(),
-        /*attrs*/
-        {{"output_types", output_types}, {"output_shapes", output_shapes}},
-        /*inputs*/ {input_dataset, count_tensor}, graph_opts,
-        /*rets*/ {take_dataset}));
+    TF_RETURN_IF_ERROR(
+        RunFunction(test::function::MakeTakeDataset(),
+                    /*attrs*/
+                    {{TakeDatasetOp::kOutputTypes, output_types},
+                     {TakeDatasetOp::kOutputShapes, output_shapes}},
+                    /*inputs*/ {input_dataset, count_tensor}, graph_opts,
+                    /*rets*/ {take_dataset}));
     return Status::OK();
   }
 };
@@ -109,7 +116,7 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
                                              /*optimization_configs*/ {},
                                              &optimize_dataset_kernel));
   Tensor optimizations =
-      CreateTensor<string>(TensorShape({1}), {"noop_elimination"});
+      CreateTensor<string>(TensorShape({1}), {kNoopElimination});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&take_dataset_tensor), TensorValue(&optimizations)});
   std::unique_ptr<OpKernelContext> optimize_dataset_context;
@@ -127,7 +134,7 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
       CreateIteratorContext(optimize_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(optimize_dataset->MakeIterator(iterator_context.get(),
-                                              "Iterator", &iterator));
+                                              kIteratorPrefix, &iterator));
 
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
