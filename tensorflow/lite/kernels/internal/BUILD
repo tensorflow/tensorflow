@@ -499,6 +499,7 @@ cc_library(
         ":round",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/ruy:detect_dotprod",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
