@@ -370,7 +370,7 @@ TEST_F(QuantizeConcatModelTest, AddRequantBeforeConcat) {
             BuiltinOperator_CONCATENATION);
   EXPECT_EQ(model_.operator_codes[0]->version, 2);
   EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_QUANTIZE);
-  EXPECT_EQ(model_.operator_codes[1]->version, 1);
+  EXPECT_EQ(model_.operator_codes[1]->version, 2);
 }
 
 class QuantizeConvModel1Test : public QuantizeModelTest {
