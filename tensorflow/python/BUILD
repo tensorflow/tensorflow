@@ -18,7 +18,7 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "tf_cuda_library", "tf_gen_op_wrapper_py", "py_test", "tf_py_test", "py_tests", "tf_py_build_info_genrule", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "tf_cuda_library", "tf_gen_op_wrapper_py", "py_test", "tf_py_test", "py_tests", "tf_py_build_info_genrule", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
@@ -4453,12 +4453,12 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        "//tensorflow/tools/compatibility:all_renames_v2",
-        "//third_party/py/numpy",
-        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
+        "@com_google_protobuf//:protobuf_python",
+        "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
+        "//tensorflow/tools/compatibility:all_renames_v2",
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
 # Placeholder for intenal nest_test comments.

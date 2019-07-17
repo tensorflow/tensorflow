@@ -13,6 +13,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/python/...",
     ],
 )
 
