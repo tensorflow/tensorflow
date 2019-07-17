@@ -145,8 +145,6 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_generator_method(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
     model.compile(
@@ -216,8 +214,6 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_with_sample_weights(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
     model.compile(
@@ -253,8 +249,6 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_invalid_use_case(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     def invalid_generator():
       while 1:
         yield (0, 0, 0, 0)
@@ -298,8 +292,6 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_input_to_fit_eval_predict(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
 
     def ones_generator():

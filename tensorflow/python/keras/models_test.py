@@ -422,8 +422,6 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_clone_and_build_compiled(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = _get_model()
     model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),

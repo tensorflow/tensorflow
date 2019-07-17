@@ -74,8 +74,6 @@ class CuDNNTest(keras_parameterized.TestCase):
   )
   @test_util.run_gpu_only
   def test_return_state(self, layer_class):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     input_size = 10
     timesteps = 6
     units = 2

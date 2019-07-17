@@ -50,6 +50,7 @@ from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
+from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -144,10 +145,7 @@ class Model(network.Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
-    # In v2, model will use default strategy if user don't specify any. This
-    # flag is a stop gap that helps the existing logic to correctly fallback to
-    # use training loops that doesn't use distribution strategy.
-    self._infer_default_stragtegy = False
+
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
@@ -246,15 +244,13 @@ class Model(network.Network):
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
-        or (weighted_metrics is not None)):
-      # Fallback out of things that aren't supported with dist strat
+        or (weighted_metrics is not None)
+        or (kwargs.get('cloning', False))
+        or not context.executing_eagerly()):
+      # Fallback out of things that aren't supported with v2 loops
       self._run_distributed = False
 
-    if self._run_distributed:
-      self._distribution_strategy = (
-          distribution_strategy_context.get_strategy())
-      self._infer_default_stragtegy = True
-    elif distribute is not None:
+    if distribute is not None:
       if tf2.enabled():
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
@@ -393,6 +389,11 @@ class Model(network.Network):
                 '  model=_create_model()\n'
                 '  model.compile(...)'% (v, strategy))
 
+  @trackable.no_automatic_dependency_tracking
+  def _init_distributed_function_cache_if_not_compiled(self):
+    if not hasattr(self, '_distributed_function_cache'):
+      self._distributed_function_cache = {}
+
   @property
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
@@ -473,18 +474,14 @@ class Model(network.Network):
     # Experiment training loop with default DS path.
     if (context.executing_eagerly()
         and self._run_distributed
-        and tf2.enabled()
         and not isinstance(inputs, (iterator_ops.Iterator,
                                     iterator_ops.IteratorV2))
+        # TODO(scottzhu): Finish getting sequences working with the v2 loops.
+        and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
             self._distribution_strategy)
         and not getattr(self, '_cloning', False)):
       return training_v2.Loop()
-
-    # Falling back to use existing v1 loops. Before choosing the loop, the
-    # default inferred distribution strategy need to be removed.
-    if self._infer_default_stragtegy:
-      self._distribution_strategy = None
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -938,6 +935,11 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    if self._run_distributed:
+      return training_v2_utils.train_on_batch(
+          self, x, y=y, sample_weight=sample_weight,
+          class_weight=class_weight, reset_metrics=reset_metrics)
+
     self._assert_compile_was_called()
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
@@ -1019,6 +1021,11 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    if self._run_distributed:
+      return training_v2_utils.test_on_batch(
+          self, x, y=y, sample_weight=sample_weight,
+          reset_metrics=reset_metrics)
+
     self._assert_compile_was_called()
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1070,6 +1077,9 @@ class Model(network.Network):
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
+    if self._run_distributed:
+      return training_v2_utils.predict_on_batch(self, x)
+
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError(
@@ -2407,6 +2417,7 @@ class Model(network.Network):
           loss_weights=self.loss_weights,
           target_tensors=target_tensors,
           run_eagerly=self.run_eagerly,
+          run_distributed=self._run_distributed,
           cloning=self._cloning)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors

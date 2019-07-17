@@ -802,8 +802,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     x_val = np.random.random((10, 5))
 
     x = input_layer_lib.Input(shape=(5,))
@@ -827,8 +825,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     input_shape = (16, 9, 3)
     input_layer = input_layer_lib.Input(shape=input_shape)
 
@@ -884,8 +880,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     def func(x):
       return [x * 0.2, x * 0.3]
 

@@ -129,8 +129,6 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_deferred_build_with_dataset_iterators(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_hidden = 5
     input_dim = 3
     num_classes = 2

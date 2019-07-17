@@ -57,7 +57,6 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
-  # TODO(psv): Consider supporting skip target indices in eager mode?
   # Invoke all(weighted and unweighted) metrics.
   metric_results = []
   if targets:
@@ -66,7 +65,8 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
         targets=targets,
         sample_weights=sample_weights,
         masks=masks,
-        return_weighted_and_unweighted_metrics=True)
+        return_weighted_and_unweighted_metrics=True,
+        skip_target_masks=model._prepare_skip_target_masks())
 
   # Add metric results from the `add_metric` metrics.
   metric_results.extend([

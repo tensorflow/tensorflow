@@ -177,8 +177,6 @@ class CallbackCountsTest(keras_parameterized.TestCase):
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_evaluate(self, data):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     x, y = data
 
     model = self._get_model()
@@ -195,8 +193,6 @@ class CallbackCountsTest(keras_parameterized.TestCase):
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_predict(self, data):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     x = data[0]
 
     model = self._get_model()
@@ -248,8 +244,6 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_progbar_logging(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_model(input_shape=(3,))
 
     x = array_ops.ones((50, 3))
@@ -264,8 +258,6 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes
   def test_progbar_logging_deferred_model_build(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_model()
     self.assertFalse(model.built)
 

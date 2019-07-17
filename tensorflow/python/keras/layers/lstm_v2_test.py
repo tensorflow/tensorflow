@@ -768,7 +768,8 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
     model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None])
+                  loss=['categorical_crossentropy', None],
+                  run_distributed=testing_utils.should_run_distributed())
 
     existing_loss = 0
     for _ in range(self.epoch):

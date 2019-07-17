@@ -603,8 +603,6 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
 class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
   def test_single_io_workflow_with_np_arrays(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 2
     num_samples = 100
     input_dim = 50
@@ -626,8 +624,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     _ = model.evaluate(x, y, verbose=0)
 
   def test_multi_io_workflow_with_np_arrays(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = (2, 3)
     num_samples = 1000
     input_dim = 50
@@ -651,9 +647,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
   def test_single_io_workflow_with_dataset_iterators(self):
-    if testing_utils.should_run_distributed():
-      # DS does not support iterator as input in V2.
-      self.skipTest('b/137397816')
     num_classes = 2
     num_samples = 10
     input_dim = 50
@@ -771,8 +764,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     self.assertGreater(loss, 0.1)
 
   def test_training_methods(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     # test fit, train_on_batch
     # on different input types: list, dict
 
@@ -836,8 +827,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.predict_on_batch([x1, x2])
 
   def test_saving(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = (2, 3)
     num_samples = 100
     input_dim = 50
@@ -882,8 +871,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
       self.assertAllClose(y_ref_2, y2, atol=1e-5)
 
   def test_subclass_nested_in_subclass(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 2
     num_samples = 100
     input_dim = 50
@@ -909,8 +896,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
                      6 + len(model.test_net.trainable_weights))
 
   def test_graph_nested_in_subclass(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 2
     num_samples = 100
     input_dim = 50
@@ -959,8 +944,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     self.assertEqual(len(model.trainable_weights), 12)
 
   def test_subclass_nested_in_sequential(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 2
     num_samples = 100
     input_dim = 50

@@ -75,8 +75,6 @@ class EmbeddingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_embedding_correctness(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     layer = keras.layers.Embedding(output_dim=2, input_dim=2)
     model = keras.models.Sequential([layer])
 
