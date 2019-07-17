@@ -85,7 +85,7 @@ std::string GetName(Operation* inst) {
 
   // If the location is none of the expected types, then simply use name
   // generated using the op type.
-  return inst->getName().getStringRef().str();
+  return inst->getAttrOfType<mlir::StringAttr>("name").getValue().str();
 }
 
 // Stateful helper class to export a function into a Graph.
