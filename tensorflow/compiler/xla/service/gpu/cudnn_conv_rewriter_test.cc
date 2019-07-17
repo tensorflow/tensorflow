@@ -88,6 +88,17 @@ class CudnnConvRewriterTest : public HloTestBase {
     return CudnnConvRewriter().Run(module).ValueOrDie();
   }
 
+  string GetOptimizedHlo(absl::string_view hlo_string) {
+    return backend()
+        .compiler()
+        ->RunHloPasses(ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest())
+                           .ConsumeValueOrDie(),
+                       backend().default_stream_executor(),
+                       backend().memory_allocator())
+        .ConsumeValueOrDie()
+        ->ToString();
+  }
+
   // A convolution window with stride 1 and zero padding. The size fields are
   // not set.
   Window default_conv_window_;
@@ -711,6 +722,46 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
+// Check that an integer forward convolution is replaced with a custom call to
+// cudnnConvolutionForward
+TEST_F(CudnnConvRewriterTest, ForwardIntegerConvolution) {
+  const string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = s8[1,17,3,3] parameter(0)
+      filter = s8[3,3,17,63] parameter(1)
+
+      ROOT conv = f32[1,63,3,3] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      op::GetTupleElement(
+          op::CustomCall(kCudnnConvForwardCallTarget, _, op::Parameter()), 0));
+
+  string optimized_hlo_string = GetOptimizedHlo(module_str);
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{0.01}))
+      << optimized_hlo_string;
+}
+
+// Check that an integer forward convolution is not allowed
+TEST_F(CudnnConvRewriterTest, ForwardIntegerOutputConvolution) {
+  const string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = s8[1,2,3,3] parameter(0)
+      filter = s8[3,3,2,5] parameter(1)
+
+      ROOT conv = s8[1,5,3,3] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  //   ASSERT_FALSE(CudnnConvRewriter().Run(m.get()).ValueOrDie());
+}
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla
