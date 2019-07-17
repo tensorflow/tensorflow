@@ -22,6 +22,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import sys
+import time
 import weakref
 
 from absl.testing import parameterized
@@ -33,6 +34,7 @@ from tensorflow.python import keras
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -57,6 +59,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -2737,6 +2740,65 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     prev_status = ag_ctx.control_status_ctx().status
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
+
+  def testCancelBeforeFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    c_mgr.start_cancel()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+
+  def testCancelBlockedFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    def cancel_thread():
+      time.sleep(0.5)
+      c_mgr.start_cancel()
+
+    t = self.checkedThread(cancel_thread)
+    t.start()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+    t.join()
+
+  def testCancelAfterFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+    q.enqueue(37)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    self.assertAllEqual(37, cancelable_func().numpy())
+
+    # Cancellation after the function executes is a no-op.
+    c_mgr.start_cancel()
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

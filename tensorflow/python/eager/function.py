@@ -429,7 +429,7 @@ class _EagerDefinedFunction(object):
   def stateful_ops(self):
     return self._stateful_ops
 
-  def call(self, ctx, args):
+  def call(self, ctx, args, cancellation_manager=None):
     """Calls this function with `args` as inputs.
 
     `ConcreteFunction` execution respects device annotations only if the
@@ -438,6 +438,8 @@ class _EagerDefinedFunction(object):
     Args:
       ctx: a Context object
       args: a list of arguments to supply this function with.
+      cancellation_manager: a `CancellationManager` object that can be used to
+        cancel function execution.
 
     Returns:
       The outputs of the function call.
@@ -460,13 +462,21 @@ class _EagerDefinedFunction(object):
     executing_eagerly = ctx.executing_eagerly()
     if executing_eagerly:
       with _InterpolateFunctionError(self):
-        outputs = execute.execute(
-            str(self.signature.name),
-            num_outputs=self._num_outputs,
-            inputs=args,
-            attrs=("executor_type", executor_type,
-                   "config_proto", config),
-            ctx=ctx)
+        if cancellation_manager is None:
+          outputs = execute.execute(
+              str(self.signature.name),
+              num_outputs=self._num_outputs,
+              inputs=args,
+              attrs=("executor_type", executor_type, "config_proto", config),
+              ctx=ctx)
+        else:
+          outputs = execute.execute_with_cancellation(
+              str(self.signature.name),
+              num_outputs=self._num_outputs,
+              inputs=args,
+              attrs=("executor_type", executor_type, "config_proto", config),
+              ctx=ctx,
+              cancellation_manager=cancellation_manager)
       # Replace empty list with None
       outputs = outputs or None
     else:
@@ -586,6 +596,10 @@ class ConcreteFunction(object):
         Variables.
       TypeError: For invalid positional/keyword argument combinations.
     """
+    return self._call_impl(args, kwargs)
+
+  def _call_impl(self, args, kwargs, cancellation_manager=None):
+    """See `__call__` for details."""
     if self._arg_keywords is None or self._num_positional_args is None:
       if self._signature is not None:
         if kwargs:
@@ -622,7 +636,7 @@ class ConcreteFunction(object):
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
       raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
           list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args, self.captured_inputs)
+    return self._call_flat(args, self.captured_inputs, cancellation_manager)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
@@ -644,7 +658,7 @@ class ConcreteFunction(object):
                            resource_variable_ops.BaseResourceVariable))),
         self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.
 
     Args:
@@ -652,6 +666,8 @@ class ConcreteFunction(object):
         expanded before calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
+      cancellation_manager: (Optional.) A `CancellationManager` that can be
+        used to cancel function invocation.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -752,7 +768,8 @@ class ConcreteFunction(object):
 
     # Only need to override the gradient in graph mode and when we have outputs.
     if context.executing_eagerly() or not self.outputs:
-      outputs = self._inference_function.call(ctx, args)
+      outputs = self._inference_function.call(
+          ctx, args, cancellation_manager=cancellation_manager)
     else:
       self._register_gradient()
       with ops.get_default_graph().gradient_override_map(
@@ -812,6 +829,23 @@ class ConcreteFunction(object):
     return backwards_function._call_flat(  # pylint: disable=protected-access
         cleaned_doutputs, remapped_captures)
 
+  def _experimental_with_cancellation_manager(self, cancellation_manager):
+    """Returns a callable that invokes a cancelable version of this function.
+
+    Args:
+      cancellation_manager: A `CancellationManager` object that can be used to
+        cancel function invocation.
+
+    Returns:
+      A callable with the same signature as this concrete function.
+    """
+
+    def cancellable_call(*args, **kwargs):
+      return self._call_impl(
+          args, kwargs, cancellation_manager=cancellation_manager)
+
+    return cancellable_call
+
   @property
   def name(self):
     """`ConcreteFunction` name."""
@@ -861,7 +895,7 @@ class ConcreteFunction(object):
   def output_shapes(self):
     """The function's output shapes."""
     return nest.map_structure(
-        lambda x: getattr(x, 'shape', tensor_shape.TensorShape(None)),
+        lambda x: getattr(x, "shape", tensor_shape.TensorShape(None)),
         composite_tensor.replace_composites_with_components(
             self._func_graph.structured_outputs),
         expand_composites=False)

@@ -53,6 +53,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":core",
         ":def_function",
@@ -102,7 +103,6 @@ cuda_py_test(
         ":cancellation",
         ":test",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -327,11 +327,13 @@ cuda_py_test(
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":def_function",
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:dtypes",

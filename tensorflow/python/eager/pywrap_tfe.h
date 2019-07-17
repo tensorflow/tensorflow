@@ -51,6 +51,19 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
+// Execute a cancelable TensorFlow operation.
+//
+// Arguments as above (for TFE_Py_Execute), with the addition of:
+// 'cancellation_manager': A pointer to a TFE_CancellationManager that can be
+//                         used to cancel execution of the given operation.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status);
+
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //

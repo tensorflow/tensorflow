@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -177,18 +178,20 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 Status KernelAndDeviceFunc::Run(
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
   ScopedStepContainer step_container(0, [&devices](const string& name) {
     for (Device* device : devices) {
@@ -196,7 +199,7 @@ Status KernelAndDeviceFunc::Run(
     }
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 namespace {
@@ -233,7 +236,8 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -265,8 +269,12 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
-  params.cancellation_manager = &cm_;
-  cm_.Reset();
+  if (cancellation_manager) {
+    params.cancellation_manager = cancellation_manager;
+  } else {
+    params.cancellation_manager = &cm_;
+    cm_.Reset();
+  }
   params.log_memory = log_memory_;
   params.inc_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
@@ -350,7 +358,8 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container,
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   FunctionLibraryRuntime::Options opts;
 
   // We don't pass rendezvous from eager context because we can get tensor
@@ -360,8 +369,12 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
-  opts.cancellation_manager = &cm_;
-  cm_.Reset();
+  if (cancellation_manager) {
+    opts.cancellation_manager = cancellation_manager;
+  } else {
+    opts.cancellation_manager = &cm_;
+    cm_.Reset();
+  }
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;
   opts.collective_executor =

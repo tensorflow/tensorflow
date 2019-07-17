@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
@@ -725,6 +727,17 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     const char* op_name, TFE_InputTensorHandles* inputs,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status) {
+  TFE_Py_ExecuteCancelable(ctx, device_name, op_name, inputs, attrs,
+                           /*cancellation_manager=*/nullptr, outputs,
+                           out_status);
+}
+
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
   TFE_OpSetDevice(op, device_name, out_status);
@@ -733,6 +746,9 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
          ++i) {
       TFE_OpAddInput(op, inputs->at(i), out_status);
     }
+  }
+  if (cancellation_manager && TF_GetCode(out_status) == TF_OK) {
+    TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
   }
   if (TF_GetCode(out_status) == TF_OK) {
     SetOpAttrs(ctx, op, attrs, 0, out_status);
