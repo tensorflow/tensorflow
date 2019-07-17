@@ -154,6 +154,15 @@ static bool hasBothVectorAndTensorType(ArrayRef<Type> types) {
          llvm::any_of(types, [](Type t) { return t.isa<TensorType>(); });
 }
 
+static bool areCompatibleShapes(ArrayRef<int64_t> shape1,
+                                ArrayRef<int64_t> shape2) {
+  auto isCompatible = [](int64_t dim1, int64_t dim2) {
+    return dim1 == dim2 || dim1 == -1 || dim2 == -1;
+  };
+  return std::equal(shape1.begin(), shape1.end(), shape2.begin(), shape2.end(),
+                    isCompatible);
+}
+
 LogicalResult OpTrait::impl::verifyCompatibleOperandBroadcast(Operation *op) {
   assert(op->getNumOperands() == 2 &&
          "only support broadcast check on two operands");
@@ -168,23 +177,40 @@ LogicalResult OpTrait::impl::verifyCompatibleOperandBroadcast(Operation *op) {
   if (hasBothVectorAndTensorType({type1, type2, retType}))
     return op->emitError("cannot broadcast vector with tensor");
 
-  // Broadcasting unranked tensor with ranked/unranked tensor is allowed but
-  // the result should be unranked tensor.
-  if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>()) {
-    if (!retType.isa<UnrankedTensorType>())
-      return op->emitError(
-          "broadcast unranked tensor should result in unranked tensor");
+  if (retType.isa<UnrankedTensorType>())
+    return success();
+
+  bool isUnranked1 = type1.isa<UnrankedTensorType>();
+  bool isUnranked2 = type2.isa<UnrankedTensorType>();
+
+  // If both operands are unranked, then all result shapes are possible.
+  if (isUnranked1 && isUnranked2)
+    return success();
+
+  // If one of the operands is unranked, then the known dimensions in the result
+  // should be compatible with the other shaped operand.
+  if (isUnranked1 || isUnranked2) {
+    // Result should have higher rank than the shaped operand's rank and then
+    // the result's trailing dimensions should be compatible with the operand
+    // shape.
+    ArrayRef<int64_t> shape = getShape(!isUnranked1 ? type1 : type2);
+    ArrayRef<int64_t> actualSuffix = getShape(retType).take_back(shape.size());
+    if (!areCompatibleShapes(actualSuffix, shape))
+      return op->emitOpError()
+             << "result type " << retType
+             << " has shape incompatible with a ranked operand type";
     return success();
   }
 
+  // If both operands are shaped, then the computed broadcasted shape should be
+  // compatible with the result shape.
   SmallVector<int64_t, 4> resultShape;
   if (!util::getBroadcastedShape(getShape(type1), getShape(type2), resultShape))
     return op->emitOpError("operands don't have broadcast-compatible shapes");
 
-  if (!retType.isa<UnrankedTensorType>() &&
-      llvm::makeArrayRef(resultShape) != getShape(retType))
-    return op->emitOpError() << "result type '" << retType
-                             << "' does not have the same shape as the one "
+  if (!areCompatibleShapes(resultShape, getShape(retType)))
+    return op->emitOpError() << "result type " << retType
+                             << " does not have shape compatible with the one "
                                 "computed from the operand types";
 
   return success();

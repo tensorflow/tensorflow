@@ -67,10 +67,10 @@ Type getBroadcastedType(Type type1, Type type2);
 /// compatible operand and result types. Specifically,  starting from the
 /// most varying dimension, each dimension pair of the two operands' types
 /// should either be the same or one of them is one. Also, the result type
-/// should be the same as the operand type with larger dimensions. Shapes are
-/// checked partially if ranks or dimensions are not known. For example,
-/// an op with tensor<? x 2 x f32> and tensor <2 x f32> as operand types and
-/// tensor<3 x 2 x f32> as the result type is broadcast-compatible.
+/// should have the corresponding dimension equal to the larger one, if known.
+/// Shapes are checked partially if ranks or dimensions are not known. For
+/// example, an op with tensor<? x 2 x f32> and tensor <2 x f32> as operand
+/// types and tensor<3 x 2 x f32> as the result type is broadcast-compatible.
 ///
 /// Ths trait assumes the op has two operands and one result, and it asserts
 /// if the pre-condition is not satisfied.
