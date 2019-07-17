@@ -84,7 +84,10 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
     return nullptr;
   }
 
-  auto tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  tensorflow::Safe_TF_TensorPtr tensor = nullptr;
+  Py_BEGIN_ALLOW_THREADS;
+  tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  Py_END_ALLOW_THREADS;
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
