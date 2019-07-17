@@ -67,7 +67,6 @@ protected:
   /// with multiple results into functions returning LLVM IR's structure type.
   /// Use `convertType` to convert individual argument and result types.
   LogicalResult convertSignature(FunctionType t,
-                                 ArrayRef<NamedAttributeList> argAttrs,
                                  SignatureConversion &result) final;
 
   /// LLVM IR module used to parse/create types.

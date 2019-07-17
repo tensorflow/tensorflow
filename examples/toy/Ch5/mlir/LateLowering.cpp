@@ -356,8 +356,8 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     target.addLegalDialect<AffineOpsDialect, linalg::LinalgDialect,
                            LLVM::LLVMDialect, StandardOpsDialect>();
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
-    if (failed(applyPartialConversion(getModule(), target, typeConverter,
-                                      std::move(toyPatterns)))) {
+    if (failed(applyPartialConversion(
+            getModule(), target, std::move(toyPatterns), &typeConverter))) {
       emitError(UnknownLoc::get(getModule().getContext()),
                 "Error lowering Toy\n");
       signalPassFailure();

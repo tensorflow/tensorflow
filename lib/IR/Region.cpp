@@ -60,6 +60,13 @@ bool Region::isProperAncestor(Region *other) {
   return false;
 }
 
+/// Return the number of this region in the parent operation.
+unsigned Region::getRegionNumber() {
+  // Regions are always stored consecutively, so use pointer subtraction to
+  // figure out what number this is.
+  return this - &getContainingOp()->getRegions()[0];
+}
+
 /// Clone the internal blocks from this region into `dest`. Any
 /// cloned blocks are appended to the back of dest.
 void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper) {

@@ -99,6 +99,9 @@ public:
   /// nullptr if this is a top-level block.
   Operation *getContainingOp();
 
+  /// Return if this block is the entry block in the parent region.
+  bool isEntryBlock();
+
   /// Insert this block (which must not already be in a function) right before
   /// the specified block.
   void insertBefore(Block *block);

@@ -47,8 +47,8 @@ class TypeConverter {
 public:
   virtual ~TypeConverter() = default;
 
-  /// This class provides all of the information necessary to convert a
-  /// FunctionType signature.
+  /// This class provides all of the information necessary to convert a type
+  /// signature.
   class SignatureConversion {
   public:
     SignatureConversion(unsigned numOrigInputs)
@@ -71,11 +71,6 @@ public:
     /// Return the result types for the new signature.
     ArrayRef<Type> getConvertedResultTypes() const { return resultTypes; }
 
-    /// Returns the attributes for the arguments of the new signature.
-    ArrayRef<NamedAttributeList> getConvertedArgAttrs() const {
-      return argAttrs;
-    }
-
     /// Get the input mapping for the given argument.
     llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
       return remappedInputs[input];
@@ -90,13 +85,11 @@ public:
 
     /// Remap an input of the original signature with a new set of types. The
     /// new types are appended to the new signature conversion.
-    void addInputs(unsigned origInputNo, ArrayRef<Type> types,
-                   ArrayRef<NamedAttributeList> attrs = llvm::None);
+    void addInputs(unsigned origInputNo, ArrayRef<Type> types);
 
     /// Append new input types to the signature conversion, this should only be
     /// used if the new types are not intended to remap an existing input.
-    void addInputs(ArrayRef<Type> types,
-                   ArrayRef<NamedAttributeList> attrs = llvm::None);
+    void addInputs(ArrayRef<Type> types);
 
     /// Remap an input of the original signature with a range of types in the
     /// new signature.
@@ -109,9 +102,6 @@ public:
 
     /// The set of argument and results types.
     SmallVector<Type, 4> argTypes, resultTypes;
-
-    /// The set of attributes for each new argument type.
-    SmallVector<NamedAttributeList, 4> argAttrs;
   };
 
   /// This hooks allows for converting a type. This function should return
@@ -126,30 +116,43 @@ public:
 
   /// Convert the given FunctionType signature. This functions returns a valid
   /// SignatureConversion on success, None otherwise.
-  llvm::Optional<SignatureConversion>
-  convertSignature(FunctionType type, ArrayRef<NamedAttributeList> argAttrs);
-  llvm::Optional<SignatureConversion> convertSignature(FunctionType type) {
-    SmallVector<NamedAttributeList, 4> argAttrs(type.getNumInputs());
-    return convertSignature(type, argAttrs);
-  }
+  llvm::Optional<SignatureConversion> convertSignature(FunctionType type);
 
   /// This hook allows for changing a FunctionType signature. This function
-  /// should populate 'result' with the new arguments and result on success,
+  /// should populate 'result' with the new arguments and results on success,
   /// otherwise return failure.
   ///
   /// The default behavior of this function is to call 'convertType' on
-  /// individual function operands and results. Any argument attributes are
-  /// dropped if the resultant conversion is not a 1->1 mapping.
+  /// individual function operands and results.
   virtual LogicalResult convertSignature(FunctionType type,
-                                         ArrayRef<NamedAttributeList> argAttrs,
                                          SignatureConversion &result);
 
   /// This hook allows for converting a specific argument of a signature. It
-  /// takes as inputs the original argument input number, type, and attributes.
+  /// takes as inputs the original argument input number, type.
   /// On success, this function should populate 'result' with any new mappings.
   virtual LogicalResult convertSignatureArg(unsigned inputNo, Type type,
-                                            NamedAttributeList attrs,
                                             SignatureConversion &result);
+
+  /// This hook allows for converting the signature of a region 'regionIdx',
+  /// i.e. the signature of the entry to the region, on the given operation
+  /// 'op'. This function should return a valid conversion for the signature on
+  /// success, None otherwise. This hook is allowed to modify the attributes on
+  /// the provided operation if necessary.
+  ///
+  /// The default behavior of this function is to invoke 'convertBlockSignature'
+  /// on the entry block, if one is present. This function also provides special
+  /// handling for FuncOp to update the type signature.
+  ///
+  /// TODO(riverriddle) This should be replaced in favor of using patterns, but
+  /// the pattern rewriter needs to know how to properly replace/remap
+  /// arguments.
+  virtual llvm::Optional<SignatureConversion>
+  convertRegionSignature(Operation *op, unsigned regionIdx);
+
+  /// This function converts the type signature of the given block, by invoking
+  /// 'convertSignatureArg' for each argument. This function should return a
+  /// valid conversion for the signature on success, None otherwise.
+  llvm::Optional<SignatureConversion> convertBlockSignature(Block *block);
 
   /// This hook allows for materializing a conversion from a set of types into
   /// one result type by generating a cast operation of some kind. The generated
@@ -381,54 +384,26 @@ private:
 /// operations. This method converts as many operations to the target as
 /// possible, ignoring operations that failed to legalize. This method only
 /// returns failure if there are unreachable blocks in any of the regions nested
-/// within 'ops'.
-LLVM_NODISCARD LogicalResult
-applyPartialConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
-                       OwningRewritePatternList &&patterns);
-LLVM_NODISCARD LogicalResult
-applyPartialConversion(Operation *op, ConversionTarget &target,
-                       OwningRewritePatternList &&patterns);
+/// within 'ops'. If 'converter' is provided, the signatures of blocks and
+/// regions are also converted.
+LLVM_NODISCARD LogicalResult applyPartialConversion(
+    ArrayRef<Operation *> ops, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult applyPartialConversion(
+    Operation *op, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
 
 /// Apply a complete conversion on the given operations, and all nested
 /// operations. This method returns failure if the conversion of any operation
 /// fails, or if there are unreachable blocks in any of the regions nested
-/// within 'ops'.
-LLVM_NODISCARD LogicalResult
-applyFullConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
-                    OwningRewritePatternList &&patterns);
-LLVM_NODISCARD LogicalResult
-applyFullConversion(Operation *op, ConversionTarget &target,
-                    OwningRewritePatternList &&patterns);
-
-//===----------------------------------------------------------------------===//
-// Op + Type Conversion Entry Points
-//===----------------------------------------------------------------------===//
-
-/// Apply a partial conversion on the function operations within the given
-/// module. This method returns failure if a type conversion was encountered.
-LLVM_NODISCARD LogicalResult applyPartialConversion(
-    ModuleOp module, ConversionTarget &target, TypeConverter &converter,
-    OwningRewritePatternList &&patterns);
-
-/// Apply a partial conversion on the given function operations. This method
-/// returns failure if a type conversion was encountered.
-LLVM_NODISCARD LogicalResult applyPartialConversion(
-    MutableArrayRef<FuncOp> fns, ConversionTarget &target,
-    TypeConverter &converter, OwningRewritePatternList &&patterns);
-
-/// Apply a full conversion on the function operations within the given
-/// module. This method returns failure if a type conversion was encountered, or
-/// if the conversion of any operations failed.
+/// within 'ops'. If 'converter' is provided, the signatures of blocks and
+/// regions are also converted.
 LLVM_NODISCARD LogicalResult applyFullConversion(
-    ModuleOp module, ConversionTarget &target, TypeConverter &converter,
-    OwningRewritePatternList &&patterns);
-
-/// Apply a partial conversion on the given function operations. This method
-/// returns failure if a type conversion was encountered, or if the conversion
-/// of any operation failed.
+    ArrayRef<Operation *> ops, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
 LLVM_NODISCARD LogicalResult applyFullConversion(
-    MutableArrayRef<FuncOp> fns, ConversionTarget &target,
-    TypeConverter &converter, OwningRewritePatternList &&patterns);
+    Operation *op, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_DIALECTCONVERSION_H_

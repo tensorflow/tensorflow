@@ -449,6 +449,7 @@ def : Pat<(TestRewriteOp $input), (replaceWithValue $input)>;
 // Test Type Legalization
 //===----------------------------------------------------------------------===//
 
+def TestRegionBuilderOp : TEST_Op<"region_builder">;
 def TestReturnOp : TEST_Op<"return", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 def TestCastOp : TEST_Op<"cast">,

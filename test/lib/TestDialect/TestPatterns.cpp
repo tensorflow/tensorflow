@@ -74,6 +74,30 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
     return matchSuccess();
   }
 };
+/// This pattern is a simple pattern that generates a region containing an
+/// illegal operation.
+struct TestRegionRewriteUndo : public RewritePattern {
+  TestRegionRewriteUndo(MLIRContext *ctx)
+      : RewritePattern("test.region_builder", 1, ctx) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final {
+    // Create the region operation with an entry block containing arguments.
+    OperationState newRegion(op->getLoc(), "test.region");
+    newRegion.addRegion();
+    auto *regionOp = rewriter.createOperation(newRegion);
+    auto *entryBlock = rewriter.createBlock(&regionOp->getRegion(0));
+    entryBlock->addArgument(rewriter.getIntegerType(64));
+
+    // Add an explicitly illegal operation to ensure the conversion fails.
+    rewriter.create<ILLegalOpF>(op->getLoc(), rewriter.getIntegerType(32));
+    rewriter.create<TestValidOp>(op->getLoc(), ArrayRef<Value *>());
+
+    // Drop this operation.
+    rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
 /// This pattern simply erases the given operation.
 struct TestDropOp : public ConversionPattern {
   TestDropOp(MLIRContext *ctx) : ConversionPattern("test.drop_op", 1, ctx) {}
@@ -158,7 +182,7 @@ struct TestConversionTarget : public ConversionTarget {
   TestConversionTarget(MLIRContext &ctx) : ConversionTarget(ctx) {
     addLegalOp<LegalOpA, TestValidOp>();
     addDynamicallyLegalOp<TestReturnOp>();
-    addIllegalOp<ILLegalOpF>();
+    addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
   }
   bool isDynamicallyLegal(Operation *op) const final {
     // Don't allow F32 operands.
@@ -172,15 +196,14 @@ struct TestLegalizePatternDriver
   void runOnModule() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    RewriteListBuilder<TestRegionRewriteBlockMovement, TestDropOp,
-                       TestPassthroughInvalidOp,
+    RewriteListBuilder<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
+                       TestDropOp, TestPassthroughInvalidOp,
                        TestSplitReturnType>::build(patterns, &getContext());
 
     TestTypeConverter converter;
     TestConversionTarget target(getContext());
-    if (failed(applyPartialConversion(getModule(), target, converter,
-                                      std::move(patterns))))
-      signalPassFailure();
+    (void)applyPartialConversion(getModule(), target, std::move(patterns),
+                                 &converter);
   }
 };
 } // end anonymous namespace

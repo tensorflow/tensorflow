@@ -1006,13 +1006,11 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
 }
 
 // Convert function signatures using the stored LLVM IR module.
-LogicalResult
-LLVMTypeConverter::convertSignature(FunctionType type,
-                                    ArrayRef<NamedAttributeList> argAttrs,
-                                    SignatureConversion &result) {
+LogicalResult LLVMTypeConverter::convertSignature(FunctionType type,
+                                                  SignatureConversion &result) {
   // Convert the original function arguments.
   for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-    if (failed(convertSignatureArg(i, type.getInput(i), argAttrs[i], result)))
+    if (failed(convertSignatureArg(i, type.getInput(i), result)))
       return failure();
 
   // If function does not return anything, return immediately.
@@ -1064,8 +1062,8 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    if (failed(applyPartialConversion(m, target, *typeConverter,
-                                      std::move(patterns))))
+    if (failed(applyPartialConversion(m, target, std::move(patterns),
+                                      typeConverter.get())))
       signalPassFailure();
   }
 

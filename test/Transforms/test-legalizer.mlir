@@ -107,3 +107,29 @@ func @fail_to_convert_illegal_op() -> i32 {
   %result = "test.illegal_op_f"() : () -> (i32)
   return %result : i32
 }
+
+// -----
+
+func @fail_to_convert_illegal_op_in_region() {
+  // expected-error@+1 {{failed to legalize operation 'test.region_builder'}}
+  "test.region_builder"() : () -> ()
+  return
+}
+
+// -----
+
+// Check that the entry block arguments of a region are untouched in the case
+// of failure.
+
+// CHECK-LABEL: func @fail_to_convert_region
+func @fail_to_convert_region() {
+  // CHECK-NEXT: "test.drop_op"
+  // CHECK-NEXT: ^bb{{.*}}(%{{.*}}: i64):
+  "test.drop_op"() ({
+    ^bb1(%i0: i64):
+      // expected-error@+1 {{failed to legalize operation 'test.region_builder'}}
+      "test.region_builder"() : () -> ()
+      "test.valid"() : () -> ()
+  }) : () -> ()
+  return
+}

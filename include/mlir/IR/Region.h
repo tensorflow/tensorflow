@@ -85,6 +85,9 @@ public:
     return ParentT();
   }
 
+  /// Return the number of this region in the parent operation.
+  unsigned getRegionNumber();
+
   /// Return true if this region is a proper ancestor of the `other` region.
   bool isProperAncestor(Region *other);
 

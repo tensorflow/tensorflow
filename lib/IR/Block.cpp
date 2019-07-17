@@ -39,6 +39,10 @@ Block::~Block() {
   assert(!verifyInstOrder() && "Expected valid operation ordering.");
   clear();
 
+  for (auto *arg : arguments)
+    if (!arg->use_empty())
+      arg->user_begin()->dump();
+
   llvm::DeleteContainerPointers(arguments);
 }
 
@@ -49,6 +53,9 @@ Region *Block::getParent() { return parentValidInstOrderPair.getPointer(); }
 Operation *Block::getContainingOp() {
   return getParent() ? getParent()->getContainingOp() : nullptr;
 }
+
+/// Return if this block is the entry block in the parent region.
+bool Block::isEntryBlock() { return this == &getParent()->front(); }
 
 /// Insert this block (which must not already be in a region) right before the
 /// specified block.

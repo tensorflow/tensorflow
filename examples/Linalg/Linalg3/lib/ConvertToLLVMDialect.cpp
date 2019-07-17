@@ -160,8 +160,9 @@ LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {
 
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
+  target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
   if (failed(
-          applyFullConversion(module, target, converter, std::move(patterns))))
+          applyFullConversion(module, target, std::move(patterns), &converter)))
     return failure();
 
   return success();
