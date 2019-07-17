@@ -184,3 +184,21 @@ cuda_py_test(
         "requires-gpu-sm70",
     ],
 )
+
+cuda_py_test(
+    name = "tensorrt_fused_conv_test",
+    srcs = ["python/ops/tensorrt_fused_conv_test.py"],
+    additional_deps = [
+        ":fused_conv_py",
+        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
