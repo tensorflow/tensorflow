@@ -14,37 +14,32 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
-//#include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/ascii.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-const char* const kInputPHName = "TensorRTInputPH_";
-const char* const kOutputPHName = "TensorRTOutputPH_";
-const char* const kInputPHNameLower = "tensorrtinputph_";
-const char* const kOutputPHNameLower = "tensorrtoutputph_";
+auto prefixes = IONamePrefixes();
 
-string NewNameWithIOPrefix(const Node* n) {
-  if (absl::StartsWith(n->name(), kInputPHNameLower)){
-    return strings::StrCat(kInputPHName, n->id());
-  }
-  else if (absl::StartsWith(n->name(), kOutputPHNameLower)) {
-    return strings::StrCat(kOutputPHName, n->id());
+string AppendIdToNodeName(const Node* n) {
+  if (absl::StartsWith(n->name(), prefixes.kInputPHNameLower)) {
+    return strings::StrCat(prefixes.kInputPHName, n->id());
+  } else if (absl::StartsWith(n->name(), prefixes.kOutputPHNameLower)) {
+    return strings::StrCat(prefixes.kOutputPHName, n->id());
   }
   return strings::StrCat("n", n->id());
 }
 
 void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef) {
   // This is the same function as in function.cc. However, it uses the
-  // NewName mapping above, which retains IO prefixes (kInputPHName etc)
+  // name mapping above, which retains IO prefixes (prefixes.kInputPHName etc)
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
   *gdef->mutable_versions() = g->versions();
@@ -59,7 +54,7 @@ void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef) {
   ReverseDFSFrom(*g, start_nodes, nullptr, [gdef, &inputs](Node* n) {
     if (!n->IsOp()) return;
     NodeDef* ndef = gdef->add_node();
-    ndef->set_name(NewNameWithIOPrefix(n));
+    ndef->set_name(AppendIdToNodeName(n));
     ndef->set_op(n->type_string());
     for (const auto& attr : n->attrs()) {
       (*ndef->mutable_attr())[attr.first] = attr.second;
@@ -93,7 +88,7 @@ void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef) {
         ndef->add_input("unknown");
         continue;
       }
-      const string srcname = NewNameWithIOPrefix(e->src());
+      const string srcname = AppendIdToNodeName(e->src());
       if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
         ndef->add_input(strings::StrCat("^", srcname));
@@ -108,52 +103,33 @@ void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef) {
 
 Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
                              FunctionLibraryRuntime* flib_runtime,
-                             GraphDef* graph_def, 
+                             GraphDef* graph_def,
                              std::vector<int>* input_node_ids,
                              std::vector<int>* output_node_ids) {
-  const FunctionLibraryDefinition* flib_def = flib_runtime->GetFunctionLibraryDefinition();
+  const FunctionLibraryDefinition* flib_def =
+      flib_runtime->GetFunctionLibraryDefinition();
   const FunctionBody* fbody;
   fbody = flib_runtime->GetFunctionBody(handle);
-  //TF_RET_CHECK(*fbody)
+  if (!fbody) {
+    return errors::Internal(
+        "Function body is null when converting from FuncDef to GraphDef.");
+  }
   std::unique_ptr<Graph> graph(new Graph(flib_def));
-    
+
   CopyGraph(*fbody->graph, graph.get());
 
-  // Copied from compiler/xla/compile_xla.cc : 
-  /*
-  OptimizerOptions opts;
-  opts.set_opt_level(OptimizerOptions::L0);
-  opts.set_do_common_subexpression_elimination(false);
-  opts.set_do_function_inlining(true);
-  opts.set_do_constant_folding(true);
-  GraphOptimizer optimizer(opts);
-  auto cf_consider_fn = [](const Node* n) {
-    for (const auto& output_arg : n->op_def().output_arg()) {
-      if (output_arg.type() == DT_VARIANT) {
-        return false;
-      }
-    }
-    return true;
-  };
-  GraphOptimizer::Options graph_optimizer_options;
-  graph_optimizer_options.cf_consider_fn = cf_consider_fn;
-  
-  */
-  //optimizer.Optimize(flib_runtime, flib_runtime->env(),
-  //                   /*device=*/nullptr, &graph, graph_optimizer_options);
-   
   for (Node* n : graph->nodes()) {
     auto id = n->id();
     if (n->IsArg()) {
-      VLOG(1) << "Arg Node id " << id;
+      VLOG(2) << "Arg Node id used for unique naming is " << id;
       input_node_ids->push_back(id);
     }
     if (n->IsRetval()) {
-      VLOG(1) << "Retval Node id " << id;
+      VLOG(2) << "Retval Node id used for unique naming is " << id;
       output_node_ids->push_back(id);
     }
   }
-  
+
   ToGraphDefWithIOPrefix(graph.release(), graph_def);
 
   for (const auto node_def : graph_def->node()) {
@@ -161,8 +137,6 @@ Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
   }
 
   return Status::OK();
-
 }
-
 }
 }

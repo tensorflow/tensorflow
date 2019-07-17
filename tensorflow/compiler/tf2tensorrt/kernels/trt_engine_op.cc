@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op.h"
@@ -55,6 +55,9 @@ using ::stream_executor::port::StatusOr;
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
+
+auto prefixes = IONamePrefixes();
+
 class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
@@ -239,16 +242,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr("workspace_size_bytes", &workspace_size_));
   OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
-  /*if (!static_engine_) {
-    OP_REQUIRES(context, segment_graph_.ParseFromString(serialized_segment_),
-                errors::InvalidArgument("Failed to parse segment graphdef!"));
-    VLOG(1) << "Size of serialized GraphDef: "
-            << serialized_segment_.capacity();
-    string tmp;
-    // Swap with temporary empty string to deallocate the CPU memory.
-    serialized_segment_.swap(tmp);
-  }*/
-  
+
   VLOG(1) << "Constructing " << name();
   string precision_string;
   OP_REQUIRES_OK(context,
@@ -266,8 +260,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   if (!static_engine_) {
     OP_REQUIRES_OK(context, ConstructFunctionHandle(context));
     FunctionLibraryRuntime* lib = context->function_library();
-    OP_REQUIRES_OK(context, FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
-                          &input_node_ids_, &output_node_ids_));
+    OP_REQUIRES_OK(context,
+                   FunctionDefToGraphDef(native_func_, lib, &segment_graph_,
+                                         &input_node_ids_, &output_node_ids_));
   }
   calibration_mode_ =
       (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
@@ -325,13 +320,12 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   core::ScopedUnref unref_cache_res(cache_res);
   TRTCalibrationResource* calib_res = nullptr;
   OP_REQUIRES_OK_ASYNC(
-      ctx,
-      ctx->resource_manager()->LookupOrCreate(
-          std::string(kCalibrationContainerName), name(),
-          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
-          {[ctx, cache_res, this](TRTCalibrationResource** cr) -> Status {
-            return this->AllocateCalibrationResources(ctx, cache_res, cr);
-          }}),
+      ctx, ctx->resource_manager()->LookupOrCreate(
+               std::string(kCalibrationContainerName), name(),
+               reinterpret_cast<TRTCalibrationResource**>(&calib_res),
+               {[ctx, this](TRTCalibrationResource** cr) -> Status {
+                 return this->AllocateCalibrationResources(ctx, cr);
+               }}),
       *helper);
   core::ScopedUnref calib_sc(calib_res);
   int num_inputs = ctx->num_inputs();
@@ -349,9 +343,9 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     const auto device_tensor =
         calib_res->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
-    input_data.emplace(StrCat(kInputPHName,
-                              static_engine_ ? i : input_node_ids_[i]),
-                              data_address);
+    input_data.emplace(
+        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]),
+        data_address);
   }
   VLOG(2) << "Filled map for sending";
   // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
@@ -430,9 +424,9 @@ Status TRTEngineOp::GetEngineInputShapes(
     // This should not happen, but just for safety.
     if (actual_input_shapes.size() != cached_input_shapes.size()) {
       return errors::InvalidArgument(
-          "Input shape list size mismatch for ", name(),
-          ", cached size: ", cached_input_shapes.size(),
-          " vs. actual size: ", actual_input_shapes.size());
+          "Input shape list size mismatch for ", name(), ", cached size: ",
+          cached_input_shapes.size(), " vs. actual size: ",
+          actual_input_shapes.size());
     }
     if (match_shapes(actual_input_shapes, cached_input_shapes)) {
       const int cached_batch_size = cached_input_shapes[0].dim_size(0);
@@ -492,7 +486,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   std::vector<void*> buffers(num_binding);
 
   for (int i = 0; i < ctx->num_inputs(); i++) {
-    const string input_name = StrCat(kInputPHName, static_engine_ ? i : input_node_ids_[i]);
+    const string input_name =
+        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
       const string msg =
@@ -534,7 +529,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
-    const string output_name = StrCat(kOutputPHName, static_engine_ ? i : output_node_ids_[i]);
+    const string output_name = StrCat(prefixes.kOutputPHName,
+                                      static_engine_ ? i : output_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
 
@@ -763,7 +759,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
-        StrCat(kInputPHName, static_engine_ ? i : input_node_ids_[i]),
+        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
   }
   cres->calibrator_.reset(

@@ -61,8 +61,6 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
-    /*
-    */
     const string func_name = "myop_native_segment";
     Graph* graph = s.graph();
     Graph sgraph(graph->flib_def());
@@ -70,30 +68,17 @@ class TRTEngineOpTestBase : public OpsTestBase {
         graph, graph_def, &sgraph));
     TF_ASSERT_OK(convert::RegisterModifiedGraphToFunctionLibrary(&sgraph, graph,
         flib_def_->ToProto(), "myop"));
-    //TF_ASSERT_OK(convert::RegisterSegmentFunctionToFunctionLibrary(graph, graph_def, "myop"));
-
-    //FunctionDefLibrary fdeflib;
-    //auto native_segment = fdeflib.add_function();
-    
-    //GraphToFunctionDef(*graph, func_name, native_segment);
-    /*(*native_segment
-          ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
-        .set_b(true);
-    */
-
-    //graph->AddFunctionLibrary(fdeflib);
     
     PartialTensorShape shape({-1, -1});
 
-    // Create the op.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     TF_ASSERT_OK(NodeDefBuilder("myop", "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
                      .Attr("static_engine", false)
-                     .Attr("segment_funcdef_name", func_name)  // no native fallback
-                     .Attr("serialized_segment", "")//graph_def.SerializeAsString())
+                     .Attr("segment_funcdef_name", func_name)
+                     .Attr("serialized_segment", "")
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
                      .Attr("workspace_size_bytes", 1 << 20)

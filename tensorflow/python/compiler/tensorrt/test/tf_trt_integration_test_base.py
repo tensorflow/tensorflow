@@ -562,9 +562,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           self.assertNotEmpty(segment_funcdef_name, node.name)
           self.assertIn(function_name, functions)
         else:
-          #self.assertEmpty(segment_funcdef_name, node.name)
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
-          #self.assertNotIn(function_name, functions)
         self.assertIn(node.name, expected_engines)
         self.assertEqual(
             self._ToBytes(run_params.precision_mode),

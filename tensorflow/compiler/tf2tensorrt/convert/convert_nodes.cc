@@ -77,18 +77,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-// TODO(aaroey): put these constants into some class.
-const char* const kInputPHName = "TensorRTInputPH_";
-const char* const kOutputPHName = "TensorRTOutputPH_";
+namespace convert {
 
 bool IsEngineInput(absl::string_view name) {
-  return absl::StartsWith(name, kInputPHName);
+  return absl::StartsWith(name, prefixes.kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
-  return absl::StartsWith(name, kOutputPHName);
+  return absl::StartsWith(name, prefixes.kOutputPHName);
 }
 
-namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -364,9 +361,9 @@ string DebugString(const nvinfer1::Permutation& permutation, int len) {
 
 string DebugString(const nvinfer1::ITensor& tensor) {
   return StrCat("nvinfer1::ITensor(@", reinterpret_cast<uintptr_t>(&tensor),
-                ", name=", tensor.getName(),
-                ", dtype=", DebugString(tensor.getType()),
-                ", dims=", DebugString(tensor.getDimensions()), ")");
+                ", name=", tensor.getName(), ", dtype=",
+                DebugString(tensor.getType()), ", dims=",
+                DebugString(tensor.getDimensions()), ")");
 }
 
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
@@ -444,11 +441,10 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
     for (int i = 0; i < broadcast_num_dims; ++i) {
       if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
           (output_r[i] != 1)) {
-        return errors::InvalidArgument("Infeasible broadcast scheme (",
-                                       "batch_dim: ", output_l[0], ", ",
-                                       DebugString(*operand_l_new_dims), " vs ",
-                                       "batch_dim: ", output_r[0], ", ",
-                                       DebugString(*operand_r_new_dims), ")");
+        return errors::InvalidArgument(
+            "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
+            DebugString(*operand_l_new_dims), " vs ", "batch_dim: ",
+            output_r[0], ", ", DebugString(*operand_r_new_dims), ")");
       }
     }
   }
@@ -716,8 +712,8 @@ size_t TRT_ShapedWeights::size_bytes() const {
 
 string TRT_ShapedWeights::DebugString() const {
   return StrCat("TRT_ShapedWeights(shape=", convert::DebugString(shape_),
-                ", type=", convert::DebugString(type_),
-                ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
+                ", type=", convert::DebugString(type_), ", values=",
+                reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
 // A fake ITensor implementation used to check whether the TF-TRT converter can
@@ -986,10 +982,8 @@ OpConverterParams::OpConverterParams(
       use_calibration(converter->use_calibration()) {}
 
 const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
-    "QuantizeAndDequantizeV2",
-    "QuantizeAndDequantizeV3",
-    "FakeQuantWithMinMaxVars",
-    "FakeQuantWithMinMaxArgs",
+    "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
+    "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs",
 };
 
 TrtNodeValidator::TrtNodeValidator(
@@ -1068,9 +1062,9 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
     Status status = ConvertToTensorOrWeights(src_def, edge->src_output(),
                                              &tensor_or_weights);
     if (!status.ok()) {
-      return errors::Internal(
-          "Failed to convert input ", src_def.name(),
-          " to a TRT_TensorOrWeights: ", status.error_message());
+      return errors::Internal("Failed to convert input ", src_def.name(),
+                              " to a TRT_TensorOrWeights: ",
+                              status.error_message());
     }
     inputs.push_back(tensor_or_weights);
   }
@@ -1369,9 +1363,9 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   // CreateConstantLayer. So we can treat it as a tensor for
   // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
   if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
-    return errors::InvalidArgument(
-        "Incompatible shapes: ", DebugString(input_dims), " vs. ",
-        DebugString(dims));
+    return errors::InvalidArgument("Incompatible shapes: ",
+                                   DebugString(input_dims), " vs. ",
+                                   DebugString(dims));
   }
   // ConstantLayer requires static shapes (cannot infer -1).
   if (input.is_weights() && !HasStaticShape(dims)) {
@@ -1461,7 +1455,7 @@ void Converter::MaybeApplyQuantizationRanges() {
 
   // Infer ranges across marked ops.
   PropagateQuantizationRanges();
-  // Apply ranges.
+// Apply ranges.
 #if IS_TRT_VERSION_GE(5, 0, 0, 0)
   for (auto pair : quantization_ranges_) {
     nvinfer1::ITensor* tensor = pair.first;
@@ -1516,19 +1510,15 @@ void Converter::MaybeApplyQuantizationRanges() {
   const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
       {"Fused Conv+Bias+Activation",
        {
-           IsConvolution,
-           IsScale,
-           IsClipOrRelu,
+           IsConvolution, IsScale, IsClipOrRelu,
        }},
       {"Fused Conv+Bias",
        {
-           IsConvolution,
-           IsScale,
+           IsConvolution, IsScale,
        }},
       {"Fused Conv+Activation",
        {
-           IsConvolution,
-           IsClipOrRelu,
+           IsConvolution, IsClipOrRelu,
        }},
   };
   for (int i = 0; i < this->network()->getNbLayers(); i++) {
@@ -2108,11 +2098,11 @@ Status ConvertReshape(OpConverterParams* params) {
           << "\nreshape_batch_dim=" << reshape_batch_dim
           << ", reshape_dims=" << DebugString(reshape_dims);
   if (reshape_may_change_batch_dim) {
-    const string msg = StrCat(
-        "Reshape on batch dimension is not supported, at ", node_def.name(),
-        ". input_batch_dim=", input_batch_dim, ", ", DebugString(input_dims),
-        "; reshape_batch_dim=", reshape_batch_dim, ", ",
-        DebugString(reshape_dims));
+    const string msg =
+        StrCat("Reshape on batch dimension is not supported, at ",
+               node_def.name(), ". input_batch_dim=", input_batch_dim, ", ",
+               DebugString(input_dims), "; reshape_batch_dim=",
+               reshape_batch_dim, ", ", DebugString(reshape_dims));
     return errors::Unimplemented(msg);
   }
 
@@ -2820,7 +2810,7 @@ Status ConvertActivation(OpConverterParams* params) {
       params->converter->network()->addActivation(*inputs.at(0).tensor(),
                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  // Set parameters.
+// Set parameters.
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   if (node_def.op() == "Elu") {
     layer->setAlpha(1.0f);
@@ -4111,8 +4101,8 @@ Status ConvertGather(OpConverterParams* params) {
   if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
-        expected_trt_output_rank,
-        ", actual nbDims: ", trt_gather_output_dims.nbDims);
+        expected_trt_output_rank, ", actual nbDims: ",
+        trt_gather_output_dims.nbDims);
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
@@ -4211,8 +4201,9 @@ Status ConvertMatMulHelper(OpConverterParams* params,
                              input_b.GetTrtDims().nbDims == 2;
   // If int8 is specified, FC must be used unless it is not compatible, as MM
   // does not support int8 at this time.
-  if (should_use_fc || (can_use_fc && params->converter->precision_mode() ==
-                                          TrtPrecisionMode::INT8)) {
+  if (should_use_fc ||
+      (can_use_fc &&
+       params->converter->precision_mode() == TrtPrecisionMode::INT8)) {
     return ConvertFullyConnectedHelper(
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
@@ -4228,9 +4219,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // If the MatMul operand is a constant, applies transposes at conversion-time
   // as necessary. If the operand is a tensor, does nothing. If required
   // transposes were applied, sets transpose to false.
-  const auto prepare_matmul_operand =
-      [&params](TRT_TensorOrWeights operand,
-                bool* transpose) -> nvinfer1::ITensor* {
+  const auto prepare_matmul_operand = [&params](
+      TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
@@ -4312,19 +4302,18 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // Tensor with TF Dims: 12 5 3 -> TRT Dims: 5 3
   // Weight with TF Dims: 12 3 6 -> TRT Dims: 12 3 6
   // It is not possible to treat the weight input as a batched [3, 6] tensor.
-  const auto check_weight_is_not_batched =
-      [](const TRT_TensorOrWeights& input_l,
-         const TRT_TensorOrWeights& input_r) {
-        // If input_l is a weight, then input_r must be a tensor because
-        // otherwise the op would be handled by Grappler.
-        if (input_l.is_weights() &&
-            input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
-            input_l.GetTrtDims().d[0] != 1) {
-          return errors::Unimplemented(
-              "TensorRT does not support batched constants.");
-        }
-        return Status::OK();
-      };
+  const auto check_weight_is_not_batched = [](
+      const TRT_TensorOrWeights& input_l, const TRT_TensorOrWeights& input_r) {
+    // If input_l is a weight, then input_r must be a tensor because
+    // otherwise the op would be handled by Grappler.
+    if (input_l.is_weights() &&
+        input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
+        input_l.GetTrtDims().d[0] != 1) {
+      return errors::Unimplemented(
+          "TensorRT does not support batched constants.");
+    }
+    return Status::OK();
+  };
   TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
   TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
 
@@ -5017,12 +5006,12 @@ Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (IsEngineInput(node_name)){
+    if (IsEngineInput(node_name)) {
       int32 slot_number = -1;
       string type_key;
       if (node_def.op() == "Placeholder") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(kInputPHName), &slot_number)) {
+                node_name.c_str() + strlen(prefixes.kInputPHName), &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
@@ -5033,7 +5022,11 @@ Status ConvertGraphDefToEngine(
         slot_number = node_def.attr().at("index").i();
         type_key = "T";
       } else {
-        return errors::InvalidArgument("Node ", node_name, " with name starting with kInputPHName is neither Placeholder nor Arg, instead ", node_def.op());  
+        return errors::InvalidArgument("Node ", node_name,
+                                       " with name starting with kInputPHName "
+                                       "is neither Placeholder nor Arg, "
+                                       "instead ",
+                                       node_def.op());
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
@@ -5060,14 +5053,17 @@ Status ConvertGraphDefToEngine(
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
+                node_name.c_str() + strlen(prefixes.kOutputPHName), &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
       } else if (tensorflow::grappler::IsRetval(node_def)) {
         slot_number = node_def.attr().at("index").i();
       } else {
-        return errors::InvalidArgument("Node with name ", node_name, " starting with kOutputPHName is neither Identity nor Retval, instead ", node_def.op());  
+        return errors::InvalidArgument("Node with name ", node_name,
+                                       " starting with prefixes.kOutputPHName is "
+                                       "neither Identity nor Retval, instead ",
+                                       node_def.op());
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);
@@ -5136,7 +5132,7 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(kInputPHName, connection.port_number);
+      const string node_name = StrCat(prefixes.kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5155,7 +5151,7 @@ Status ConvertSegmentToGraphDef(
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(kOutputPHName, connection.port_number);
+      const string node_name = StrCat(prefixes.kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5194,7 +5190,7 @@ Status ConvertSegmentToGraphDef(
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
     const string placeholder_name =
-        StrCat(kInputPHName, connection.port_number);
+        StrCat(prefixes.kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
             << placeholder_name;
