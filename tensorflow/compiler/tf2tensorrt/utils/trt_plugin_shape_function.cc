@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_plugin_shape_function.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #if GOOGLE_CUDA
@@ -26,17 +27,53 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace shape_inference {
-    using tensorflow::shape_inference::InferenceContext;
-    using tensorflow::shape_inference::ShapeHandle;
+using absl::StrAppend;
+using absl::StrCat;
+using tensorflow::shape_inference::InferenceContext;
+using tensorflow::shape_inference::ShapeHandle;
 
-nvinfer1::Dims ShapeHandleToTrtDims(const ShapeHandle& shape, InferenceContext *c){
-    nvinfer1::Dims dim;
-    int rank=InferenceContext::Rank(shape);
-    for(int i=0;i<rank;++i){
-        dim.d[i]=c->Value(c->Dim(shape,i));
+string DebugString(const nvinfer1::DimensionType type) {
+  switch (type) {
+    case nvinfer1::DimensionType::kSPATIAL:
+      return "kSPATIAL";
+    case nvinfer1::DimensionType::kCHANNEL:
+      return "kCHANNEL";
+    case nvinfer1::DimensionType::kINDEX:
+      return "kINDEX";
+    case nvinfer1::DimensionType::kSEQUENCE:
+      return "kSEQUENCE";
+    default:
+      return StrCat(static_cast<int>(type), "=unknown");
+  }
+}
+
+string DebugString(const nvinfer1::Dims& dims) {
+  string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
+  for (int i = 0; i < dims.nbDims; ++i) {
+    StrAppend(&out, dims.d[i]);
+    if (VLOG_IS_ON(2)) {
+      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
+    } else {
+      StrAppend(&out, ",");
     }
-    dim.nbDims=rank;
-    return std::move(dim);
+  }
+  StrAppend(&out, ")");
+  return out;
+}
+nvinfer1::Dims ShapeHandleToTrtDims(const ShapeHandle& shape,
+                                    InferenceContext* c) {
+  nvinfer1::Dims dim;
+  int rank = InferenceContext::Rank(shape);
+  for (int i = 0; i < rank; ++i) {
+    auto dval = c->Dim(shape, i);
+    if (c->ValueKnown(dval)) {
+      dim.d[i] = c->Value(dval);
+    } else {
+      dim.d[i] = -1;
+    }
+  }
+  dim.nbDims = rank;
+  return std::move(dim);
 }
 
 Status TRTPluginShapeFunction(
@@ -46,9 +83,8 @@ Status TRTPluginShapeFunction(
   for (int i = 0; i < c->num_inputs(); ++i) {
     input_shapes.emplace_back(c->input(i));
     // Require fully defined shapes for the time being
-    if (!c->FullyDefined(input_shapes.back())) {
-      LOG(ERROR)
-          << "Need shapes to be fully defined for plugin op shape inference!";
+    if (!c->RankKnown(input_shapes.back())) {
+      LOG(ERROR) << "Need Rank to be known for plugin op shape inference!";
       return tensorflow::shape_inference::UnknownShape(c);
     }
     if (c->Rank(input_shapes.back()) > nvinfer1::Dims::MAX_DIMS) {
@@ -59,8 +95,8 @@ Status TRTPluginShapeFunction(
     }
     // we should not ignore batch dim since it may not have a meaning for a
     // plugin.
-    plugin_shapes.emplace_back(
-        ShapeHandleToTrtDims(input_shapes.back(),c));
+    plugin_shapes.emplace_back(ShapeHandleToTrtDims(input_shapes.back(), c));
+    VLOG(1) << "Input " << i << ": " << DebugString(plugin_shapes.back());
   }
   InitializeTrtPlugins();
   const auto attr_slice = c->attrs();
@@ -80,6 +116,7 @@ Status TRTPluginShapeFunction(
   for (int i = 0; i < num_outputs; ++i) {
     output_dimensions.emplace_back(plugin->getOutputDimensions(
         i, &plugin_shapes[0], (int)plugin_shapes.size()));
+    VLOG(1) << "Output " << i << ": " << DebugString(output_dimensions.back());
     const nvinfer1::Dims& dim = output_dimensions[i];
     std::vector<tensorflow::shape_inference::DimensionHandle> dims;
     for (int k = 0; k < dim.nbDims; ++k) {
