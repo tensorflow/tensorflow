@@ -273,19 +273,23 @@ struct IntegerSetAttributeStorage : public AttributeStorage {
 
 /// Opaque Attribute Storage and Uniquing.
 struct OpaqueAttributeStorage : public AttributeStorage {
-  OpaqueAttributeStorage(Identifier dialectNamespace, StringRef attrData)
-      : dialectNamespace(dialectNamespace), attrData(attrData) {}
+  OpaqueAttributeStorage(Identifier dialectNamespace, StringRef attrData,
+                         Type type)
+      : AttributeStorage(type), dialectNamespace(dialectNamespace),
+        attrData(attrData) {}
 
   /// The hash key used for uniquing.
-  using KeyTy = std::pair<Identifier, StringRef>;
+  using KeyTy = std::tuple<Identifier, StringRef, Type>;
   bool operator==(const KeyTy &key) const {
-    return key == KeyTy(dialectNamespace, attrData);
+    return key == KeyTy(dialectNamespace, attrData, getType());
   }
 
   static OpaqueAttributeStorage *construct(AttributeStorageAllocator &allocator,
                                            const KeyTy &key) {
     return new (allocator.allocate<OpaqueAttributeStorage>())
-        OpaqueAttributeStorage(key.first, allocator.copyInto(key.second));
+        OpaqueAttributeStorage(std::get<0>(key),
+                               allocator.copyInto(std::get<1>(key)),
+                               std::get<2>(key));
   }
 
   // The dialect namespace.

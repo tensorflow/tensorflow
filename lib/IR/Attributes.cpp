@@ -292,15 +292,16 @@ IntegerSet IntegerSetAttr::getValue() const { return getImpl()->value; }
 // OpaqueAttr
 //===----------------------------------------------------------------------===//
 
-OpaqueAttr OpaqueAttr::get(Identifier dialect, StringRef attrData,
+OpaqueAttr OpaqueAttr::get(Identifier dialect, StringRef attrData, Type type,
                            MLIRContext *context) {
-  return Base::get(context, StandardAttributes::Opaque, dialect, attrData);
+  return Base::get(context, StandardAttributes::Opaque, dialect, attrData,
+                   type);
 }
 
 OpaqueAttr OpaqueAttr::getChecked(Identifier dialect, StringRef attrData,
-                                  MLIRContext *context, Location location) {
-  return Base::getChecked(location, context, StandardAttributes::Opaque,
-                          dialect, attrData);
+                                  Type type, Location location) {
+  return Base::getChecked(location, type.getContext(),
+                          StandardAttributes::Opaque, dialect, attrData, type);
 }
 
 /// Returns the dialect namespace of the opaque attribute.
@@ -314,7 +315,7 @@ StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
 /// Verify the construction of an opaque attribute.
 LogicalResult OpaqueAttr::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
-    StringRef attrData) {
+    StringRef attrData, Type type) {
   if (!Dialect::isValidNamespace(dialect.strref())) {
     if (loc)
       emitError(*loc) << "invalid dialect namespace '" << dialect << "'";

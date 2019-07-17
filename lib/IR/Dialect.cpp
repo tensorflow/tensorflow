@@ -79,7 +79,8 @@ LogicalResult Dialect::verifyRegionArgAttribute(Operation *, unsigned, unsigned,
 }
 
 /// Parse an attribute registered to this dialect.
-Attribute Dialect::parseAttribute(StringRef attrData, Location loc) const {
+Attribute Dialect::parseAttribute(StringRef attrData, Type type,
+                                  Location loc) const {
   emitError(loc) << "dialect '" << getNamespace()
                  << "' provides no attribute parsing hook";
   return Attribute();

@@ -352,14 +352,14 @@ public:
   using Base::Base;
 
   /// Get or create a new OpaqueAttr with the provided dialect and string data.
-  static OpaqueAttr get(Identifier dialect, StringRef attrData,
+  static OpaqueAttr get(Identifier dialect, StringRef attrData, Type type,
                         MLIRContext *context);
 
   /// Get or create a new OpaqueAttr with the provided dialect and string data.
   /// If the given identifier is not a valid namespace for a dialect, then a
   /// null attribute is returned.
   static OpaqueAttr getChecked(Identifier dialect, StringRef attrData,
-                               MLIRContext *context, Location location);
+                               Type type, Location location);
 
   /// Returns the dialect namespace of the opaque attribute.
   Identifier getDialectNamespace() const;
@@ -371,7 +371,7 @@ public:
   static LogicalResult
   verifyConstructionInvariants(llvm::Optional<Location> loc,
                                MLIRContext *context, Identifier dialect,
-                               StringRef attrData);
+                               StringRef attrData, Type type);
 
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Opaque;

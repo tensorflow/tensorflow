@@ -107,10 +107,14 @@ public:
   // Parsing Hooks
   //===--------------------------------------------------------------------===//
 
-  /// Parse an attribute registered to this dialect.
-  virtual Attribute parseAttribute(StringRef attrData, Location loc) const;
+  /// Parse an attribute registered to this dialect. If 'type' is nonnull, it
+  /// refers to the expected type of the attribute.
+  virtual Attribute parseAttribute(StringRef attrData, Type type,
+                                   Location loc) const;
 
-  /// Print an attribute registered to this dialect.
+  /// Print an attribute registered to this dialect. Note: The type of the
+  /// attribute need not be printed by this method as it is always printed by
+  /// the caller.
   virtual void printAttribute(Attribute, raw_ostream &) const {
     llvm_unreachable("dialect has no registered attribute printing hook");
   }

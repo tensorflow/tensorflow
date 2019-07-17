@@ -1108,18 +1108,23 @@ Attribute Parser::parseExtendedAttr(Type type) {
       *this, Token::hash_identifier, state.attributeAliasDefinitions,
       [&](StringRef dialectName, StringRef symbolData,
           Location loc) -> Attribute {
+        // Parse an optional trailing colon type.
+        Type attrType = type;
+        if (consumeIf(Token::colon) && !(attrType = parseType()))
+          return Attribute();
+
         // If we found a registered dialect, then ask it to parse the attribute.
         if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseAttribute(symbolData, loc);
+          return dialect->parseAttribute(symbolData, attrType, loc);
 
         // Otherwise, form a new opaque attribute.
         return OpaqueAttr::getChecked(
             Identifier::get(dialectName, state.context), symbolData,
-            state.context, loc);
+            attrType ? attrType : NoneType::get(state.context), loc);
       });
 
   // Ensure that the attribute has the same type as requested.
-  if (type && attr.getType() != type) {
+  if (attr && type && attr.getType() != type) {
     emitError("attribute type different than expected: expected ")
         << type << ", but got " << attr.getType();
     return nullptr;
