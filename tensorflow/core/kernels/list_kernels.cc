@@ -377,6 +377,15 @@ class TensorListElementShape : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListElementShape").Device(DEVICE_CPU),
                         TensorListElementShape);
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("TensorListElementShape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("element_shape"),
+                        TensorListElementShape);
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 class TensorListReserve : public OpKernel {
  public:
   explicit TensorListReserve(OpKernelConstruction* c) : OpKernel(c) {
