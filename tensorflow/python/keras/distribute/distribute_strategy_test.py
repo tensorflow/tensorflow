@@ -276,15 +276,6 @@ def all_strategy_combinations_minus_default():
 def strategy_and_optimizer_combinations():
   non_tpu_strategies = combinations.times(
       strategy_minus_tpu_combinations(),
-      # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
-      combinations.combine(
-          optimizer=[
-              strategy_combinations.adagrad_optimizer_v1_fn,
-              strategy_combinations.adam_optimizer_v1_fn,
-              strategy_combinations.gradient_descent_optimizer_v1_fn,
-              strategy_combinations.rmsprop_optimizer_v1_fn,
-          ],
-          cloning=True) +
       combinations.combine(
           optimizer=[
               strategy_combinations.adagrad_optimizer_keras_v2_fn,
@@ -293,7 +284,6 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.rmsprop_optimizer_keras_v2_fn
           ],
           cloning=[True, False]))
-  # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
   tpu_strategies_graph = combinations.combine(
       distribution=tpu_strategies,
       mode=['graph'],
@@ -440,12 +430,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
   def test_calling_model_with_numpy_arrays(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning or not distribution_strategy_context.has_strategy()
-            else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.001)
         model = get_model()
         loss = 'mse'
@@ -471,11 +456,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
   def test_calling_model_with_nested_numpy_arrays(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(learning_rate=0.001)
         model = multi_input_output_model()
         loss = 'mse'
@@ -501,14 +482,16 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.predict(inputs, batch_size=8)
 
   @combinations.generate(
-      combinations.combine(distribution=strategies_minus_tpu,
-                           mode=['graph', 'eager']))
-  def test_numpy_with_sample_weights(self, distribution):
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['graph', 'eager'],
+          cloning=[True, False]))
+  def test_numpy_with_sample_weights(self, distribution, cloning):
     with self.cached_session(), distribution.scope():
       model = get_sample_weights_model()
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss)
+      model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.array([[0], [1], [2], [3]], np.float32)
       targets = np.array([[2], [4], [6], [8]], np.float32)
@@ -534,36 +517,12 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       result = model.evaluate(inputs, targets, batch_size=2, verbose=1)
       self.assertAllClose(result, 13.5)
 
-  @combinations.generate(
-      combinations.combine(distribution=strategies_minus_default_minus_tpu,
-                           mode=['eager']))
-  def test_numpy_with_sample_weights_eager_with_cloning(self, distribution):
-    with self.cached_session(), distribution.scope():
-      model = get_sample_weights_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss, cloning=True)
-
-      inputs = np.array([[0], [1], [2], [3]], np.float32)
-      targets = np.array([[2], [4], [6], [8]], np.float32)
-      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
-
-      with self.assertRaisesRegexp(NotImplementedError,
-                                   '`sample_weight` is not supported when '
-                                   'using tf.distribute.Strategy in '):
-        model.evaluate(inputs, targets, batch_size=2,
-                       sample_weight=sample_weights, verbose=1)
-
   @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_flatten_predict_outputs(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = multi_input_output_model()
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(learning_rate=0.001)
         loss = 'mse'
         model.compile(optimizer, loss, cloning=cloning)
@@ -726,11 +685,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   def test_calling_model_on_same_dataset(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.001)
         model = get_model()
         loss = 'mse'
@@ -751,11 +706,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                                                       cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         user_controlled_model = get_model()
         user_controlled_model.compile(
             optimizer_fn(0.001),
@@ -802,11 +753,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(learning_rate=0.001)
         model = multi_input_output_model()
         loss = 'mse'
@@ -877,11 +824,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.001)
         model = get_model()
         loss = 'mse'
@@ -918,11 +861,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.001)
         model = get_model()
         loss = 'mse'
@@ -1015,11 +954,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.001)
         model = get_model()
         loss = 'mse'
@@ -1062,11 +997,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                     ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            rmsprop.RMSPropOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(learning_rate=0.001)
         model = get_model()
         loss = 'mse'
@@ -1130,11 +1061,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model = keras.Model(x, z)
         initial_weights = model.get_weights()
 
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            gradient_descent.GradientDescentOptimizer
-            if cloning else gradient_descent_keras.SGD)
+        optimizer_fn = gradient_descent_keras.SGD
         optimizer = optimizer_fn(0.005)
         loss = 'mse'
         metrics = ['acc']
@@ -1343,14 +1270,16 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             rtol=1e-4)
 
   @combinations.generate(
-      combinations.combine(distribution=strategies_minus_tpu,
-                           mode=['graph', 'eager']))
-  def test_dataset_with_sample_weights(self, distribution):
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['graph', 'eager'],
+          cloning=[True, False]))
+  def test_dataset_with_sample_weights(self, distribution, cloning):
     with self.cached_session(), distribution.scope():
       model = get_sample_weights_model()
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss)
+      model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.array([[0], [1], [2], [3]], np.float32)
       targets = np.array([[2], [4], [6], [8]], np.float32)
@@ -1377,26 +1306,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       result = model.evaluate(ds, verbose=1)
       self.assertAllClose(result, 13.5)
 
-  @combinations.generate(
-      combinations.combine(distribution=strategies_minus_default_minus_tpu,
-                           mode=['eager']))
-  def test_dataset_with_sample_weights_eager_with_cloning(self, distribution):
-    with self.cached_session(), distribution.scope():
-      model = get_sample_weights_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss, cloning=True)
-
-      inputs = np.array([[0], [1], [2], [3]], np.float32)
-      targets = np.array([[2], [4], [6], [8]], np.float32)
-      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
-      ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
-                                                   sample_weights)).batch(2)
-
-      with self.assertRaisesRegexp(NotImplementedError,
-                                   '`sample_weight` is not supported when '
-                                   'using tf.distribute.Strategy in '):
-        model.evaluate(ds, verbose=1)
 
 class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
   class IdentityRegularizer(keras.regularizers.Regularizer):
@@ -1457,10 +1366,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   def test_distribution_strategy_on_sequential_model(self, distribution,
                                                      cloning):
     with distribution.scope():
-      # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-      # mirrored.
-      optimizer_fn = (
-          rmsprop.RMSPropOptimizer if cloning else gradient_descent_keras.SGD)
+      optimizer_fn = gradient_descent_keras.SGD
       optimizer = optimizer_fn(learning_rate=0.001)
       model = simple_sequential_model()
       loss = 'mse'
@@ -1477,10 +1383,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   def test_distribution_strategy_on_functional_model(self, distribution,
                                                      cloning):
     with distribution.scope():
-      # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-      # mirrored.
-      optimizer_fn = (
-          rmsprop.RMSPropOptimizer if cloning else gradient_descent_keras.SGD)
+      optimizer_fn = gradient_descent_keras.SGD
       optimizer = optimizer_fn(learning_rate=0.001)
       model = get_model()
       loss = 'mse'

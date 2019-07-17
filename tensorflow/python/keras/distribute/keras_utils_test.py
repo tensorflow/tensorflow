@@ -369,7 +369,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       model = _SimpleMLP(3)
 
-      if cloning or not context.executing_eagerly():
+      if not context.executing_eagerly():
         with self.assertRaisesRegexp(
             ValueError,
             'We currently do not support distribution strategy with a '
@@ -394,7 +394,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       model.add(keras.layers.Dense(16, activation='relu'))
       model.add(keras.layers.Dense(3, activation='softmax'))
 
-      if not cloning and context.executing_eagerly():
+      if context.executing_eagerly():
         model.compile('sgd', cloning=cloning)
       else:
         with self.assertRaisesRegexp(
@@ -424,19 +424,14 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
   # TODO(priyag): Enable all strategies for this test. Currently it does not
   # work for TPU due to some invalid datatype.
   @combinations.generate(
-      combinations.times(
-          combinations.combine(
-              distribution=[
-                  strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              ],
-              mode=['graph', 'eager']),
-          combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.gradient_descent_optimizer_v1_fn)
-          + combinations.combine(
-              cloning=False,
-              optimizer=strategy_combinations
-              .gradient_descent_optimizer_keras_v2_fn)))
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager'],
+          cloning=[True, False],
+          optimizer=strategy_combinations.gradient_descent_optimizer_keras_v2_fn
+      ))
   def test_masking(self, distribution, cloning, optimizer):
     with self.cached_session():
       np.random.seed(1337)
@@ -462,12 +457,9 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
   @combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations(),
-          combinations.combine(fused=[True, False]),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.gradient_descent_optimizer_v1_fn)
-          + combinations.combine(
-              cloning=False,
+              fused=[True, False],
+              cloning=[True, False],
               optimizer=strategy_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
   def test_batchnorm_correctness(self, distribution, fused, optimizer, cloning):
@@ -510,10 +502,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.rmsprop_optimizer_v1_fn) +
-          combinations.combine(
-              cloning=False,
+              cloning=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_h5(self, distribution, optimizer, cloning):
     with self.cached_session():
@@ -537,10 +526,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.rmsprop_optimizer_v1_fn) +
-          combinations.combine(
-              cloning=False,
+              cloning=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_trackable(self, distribution, optimizer, cloning):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
