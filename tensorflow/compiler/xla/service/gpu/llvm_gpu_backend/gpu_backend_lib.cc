@@ -215,8 +215,7 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
 
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
-StatusOr<string> EmitModuleToPTX(Module* module,
-                                 llvm::TargetMachine* target_machine) {
+string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
   std::string ptx;  // need a std::string instead of a ::string.
   {
     llvm::raw_string_ostream stream(ptx);
@@ -274,9 +273,9 @@ Status LinkWithBitcodeVector(llvm::Module* module,
 
   for (auto& bitcode_path : bitcode_path_vector) {
     if (!tensorflow::Env::Default()->FileExists(bitcode_path).ok()) {
-      LOG(WARNING) << "bitcode module is required by this HLO module but was "
-                      "not found at "
-                   << bitcode_path;
+      LOG(ERROR) << "bitcode module is required by this HLO module but was "
+                    "not found at "
+                 << bitcode_path;
       return xla::InternalError("bitcode module not found at %s", bitcode_path);
     }
 
@@ -316,8 +315,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   }
 
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  std::vector<string> libdevice_path_vector{libdevice_path};
-  return LinkWithBitcodeVector(module, libdevice_path_vector);
+  return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
 Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
@@ -325,9 +323,12 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                const string& device_bitcode_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(
-      module, absl::get<std::pair<int, int>>(gpu_version),
-      device_bitcode_dir_path));
+  auto compute_capability = absl::get_if<std::pair<int, int>>(&gpu_version);
+  if (!compute_capability) {
+    return xla::InternalError("Incompatible compute capability was specified.");
+  }
+  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, *compute_capability,
+                                              device_bitcode_dir_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect
   // pass can access it.
@@ -515,22 +516,24 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
     }
 
     auto compute_capability = absl::get_if<std::pair<int, int>>(&gpu_version);
-    if (compute_capability) {
-      llvm::Triple target_triple("nvptx64-unknown-unknown");
-      // Construct LLVM TargetMachine for NVPTX.
-      std::unique_ptr<llvm::TargetMachine> target_machine =
-          NVPTXGetTargetMachine(target_triple, *compute_capability,
-                                hlo_module_config);
-
-      // Link with libdeivce, and optimize the LLVM module.
-      TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-          module, gpu_version, hlo_module_config, libdevice_dir_path,
-          NVPTXTargetModuleLinker, target_triple, target_machine.get(),
-          kDefaultInlineThreshold));
-
-      // Lower optimize LLVM module to PTX.
-      TF_ASSIGN_OR_RETURN(ptx, EmitModuleToPTX(module, target_machine.get()));
+    if (!compute_capability) {
+      return xla::InternalError(
+          "Incompatible compute capability was specified.");
     }
+
+    llvm::Triple default_target_triple("nvptx64-unknown-unknown");
+    // Construct LLVM TargetMachine for NVPTX.
+    std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
+        default_target_triple, *compute_capability, hlo_module_config);
+
+    // Link with libdeivce, and optimize the LLVM module.
+    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+        module, gpu_version, hlo_module_config, libdevice_dir_path,
+        NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
+        kDefaultInlineThreshold));
+
+    // Lower optimized LLVM module to PTX.
+    ptx = EmitModuleToPTX(module, target_machine.get());
   }
   return ptx;
 }
@@ -543,19 +546,15 @@ namespace {
 static std::vector<string> GetROCDLPaths(int amdgpu_version,
                                          const string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
-  std::vector<string> rocdl_filename_vector{
-      "hc.amdgcn.bc",
-      "opencl.amdgcn.bc",
-      "ocml.amdgcn.bc",
-      "ockl.amdgcn.bc",
-      "oclc_finite_only_off.amdgcn.bc",
-      "oclc_daz_opt_off.amdgcn.bc",
-      "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-      "oclc_unsafe_math_off.amdgcn.bc"};
+  static std::vector<string>* rocdl_filenames = new std::vector<string>(
+      {"hc.amdgcn.bc", "opencl.amdgcn.bc", "ocml.amdgcn.bc", "ockl.amdgcn.bc",
+       "oclc_finite_only_off.amdgcn.bc", "oclc_daz_opt_off.amdgcn.bc",
+       "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
+       "oclc_unsafe_math_off.amdgcn.bc"});
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
-  for (auto& filename : rocdl_filename_vector) {
+  for (auto& filename : *rocdl_filenames) {
     result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
   }
 
@@ -670,8 +669,13 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, absl::get<int>(gpu_version),
-                                          device_bitcode_dir_path));
+  auto amdgpu_version = absl::get_if<int>(&gpu_version);
+  if (!amdgpu_version) {
+    return xla::InternalError(
+        "Incompatible AMD GCN ISA version was specified.");
+  }
+  TF_RETURN_IF_ERROR(
+      LinkROCDLIfNecessary(module, *amdgpu_version, device_bitcode_dir_path));
 
   return Status::OK();
 }
@@ -717,23 +721,26 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto amdgpu_version = absl::get_if<int>(&gpu_version);
-    if (amdgpu_version) {
-      llvm::Triple target_triple("amdgcn--amdhsa-amdgiz");
-      // Construct LLVM TargetMachine for AMDGPU.
-      std::unique_ptr<llvm::TargetMachine> target_machine =
-          AMDGPUGetTargetMachine(target_triple, *amdgpu_version,
-                                 hlo_module_config);
-
-      // Link with ROCm-Device-Libs, and optimize the LLVM module.
-      TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-          module, gpu_version, hlo_module_config, rocdl_dir_path,
-          AMDGPUTargetModuleLinker, target_triple, target_machine.get(),
-          kAMDGPUInlineThreshold));
-
-      // Lower optimize LLVM module to HSA code object.
-      TF_ASSIGN_OR_RETURN(hsaco,
-                          EmitModuleToHsaco(module, target_machine.get()));
+    if (!amdgpu_version) {
+      return xla::InternalError(
+          "Incompatible AMD GCN ISA version was specified.");
     }
+
+    llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
+    // Construct LLVM TargetMachine for AMDGPU.
+    std::unique_ptr<llvm::TargetMachine> target_machine =
+        AMDGPUGetTargetMachine(default_target_triple, *amdgpu_version,
+                               hlo_module_config);
+
+    // Link with ROCm-Device-Libs, and optimize the LLVM module.
+    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+        module, gpu_version, hlo_module_config, rocdl_dir_path,
+        AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
+        kAMDGPUInlineThreshold));
+
+    // Lower optimize LLVM module to HSA code object.
+    TF_ASSIGN_OR_RETURN(hsaco,
+                        EmitModuleToHsaco(module, target_machine.get()));
   }
   return std::move(hsaco);
 }
