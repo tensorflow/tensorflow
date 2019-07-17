@@ -405,9 +405,9 @@ Status TRTEngineOp::GetEngineInputShapes(
     // This should not happen, but just for safety.
     if (actual_input_shapes.size() != cached_input_shapes.size()) {
       return errors::InvalidArgument(
-          "Input shape list size mismatch for ", name(), ", cached size: ",
-          cached_input_shapes.size(), " vs. actual size: ",
-          actual_input_shapes.size());
+          "Input shape list size mismatch for ", name(),
+          ", cached size: ", cached_input_shapes.size(),
+          " vs. actual size: ", actual_input_shapes.size());
     }
     if (match_shapes(actual_input_shapes, cached_input_shapes)) {
       const int cached_batch_size = cached_input_shapes[0].dim_size(0);

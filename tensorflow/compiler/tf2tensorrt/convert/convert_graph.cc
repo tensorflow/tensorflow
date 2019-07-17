@@ -49,9 +49,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
@@ -441,8 +441,6 @@ Status CreateTRTNode(const ConversionParams& params,
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
-  } else {
-    segment_string = "";
   }
 
   string prec_string;
@@ -719,8 +717,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
                              params.use_calibration);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph, std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
-                        std::placeholders::_1),
+      &graph,
+      std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
+                std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
