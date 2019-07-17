@@ -125,6 +125,16 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     epsilon = 1e-4
     self.assertLess(gradient_checker.max_error(*grads), epsilon)
 
+  def testSparseTensorToDenseString(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]],
+        values=['a', 'b'],
+        dense_shape=[2, 3])
+    dense = sparse_ops.sparse_tensor_to_dense(sp)
+    expected_dense = [['a', '', ''], ['', '', 'b']]
+    result_dense = self.evaluate(dense)
+    self.assertAllEqual(expected_dense, result_dense)
+
 
 if __name__ == '__main__':
   googletest.main()
