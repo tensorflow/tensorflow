@@ -255,7 +255,10 @@ public:
 
     /// This operation has dynamic legalization constraints that must be checked
     /// by the target.
-    Dynamic
+    Dynamic,
+
+    /// This target explicitly does not support this operation.
+    Illegal,
   };
 
   /// The type used to store operation legality information.
@@ -301,6 +304,16 @@ public:
     addDynamicallyLegalOp<OpT2, OpTs...>();
   }
 
+  /// Register the given operation as illegal, i.e. this operation is known to
+  /// not be supported by this target.
+  template <typename OpT> void addIllegalOp() {
+    setOpAction<OpT>(LegalizationAction::Illegal);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs> void addIllegalOp() {
+    addIllegalOp<OpT>();
+    addIllegalOp<OpT2, OpTs...>();
+  }
+
   /// Register a legality action for the given dialects.
   void setDialectAction(ArrayRef<StringRef> dialectNames,
                         LegalizationAction action);
@@ -326,6 +339,18 @@ public:
   template <typename... Args> void addDynamicallyLegalDialect() {
     SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
     setDialectAction(dialectNames, LegalizationAction::Dynamic);
+  }
+
+  /// Register the operations of the given dialects as illegal, i.e.
+  /// operations of this dialect are not supported by the target.
+  template <typename... Names>
+  void addIllegalDialect(StringRef name, Names... names) {
+    SmallVector<StringRef, 2> dialectNames({name, names...});
+    setDialectAction(dialectNames, LegalizationAction::Illegal);
+  }
+  template <typename... Args> void addIllegalDialect() {
+    SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
+    setDialectAction(dialectNames, LegalizationAction::Illegal);
   }
 
   //===--------------------------------------------------------------------===//

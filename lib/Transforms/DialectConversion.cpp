@@ -589,12 +589,17 @@ using LegalizationPatterns = SmallVector<RewritePattern *, 1>;
 /// This class defines a recursive operation legalizer.
 class OperationLegalizer {
 public:
+  using LegalizationAction = ConversionTarget::LegalizationAction;
+
   OperationLegalizer(ConversionTarget &targetInfo,
                      OwningRewritePatternList &patterns)
       : target(targetInfo) {
     buildLegalizationGraph(patterns);
     computeLegalizationGraphBenefit();
   }
+
+  /// Returns if the given operation is known to be illegal on the target.
+  bool isIllegal(Operation *op) const;
 
   /// Attempt to legalize the given operation. Returns success if the operation
   /// was legalized, failure otherwise.
@@ -634,6 +639,13 @@ private:
 };
 } // namespace
 
+bool OperationLegalizer::isIllegal(Operation *op) const {
+  // Check if the target explicitly marked this operation as illegal.
+  if (auto action = target.getOpAction(op->getName()))
+    return action == LegalizationAction::Illegal;
+  return false;
+}
+
 LogicalResult
 OperationLegalizer::legalize(Operation *op,
                              DialectConversionRewriter &rewriter) {
@@ -643,13 +655,15 @@ OperationLegalizer::legalize(Operation *op,
   // Check if this was marked legal by the target.
   if (auto action = target.getOpAction(op->getName())) {
     // Check if this operation is always legal.
-    if (*action == ConversionTarget::LegalizationAction::Legal)
+    if (*action == LegalizationAction::Legal)
       return success();
 
     // Otherwise, handle dynamic legalization.
-    LLVM_DEBUG(llvm::dbgs() << "- Trying dynamic legalization.\n");
-    if (target.isDynamicallyLegal(op))
-      return success();
+    if (*action == LegalizationAction::Dynamic) {
+      LLVM_DEBUG(llvm::dbgs() << "- Trying dynamic legalization.\n");
+      if (target.isDynamicallyLegal(op))
+        return success();
+    }
 
     // Fallthough to see if a pattern can convert this into a legal operation.
   }
@@ -661,8 +675,7 @@ OperationLegalizer::legalize(Operation *op,
     return failure();
   }
 
-  // TODO(riverriddle) This currently has no cost model and doesn't prioritize
-  // specific patterns in any way.
+  // The patterns are sorted by expected benefit, so try to apply each in-order.
   for (auto *pattern : it->second)
     if (succeeded(legalizePattern(op, pattern, rewriter)))
       return success();
@@ -733,7 +746,7 @@ void OperationLegalizer::buildLegalizationGraph(
     auto root = pattern->getRootKind();
 
     // Skip operations that are always known to be legal.
-    if (target.getOpAction(root) == ConversionTarget::LegalizationAction::Legal)
+    if (target.getOpAction(root) == LegalizationAction::Legal)
       continue;
 
     // Add this pattern to the invalid set for the root op and record this root
@@ -751,7 +764,9 @@ void OperationLegalizer::buildLegalizationGraph(
 
     // Check to see if any of the generated operations are invalid.
     if (llvm::any_of(pattern->getGeneratedOps(), [&](OperationName op) {
-          return !legalizerPatterns.count(op) && !target.getOpAction(op);
+          auto action = target.getOpAction(op);
+          return !legalizerPatterns.count(op) &&
+                 (!action || action == LegalizationAction::Illegal);
         }))
       continue;
 
@@ -950,14 +965,19 @@ OperationConverter::convert(DialectConversionRewriter &rewriter,
 
   // Otherwise, legalize the given operation.
   auto *op = ptr.get<Operation *>();
-  auto result = opLegalizer.legalize(op, rewriter);
-
-  // Failed conversions are only important if this is a full conversion.
-  if (mode == OpConversionMode::Full && failed(result))
-    return op->emitError() << "failed to legalize operation '" << op->getName()
-                           << "'";
-
-  // In any other case, illegal operations are allowed to remain in the IR.
+  if (failed(opLegalizer.legalize(op, rewriter))) {
+    // Handle the case of a failed conversion for each of the different modes.
+    /// Full conversions expect all operations to be converted.
+    if (mode == OpConversionMode::Full)
+      return op->emitError()
+             << "failed to legalize operation '" << op->getName() << "'";
+    /// Partial conversions allow conversions to fail iff the operation was not
+    /// explicitly marked as illegal.
+    if (mode == OpConversionMode::Partial && opLegalizer.isIllegal(op))
+      return op->emitError()
+             << "failed to legalize operation '" << op->getName()
+             << "' that was explicitly marked illegal";
+  }
   return success();
 }
 

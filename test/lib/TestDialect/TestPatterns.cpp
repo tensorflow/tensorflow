@@ -158,6 +158,7 @@ struct TestConversionTarget : public ConversionTarget {
   TestConversionTarget(MLIRContext &ctx) : ConversionTarget(ctx) {
     addLegalOp<LegalOpA, TestValidOp>();
     addDynamicallyLegalOp<TestReturnOp>();
+    addIllegalOp<ILLegalOpF>();
   }
   bool isDynamicallyLegal(Operation *op) const final {
     // Don't allow F32 operands.

@@ -1,4 +1,4 @@
-// RUN: mlir-opt -test-legalize-patterns %s | FileCheck %s
+// RUN: mlir-opt -split-input-file -test-legalize-patterns -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: verifyDirectPattern
 func @verifyDirectPattern() -> i32 {
@@ -98,4 +98,12 @@ func @up_to_date_replacement(%arg: i8) -> i8 {
   %repl_1 = "test.rewrite"(%arg) : (i8) -> i8
   %repl_2 = "test.rewrite"(%repl_1) : (i8) -> i8
   return %repl_2 : i8
+}
+
+// -----
+
+func @fail_to_convert_illegal_op() -> i32 {
+  // expected-error@+1 {{failed to legalize operation 'test.illegal_op_f'}}
+  %result = "test.illegal_op_f"() : () -> (i32)
+  return %result : i32
 }

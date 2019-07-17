@@ -416,6 +416,7 @@ def ILLegalOpB : TEST_Op<"illegal_op_b">, Results<(outs I32:$res)>;
 def ILLegalOpC : TEST_Op<"illegal_op_c">, Results<(outs I32:$res)>;
 def ILLegalOpD : TEST_Op<"illegal_op_d">, Results<(outs I32:$res)>;
 def ILLegalOpE : TEST_Op<"illegal_op_e">, Results<(outs I32:$res)>;
+def ILLegalOpF : TEST_Op<"illegal_op_f">, Results<(outs I32:$res)>;
 def LegalOpA : TEST_Op<"legal_op_a">,
   Arguments<(ins Test_LegalizerEnum:$status)>, Results<(outs I32:$res)>;
 
