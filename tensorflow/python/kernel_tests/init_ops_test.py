@@ -1118,9 +1118,6 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       tmp_back = array_ops.slice(tmp, [0, 0, 0, 0, 0], [-1, -1, -1, end, -1])
       return array_ops.concat([tmp_front, tmp, tmp_back], 3)
 
-    if test.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
     cout = 32
     shape = [1, 7, 7, 7, 16]
     outputs_shape = shape[0:-1] + [cout]
