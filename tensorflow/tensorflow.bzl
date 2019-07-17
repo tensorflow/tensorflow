@@ -2488,6 +2488,7 @@ def tf_jit_compilation_passes_extra_deps():
     return []
 
 def if_mlir(if_true, if_false = []):
+    # Internally we always build with MLIR
     return select({
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,

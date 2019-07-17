@@ -28,11 +28,10 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
-#else
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #endif
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace toco {
 
@@ -125,7 +124,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-#if defined(PLATFORM_GOOGLE)
+#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
     status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
         model_flags, toco_flags, debug_info, graph_def,
         &output_file_contents_txt);
