@@ -32,9 +32,6 @@ class ActivityAnalyzerTest(activity_test.ActivityAnalyzerTestBase):
   """Tests which can only run in Python 3.6 or later versions."""
 
   def test_nonlocal_symbol(self):
-    # TODO(b/137761188): Remove this skipTest once fixed.
-    self.skipTest('Annotation syntax is not recognized by Python 3.5')
-
     nonlocal_a = 3
     nonlocal_b = 13
 
@@ -49,6 +46,8 @@ class ActivityAnalyzerTest(activity_test.ActivityAnalyzerTestBase):
     self.assertScopeIs(body_scope, ('nonlocal_b', 'c'), ('nonlocal_a',))
 
   def test_annotated_assign(self):
+    # TODO(b/137761188): Remove this skipTest once fixed.
+    self.skipTest('Annotation syntax is not recognized by Python 3.5')
 
     b = int
 
