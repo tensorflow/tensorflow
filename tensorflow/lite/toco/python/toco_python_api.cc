@@ -91,7 +91,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   tensorflow::GraphDebugInfo debug_info;
-  if (debug_info_txt_raw) {
+  if (debug_info_txt_raw && debug_info_txt_raw != Py_None) {
     std::string debug_info_txt = ConvertArg(debug_info_txt_raw, &error);
     if (error) {
       PyErr_SetString(PyExc_ValueError, "Input DebugInfo is invalid.");
