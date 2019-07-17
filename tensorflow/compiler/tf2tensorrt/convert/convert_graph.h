@@ -32,8 +32,6 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-// extern const IONamePrefixes prefixes;
-
 struct ConversionParams {
   const GraphDef* input_graph_def = nullptr;
   const std::vector<string>* output_names = nullptr;

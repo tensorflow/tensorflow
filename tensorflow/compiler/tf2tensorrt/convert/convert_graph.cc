@@ -66,7 +66,6 @@ using absl::StrCat;
 
 namespace {
 
-//auto prefixes = IONamePrefixes(); 
 
 Status BuildNodeMap(const Graph& graph,
                     std::unordered_map<string, Node*>* node_map) {
