@@ -1,6 +1,24 @@
 # Release 1.14.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Bug Fixes and Other Changes
+
+* Adds option for introducing slack in the pipeline to reduce CPU contention, via `options = tf.data.Options(); options.experimental_slack = True; dataset = dataset.with_options(options)`.
+* `ResourceVariable` and `Variable` no longer accepts `constraint` in the constructor, nor expose it as a `@property`.
+* Enhanced graphviz output.
+* Fix issue where callbacks do not log values in eager mode when a deferred build model is used.
+* Replace contrib references with `tf.estimator.experimental.*` for APIs in `early_stopping.py`.
+* Delete unused lookup table code.
+* Clarify which model is being initialized.
+* `parallel_for.pfor`: add converters for `Softmax`, `LogSoftmax`, `IsNaN`, `All`, `Any`, `MatrixSetDiag`, `LowerTriangularSolve`, `Cholesky`, `BroadcastTo`, `LogMatrixDeterminant`, `MatrixBandPart`, `OneHot`, `LowerBound`, and `UpperBound`.
+* Add ragged tensor support to `tf.squeeze`.
+* Allow `LinearOperator.solve` to take a `LinearOperator`.
+* Allow all dtypes for `LinearOperatorCirculant`.
+* Add `LinearOperatorHouseholder`.
+* Introduce `MaxParallelism` method.
+* Added `key` and `skip` methods to `random.experimental.Generator`.
+* Update `RaggedTensors` to support int32 `row_splits`.
+* Add `TensorSpec` support for `CompositeTensors`.
+
 
 # Release 1.14.0
 
