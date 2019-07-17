@@ -519,8 +519,16 @@ class LoadTest(test.TestCase):
     export_graph = ops.Graph()
     with export_graph.as_default():
       @framework_function.Defun(dtypes.int64)
-      def f(x):
+      def z(x):
         return x + 1
+
+      @framework_function.Defun(dtypes.int64)
+      def g(x):
+        return z(x) + 1
+
+      @framework_function.Defun(dtypes.int64)
+      def f(x):
+        return g(x) + 1
       in_placeholder = array_ops.placeholder(dtype=dtypes.int64, shape=[1])
       out = f(in_placeholder)
       with session_lib.Session() as session:
@@ -537,7 +545,7 @@ class LoadTest(test.TestCase):
     imported = load.load(path)
     imported_fn = imported.signatures["serving_default"]
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
-    self.assertEqual([43], imported_fn(forty_two)["output"].numpy())
+    self.assertEqual([45], imported_fn(forty_two)["output"].numpy())
 
 
 if __name__ == "__main__":

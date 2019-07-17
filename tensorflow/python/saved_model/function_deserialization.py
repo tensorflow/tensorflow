@@ -290,11 +290,12 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Raises:
     ValueError: if functions dependencies have a cycle.
   """
+  library_function_names = set(fdef.signature.name for fdef in library.function)
   functions = {}
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
-  for fdef in _sort_function_defs(library):
+  for fdef in _sort_function_defs(library, library_function_names):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
     # There is no need to copy all functions into the function def graph. It
@@ -305,7 +306,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     func_graph = function_def_lib.function_def_to_graph(
         copy, copy_functions=False)
 
-    for dep in _list_function_deps(fdef):
+    for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
     func.add_to_graph()
@@ -321,13 +322,13 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   return functions
 
 
-def _sort_function_defs(library):
+def _sort_function_defs(library, library_function_names):
   """Return a topologic sort of FunctionDefs in a library."""
   edges = collections.defaultdict(list)
   in_count = collections.defaultdict(lambda: 0)
 
   for fdef in library.function:
-    for dep in _list_function_deps(fdef):
+    for dep in _list_function_deps(fdef, library_function_names):
       edges[dep].append(fdef.signature.name)
       in_count[fdef.signature.name] += 1
 
@@ -413,14 +414,14 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   return fdef
 
 
-def _list_function_deps(fdef):
+def _list_function_deps(fdef, library_function_names):
   """Find functions referenced in `fdef`."""
   # TODO(andresp): Recurse into list attributes and into NameAttrList attrs both
   # when listing deps and when fixing them. `function_def_to_graph` also
   # requires fixes.
   deps = set()
   for node_def in fdef.node_def:
-    if function_def_lib.is_function(node_def.op):
+    if node_def.op in library_function_names:
       deps.add(node_def.op)
     else:
       for _, attr_value in node_def.attr.items():
