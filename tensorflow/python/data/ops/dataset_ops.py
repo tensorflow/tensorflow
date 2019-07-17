@@ -1174,11 +1174,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     def upper_case_fn(t: tf.Tensor) -> str:
         return t.numpy().decode('utf-8').upper()
     
-    result = d.map(lambda x: tf.py_function(func=upper_case_fn,
-                                            inp=[x], Tout=tf.string))
-    # list(result) == [<tf.Tensor: id=.., shape=(), dtype=string, numpy=b'HELLO'>,
-    #                  <tf.Tensor: id=.., shape=(), dtype=string, numpy=b'WORLD'>]
+    d.map(lambda x: tf.py_function(func=upper_case_fn,
+          inp=[x], Tout=tf.string))  # ==> [ "HELLO", "WORLD" ]
     ```
+    
 
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
