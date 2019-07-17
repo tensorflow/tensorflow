@@ -23,6 +23,19 @@ constexpr char kFileDatasetPrefix[] = "File";
 constexpr char kMemoryDatasetPrefix[] = "Memory";
 
 class CacheDatasetOpTest : public DatasetOpsTestBase {
+ public:
+  ~CacheDatasetOpTest() {
+    if (!filename_.empty()) {
+      std::vector<string> cache_files;
+      device_->env()
+          ->GetMatchingPaths(strings::StrCat(filename_, "*"), &cache_files)
+          .IgnoreError();
+      for (const string& path : cache_files) {
+        device_->env()->DeleteFile(path).IgnoreError();
+      }
+    }
+  }
+
  protected:
   // Creates `TensorSliceDataset` variant tensor from the input vector of
   // tensors.
@@ -57,8 +70,13 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
       std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+    TF_RETURN_IF_ERROR(ParseScalarArgument<string>(
+        context->get(), CacheDatasetOp::kFileName, &filename_));
     return Status::OK();
   }
+
+ private:
+  string filename_ = "";
 };
 
 struct TestCase {
@@ -84,7 +102,7 @@ TestCase TestCase1() {
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
       /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 4, 11}};
+      /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 // Test case 2: cache empty data in file.
@@ -96,7 +114,7 @@ TestCase TestCase2() {
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 4, 11}};
+          /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 // Test case 3: cache data in memory.
@@ -112,7 +130,7 @@ TestCase TestCase3() {
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
       /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 4, 11}};
+      /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 // Test case 4: cache empty data in memory.
@@ -124,7 +142,7 @@ TestCase TestCase4() {
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 4, 11}};
+          /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 class ParameterizedCacheDatasetOpTest
