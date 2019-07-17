@@ -52,8 +52,6 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_iterators_single_io(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'
     loss = 'mse'
@@ -82,8 +80,7 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
               validation_data=iterator, validation_steps=2)
     # Test with validation split
     with self.assertRaisesRegexp(
-        ValueError, '`validation_split` argument is not supported '
-        'when input `x` is a dataset or a dataset iterator'):
+        ValueError, '`validation_split` argument is not supported when '):
       model.fit(iterator,
                 epochs=1, steps_per_epoch=2, verbose=0,
                 validation_split=0.5, validation_steps=2)
@@ -119,8 +116,6 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_iterators_running_out_of_data(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'
     loss = 'mse'
@@ -153,7 +148,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   def test_calling_model_on_same_dataset(self):
     if ((not testing_utils.should_run_eagerly())
         and testing_utils.get_model_type() == 'subclass'
-        and context.executing_eagerly()):
+        and context.executing_eagerly()
+        and (not testing_utils.should_run_distributed())):
       self.skipTest('b/120673224')
 
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
@@ -182,8 +178,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_dataset(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'
     loss = 'mse'
@@ -211,8 +205,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     # Test with validation split
     with self.assertRaisesRegexp(
-        ValueError, '`validation_split` argument is not supported '
-        'when input `x` is a dataset or a dataset iterator'):
+        ValueError, '`validation_split` argument is not supported when '):
       model.fit(dataset,
                 epochs=1, steps_per_epoch=2, verbose=0,
                 validation_split=0.5, validation_steps=2)
@@ -235,6 +228,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                                  ' as an input.'):
       model.fit(dataset, batch_size=10, epochs=1, steps_per_epoch=2,
                 verbose=0)
+
     with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
                                  ' must not be specified when using dataset'
                                  ' as an input.'):
@@ -263,8 +257,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_multi_input_output_dataset(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     input_a = keras.layers.Input(shape=(3,), name='input_1')
     input_b = keras.layers.Input(shape=(3,), name='input_2')
     dense = keras.layers.Dense(4, name='dense')
@@ -325,8 +317,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sample_weights(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'
     loss = 'mse'
@@ -396,7 +386,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_dataset_fit_correctness(self):
     if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
+      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
 
     class SumLayer(keras.layers.Layer):
 
@@ -478,7 +468,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_known_cardinality_no_steps_arg(self):
     if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
+      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.compile(
         'rmsprop',
@@ -504,7 +494,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_unknown_cardinality_no_steps_arg(self):
     if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
+      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.compile(
         'rmsprop',
@@ -532,7 +522,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_finite_dataset_unknown_cardinality_no_step_with_train_and_val(self):
     if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
+      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
 
     class CaptureStdout(object):
 
@@ -584,8 +574,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_unknown_cardinality_out_of_data(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.compile(
         'rmsprop',
@@ -612,8 +600,9 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           callbacks=[batch_counter],
           steps_per_epoch=200)
       self.assertIn(
-          'Your dataset ran out of data; interrupting training. '
-          'Make sure that your dataset can generate at least '
+          'ran out of data; interrupting training.', str(mock_log.call_args))
+      self.assertIn(
+          'can generate at least '
           '`steps_per_epoch * epochs` batches (in this case, 400 batches). '
           'You may need to use the repeat() function when '
           'building your dataset.', str(mock_log.call_args))
@@ -643,8 +632,6 @@ class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_metrics_correctness_with_iterator(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     layers = [
         keras.layers.Dense(8, activation='relu', input_dim=4,
                            kernel_initializer='ones'),
