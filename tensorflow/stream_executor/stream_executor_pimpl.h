@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
