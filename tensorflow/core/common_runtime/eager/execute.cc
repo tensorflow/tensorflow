@@ -1208,7 +1208,7 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
 
   DCHECK(device != nullptr);
 
-  if (ctx->IsLocal(device)) {
+  if (device->IsLocal()) {
     TF_RETURN_IF_ERROR(ctx->GetStatus());
 
     op.AddInput(h);
@@ -1273,7 +1273,7 @@ Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
 
   op.MutableAttrs()->Set("tensor_type", dtype);
 
-  if (ctx->IsLocal(device)) {
+  if (device->IsLocal()) {
     TF_RETURN_IF_ERROR(ctx->GetStatus());
 
     core::RefCountPtr<KernelAndDevice> kernel;
@@ -1343,9 +1343,9 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* device,
                          bool mirror, TensorHandle** result) {
   Device* send_device = h->DeviceOrHostCPU(ctx);
 
-  bool sender_is_local = ctx->IsLocal(send_device);
+  bool sender_is_local = send_device->IsLocal();
 
-  bool recver_is_local = ctx->IsLocal(device);
+  bool recver_is_local = device->IsLocal();
 
   if (sender_is_local && recver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, device, result);

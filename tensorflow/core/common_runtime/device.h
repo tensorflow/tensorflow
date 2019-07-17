@@ -190,6 +190,8 @@ class Device : public DeviceBase {
   // Clears the resource manager associated with this device.
   void ClearResourceMgr() { rmgr_->Clear(); }
 
+  virtual bool IsLocal() const { return true; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;

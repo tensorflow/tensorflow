@@ -325,7 +325,6 @@ class EagerContext : public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  bool IsLocal(const Device* d) const;
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
