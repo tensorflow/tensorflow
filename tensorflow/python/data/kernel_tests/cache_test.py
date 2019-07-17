@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -170,6 +171,19 @@ class FileCacheTest(test_base.DatasetTestBase):
     expected_output = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]] * 2
     self.assertDatasetProduces(dataset, expected_output)
 
+  def testCleaningUpCacheFiles(self):
+    def do_test(i):
+      dataset = dataset_ops.Dataset.range(10).cache(self.cache_prefix)
+      get_next = self.getNext(dataset)
+      for _ in range(i):
+        try:
+          self.evaluate(get_next())
+        except errors.OutOfRangeError:
+          break
+
+    if context.executing_eagerly():
+      for i in [0, 3, 10, 12, 15]:
+        do_test(i)
 
 @test_util.run_all_in_graph_and_eager_modes
 class MemoryCacheTest(test_base.DatasetTestBase):
