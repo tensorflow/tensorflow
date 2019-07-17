@@ -449,8 +449,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     except errors.OpError as e:
       # This should happen only when fallback path is disabled and TRT engine
       # fails to run.
-      # TODO(phillip-kravtsov) Check what correct handling is
-      #self.assertTrue(not use_function_backup and not expect_engine_is_run)
       self.assertIn("Fallback path is disabled, for TRTEngineOp_0", str(e))
 
   @test_util.deprecated_graph_mode_only

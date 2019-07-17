@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_FUNCDEF_TO_GRAPHDEF_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_FUNCDEF_TO_GRAPHDEF_H_
 
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 
@@ -26,16 +27,18 @@ namespace tensorflow {
 
 namespace tensorrt {
 
-string NewNameWithIOPrefix(const Node* n);
+string AppendIdToNodeName(const Node* n);
+
 void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef);
+
 Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
                              FunctionLibraryRuntime* flib_runtime,
                              GraphDef* graph_def,
-														 std::vector<int>* input_node_ids,
-														 std::vector<int>* output_node_ids);
+                             std::vector<int>* input_node_ids,
+                             std::vector<int>* output_node_ids);
 
-} // namespace tensorrt
-} // namespace tensorflow
+}  // namespace tensorrt
+}  // namespace tensorflow
 
 #endif
 #endif

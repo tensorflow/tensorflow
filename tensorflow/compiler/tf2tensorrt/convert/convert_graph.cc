@@ -49,9 +49,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
@@ -65,6 +65,8 @@ using absl::StrAppend;
 using absl::StrCat;
 
 namespace {
+
+//auto prefixes = IONamePrefixes(); 
 
 Status BuildNodeMap(const Graph& graph,
                     std::unordered_map<string, Node*>* node_map) {
@@ -466,7 +468,8 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("output_shapes", output_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
-          .Attr("segment_funcdef_name", StrCat(info.engine_name, "_native_segment"))
+          .Attr("segment_funcdef_name",
+                StrCat(info.engine_name, "_native_segment"))
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
@@ -536,8 +539,7 @@ Status CreateTRTNode(const ConversionParams& params,
 }
 
 // Function to construct a funcdef from the segment and add it to the graph.
-Status ModifyGraphForFunctionDef(Graph* graph,
-                                 const GraphDef& segment,
+Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
                                  Graph* sgraph) {
   // sgraph is a graph for the segment, to be modified by this function
   // graph is the input graph to be optimized by TRT.
@@ -546,16 +548,16 @@ Status ModifyGraphForFunctionDef(Graph* graph,
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : sgraph->op_nodes()) {
-    if (absl::StartsWith(n->name(), kInputPHName)) {
+    if (absl::StartsWith(n->name(), prefixes.kInputPHName)) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
-    } else if (absl::StartsWith(n->name(), kOutputPHName)) {
+    } else if (absl::StartsWith(n->name(), prefixes.kOutputPHName)) {
       io_nodes.insert({n->name(), n});
     }
   }
 
   for (int i = 0; i < num_inputs; ++i) {
-    auto name = StrCat(kInputPHName, i);
+    auto name = StrCat(prefixes.kInputPHName, i);
     auto node = io_nodes[name];
     NodeDef nd;
     NodeDefBuilder node_builder(StrCat(name, "_Arg"),
@@ -582,7 +584,7 @@ Status ModifyGraphForFunctionDef(Graph* graph,
   }
 
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-    auto name = StrCat(kOutputPHName, i);
+    auto name = StrCat(prefixes.kOutputPHName, i);
     auto node = io_nodes[name];
     NodeDef nd;
     NodeDefBuilder node_builder(StrCat(name, "_Ret"),
@@ -694,7 +696,8 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 // Entry function from optimization pass.
 Status ConvertAfterShapes(const ConversionParams& params) {
   // Sanity checks.
-  if (params.precision_mode != TrtPrecisionMode::INT8 && params.use_calibration) {
+  if (params.precision_mode != TrtPrecisionMode::INT8 &&
+      params.use_calibration) {
     return errors::InvalidArgument(
         "Calibration requires enabling fallback to TF function execution.");
   }
@@ -717,9 +720,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
                              params.use_calibration);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph,
-      std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
-                std::placeholders::_1),
+      &graph, std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
+                        std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
@@ -757,23 +759,22 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    
 
     Graph sgraph(flib);
     status = ModifyGraphForFunctionDef(&graph, curr_engine.segment_graph_def,
                                        &sgraph);
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to modify graph as a function "
-                   << t << ": " << status;
+      LOG(WARNING) << "Failed to modify graph as a function " << t << ": "
+                   << status;
       continue;
     }
     FunctionDefLibrary fdeflib;
-    status = RegisterModifiedGraphToFunctionLibrary(&sgraph, &graph,
-        fdeflib, curr_engine.engine_name);
-    
+    status = RegisterModifiedGraphToFunctionLibrary(&sgraph, &graph, fdeflib,
+                                                    curr_engine.engine_name);
+
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef as a function "
-                   << t << ": " << status;
+      LOG(WARNING) << "Failed to register segment graphdef as a function " << t
+                   << ": " << status;
       continue;
     }
 
