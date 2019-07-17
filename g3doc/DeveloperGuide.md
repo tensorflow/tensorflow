@@ -19,3 +19,7 @@ options in general. Options that are specific to a pass should also be prefixed
 with the pass name. For example, the affine dialect provides a loop tiling pass
 that is registered on the command line as `-affine-tile`, and with a tile size
 option that can be set with `-affine-tile-size`.
+
+## Testing guidelines
+
+See here for the [testing guide](TestingGuide.md).
