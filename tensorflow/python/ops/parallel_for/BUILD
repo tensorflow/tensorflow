@@ -134,7 +134,6 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda",
-        "no_rocm",
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",

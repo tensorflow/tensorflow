@@ -68,9 +68,8 @@ cuda_py_test(
         "notsan",  # forge input size exceeded
         # Temporarily disable the test, because both Cuda and ROCm are failing due to infrastructure
         # related reasons (Not enough memory to allocatea), causing variable uninitialized
-        "no_rocm",
+	# update : test is now passing on ROCm
         "no_cuda",
-        "no_pip",  # b/131697937
     ],
     xla_enable_strict_auto_jit = True,
 )
