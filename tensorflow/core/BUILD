@@ -3497,6 +3497,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core/profiler/internal:profiler_interface",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
