@@ -539,8 +539,8 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // Controls whether the (de)serialization method is generated automatically or
   // not. This results in generation of the following methods:
   //
-  // template<typename OpTy> Serialization::processOp(OpTy op)
-  // template<typename OpTy> Deserialization::processOp(ArrayRef<uint32_t>)
+  // template<typename OpTy> Serializer::processOp(OpTy op)
+  // template<typename OpTy> Deserializer::processOp(ArrayRef<uint32_t>)
   //
   // If the auto generation is disabled (set to 0), then manual implementation
   // of a specialization of these methods is required.
