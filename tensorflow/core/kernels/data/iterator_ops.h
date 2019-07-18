@@ -18,15 +18,89 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 namespace data {
 
-class IteratorResource;
+class IteratorResource : public ResourceBase {
+ public:
+  IteratorResource(Env* env, const DataTypeVector& output_dtypes,
+                   const std::vector<PartialTensorShape>& output_shapes,
+                   const int /*unused: graph_def_version*/,
+                   std::unique_ptr<DeviceMgr> device_mgr,
+                   std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                   FunctionLibraryRuntime* flr)
+      : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+        device_mgr_(std::move(device_mgr)),
+        iterator_state_(std::make_shared<State>(
+            std::move(flib_def), std::move(pflr), flr, nullptr /* iterator */)),
+        output_dtypes_(output_dtypes),
+        output_shapes_(output_shapes) {}
+
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence);
+
+  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence);
+
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
+
+  Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
+
+  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
+
+  string DebugString() const override { return "Iterator resource"; }
+
+  const DataTypeVector& output_dtypes() const { return output_dtypes_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const {
+    return output_shapes_;
+  }
+
+ private:
+  struct State {
+    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
+          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
+          FunctionLibraryRuntime* flr, std::unique_ptr<IteratorBase> iterator)
+        : flib_def(flib_def),
+          flr(flr),
+          pflr(pflr),
+          function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
+          iterator(std::move(iterator)) {}
+
+    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
+          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
+          FunctionLibraryRuntime* flr,
+          std::unique_ptr<FunctionHandleCache> function_handle_cache,
+          std::unique_ptr<IteratorBase> iterator)
+        : flib_def(flib_def),
+          flr(flr),
+          pflr(pflr),
+          function_handle_cache(std::move(function_handle_cache)),
+          iterator(std::move(iterator)) {}
+
+    std::shared_ptr<FunctionLibraryDefinition> flib_def;
+    FunctionLibraryRuntime* flr = nullptr;  // not owned.
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache;
+    ResourceMgr resource_mgr;
+    std::unique_ptr<IteratorBase> iterator;
+  };
+
+  UnboundedThreadPool unbounded_thread_pool_;
+  mutex mu_;
+  const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
+  std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
+  const DataTypeVector output_dtypes_;
+  const std::vector<PartialTensorShape> output_shapes_;
+};
 
 class IteratorHandleOp : public OpKernel {
  public:
