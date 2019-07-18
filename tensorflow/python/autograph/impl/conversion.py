@@ -129,6 +129,7 @@ _CACHE_LOCK = threading.RLock()
 
 
 _CACHE = _ConversionCache()
+_UNCONVERTED_CACHE = _ConversionCache()
 
 
 # Note: strictly speaking, a simple factory might have been sufficient for
@@ -412,6 +413,22 @@ def is_whitelisted_for_graph(o, check_call_override=True):
 
   logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
+
+
+def check_cached_unconverted(entity, options):
+  try:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
+    return _UNCONVERTED_CACHE.has(entity, options)
+  except TypeError:
+    return False
+
+
+def cache_unconverted(entity, options):
+  try:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
+    _UNCONVERTED_CACHE[entity][options] = True
+  except TypeError:
+    pass
 
 
 # TODO(mdan): Rename to convert_*_node to avoid confusion with convert.
