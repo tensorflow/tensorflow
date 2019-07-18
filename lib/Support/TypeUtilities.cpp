@@ -45,6 +45,12 @@ Type mlir::getElementTypeOrSelf(Attribute attr) {
   return getElementTypeOrSelf(attr.getType());
 }
 
+SmallVector<Type, 10> mlir::getFlattenedTypes(TupleType t) {
+  SmallVector<Type, 10> fTypes;
+  t.getFlattenedTypes(fTypes);
+  return fTypes;
+}
+
 OperandElementTypeIterator::OperandElementTypeIterator(OperandIterator it)
     : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {}
 

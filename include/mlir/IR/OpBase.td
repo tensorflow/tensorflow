@@ -447,14 +447,7 @@ class TupleOf<list<Type> allowedTypes>
 // types.
 class NestedTupleOf<list<Type> allowedTypes> :
     MixedContainerType<AnyTypeOf<allowedTypes>, IsTupleTypePred,
-                       // TODO(b/133502599) Make it possible to use a C++ helper
-                       [{
-                         [&](){
-                           SmallVector<Type, 10> fTypes;
-                           $_self.cast<TupleType>().getFlattenedTypes(fTypes);
-                           return fTypes;
-                         }()
-                       }],
+                       "getFlattenedTypes($_self.cast<TupleType>())",
                        "nested tuple">;
 
 //===----------------------------------------------------------------------===//

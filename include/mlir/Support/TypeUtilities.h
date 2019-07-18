@@ -28,6 +28,7 @@
 namespace mlir {
 
 class Attribute;
+class TupleType;
 class Type;
 class Value;
 
@@ -42,6 +43,10 @@ Type getElementTypeOrSelf(Type type);
 Type getElementTypeOrSelf(Attribute attr);
 Type getElementTypeOrSelf(Value *val);
 Type getElementTypeOrSelf(Value &val);
+
+/// Get the types within a nested Tuple. A helper for the class method that
+/// handles storage concerns, which is tricky to do in tablegen.
+SmallVector<Type, 10> getFlattenedTypes(TupleType t);
 
 //===----------------------------------------------------------------------===//
 // Utility Iterators
