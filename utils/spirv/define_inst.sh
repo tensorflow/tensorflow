@@ -32,5 +32,5 @@ current_file="$(readlink -f "$0")"
 current_dir="$(dirname "$current_file")"
 
 python3 ${current_dir}/gen_spirv_dialect.py \
-  --op-td-path ${current_dir}/../../include/mlir/SPIRV/SPIRVOps.td \
+  --op-td-path ${current_dir}/../../include/mlir/Dialect/SPIRV/SPIRVOps.td \
   --new-inst "${new_op}"
