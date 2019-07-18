@@ -157,11 +157,10 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
 };
 
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
-#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
-#endif
 
 #if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
 void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                             const void* src_ptr2, const void* src_ptr3,
                             int src_inc0, int src_inc1, int src_inc2,
@@ -318,9 +317,7 @@ struct PackImpl<Path::kNeonDotprod, FixedKernelLayout<Order::kColMajor, 4, 8>,
     }
   }
 };
-#endif  // (RUY_PLATFORM(NEON_64)&& RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
                              const float* src_ptr2, const float* src_ptr3,
                              int src_inc0, int src_inc1, int src_inc2,
@@ -331,17 +328,6 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
                           int src_inc0, int src_inc1, int src_inc2,
                           int src_inc3, int src_rows, int src_zero_point,
                           float* packed_ptr, int start_col, int end_col);
-
-#elif RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
-void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
-                             const float* src_ptr2, const float* src_ptr3,
-                             int src_inc, int src_rows, int src_zero_point,
-                             float* packed_ptr, int start_col, int end_col,
-                             int stride);
-#endif  // (RUY_PLATFORM(NEON_64)&& RUY_OPT_ENABLED(RUY_OPT_ASM)
-
-#if (RUY_PLATFORM(NEON_32) || RUY_PLATFORM(NEON_64)) && \
-    RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 template <>
 struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
@@ -384,7 +370,6 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
       float* packed_ptr = packed_matrix->data +
                           packed_matrix->layout.stride * (block_col & ~7) +
                           ((block_col & 4));
-#if RUY_PLATFORM(NEON_64)
       if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
         PackFloatNeonInOrder(src_ptr0, src_ptr1, src_ptr2, src_ptr3, src_inc0,
                              src_inc1, src_inc2, src_inc3,
@@ -396,88 +381,11 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
                                 src_matrix.layout.rows, src_matrix.zero_point,
                                 packed_ptr, start_col, end_col);
       }
-#else
-      // Encode each of src_inc0, ..., src_inc3 in lowest 4 bits of src_inc
-      // to save on registers (we have fewer general purpose registers in
-      // 32-bit ARM than in 64-bit ARM). For the 64-bit case, we pass four
-      // values that are each either 16 or 0 and use them directly. For the
-      // 32-bit case, bits 0, 1, 2, and 3 are used to determine if we should
-      // use the value 16 (bit is set) or 0 (bit is not set) for the
-      // respective increment value.
-      std::int64_t src_inc = 0;
-      src_inc += src_inc0 == 16 ? 1 : 0;
-      src_inc += src_inc1 == 16 ? 2 : 0;
-      src_inc += src_inc2 == 16 ? 4 : 0;
-      src_inc += src_inc3 == 16 ? 8 : 0;
-      const int kOutputStride = 32;
-      PackFloatNeonOutOfOrder(src_ptr0, src_ptr1, src_ptr2, src_ptr3, src_inc,
-                              src_matrix.layout.rows, src_matrix.zero_point,
-                              packed_ptr, start_col, end_col, kOutputStride);
-#endif  // RUY_PLATFORM(NEON_64)
     }
   }
 };
 
-#if RUY_PLATFORM(NEON_32)
-// The 32-bit float kernel is 8 rows X 4 columns, so we need an additional
-// specialization for a FixedKernelLayout with 4 columns.
-template <>
-struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 4>, float,
-                float, float> {
-  static void Run(Tuning tuning, const Matrix<float>& src_matrix,
-                  PackedMatrix<float>* packed_matrix, int start_col,
-                  int end_col) {
-    RUY_DCHECK(IsColMajor(src_matrix.layout));
-    RUY_DCHECK(IsColMajor(packed_matrix->layout));
-    RUY_DCHECK_EQ(start_col % 4, 0);
-    const float zerobuf[4] = {0};
-    for (int block_col = start_col; block_col < end_col; block_col += 4) {
-      int src_stride = src_matrix.layout.stride;
-      const float* src_ptr0 = src_matrix.data.get() + src_stride * block_col;
-      const float* src_ptr1 = src_ptr0 + src_stride;
-      const float* src_ptr2 = src_ptr1 + src_stride;
-      const float* src_ptr3 = src_ptr2 + src_stride;
-      std::int64_t src_inc0 = 16;
-      std::int64_t src_inc1 = 16;
-      std::int64_t src_inc2 = 16;
-      std::int64_t src_inc3 = 16;
-      if (block_col >= src_matrix.layout.cols - 3) {
-        if (block_col >= src_matrix.layout.cols - 0) {
-          src_ptr0 = zerobuf;
-          src_inc0 = 0;
-        }
-        if (block_col >= src_matrix.layout.cols - 1) {
-          src_ptr1 = zerobuf;
-          src_inc1 = 0;
-        }
-        if (block_col >= src_matrix.layout.cols - 2) {
-          src_ptr2 = zerobuf;
-          src_inc2 = 0;
-        }
-        if (block_col >= src_matrix.layout.cols - 3) {
-          src_ptr3 = zerobuf;
-          src_inc3 = 0;
-        }
-      }
-      float* packed_ptr =
-          packed_matrix->data + packed_matrix->layout.stride * (block_col);
-      // Encode each of src_inc0, ..., src_inc1 in lowest 4 bits of scrc_inc
-      // to save registers.
-      std::int64_t src_inc = 0;
-      src_inc += src_inc0 == 16 ? 1 : 0;
-      src_inc += src_inc1 == 16 ? 2 : 0;
-      src_inc += src_inc2 == 16 ? 4 : 0;
-      src_inc += src_inc3 == 16 ? 8 : 0;
-      const int kOutputStride = 16;
-      PackFloatNeonOutOfOrder(src_ptr0, src_ptr1, src_ptr2, src_ptr3, src_inc,
-                              src_matrix.layout.rows, src_matrix.zero_point,
-                              packed_ptr, start_col, end_col, kOutputStride);
-    }
-  }
-};
-#endif  // (RUY_PLATFORM(NEON_32))
-#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
-        // RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 // Main entry point for packing.
 template <Path ThePath, typename FixedKernelLayout, typename Scalar,
