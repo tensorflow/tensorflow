@@ -41,9 +41,11 @@ namespace xla {
 //
 // Anyway this is relatively safe as-is because hlo_evaluator_typed_visitor.h is
 // a "private" header that's not exposed outside of hlo_evaluator.cc.
+//
+// Not using an alias template to work around MSVC 14.00 bug.
 template <typename T>
-using is_complex_t =
-    absl::disjunction<std::is_same<T, complex64>, std::is_same<T, complex128>>;
+struct is_complex_t : absl::disjunction<std::is_same<T, complex64>,
+                                        std::is_same<T, complex128>> {};
 
 // ToArithmeticSafeType(T t):
 //  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
