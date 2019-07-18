@@ -101,7 +101,6 @@ py_test(
     tags = [
         "no_windows",
         "no_cuda",
-        "no_rocm",
     ],
     deps = [
         ":lite",

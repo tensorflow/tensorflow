@@ -102,7 +102,6 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
     ],
     tags = [
-        "no_rocm",
         "no_cuda",
     ],
 )

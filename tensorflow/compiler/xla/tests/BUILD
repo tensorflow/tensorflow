@@ -756,7 +756,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -789,7 +788,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -854,7 +852,6 @@ xla_test(
     shard_count = 20,
     tags = [
 	"optonly",
-	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -1179,7 +1176,6 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
-    tags = ["no_rocm"],
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
@@ -2043,7 +2039,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_cc_test(

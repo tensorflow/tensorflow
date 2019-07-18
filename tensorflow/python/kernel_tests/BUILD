@@ -135,7 +135,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1278,7 +1277,6 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1387,7 +1385,6 @@ tf_py_test(
     ],
     tags = [
         "no_cuda", # fails on CUDA, do not upstream tag
-        "no_rocm",
     ],
 )
 
@@ -2787,7 +2784,6 @@ cuda_py_test(
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3512,9 +3508,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
     xla_enable_strict_auto_jit = True,
 )
 

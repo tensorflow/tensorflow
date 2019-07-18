@@ -239,7 +239,6 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -645,7 +644,6 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     tags = [
-        "no_rocm",
         "no_cuda",
     ],
     additional_deps = [

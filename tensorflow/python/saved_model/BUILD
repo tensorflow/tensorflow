@@ -328,7 +328,6 @@ tf_py_test(
         "//tensorflow/python/eager:test",
     ],
     tags = [
-        "no_rocm",
         "no_cuda",
     ],
 )
