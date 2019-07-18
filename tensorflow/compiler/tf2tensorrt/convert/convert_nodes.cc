@@ -1510,27 +1510,24 @@ void Converter::MaybeApplyQuantizationRanges() {
   // Conv+Activation(Clip or Relu) are fused.
   std::set<nvinfer1::ITensor*> fused_tensors;
   typedef std::function<bool(const nvinfer1::ILayer*)> matcher;
-   const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
-       {"Fused Conv+Bias+Activation",
-        {
+  const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
+      {"Fused Conv+Bias+Activation",
+       {
            IsConvolution,
            IsScale,
            IsClipOrRelu,
-           IsConvolution, IsScale, IsClipOrRelu,
-        }},
-       {"Fused Conv+Bias",
-        {
+       }},
+      {"Fused Conv+Bias",
+       {
            IsConvolution,
            IsScale,
-           IsConvolution, IsScale,
-        }},
-       {"Fused Conv+Activation",
-        {
+       }},
+      {"Fused Conv+Activation",
+       {
            IsConvolution,
            IsClipOrRelu,
-           IsConvolution, IsClipOrRelu,
-        }},
-   };
+       }},
+  };
   for (int i = 0; i < this->network()->getNbLayers(); i++) {
     for (const auto& pattern : fused_patterns) {
       size_t last_matcher = pattern.second.size() - 1;

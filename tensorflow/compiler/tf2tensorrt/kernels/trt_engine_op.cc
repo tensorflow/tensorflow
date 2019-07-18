@@ -301,12 +301,13 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   core::ScopedUnref unref_cache_res(cache_res);
   TRTCalibrationResource* calib_res = nullptr;
   OP_REQUIRES_OK_ASYNC(
-      ctx, ctx->resource_manager()->LookupOrCreate(
-               std::string(kCalibrationContainerName), name(),
-               reinterpret_cast<TRTCalibrationResource**>(&calib_res),
-               {[ctx, this](TRTCalibrationResource** cr) -> Status {
-                 return this->AllocateCalibrationResources(ctx, cr);
-               }}),
+      ctx,
+      ctx->resource_manager()->LookupOrCreate(
+          std::string(kCalibrationContainerName), name(),
+          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
+          {[ctx, cache_res, this](TRTCalibrationResource** cr) -> Status {
+            return this->AllocateCalibrationResources(ctx, cache_res, cr);
+          }}),
       *helper);
   core::ScopedUnref calib_sc(calib_res);
   int num_inputs = ctx->num_inputs();
