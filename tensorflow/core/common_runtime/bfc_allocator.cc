@@ -297,10 +297,10 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
   VLOG(WARNING) << "Re-allocate memory regions (i.e., allocations) to avoid OOM"
                 << " due to memory fragmentation. If you see this message"
                 << " frequently, you are running near the threshold of the"
-                << " available device memory and it can incur great performance"
-                << " overhead. You may try smaller batch sizes to observe the"
-                << " performance impact. Alternatively you may try setting"
-                << " `allow_growth=false` in GPUOptions.";
+                << " available device memory and re-allocation can incur great"
+                << " performance overhead. You may try smaller batch sizes to"
+                << " observe the performance impact. Alternatively you may try"
+                << " setting `allow_growth=false` in GPUOptions.";
 
   // Deallocate free regions.
   DeallocateRegions(free_region_ptrs);
