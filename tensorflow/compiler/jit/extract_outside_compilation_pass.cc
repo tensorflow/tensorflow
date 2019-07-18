@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -38,6 +39,15 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// Control return mapping function for outside compilation host graphs.
+// All nodes with kXlaHasHostTransfer attribute are control outputs.
+absl::optional<string> HostGraphControlRetMapping(const Node* n) {
+  if (HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
+    return n->name();
+  }
+  return absl::nullopt;
+}
 
 // Add a key placeholder node to the graph. The key placeholder node will be
 // used as input for XlaRecvAtHost/XlaSendFromHost nodes.
@@ -105,7 +115,7 @@ xla::StatusOr<Node*> BuildRecvAtHostNode(
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   recv_at_host_builder.Attr("device_ordinal", device_ordinal_value);
   recv_at_host_builder.Attr(
       "key", absl::StrCat("host_compute_channel_", oc_cluster_name));
@@ -207,7 +217,7 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   send_from_host_builder.Attr("device_ordinal", device_ordinal_value);
   send_from_host_builder.Attr(
       "key", absl::StrCat("host_compute_channel_", oc_cluster_name));
@@ -406,12 +416,12 @@ xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
   return host_compute_node;
 }
 
-// Resets "device_ordinal" attr to placeholder value for related nodes
+// Resets "_device_ordinal" attr to placeholder value for related nodes
 // (XlaRecvAtHost nodes; XlaSendFromHost nodes; If/While/FuncCall nodes
 // containing XlaRecvAtHost/XlaSendFromHost).
 Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   for (Node* n : g->nodes()) {
     if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
       continue;
@@ -426,7 +436,7 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
            std::vector<string>{"then_branch", "else_branch"}) {
         NameAttrList branch_func;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
-        (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+        (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
       }
@@ -434,14 +444,14 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
       for (const string& attr_name : std::vector<string>{"cond", "body"}) {
         NameAttrList branch_func;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
-        (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+        (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
       }
-    } else if (HasNodeAttr(n->def(), "device_ordinal")) {
+    } else if (HasNodeAttr(n->def(), "_device_ordinal")) {
       // Function call node containing outside compilation.
-      n->ClearAttr("device_ordinal");
-      n->AddAttr("device_ordinal", device_ordinal_value);
+      n->ClearAttr("_device_ordinal");
+      n->AddAttr("_device_ordinal", device_ordinal_value);
     } else {
       return errors::Internal("Unknown node marked with ",
                               kXlaHasHostTransferAttrName, ": ",
@@ -639,9 +649,9 @@ Status PostprocessLiftedArgsForWhile(
   }
 
   FunctionDef rewritten_body_function_def;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*body_function_body->graph,
-                                        body_func.name(),
-                                        &rewritten_body_function_def));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *body_function_body->graph, body_func.name(), HostGraphControlRetMapping,
+      &rewritten_body_function_def));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(body_func.name(), rewritten_body_function_def));
 
@@ -663,9 +673,9 @@ Status PostprocessLiftedArgsForWhile(
   }
 
   FunctionDef rewritten_cond_function_def;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*cond_function_body->graph,
-                                        cond_func.name(),
-                                        &rewritten_cond_function_def));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *cond_function_body->graph, cond_func.name(), HostGraphControlRetMapping,
+      &rewritten_cond_function_def));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(cond_func.name(), rewritten_cond_function_def));
 
@@ -749,14 +759,14 @@ Status ConstructHostGraph(
   // c) Clear node_def.device(), so device placer won't get confused.
   for (const string& host_func : outside_compilation_host_graphs) {
     VLOG(4) << "Expanding host graph " << host_func;
-    // Temporarily use "0" as "device_ordinal". It will be reset to placeholder
+    // Temporarily use "0" as "_device_ordinal". It will be reset to placeholder
     // value after we expanded all host graphs. We cannot just use placeholder
     // value here because FunctionDef instantiation does not allow placeholder
     // value for attributes.
     AttrValue device_ordinal_attr;
     device_ordinal_attr.set_i(0);
     protobuf::Map<string, AttrValue> attrs;
-    attrs["device_ordinal"] = device_ordinal_attr;
+    attrs["_device_ordinal"] = device_ordinal_attr;
     std::unique_ptr<FunctionBody> host_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
         *fld->Find(host_func), AttrSlice(&attrs), fld, &host_fbody));
@@ -821,7 +831,7 @@ Status ConstructHostGraph(
       return s;
     }
   }
-  // Reset "device_ordinal" to placeholder value.
+  // Reset "_device_ordinal" to placeholder value.
   TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(host_graph->get()));
 
   // sequencer and key_placeholder might be dead nodes. Prune them if necessary.
@@ -860,14 +870,14 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
                                     const string& host_graph_func_name,
                                     Node* xla_computation_node,
                                     Node* pivot_node) {
-  // Temporarily use "0" as "device_ordinal". It will be rewritten with the
+  // Temporarily use "0" as "_device_ordinal". It will be rewritten with the
   // correct value in a later pass. We cannot just use placeholder value here
   // because FunctionDef instantiation does not allow placeholder value for
   // attributes.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(host_graph_func_name),
                                              AttrSlice(&attrs), fld, &fbody));
@@ -939,11 +949,11 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
 Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                                   Graph* host_graph, Node* pivot_node,
                                   FunctionLibraryDefinition* fld) {
-  // Use "0" as "device_ordinal". It does not matter for shape inference.
+  // Use "0" as "_device_ordinal". It does not matter for shape inference.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld, &fbody));
@@ -1077,12 +1087,12 @@ xla::StatusOr<Node*> BuildSendIfPredNode(const string& name,
 Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
                                         const string& func_name,
                                         FunctionLibraryDefinition* fld) {
-  // Temporarily use "0" as "device_ordinal". It will be reset to placeholder
+  // Temporarily use "0" as "_device_ordinal". It will be reset to placeholder
   // value after rewriting.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(func_name),
                                              AttrSlice(&attrs), fld, &fbody));
@@ -1109,11 +1119,12 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
   TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
   TF_RETURN_IF_ERROR(ReplaceNode(g, key_placeholder, arg_def).status());
 
-  // Reset "device_ordinal" to placeholder value.
+  // Reset "_device_ordinal" to placeholder value.
   TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(g));
 
   FunctionDef replace_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*g, func_name, &replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *g, func_name, HostGraphControlRetMapping, &replace_fdef));
   TF_RETURN_IF_ERROR(fld->ReplaceFunction(func_name, replace_fdef));
   return Status::OK();
 }
@@ -1131,7 +1142,7 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   Graph host_graph(fld);
   string outside_compilation_name = absl::StrCat("oc_if_", if_node_name);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
 
   // Step 1: add key placeholder node.
   TF_ASSIGN_OR_RETURN(
@@ -1170,9 +1181,9 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   if_builder.Attr("Tout", std::vector<DataType>{});
   NameAttrList host_then_branch, host_else_branch;
   host_then_branch.set_name(then_branch_host_func_name);
-  (*host_then_branch.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  (*host_then_branch.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   host_else_branch.set_name(else_branch_host_func_name);
-  (*host_else_branch.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  (*host_else_branch.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   if_builder.Attr("then_branch", host_then_branch);
   if_builder.Attr("else_branch", host_else_branch);
   if_builder.Attr(kXlaHasHostTransferAttrName, true);
@@ -1189,7 +1200,7 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   host_graph.AddEdge(recv_pred_node, 0, if_node, 0);
   host_graph.AddEdge(key_placeholder, 0, if_node, 1);
 
-  // Convert `host_graph` to function, and add a "device_ordinal" attr.
+  // Convert `host_graph` to function.
   FunctionDef oc_host_graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(host_graph, host_graph_func_name,
                                         &oc_host_graph_fdef));
@@ -1275,7 +1286,7 @@ Status RewriteHostWhileLoopCond(
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_temp_value;
+  attrs["_device_ordinal"] = device_ordinal_temp_value;
   std::unique_ptr<FunctionBody> cond_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld, &cond_fbody));
@@ -1293,18 +1304,17 @@ Status RewriteHostWhileLoopCond(
   }
 
   // Add an XlaRecvAtHost node to use as cond function return value.
-  // We don't need to set kXlaHasHostTransferAttrName for this node, because
-  // it's already added for the "While" node on the host.
   NodeDefBuilder recv_pred_builder(
       absl::StrCat("recv_oc_while_cond_", while_node_name), "_XlaRecvAtHost");
   recv_pred_builder.Attr("Toutputs", std::vector<DataType>{DT_BOOL});
   recv_pred_builder.Attr("key", host_transfer_key);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   recv_pred_builder.Attr("device_ordinal", device_ordinal_value);
   recv_pred_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   recv_pred_builder.Attr(outside_compilation_attr_name,
                          outside_compilation_name);
+  recv_pred_builder.Attr(kXlaHasHostTransferAttrName, true);
   recv_pred_builder.Input(key_arg->name(), 0, DT_STRING);
   NodeDef recv_pred_def;
   TF_RETURN_IF_ERROR(recv_pred_builder.Finalize(&recv_pred_def));
@@ -1328,8 +1338,9 @@ Status RewriteHostWhileLoopCond(
 
   // Replace original function.
   FunctionDef cond_replace_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*cond_graph, cond_host_func_name, &cond_replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*cond_graph, cond_host_func_name,
+                                        HostGraphControlRetMapping,
+                                        &cond_replace_fdef));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(cond_host_func_name, cond_replace_fdef));
 
@@ -1350,7 +1361,7 @@ Status RewriteHostWhileLoopBody(
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_temp_value;
+  attrs["_device_ordinal"] = device_ordinal_temp_value;
   std::unique_ptr<FunctionBody> body_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(body_host_func_name), AttrSlice(&attrs), fld, &body_fbody));
@@ -1385,8 +1396,9 @@ Status RewriteHostWhileLoopBody(
 
   // Replace original function.
   FunctionDef body_replace_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*body_graph, body_host_func_name, &body_replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*body_graph, body_host_func_name,
+                                        HostGraphControlRetMapping,
+                                        &body_replace_fdef));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(body_host_func_name, body_replace_fdef));
 
@@ -1426,8 +1438,8 @@ Status BuildHostGraphForWhileNode(
   while_builder.Attr("T", std::vector<DataType>{DT_STRING});
   NameAttrList func;
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
-  (*func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  device_ordinal_value.set_placeholder("_device_ordinal");
+  (*func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   func.set_name(cond_host_func_name);
   while_builder.Attr("cond", func);
   func.set_name(body_host_func_name);
@@ -1435,6 +1447,9 @@ Status BuildHostGraphForWhileNode(
   while_builder.Attr(kXlaHasHostTransferAttrName, true);
   while_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   while_builder.Attr(outside_compilation_attr_name, outside_compilation_name);
+  // Make sure loop body of i-th iteration happens before loop cond of (i+1)-th
+  // iteration.
+  while_builder.Attr("parallel_iterations", 1);
   std::vector<NodeDefBuilder::NodeOut> while_inputs{
       {key_placeholder->name(), 0, DT_STRING}};
   while_builder.Input(while_inputs);
@@ -1460,14 +1475,14 @@ Status BuildHostGraphForWhileNode(
 }
 
 // Builds host graph for func call nodes.
-Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
-                                     const string& xla_cluster_name,
-                                     const string& func_call_host_func_name,
-                                     const string& host_graph_func_name,
-                                     FunctionLibraryDefinition* fld) {
+Status BuildHostGraphForFuncCallNode(
+    const string& xla_cluster_attr_name, const string& xla_cluster_name,
+    const string& outside_compilation_attr_name,
+    const string& func_call_node_name, const string& func_call_host_func_name,
+    const string& host_graph_func_name, FunctionLibraryDefinition* fld) {
   Graph host_graph(fld);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
 
   // Step 1: add key placeholder node.
   TF_ASSIGN_OR_RETURN(
@@ -1484,8 +1499,14 @@ Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
   NodeDefBuilder call_builder(absl::StrCat("oc_call_", func_call_node_name),
                               func_call_host_func_name, fld);
   call_builder.Input(key_placeholder->name(), 0, DT_STRING);
-  call_builder.Attr("device_ordinal", device_ordinal_value);
+  call_builder.Attr("_device_ordinal", device_ordinal_value);
   call_builder.Attr(kXlaHasHostTransferAttrName, true);
+  call_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
+  call_builder.Attr(outside_compilation_attr_name, call_builder.node_name());
+  // Make sure control outputs of this function call node will be respected when
+  // this node is lowered.
+  call_builder.Attr(LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr,
+                    true);
   NodeDef call_def;
   TF_RETURN_IF_ERROR(call_builder.Finalize(&call_def));
   Status s;
@@ -1493,9 +1514,10 @@ Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
   TF_RETURN_IF_ERROR(s);
   host_graph.AddEdge(key_placeholder, 0, call_node, 0);
 
-  // Convert `host_graph` to function, and add a "device_ordinal" attr.
+  // Convert `host_graph` to function.
   FunctionDef oc_host_graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(host_graph, host_graph_func_name,
+                                        HostGraphControlRetMapping,
                                         &oc_host_graph_fdef));
   if (fld->Find(host_graph_func_name)) {
     TF_RETURN_IF_ERROR(
@@ -1576,9 +1598,9 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     // Build host side graph for the function call.
     string oc_host_graph_name =
         absl::StrCat("oc_func_host_graph_", replace->name());
-    TF_RETURN_IF_ERROR(
-        BuildHostGraphForFuncCallNode(replace->name(), xla_cluster_name,
-                                      host_func_name, oc_host_graph_name, fld));
+    TF_RETURN_IF_ERROR(BuildHostGraphForFuncCallNode(
+        xla_cluster_attr_name, xla_cluster_name, outside_compilation_attr_name,
+        replace->name(), host_func_name, oc_host_graph_name, fld));
 
     // Record the host graph.
     host_graphs->push_back(oc_host_graph_name);
@@ -1849,6 +1871,12 @@ Status ExtractOutsideCompilationForFunction(
   // We cannot early return here, because we might have outside compilation in
   // If/While function body.
 
+  if (VLOG_IS_ON(4)) {
+    DumpGraphToFile(
+        absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
+        *fbody->graph, fld);
+  }
+
   // Find dependencies between outside compilation clusters.
   TF_ASSIGN_OR_RETURN(auto cluster_deps,
                       OutsideCompilationClusterDependencies(
@@ -1858,11 +1886,6 @@ Status ExtractOutsideCompilationForFunction(
   // restored in `ConstructHostGraph()`.
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
       fbody->graph, outside_compilation_attr_name));
-  if (VLOG_IS_ON(4)) {
-    DumpGraphToFile(
-        absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
-        *fbody->graph, fld);
-  }
 
   // Encapsulate outside_compilation cluster into function call node.
   std::unique_ptr<Graph> graph_out;
@@ -1950,8 +1973,9 @@ Status ExtractOutsideCompilationForFunction(
       ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
                          outside_compilation_host_graphs, fld, &host_graph));
   FunctionDef host_graph_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*host_graph, host_graph_func_name, &host_graph_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*host_graph, host_graph_func_name,
+                                        HostGraphControlRetMapping,
+                                        &host_graph_fdef));
   if (fld->Find(host_graph_func_name)) {
     TF_RETURN_IF_ERROR(
         fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));

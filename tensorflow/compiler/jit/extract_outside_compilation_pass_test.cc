@@ -342,7 +342,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
       *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
@@ -422,7 +422,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
       *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
@@ -519,7 +519,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));
@@ -669,7 +669,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));
@@ -805,7 +805,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
                                         &host_fbody));
