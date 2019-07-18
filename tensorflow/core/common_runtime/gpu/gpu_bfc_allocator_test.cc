@@ -570,7 +570,6 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
   }
 
   void TestRegionDeallocation() {
-    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "unparseable", 1);
     GPUOptions options;
     options.set_allow_growth(true);
 

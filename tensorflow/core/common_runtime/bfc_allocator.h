@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -363,9 +364,12 @@ class BFCAllocator : public Allocator {
   // we can re-allocate a larger region.  The main use scenario of this function
   // is when OOM happens but we have free regions and the sum of sizes of free
   // regions and unallocated bytes is larger than the requested size, implying
-  // (external) memory fragmentation.  Returns true if deallocating any free
-  // regions; false otherwise.
+  // (external) memory fragmentation.  Returns true if any free regions are
+  // found and freed; false otherwise.
   bool DeallocateFreeRegions(size_t rounded_bytes);
+
+  // Helper function to deallocate regions.
+  void DeallocateRegions(const absl::flat_hash_set<void*>& region_ptrs);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
 #include <atomic>
-#include "absl/container/flat_hash_set.h"
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -265,7 +264,7 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
   // Searching for free regions.
   absl::flat_hash_set<void*> free_region_ptrs;
   size_t total_free_bytes = 0;
-  for (const auto& region : region_manager_.regions()) {
+  for (const AllocationRegion& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     bool any_use = false;
     while (h != kInvalidChunkHandle) {
@@ -295,16 +294,25 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
     return false;
   }
 
-  VLOG(INFO) << "Re-allocate memory regions to avoid OOM due to memory"
-             << " fragmentation. If you see this message frequently, note"
-             << " that the re-allocation may incur performance overhead despite"
-             << " better memory utilization. You may try smaller batch sizes"
-             << " to see if it can give you better performance.";
+  VLOG(WARNING) << "Re-allocate memory regions (i.e., allocations) to avoid OOM"
+                << " due to memory fragmentation. If you see this message"
+                << " frequently, you are running near the threshold of the"
+                << " available device memory and it can incur great performance"
+                << " overhead. You may try smaller batch sizes to observe the"
+                << " performance impact. Alternatively you may try setting"
+                << " `allow_growth=false` in GPUOptions.";
 
   // Deallocate free regions.
+  DeallocateRegions(free_region_ptrs);
+
+  return true;
+}
+
+void BFCAllocator::DeallocateRegions(
+    const absl::flat_hash_set<void*>& region_ptrs) {
   auto it = region_manager_.regions().begin();
   while (it != region_manager_.regions().end()) {
-    if (!free_region_ptrs.contains(it->ptr())) {
+    if (!region_ptrs.contains(it->ptr())) {
       ++it;
       continue;
     }
@@ -327,8 +335,6 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
     total_region_allocated_bytes_ -= it->memory_size();
     it = region_manager_.RemoveAllocationRegion(it);
   }
-
-  return true;
 }
 
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
