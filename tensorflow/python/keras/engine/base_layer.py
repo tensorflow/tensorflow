@@ -999,13 +999,7 @@ class Layer(module.Module):
     else:
       for symbolic_loss in symbolic_losses:
         if getattr(self, '_is_graph_network', False):
-          new_layers = base_layer_utils.create_keras_history(symbolic_loss)
-          # Losses must be keyed on inputs no matter what in order to
-          # be supported in DistributionStrategy.
-          add_loss_layer = AddLoss(unconditional=False)
-          add_loss_layer(symbolic_loss)
-          new_layers.append(add_loss_layer)
-          self._insert_layers(new_layers)
+          self._graph_network_add_loss(symbolic_loss)
         else:
           # Possible a loss was added in a Layer's `build`.
           self._losses.append(symbolic_loss)
@@ -1092,11 +1086,7 @@ class Layer(module.Module):
                          'Tensor to monitor directly.')
 
       # Insert layers into the Keras Graph Network.
-      new_layers = base_layer_utils.create_keras_history(value)
-      add_metric_layer = AddMetric(aggregation, name)
-      add_metric_layer(value)
-      new_layers.append(add_metric_layer)
-      self._insert_layers(new_layers)
+      self._graph_network_add_metric(value, aggregation, name)
 
   @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
                                'inputs')

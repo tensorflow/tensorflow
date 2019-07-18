@@ -1397,10 +1397,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(inputs, targets)
 
   @combinations.generate(
-      combinations.times(
-          all_strategy_minus_default_and_tpu_combinations() +
-          tpu_strategy_combinations(),
-          combinations.combine(cloning=[True, False])))
+      combinations.times(all_strategy_combinations_minus_default(),
+                         combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_one_dimensional(self, distribution, cloning):
     with distribution.scope():
       inp = keras.layers.Input(shape=(10,))
@@ -1464,7 +1462,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
                          1e-5)
 
   @combinations.generate(
-      combinations.times(all_strategy_minus_default_and_tpu_combinations(),
+      combinations.times(all_strategy_combinations_minus_default(),
                          combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_with_symbolic_add_loss(self, distribution,
                                                         cloning):
@@ -1636,6 +1634,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertAllClose(history.history, ds_history.history)
 
   @combinations.generate(
+      # TODO(phillypham): Why does validation_steps > 1 not work on TPUs?
       combinations.times(all_strategy_minus_default_and_tpu_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_with_add_metric_outside_call(
@@ -1680,7 +1679,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategies_minus_default_minus_tpu, mode=['eager']))
+          distribution=strategies_minus_default_minus_tpu + tpu_strategies,
+          mode=['eager']))
   def test_correctness_of_add_loss_with_merge_call(self, distribution):
     batch_size = 32
 
@@ -1743,6 +1743,111 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       for _ in range(2):
         for x in dataset:
           train_step(x)
+
+
+# Models to exercise inserting ancillary layers with add_loss and add_metric.
+def _functional_with_add_loss_and_metric(input_shape, num_classes, l1, l2):
+  inputs = keras.Input(input_shape, name='images')
+  x = keras.layers.Conv2D(32, kernel_size=5, activation='relu')(inputs)
+  x = keras.layers.MaxPooling2D(pool_size=2)(x)
+  x = keras.layers.Conv2D(64, kernel_size=5, activation='relu')(x)
+  x = keras.layers.MaxPooling2D(pool_size=2)(x)
+  # Apply L2 regularization to embedding. Use a mix of TensorFlow ops and layers
+  # to exercise all code paths.
+  x = keras.layers.Flatten(name='embedding')(x)
+  l2_loss = math_ops.reduce_mean(math_ops.reduce_sum(math_ops.square(x), -1))
+  # Apply L1 regularization to next layer.
+  x = keras.layers.Dense(1024, activation='relu', name='sparse_embedding')(x)
+  l1_loss = keras.layers.Lambda(
+      lambda x: math_ops.reduce_mean(math_ops.reduce_sum(x, -1)),
+      name='l1_loss')(
+          x)
+  outputs = keras.layers.Dense(num_classes, name='logits')(x)
+  model = keras.Model(inputs=inputs, outputs=outputs)
+  # Weight regularization terms.
+  model.add_loss(keras.layers.Lambda(lambda x: x * l2)(l2_loss))
+  model.add_metric(l2_loss, aggregation='mean', name='l2_loss')
+  model.add_loss(l1_loss * l1)
+  model.add_metric(l1_loss, aggregation='mean', name='l1_loss')
+  return model
+
+
+def _sequential_with_add_loss_and_metric(input_shape, num_classes, l1, l2):
+  model = keras.Sequential([
+      keras.layers.Conv2D(
+          32, kernel_size=5, activation='relu', input_shape=input_shape),
+      keras.layers.MaxPooling2D(pool_size=2),
+      keras.layers.Conv2D(64, kernel_size=5, activation='relu'),
+      keras.layers.MaxPooling2D(pool_size=2),
+      keras.layers.Flatten(name='embedding'),
+      keras.layers.Dense(1024, activation='relu', name='sparse_embedding'),
+      keras.layers.Dense(num_classes, name='logits'),
+  ])
+  # Extract layer outputs, add regularization terms, and rescale the metric.
+  # Use a mix of TensorFlow ops and layers to exercise all code paths.
+  x = model.get_layer('sparse_embedding').get_output_at(-1)
+  l1_loss = l1 * math_ops.reduce_mean(math_ops.reduce_sum(x, -1))
+  model.add_loss(l1_loss)
+  model.add_metric(
+      keras.layers.Lambda(lambda x: math_ops.divide(x, l1))(l1_loss),
+      aggregation='mean',
+      name='l1_loss')
+  x = model.get_layer('embedding').get_output_at(-1)
+  l2_loss = keras.layers.Lambda(
+      lambda x: l2 * math_ops.reduce_mean(math_ops.reduce_sum(x * x, -1)),
+      name='l2_loss')(
+          x)
+  model.add_loss(l2_loss)
+  model.add_metric(l2_loss / l2, aggregation='mean', name='l2_loss')
+  return model
+
+
+class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
+    test.TestCase, parameterized.TestCase):
+  """Tests complex models with multiple add loss and metric calls."""
+
+  @combinations.generate(
+      combinations.times(
+          all_strategy_combinations_minus_default(),
+          combinations.combine(
+              model_fn=[
+                  _functional_with_add_loss_and_metric,
+                  _sequential_with_add_loss_and_metric,
+              ],
+              l1=[0.01],
+              l2=[0.1])))
+  def test_fit_and_evaluate(self, distribution, model_fn, l1, l2):
+    # Make fake MNIST-like image data.
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(
+        (np.random.uniform(size=(64, 28, 28, 1)).astype(np.float32),
+         np.random.randint(0, 10, size=(64,))))
+    dataset = dataset.shuffle(64).batch(
+        8 * distribution.num_replicas_in_sync, drop_remainder=True)
+    # Make model with distribution strategy and initialize with dataset shape.
+    input_shape = dataset_ops.get_structure(dataset)[0].shape[1:]
+    with distribution.scope():
+      model = model_fn(input_shape, 10, l1, l2)
+      model.compile(
+          optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+          loss=keras.losses.SparseCategoricalCrossentropy(
+              from_logits=True,
+              reduction=loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE),
+          metrics=[
+              keras.metrics.SparseCategoricalAccuracy(),
+              keras.metrics.SparseCategoricalCrossentropy(from_logits=True),
+          ])
+    # Non-eager training doesn't support steps_per_epoch=None.
+    for unused_epoch in range(2):
+      model.fit(dataset)
+    results = dict(zip(model.metrics_names, model.evaluate(dataset)))
+    # Sanity checks.
+    self.assertBetween(results['sparse_categorical_accuracy'], 0.05, 1.)
+    self.assertGreater(results['l2_loss'], 0.)
+    self.assertGreater(results['l1_loss'], 0.)
+    # Assert correctness of the loss calculation and updating of metrics.
+    self.assertNear(
+        results['l1_loss'] * l1 + results['l2_loss'] * l2 +
+        results['sparse_categorical_crossentropy'], results['loss'], 1e-6)
 
 
 if __name__ == '__main__':

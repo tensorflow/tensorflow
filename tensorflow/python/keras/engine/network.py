@@ -1658,6 +1658,22 @@ class Network(base_layer.Layer):
   def _object_identifier(self):
     return '_tf_keras_network'
 
+  def _graph_network_add_loss(self, symbolic_loss):
+    new_layers = _diff_layers(self.inputs, [symbolic_loss], self._layers)
+    # Losses must be keyed on inputs no matter what in order to be supported in
+    # DistributionStrategy.
+    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer(symbolic_loss)
+    new_layers.append(add_loss_layer)
+    self._insert_layers(new_layers)
+
+  def _graph_network_add_metric(self, value, aggregation, name):
+    new_layers = _diff_layers(self.inputs, [value], self._layers)
+    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer(value)
+    new_layers.append(add_metric_layer)
+    self._insert_layers(new_layers)
+
 
 def _is_hdf5_filepath(filepath):
   return (filepath.endswith('.h5') or filepath.endswith('.keras') or
@@ -1850,3 +1866,20 @@ def _map_graph_network(inputs, outputs):
                        str(all_names.count(name)) + ' times in the model. '
                        'All layer names should be unique.')
   return network_nodes, nodes_by_depth, layers, layers_by_depth
+
+
+def _diff_layers(inputs, outputs, layers):
+  """Returns the layers in the network topology minus those in `layers`.
+
+  Args:
+    inputs: List of input tensors.
+    outputs: List of output tensors.
+    layers: List of layers.
+
+  Returns:
+    List of layers in the network topology not in `layers`.
+  """
+  base_layer_utils.create_keras_history(outputs)
+  # List of all layers in the topology betweeen inputs and outputs.
+  all_layers = _map_graph_network(inputs, outputs)[2]
+  return [layer for layer in all_layers if layer not in layers]
