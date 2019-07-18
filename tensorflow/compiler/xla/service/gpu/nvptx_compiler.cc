@@ -603,7 +603,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
            "Rerun with --xla_dump_to to get the IR. ";
   }
 
-  string libdevice_dir;
+  std::string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
 
@@ -626,27 +626,24 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     cc_minor = 0;
   }
 
-  string ptx;
+  std::string ptx;
 
   // Generate the PTX or load it if provided.
-  // If the xla_gpu_ptx_code options is set, be explicit when a file is used
+  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
-  string prefix = FilenameFor(*module, ptx);
-  string ptx_filename;
-  for (const string filename : module->config().debug_options().xla_gpu_ptx_code()) {
+  std::string prefix = FilenameFor(*module, ptx);
+  std::string ptx_filename;
+  for (const string filename : module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffix then
     // the original filename.
     if(absl::StartsWith(filename, prefix)) {
       ptx_filename = filename;
       VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
       break;
-    } else {
-      VLOG(0) << "RunBackend() - For module with prefix '" << prefix
-              << "', we skip PTX code file: " << filename;
     }
   }
-  if (module->config().debug_options().xla_gpu_ptx_code().size() > 0 &&
-      ptx_filename.size() == 0) {
+  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
+      ptx_filename.empty()) {
     VLOG(0) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
   }
@@ -654,7 +651,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::ifstream ifs(ptx_filename, std::ifstream::in);
     ptx = std::string(std::istreambuf_iterator<char>(ifs),
                       std::istreambuf_iterator<char>());
-    CHECK(ptx.size() > 0) << "Empty or non existing PTX file: " << ptx_filename;
+    CHECK(!ptx.empty()) << "Empty or non existing PTX file: " << ptx_filename;
   } else {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
