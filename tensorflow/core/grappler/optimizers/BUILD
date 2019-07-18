@@ -900,6 +900,7 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
+    tags = ["notsan"],  # TODO(b/137795054): re-enable after fixing race.
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",
