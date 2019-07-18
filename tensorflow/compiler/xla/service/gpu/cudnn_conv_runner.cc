@@ -136,8 +136,14 @@ Status RunCudnnConvForwardActivation(CudnnConvParams params,
   return Status::OK();
 }
 
-// Specialization for double, float, and half types.  All kinds of convolutions
-// are supported here.
+// StreamExecutor supports various data types via overloading, and the support
+// is maintained on-demand. To avoid calling into non-exist overloads, we have
+// to carefully not call into them by using enable_if.
+// TODO(timshen): Ideally, to avoid such complication in the runner, we can turn
+// StreamExecutor overloadings to template functions, and for unsupported data
+// types return runtime errors.
+// This is the specialization for double, float, and half types.  All kinds of
+// convolutions are supported here.
 template <typename ElementType, typename BiasType, typename OutputType,
           typename std::enable_if<
               !std::is_integral<ElementType>::value>::type* = nullptr>
@@ -440,19 +446,6 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                       stream, options);
 }
 
-// CuDNN Convolutions all go through and are dispatched from this function.
-// Dispatching are based on three conditions: input data type, output data type,
-// and convolution kind. Although these three conditions are independent, not
-// all combinations are supported: convolutions with float, double, and half
-// input must have the same output type and support all kinds of convolutions;
-// convolutions with int8 input allow both int8 and float output type, but only
-// support two kinds: kForward and kForwardActivation.
-//
-// This function itself dispatches convolutions for input and output data types;
-// RunCudnnConvInternalImpl later dispatches for convolution kind.
-// RunCudnnConvInternalImpl has two template specializations for floating point
-// types and for integer types, respectively, and only invoke the supported
-// convolutions.
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
