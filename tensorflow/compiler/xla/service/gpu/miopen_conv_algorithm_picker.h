@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -32,36 +33,22 @@ namespace gpu {
 // Miopen has its own logic to tune and find convolution kernels
 // Modifies CustomCalls to miopen convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class MiopenConvAlgorithmPicker : public HloModulePass {
+class MiopenConvAlgorithmPicker : public GpuConvAlgorithmPicker {
  public:
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
   MiopenConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* allocator)
-      : stream_exec_(stream_exec), allocator_(allocator) {}
+                            se::DeviceMemoryAllocator* allocator)
+      : GpuConvAlgorithmPicker(stream_exec, allocator) {}
 
   absl::string_view name() const override {
     return "miopen-conv-algorithm-picker";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  struct AutotuneResult {
-    int64 algorithm;
-    bool tensor_ops_enabled;
-    int64 scratch_bytes;
-    absl::Duration runtime;
-  };
-
-  StatusOr<bool> RunOnComputation(HloComputation* computation);
-  StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<AutotuneResult> PickBestAlgorithm(
-      const HloCustomCallInstruction* instr);
-
-  se::StreamExecutor* stream_exec_;                   // never null
-  se::DeviceMemoryAllocator* allocator_;                  // may be null
+protected:
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
+                  const HloCustomCallInstruction* instr);
 };
 
 }  // namespace gpu
