@@ -619,8 +619,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                 _fake_mirrored(mean_2 * len(devices) * num_workers, d2)
             ], sess)
 
-    return True
-
   def _get_indexed_slices(self, devices, start_i, as_per_replica=True):
     dense_shape = [10, 2]
     values = ([[1., 2.]], [[3., 4.]], [[2., 1.]], [[0., 0.]], [[3., 1.]],
@@ -682,7 +680,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       expected_result = sess.run(ops.convert_to_tensor(expected_result))
 
       self.assertAllEqual(expected_result, result)
-      return True
 
   @combinations.generate(
       combinations.combine(
