@@ -1799,6 +1799,7 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
                            const nvinfer1::DimsHW& kernel_size,
                            const nvinfer1::DimsHW& dilation,
                            const nvinfer1::DimsHW& stride,
+                           const std::vector<int64_t>& input_dims,
                            nvinfer1::ITensor* tensor,
                            std::vector<std::pair<int, int>>* padding,
                            nvinfer1::ITensor** padded_tensor) {
@@ -1806,13 +1807,6 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
     effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
     effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
-    // Dimensions of transposed tensor.
-    const auto tensor_dim = tensor->getDimensions();
-    std::vector<int64_t> input_dims;
-    // Use 1 and 2 because tensor_dim has the dimensions of the transposed
-    // input.
-    input_dims = {static_cast<int>(tensor_dim.d[1]),
-                  static_cast<int>(tensor_dim.d[2])};
     *padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
   } else {
     *padding = {{0, 0}, {0, 0}};
@@ -1930,9 +1924,25 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 // Before TRT 5.1.3, we have to calculate padding ourselves.
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   std::vector<std::pair<int, int>> padding;
+  std::vector<int64_t> input_dims;
+  if (is_conv2d_backprop_input) {
+    // For backprop, calculate padding based on "input_sizes" input, which
+    // actually corresponds to output size. ("input_sizes" makes sense in the
+    // context of Conv2DBackpropInput).
+    // We use h_index and w_index instead of 1 and 2 because we havent
+    // transposed backprop_output_size along with the input.
+    auto output_size_weights =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
+  } else {
+    // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+    // input.
+    input_dims = {static_cast<int>(tensor_dim.d[1]),
+                  static_cast<int>(tensor_dim.d[2])};
+  }
   nvinfer1::ITensor* padded_tensor = nullptr;
   TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
-                                         stride, tensor, &padding,
+                                         stride, input_dims, tensor, &padding,
                                          &padded_tensor));
   tensor = padded_tensor;
 #endif
@@ -2692,10 +2702,16 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   }
 // Before TRT 5.1.3, we have to calculate padding ourselves.
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
+  const auto tensor_dim = tensor->getDimensions();
+  std::vector<int64_t> input_dims;
+  // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+  // input.
+  input_dims = {static_cast<int>(tensor_dim.d[1]),
+                static_cast<int>(tensor_dim.d[2])};
   std::vector<std::pair<int, int>> padding;
   nvinfer1::ITensor* padded_tensor = nullptr;
   TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
-                                         stride, tensor, &padding,
+                                         stride, input_dims, tensor, &padding,
                                          &padded_tensor));
   tensor = padded_tensor;
 #endif
