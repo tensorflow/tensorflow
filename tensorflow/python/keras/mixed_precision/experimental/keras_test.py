@@ -73,7 +73,10 @@ class AssertTypeLayer(base_layer.Layer):
 class AddLayer(AssertTypeLayer):
   """A layer which adds it's input to a scalar variable."""
 
-  def __init__(self, regularizer=None, use_operator=False, var_name='v',
+  def __init__(self,
+               regularizer=None,
+               use_operator=False,
+               var_name='v',
                **kwargs):
     """Initializes the AddLayer.
 
@@ -92,8 +95,8 @@ class AddLayer(AssertTypeLayer):
     super(AddLayer, self).__init__(**kwargs)
 
   def build(self, _):
-    self.v = self.add_weight(self._var_name, (), initializer='ones',
-                             regularizer=self._regularizer)
+    self.v = self.add_weight(
+        self._var_name, (), initializer='ones', regularizer=self._regularizer)
     self.built = True
 
   def call(self, inputs):
@@ -115,9 +118,12 @@ class AddLayerWithoutAutoCast(AddLayer):
     dtype = self.dtype
     if dtype in ('float16', 'bfloat16'):
       dtype = 'float32'
-    self.v = self.add_weight('v', (), initializer='ones', dtype=dtype,
-                             experimental_autocast=False,
-                             regularizer=self._regularizer)
+    self.v = self.add_weight(
+        'v', (),
+        initializer='ones',
+        dtype=dtype,
+        experimental_autocast=False,
+        regularizer=self._regularizer)
     self.built = True
 
   def call(self, inputs):
@@ -211,8 +217,8 @@ class KerasLayerTest(keras_parameterized.TestCase):
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
         # Test on AddLayer
-        layer = AddLayer(assert_type=dtypes.float16,
-                         regularizer=IdentityRegularizer())
+        layer = AddLayer(
+            assert_type=dtypes.float16, regularizer=IdentityRegularizer())
         layer(x)
         (regularizer_loss,) = layer.losses
         self.assertEqual(regularizer_loss.dtype, dtypes.float32)
@@ -220,8 +226,8 @@ class KerasLayerTest(keras_parameterized.TestCase):
         self.assertEqual(self.evaluate(regularizer_loss), 1.)
 
         # Test on AddLayerWithoutAutoCast
-        layer = AddLayerWithoutAutoCast(assert_type=dtypes.float16,
-                                        regularizer=IdentityRegularizer())
+        layer = AddLayerWithoutAutoCast(
+            assert_type=dtypes.float16, regularizer=IdentityRegularizer())
         layer(x)
         (regularizer_loss,) = layer.losses
         self.assertEqual(regularizer_loss.dtype, dtypes.float32)
@@ -234,16 +240,16 @@ class KerasLayerTest(keras_parameterized.TestCase):
     x = constant_op.constant([1.], dtype=dtypes.float16)
     with strategy_fn().scope():
       # Passing a Policy to 'dtype' sets the policy for that layer.
-      layer = AddLayer(assert_type=dtypes.float16,
-                       dtype=policy.Policy('infer_float32_vars'))
+      layer = AddLayer(
+          assert_type=dtypes.float16, dtype=policy.Policy('infer_float32_vars'))
       # layer.dtype refers to the variable dtype
       self.assertEqual(layer.dtype, dtypes.float32)
       layer(x)
       self.assertEqual(layer.v.dtype, dtypes.float32)
       with policy.policy_scope('infer_float32_vars'):
         # Passing a Policy to dtype overrides the global Policy
-        layer = AddLayer(assert_type=dtypes.float16,
-                         dtype=policy.Policy('infer'))
+        layer = AddLayer(
+            assert_type=dtypes.float16, dtype=policy.Policy('infer'))
         # layer dtype is not yet known
         self.assertEqual(layer.dtype, None)
         layer(x)
@@ -257,6 +263,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
     with strategy_fn().scope() as strategy:
       with policy.policy_scope('infer_float32_vars'):
         layer = AddLayer(assert_type=dtypes.float16)
+
         def run_fn():
           with backprop.GradientTape() as tape:
             y = layer(x)
@@ -267,7 +274,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
           # Learning rate is small enough that if applied to a float16 variable,
           # the variable will not change. So this tests the learning rate is not
           # applied to a float16 value, but instead the float32 variable.
-          opt = gradient_descent.SGD(2 ** -14)
+          opt = gradient_descent.SGD(2**-14)
           grad = tape.gradient(y, layer.v)
           return opt.apply_gradients([(grad, layer.v)])
 
@@ -279,10 +286,11 @@ class KerasLayerTest(keras_parameterized.TestCase):
         # variable is initialized with 1 and the learning rate is 2**-14, the
         # new variable value should be: init_val - gradient * learning_rate,
         # which is  1 - 1 * 2**-14
-        self.assertEqual(self.evaluate(layer.v), 1 - 2 ** -14)
+        self.assertEqual(self.evaluate(layer.v), 1 - 2**-14)
 
-  def _test_checkpointing_layer_weights(
-      self, strategy_fn, mixed_prec_when_saving, mixed_prec_when_loading):
+  def _test_checkpointing_layer_weights(self, strategy_fn,
+                                        mixed_prec_when_saving,
+                                        mixed_prec_when_loading):
     # In this test, we potentially save with mixed precision enabled and load
     # with mixed precision disabled, or vice versa. This is possible because
     # variables are float32 regardless of whether mixed precision is enabled.
@@ -342,27 +350,31 @@ class KerasModelTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'operator',
-      'strategy_fn': create_mirrored_strategy,
-      'use_operator': True
-  }, {
-      'testcase_name': 'regularizer',
-      'strategy_fn': create_mirrored_strategy,
-      'use_regularizer': True
-  }, {
-      'testcase_name': 'nocloning',
-      'strategy_fn': create_mirrored_strategy,
-      'cloning': False
-  })
-  def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
-                 cloning=True):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'operator',
+          'strategy_fn': create_mirrored_strategy,
+          'use_operator': True
+      }, {
+          'testcase_name': 'regularizer',
+          'strategy_fn': create_mirrored_strategy,
+          'use_regularizer': True
+      }, {
+          'testcase_name': 'norun_distributed',
+          'strategy_fn': create_mirrored_strategy,
+          'run_distributed': False
+      })
+  def test_model(self,
+                 strategy_fn,
+                 use_operator=False,
+                 use_regularizer=False,
+                 run_distributed=True):
     if not self._is_strategy_supported(strategy_fn, check_model_type=True):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
@@ -373,16 +385,18 @@ class KerasModelTest(keras_parameterized.TestCase):
           # Subclassed models do not have an Input layer, so the model does not
           # cast inputs to the Input layer's dtype. Therefore, we need to
           # manually insert a float16 cast.
-          cast_f16_layer = layers.Lambda(lambda x: math_ops.cast(x, 'float16'),
-                                         input_shape=(1,))
+          cast_f16_layer = layers.Lambda(
+              lambda x: math_ops.cast(x, 'float16'), input_shape=(1,))
           layer_list.append(cast_f16_layer)
-        layer = AddLayer(assert_type=dtypes.float16, use_operator=use_operator,
-                         regularizer=regularizer, input_shape=(1,))
+        layer = AddLayer(
+            assert_type=dtypes.float16,
+            use_operator=use_operator,
+            regularizer=regularizer,
+            input_shape=(1,))
         cast_f32_layer = layers.Lambda(lambda x: math_ops.cast(x, 'float32'))
         layer_list += [layer, cast_f32_layer]
-        model = testing_utils.get_model_from_layers(layer_list,
-                                                    input_shape=(1,),
-                                                    input_dtype=dtypes.float16)
+        model = testing_utils.get_model_from_layers(
+            layer_list, input_shape=(1,), input_dtype=dtypes.float16)
 
         def loss_fn(y_true, y_pred):
           del y_true
@@ -391,11 +405,10 @@ class KerasModelTest(keras_parameterized.TestCase):
         # Learning rate is small enough that if applied to a float16 variable,
         # the variable will not change. So this tests the learning rate not
         # applied to a float16 value, but instead the float32 variable.
-        opt = gradient_descent.SGD(2 ** -14)
+        opt = gradient_descent.SGD(2**-14)
         model.compile(
             opt,
             loss=loss_fn,
-            cloning=cloning,
             run_eagerly=testing_utils.should_run_eagerly(),
             run_distributed=testing_utils.should_run_distributed())
 
@@ -405,25 +418,26 @@ class KerasModelTest(keras_parameterized.TestCase):
     model.fit(dataset)
     # Variable starts at 1, and should have gradient of 2 ** -14 subtracted
     # from it.
-    expected = 1 - 2 ** -14
+    expected = 1 - 2**-14
     if use_regularizer:
       # Regularizer adds another 2 ** -14 to the gradient.
-      expected -= 2 ** -14
+      expected -= 2**-14
     self.assertEqual(backend.eval(layer.v), expected)
 
   @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'nocloning',
-      'strategy_fn': create_mirrored_strategy,
-      'cloning': False,
-  })
-  def test_fixed_loss_scaling(self, strategy_fn, cloning=True):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'norun_distributed',
+          'strategy_fn': create_mirrored_strategy,
+          'run_distributed': False,
+      })
+  def test_fixed_loss_scaling(self, strategy_fn, run_distributed=True):
     # Note: We do not test mixed precision in this method, only loss scaling.
     if not self._is_strategy_supported(strategy_fn):
       return
@@ -452,7 +466,6 @@ class KerasModelTest(keras_parameterized.TestCase):
       model.compile(
           opt,
           loss=loss_fn,
-          cloning=cloning,
           run_eagerly=testing_utils.should_run_eagerly(),
           run_distributed=testing_utils.should_run_distributed())
 
@@ -466,17 +479,18 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(backend.eval(layer.v), expected)
 
   @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'loss_scaling',
-      'strategy_fn': create_mirrored_strategy,
-      'use_loss_scaling': True
-  })
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'loss_scaling',
+          'strategy_fn': create_mirrored_strategy,
+          'use_loss_scaling': True
+      })
   def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
     # The advanced model tests mixed-precision-related features that would occur
     # in a resnet50 model. It tests a model that has:
@@ -490,19 +504,22 @@ class KerasModelTest(keras_parameterized.TestCase):
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
-    learning_rate = 2 ** -14
+    learning_rate = 2**-14
 
     with strategy.scope():
       with policy.policy_scope(policy.Policy('infer_float32_vars')):
         x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
-        layer1 = AddLayer(assert_type=dtypes.float16,
-                          regularizer=IdentityRegularizer(), use_operator=True)
-        layer2 = AddLayerWithoutAutoCast(assert_type=dtypes.float16,
-                                         use_operator=True)
+        layer1 = AddLayer(
+            assert_type=dtypes.float16,
+            regularizer=IdentityRegularizer(),
+            use_operator=True)
+        layer2 = AddLayerWithoutAutoCast(
+            assert_type=dtypes.float16, use_operator=True)
         layer3 = AddLayer(assert_type=dtypes.float16, use_operator=False)
-        layer4 = AddLayerWithoutAutoCast(assert_type=dtypes.float16,
-                                         regularizer=IdentityRegularizer(),
-                                         use_operator=False)
+        layer4 = AddLayerWithoutAutoCast(
+            assert_type=dtypes.float16,
+            regularizer=IdentityRegularizer(),
+            use_operator=False)
         y = layer1(x)
         y = layer2(y)
         y = layer3(y)
@@ -547,20 +564,23 @@ class KerasModelTest(keras_parameterized.TestCase):
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
   @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'nocloning',
-      'strategy_fn': create_mirrored_strategy,
-      'cloning': False,
-  })
-  def test_dynamic_loss_scaling(self, strategy_fn, cloning=True):
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'norun_distributed',
+          'strategy_fn': create_mirrored_strategy,
+          'run_distributed': False,
+      })
+  def test_dynamic_loss_scaling(self, strategy_fn, run_distributed=True):
     if not self._is_strategy_supported(strategy_fn):
       return
+    if run_distributed:
+      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4
@@ -570,8 +590,8 @@ class KerasModelTest(keras_parameterized.TestCase):
     have_nan_gradients = backend.variable(False, dtype=dtypes.bool)
     with strategy.scope():
       with policy.policy_scope(policy.Policy('infer_float32_vars')):
-        x = layers.Input(shape=(1,), batch_size=batch_size,
-                         dtype=dtypes.float16)
+        x = layers.Input(
+            shape=(1,), batch_size=batch_size, dtype=dtypes.float16)
         layer = AddLayer(assert_type=dtypes.float16)
         y = layer(x)
         identity_with_nan_grads = (
@@ -597,7 +617,6 @@ class KerasModelTest(keras_parameterized.TestCase):
         model.compile(
             opt,
             loss=loss_fn,
-            cloning=cloning,
             run_eagerly=testing_utils.should_run_eagerly(),
             run_distributed=testing_utils.should_run_distributed())
 
@@ -634,21 +653,22 @@ class KerasModelTest(keras_parameterized.TestCase):
     model.fit(dataset)
     self.assertEqual(backend.eval(layer.v), -3)
 
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn,
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'base_h5',
-      'strategy_fn': default_strategy_fn,
-      'h5': True,
-  }, {
-      'testcase_name': 'distribute_h5',
-      'strategy_fn': create_mirrored_strategy,
-      'h5': True,
-  })
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn,
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'base_h5',
+          'strategy_fn': default_strategy_fn,
+          'h5': True,
+      }, {
+          'testcase_name': 'distribute_h5',
+          'strategy_fn': create_mirrored_strategy,
+          'h5': True,
+      })
   @test_util.run_in_graph_and_eager_modes
   def test_save_weights_with_autocast_vars(self, strategy_fn, h5=False):
     with strategy_fn().scope():
@@ -673,22 +693,24 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(model.get_weights(), [np.array(100.)])
 
   @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters({
-      'testcase_name': 'base',
-      'strategy_fn': default_strategy_fn,
-  }, {
-      'testcase_name': 'distribute',
-      'strategy_fn': create_mirrored_strategy,
-  }, {
-      'testcase_name': 'different_var_name',
-      'strategy_fn': default_strategy_fn,
-      'var_name': 'w'
-  }, {
-      'testcase_name': 'different_var_name_distribute',
-      'strategy_fn': create_mirrored_strategy,
-      'var_name': 'w'
-  })
-  def test_save_slot_variables_with_autocast_vars(self, strategy_fn,
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn,
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'different_var_name',
+          'strategy_fn': default_strategy_fn,
+          'var_name': 'w'
+      }, {
+          'testcase_name': 'different_var_name_distribute',
+          'strategy_fn': create_mirrored_strategy,
+          'var_name': 'w'
+      })
+  def test_save_slot_variables_with_autocast_vars(self,
+                                                  strategy_fn,
                                                   var_name='v'):
     if not self._is_strategy_supported(strategy_fn):
       return
@@ -772,23 +794,24 @@ class RnnTest(keras_parameterized.TestCase):
   """Test mixed precision with RNNs."""
 
   # TODO(b/136512020): Support and test recurrent_v2.GRU.
-  @parameterized.named_parameters({
-      'testcase_name': 'base_simple',
-      'strategy_fn': default_strategy_fn,
-      'rnn_class': recurrent.SimpleRNN,
-  }, {
-      'testcase_name': 'distribute_simple',
-      'strategy_fn': create_mirrored_strategy,
-      'rnn_class': recurrent.SimpleRNN,
-  }, {
-      'testcase_name': 'base_gru',
-      'strategy_fn': default_strategy_fn,
-      'rnn_class': recurrent.GRU,
-  }, {
-      'testcase_name': 'distribute_gru',
-      'strategy_fn': create_mirrored_strategy,
-      'rnn_class': recurrent.GRU,
-  })
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base_simple',
+          'strategy_fn': default_strategy_fn,
+          'rnn_class': recurrent.SimpleRNN,
+      }, {
+          'testcase_name': 'distribute_simple',
+          'strategy_fn': create_mirrored_strategy,
+          'rnn_class': recurrent.SimpleRNN,
+      }, {
+          'testcase_name': 'base_gru',
+          'strategy_fn': default_strategy_fn,
+          'rnn_class': recurrent.GRU,
+      }, {
+          'testcase_name': 'distribute_gru',
+          'strategy_fn': create_mirrored_strategy,
+          'rnn_class': recurrent.GRU,
+      })
   @test_util.run_in_graph_and_eager_modes
   # RNNs do not work properly with GradientTape in graph mode when V1 control
   # flow is used.
@@ -798,6 +821,7 @@ class RnnTest(keras_parameterized.TestCase):
     strategy = strategy_fn()
     with strategy.scope(), policy.policy_scope('infer_float32_vars'):
       layer = rnn_class(units=4)
+
       def run_fn():
         with backprop.GradientTape() as tape:
           y = layer(x)

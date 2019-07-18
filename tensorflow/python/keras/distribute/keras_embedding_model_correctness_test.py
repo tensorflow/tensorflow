@@ -26,21 +26,20 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 
 
 class DistributionStrategyEmbeddingModelCorrectnessTest(
-    keras_correctness_test_base.
-    TestDistributionStrategyEmbeddingModelCorrectnessBase):
+    keras_correctness_test_base
+    .TestDistributionStrategyEmbeddingModelCorrectnessBase):
 
   def get_model(self,
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                cloning=None,
+                run_distributed=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
       word_ids = keras.layers.Input(
           shape=(max_words,), dtype=np.int32, name='words')
-      word_embed = keras.layers.Embedding(input_dim=20,
-                                          output_dim=10)(word_ids)
+      word_embed = keras.layers.Embedding(input_dim=20, output_dim=10)(word_ids)
       if self.use_distributed_dense:
         word_embed = keras.layers.TimeDistributed(keras.layers.Dense(4))(
             word_embed)
@@ -57,38 +56,38 @@ class DistributionStrategyEmbeddingModelCorrectnessTest(
           optimizer=gradient_descent_keras.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'],
-          cloning=cloning)
+          run_distributed=run_distributed)
     return model
 
-  @combinations.generate(keras_correctness_test_base.
-                         test_combinations_for_embedding_model())
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_embedding_model_correctness(self, distribution, use_numpy,
-                                       use_validation_data, cloning):
+                                       use_validation_data, run_distributed):
 
     self.use_distributed_dense = False
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              cloning)
+                              run_distributed)
 
-  @combinations.generate(keras_correctness_test_base.
-                         test_combinations_for_embedding_model())
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_embedding_time_distributed_model_correctness(self, distribution,
                                                         use_numpy,
                                                         use_validation_data,
-                                                        cloning):
+                                                        run_distributed):
     self.use_distributed_dense = True
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              cloning)
+                              run_distributed)
 
 
 class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
-    keras_correctness_test_base.
-    TestDistributionStrategyEmbeddingModelCorrectnessBase):
+    keras_correctness_test_base
+    .TestDistributionStrategyEmbeddingModelCorrectnessBase):
 
   def get_model(self,
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                cloning=None,
+                run_distributed=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -122,7 +121,7 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
       model.compile(
           optimizer=gradient_descent_keras.SGD(learning_rate=0.1),
           loss='mse',
-          cloning=cloning,
+          run_distributed=run_distributed,
           metrics=['mse'])
     return model
 
@@ -133,15 +132,15 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
                max_words=10,
                max_word_id=19,
                num_classes=2):
-    features_a, labels_a, _ = (super(
-        DistributionStrategySiameseEmbeddingModelCorrectnessTest, self).
-                               get_data(count, min_words, max_words,
-                                        max_word_id, num_classes))
+    features_a, labels_a, _ = (
+        super(DistributionStrategySiameseEmbeddingModelCorrectnessTest,
+              self).get_data(count, min_words, max_words, max_word_id,
+                             num_classes))
 
-    features_b, labels_b, _ = (super(
-        DistributionStrategySiameseEmbeddingModelCorrectnessTest, self).
-                               get_data(count, min_words, max_words,
-                                        max_word_id, num_classes))
+    features_b, labels_b, _ = (
+        super(DistributionStrategySiameseEmbeddingModelCorrectnessTest,
+              self).get_data(count, min_words, max_words, max_word_id,
+                             num_classes))
 
     y_train = np.zeros((count, 1), dtype=np.float32)
     y_train[labels_a == labels_b] = 1.0
@@ -156,12 +155,13 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
 
     return x_train, y_train, x_predict
 
-  @combinations.generate(keras_correctness_test_base.
-                         test_combinations_for_embedding_model())
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_siamese_embedding_model_correctness(self, distribution, use_numpy,
-                                               use_validation_data, cloning):
+                                               use_validation_data,
+                                               run_distributed):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              cloning)
+                              run_distributed)
 
 
 if __name__ == '__main__':
