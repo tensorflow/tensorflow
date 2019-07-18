@@ -2220,37 +2220,140 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
 // LSTM Ops
 //===----------------------------------------------------------------------===//
 
-// UnidirectionalSequenceLstm op and its associated operand/result sconstraints.
+// LSTM Kernel Type attributes
+def TFL_LSTM_KT_FULL  : StrEnumAttrCase<"FULL">;
+def TFL_LSTM_KT_BASIC  : StrEnumAttrCase<"BASIC">;
 
-def UnidirectionalSequenceLstmMandatoryInputsConstraint : PredOpTrait<
+def TFL_LSTMKernelTypeAttr : StrEnumAttr<"LSTMKernelType", "lstm kernel type enum",
+   [
+     TFL_LSTM_KT_FULL,  TFL_LSTM_KT_BASIC
+   ]>;
+
+def LstmMandatoryInputsConstraint : PredOpTrait<
   "mandatory operands element types should match",
   // TODO(ashwinm): Replace the indices with input tensor names when that
   // support is available.
   TCopVTEtAreSameAt<[0, 2, 3, 4, 6, 7, 8, 13, 14, 15, 18, 19]>>;
 
-def UnidirectionalSequenceLstmOptionalPeepholeWeightConstraint : PredOpTrait<
+def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
   TCopVTEtAreSameAt<[9, 10, 11]>>;
 
-def UnidirectionalSequenceLstmProjectionWeightBiasConstraint : PredOpTrait<
+def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
   "projection bias must not be specified",
    Or<[
       And<[TCopVTEtIs<16, NoneType>, TCopVTEtIs<17, NoneType>]>,
       TFL_TCopIsNot<16, NoneType>]>>;
 
-def UnidirectionalSequenceLstmResultConstraint : PredOpTrait<
+// TODO(b/137798843): Need to add two additional constraints for both LSTM and
+// UnidirectionalSequenceLstm
+// For coupling of input and forget gates (cifg): if cifg is true,
+// tensor {1, 5, 9, 12, 20} are null; if cifg is
+// false, tensors {1, 5, 12} are not null; tensor {9} is not null if
+// additionally peephole = true; tensor {20} is not null if additionally layer
+// norm = true. For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
+// are null; if layer norm is true, tensors {21, 22, 23} are not null; tensor
+// {20} is not null if additionally cifg = false.
+
+def LstmResultConstraint : PredOpTrait<
   "the input and result tensor elemental types must be same",
   TCresVTEtIsSameAsOp<0, 0>>;
 
+def TFL_LSTMOp :
+  TFL_Op<"lstm",
+          [LstmMandatoryInputsConstraint,
+           LstmOptionalPeepholeWeightConstraint,
+           LstmProjectionWeightBiasConstraint,
+           LstmResultConstraint]> {
+  let summary = "lstm operator";
+
+  let description = [{
+Long short-term memory unit (LSTM) recurrent network layer.
+The default non-peephole implementation is based on:
+http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+S. Hochreiter and J. Schmidhuber. "Long Short-Term Memory". Neural Computation,
+9(8):1735-1780, 1997.
+The peephole implementation is based on:
+https://research.google.com/pubs/archive/43905.pdf
+Hasim Sak, Andrew Senior, and Francoise Beaufays. "Long short-term memory
+recurrent neural network architectures for large scale acoustic modeling.
+INTERSPEECH, 2014.
+The coupling of input and forget gate (CIFG) is based on:
+http://arxiv.org/pdf/1503.04069.pdf
+Greff et al. "LSTM: A Search Space Odyssey"
+The layer normalization is based on:
+https://arxiv.org/pdf/1607.06450.pdf
+Ba et al. “Layer Normalization”
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32]>:$input,
+
+    // Weights
+    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
+    TensorOf<[F32, I8]>:$input_to_forget_weights,
+    TensorOf<[F32, I8]>:$input_to_cell_weights,
+    TensorOf<[F32, I8]>:$input_to_output_weights,
+
+    // Recurrent weights
+    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
+    TensorOf<[F32, I8]>:$recurrent_to_forget_weights,
+    TensorOf<[F32, I8]>:$recurrent_to_cell_weights,
+    TensorOf<[F32, I8]>:$recurrent_to_output_weights,
+
+    // Cell weights
+    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_input_weights,
+    // Optional input
+    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_forget_weights,
+    // Optional input
+    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_output_weights,
+
+    // Bias
+    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+    TensorOf<[F32]>:$forget_gate_bias,
+    TensorOf<[F32]>:$cell_bias,
+    TensorOf<[F32]>:$output_gate_bias,
+
+    // Projection weight and bias
+    TFL_TensorOfOrNone<[F32, I8]>:$projection_weights,
+    // Optional input
+    TFL_TensorOfOrNone<[F32]>:$projection_bias,
+
+    // Stateful activation and cell states.
+    TFL_StatefulTensor:$input_activation_state,
+    TFL_StatefulTensor:$input_cell_state,
+
+    // Layer norm coefficients
+    TFL_TensorOfOrNone<[F32]>:$input_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32]>:$forget_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32]>:$cell_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32]>:$output_layer_norm_coefficients,
+
+    // Attributes
+    TFL_AFAttr:$fused_activation_function,
+    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
+    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    // TODO(ashwinm): add a constraint to restrict this to FULL
+    // since BASIC has only 5 inputs and will be modelled as a separate
+    // TFL_Op.
+    DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">:$kernel_type
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+}
+
+// UnidirectionalSequenceLstm op .
+// TODO(ashwinm): Add constraint to validate the combination of operands
+// that are valid for hybrid vs fully quantized vs float only semantics
 def TFL_UnidirectionalSequenceLSTMOp :
-  TFL_Op<"unidirectional_sequence_lstm", [
-    // TODO(ashwinm): Add constraint to validate the combination of operands
-    // that are valid for hybrid vs fully quantized vs float only semantics
-    UnidirectionalSequenceLstmMandatoryInputsConstraint,
-    UnidirectionalSequenceLstmOptionalPeepholeWeightConstraint,
-    UnidirectionalSequenceLstmProjectionWeightBiasConstraint,
-    UnidirectionalSequenceLstmResultConstraint]> {
+  TFL_Op<"unidirectional_sequence_lstm",
+          [LstmMandatoryInputsConstraint,
+           LstmOptionalPeepholeWeightConstraint,
+           LstmProjectionWeightBiasConstraint,
+           LstmResultConstraint]> {
   let summary = "Unidirectional sequence lstm operator";
 
   let description = [{
