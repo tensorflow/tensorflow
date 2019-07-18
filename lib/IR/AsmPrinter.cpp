@@ -718,7 +718,10 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
 static void printDenseIntElement(DenseElementsAttr attr, raw_ostream &os,
                                  unsigned index) {
   APInt value = *std::next(attr.getIntValues().begin(), index);
-  value.print(os, /*isSigned=*/value.getBitWidth() != 1);
+  if (value.getBitWidth() == 1)
+    os << (value.getBoolValue() ? "true" : "false");
+  else
+    value.print(os, /*isSigned=*/true);
 }
 
 /// Print the float element of the given DenseElementsAttr at 'index'.
