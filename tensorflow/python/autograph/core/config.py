@@ -28,16 +28,6 @@ DoNotConvert = config_lib.DoNotConvert
 # This list is evaluated in order and stops at the first rule that tests True
 # for a definitely_convert of definitely_bypass call.
 CONVERSION_RULES = (
-    # Known libraries
-    DoNotConvert('numpy'),
-    DoNotConvert('tensorflow'),
-
-    # TODO(b/133417201): Remove.
-    DoNotConvert('tensorflow_probability'),
-
-    # TODO(b/133842282): Remove.
-    DoNotConvert('tensorflow_datasets.core'),
-
     # Builtin modules
     DoNotConvert('collections'),
     DoNotConvert('copy'),
@@ -52,4 +42,14 @@ CONVERSION_RULES = (
     DoNotConvert('pstats'),
     DoNotConvert('re'),
     DoNotConvert('threading'),
+
+    # Known libraries
+    DoNotConvert('numpy'),
+    DoNotConvert('tensorflow'),
+
+    # TODO(b/133417201): Remove.
+    DoNotConvert('tensorflow_probability'),
+
+    # TODO(b/133842282): Remove.
+    DoNotConvert('tensorflow_datasets.core'),
 )
