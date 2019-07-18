@@ -64,8 +64,6 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_multi_io(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     if not context.executing_eagerly():
       # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
       # symbolic tensors has different requirements.
@@ -146,8 +144,6 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_model_methods_with_eager_tensors_single_io(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     if not context.executing_eagerly():
       # Only test V2 Function and V2 Eager modes, as V1 Graph mode with
       # symbolic tensors has different requirements.
@@ -268,8 +264,6 @@ class CorrectnessTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_loss_correctness_with_iterator(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
     layers = [

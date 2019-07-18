@@ -40,17 +40,16 @@ from tensorflow.python.util import tf_contextlib
 
 # The list of DataAdapter that support validation_split, only numpy and data
 # tensor support validation_split for now.
-_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.NumpyArrayDataAdapter,
-                                 data_adapter.TensorDataAdapter]
+_ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 
 # The list of DataAdapter that support model._standardize_user_data. Currently
 # keras.sequence/python generator will cause error when calling
 # model._standardize_user_data, this should be updated in future cl, eg, the
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
-_ADAPTER_FOR_STANDARDIZE_USER_DATA = [data_adapter.NumpyArrayDataAdapter,
-                                      data_adapter.TensorDataAdapter,
-                                      data_adapter.DatasetAdapter]
+_ADAPTER_FOR_STANDARDIZE_USER_DATA = [
+    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter
+]
 
 
 def run_one_epoch(model,

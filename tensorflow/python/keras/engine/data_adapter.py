@@ -153,8 +153,8 @@ class DataAdapter(object):
     raise NotImplementedError
 
 
-class NumpyArrayDataAdapter(DataAdapter):
-  """Adapter that handles the Numpy array."""
+class TensorLikeDataAdapter(DataAdapter):
+  """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
 
   @staticmethod
   def can_handle(x, y=None):
@@ -162,11 +162,11 @@ class NumpyArrayDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    return all(isinstance(v, np.ndarray) for v in flat_inputs)
+    return all(isinstance(v, (ops.Tensor, np.ndarray)) for v in flat_inputs)
 
   def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               shuffle=False, distribution_strategy=None, **kwargs):
-    super(NumpyArrayDataAdapter, self).__init__(x, y, **kwargs)
+               shuffle=False, **kwargs):
+    super(TensorLikeDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
@@ -180,69 +180,9 @@ class NumpyArrayDataAdapter(DataAdapter):
       inputs = (x,)
 
     if not batch_size:
-      raise ValueError("batch size is required for Numpy input data.")
+      raise ValueError(
+          "`batch_size` is required for `Tensor` or `NumPy` input data.")
 
-    if distribution_strategy is not None:
-      dataset = distribution_strategy.experimental_make_numpy_dataset(inputs)
-    else:
-      dataset = dataset_ops.DatasetV2.from_tensor_slices(inputs)
-
-    num_samples = int(nest.flatten(x)[0].shape[0])
-    if shuffle:
-      # Note that we use the full input data length as buffer window, which
-      # might have memory consumption consequence. This is on the radar of
-      # tf.data team and they will address it.
-      dataset = dataset.shuffle(num_samples)
-    self._dataset = dataset.batch(batch_size)
-    self._size = int(math.ceil(num_samples / batch_size))
-    self._batch_size = batch_size
-    self._has_partial_batch = (self._size != (num_samples // batch_size))
-
-  def get_dataset(self):
-    return self._dataset
-
-  def get_size(self):
-    return self._size
-
-  def batch_size(self):
-    return self._batch_size
-
-  def has_partial_batch(self):
-    return self._has_partial_batch
-
-
-# TODO(scottzhu): Eventually the numpy array and eager tensor should be treated
-# in the same way. Merge this class with NumpyArrayDataAdapter.
-class TensorDataAdapter(DataAdapter):
-  """Adapter that handles Tensorflow eager tensors."""
-
-  @staticmethod
-  def can_handle(x, y=None):
-    flat_inputs = nest.flatten(x)
-    if y is not None:
-      flat_inputs += nest.flatten(y)
-
-    return all(isinstance(v, ops.Tensor) for v in flat_inputs)
-
-  def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               shuffle=False, **kwargs):
-    super(TensorDataAdapter, self).__init__(x, y, **kwargs)
-    x = _process_numpy_inputs(x)
-    y = _process_numpy_inputs(y)
-    sample_weights = _process_numpy_inputs(sample_weights)
-    if y is not None and sample_weights is not None:
-      inputs = (x, y, sample_weights)
-    elif y is not None:
-      # Sample weight is only needed for training, so if y is None, then
-      # sample_weight is ignored.
-      inputs = (x, y)
-    else:
-      inputs = (x,)
-
-    # TODO(scottzhu): We should treat data tensor same as numpy array, make
-    # the batch_size a required param.
-    # if not batch_size:
-    #   raise ValueError("batch size is required for tensor input data.")
     dataset = dataset_ops.DatasetV2.from_tensor_slices(inputs)
     num_samples = int(nest.flatten(x)[0].shape[0])
     if shuffle:
@@ -392,8 +332,10 @@ class KerasSequenceAdapter(DataAdapter):
     return False
 
 
-ALL_ADAPTER_CLS = [NumpyArrayDataAdapter, TensorDataAdapter, DatasetAdapter,
-                   GeneratorDataAdapter, KerasSequenceAdapter]
+ALL_ADAPTER_CLS = [
+    TensorLikeDataAdapter, DatasetAdapter, GeneratorDataAdapter,
+    KerasSequenceAdapter
+]
 
 
 def select_data_adapter(x, y):
@@ -426,6 +368,15 @@ def _process_numpy_inputs(inputs):
   flat_inputs = nest.flatten(inputs)
   if len(flat_inputs) == 1:
     return flat_inputs[0]
+
+  def _convert_non_tensor(x):
+    # Don't call `ops.convert_to_tensor` on all `inputs` because
+    # `SparseTensors` can't be converted to `Tensor`.
+    if isinstance(x, np.ndarray):
+      return ops.convert_to_tensor(x)
+    return x
+
+  inputs = nest.map_structure(_convert_non_tensor, inputs)
   # For more complicated structure, we only convert the out most list to tuple
   # since dataset will stack the list, but treat elements in the tuple as
   # individual element.
