@@ -1,11 +1,15 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
-licenses(["notice"])
+package(licenses = ["notice"])
 
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@local_config_mlir//:run_lit.sh",
-    test_file_exts = ["pbtxt"],
+    test_file_exts = [
+        "mlir",
+        "hlo",
+        "hlotxt",
+    ],
 )
 
 # Bundle together all of the test utilities that are used by tests.

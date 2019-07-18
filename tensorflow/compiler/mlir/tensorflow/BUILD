@@ -511,24 +511,6 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_binary(
-    name = "tf-mlir-translate",
-    deps = [
-        ":convert_graphdef",
-        ":mlir_roundtrip_flags",
-        ":translate_cl_options",
-        ":translate_lib",
-        ":translate_registration",
-        ":translate_tf_dialect_op",
-        "//tensorflow/core:protos_all_proto_cc",
-        "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Translation",
-        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
-    ],
-)
-
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
