@@ -994,7 +994,7 @@ REGISTER_OP("GenerateBoundingBoxProposals")
     .Output("rois: float")
     .Output("roi_probabilities: float")
     .Attr("post_nms_topn: int = 300")
-    .Attr("correct_transform_coords: bool = true")
+    .Attr("use_detectron_offset: bool = false")
     .SetShapeFn([](InferenceContext* c) -> Status {
       // make sure input tensors have are correct rank
       ShapeHandle scores, images, bounding_boxes, anchors, nms_threshold,

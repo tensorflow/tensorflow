@@ -64,9 +64,9 @@ An integer. Maximum number of rois in the output.
 END
   }
   attr {
-    name: "correct_transform_coords"
+    name: "use_detectron_offset"
     description: <<END
-Boolean to decide whether correct by coordinate transorm by subtracting 1.0 from x2 and y2.
+Boolean to decide whether apply +1 offset used in detectron like networks.
 END
   }
   summary: "This op produces Region of Interests from given bounding boxes(bbox_deltas) encoded wrt anchors according to eq.2 in arXiv:1506.01497"
