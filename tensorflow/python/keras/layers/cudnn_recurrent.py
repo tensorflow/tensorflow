@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import backend as K
@@ -294,7 +293,6 @@ class CuDNNGRU(_CuDNNRNN):
         ],
         shape=self._vector_shape)
 
-    use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
     args = {
         "input": inputs,
         "input_h": input_h,
@@ -304,10 +302,7 @@ class CuDNNGRU(_CuDNNRNN):
         "rnn_mode": 'gru',
     }
 
-    if use_cudnn_v2 != "1":
-      outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(**args)
-    else:
-      outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
 
     if self.stateful or self.return_state:
       h = h[0]
@@ -500,7 +495,6 @@ class CuDNNLSTM(_CuDNNRNN):
         ],
         shape=self._vector_shape)
 
-    use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
     args = {
         "input": inputs,
         "input_h": input_h,
@@ -509,10 +503,7 @@ class CuDNNLSTM(_CuDNNRNN):
         "is_training": True,
     }
 
-    if use_cudnn_v2 != "1":
-      outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(**args)
-    else:
-      outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
+    outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
 
     if self.stateful or self.return_state:
       h = h[0]
