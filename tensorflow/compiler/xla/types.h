@@ -19,7 +19,6 @@ limitations under the License.
 #include <Eigen/Core>
 #include <complex>
 
-#include "absl/types/variant.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -44,13 +43,6 @@ using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
 using ::Eigen::half;
-
-namespace gpu {
-// GpuVersion is used to abstract Gpu hardware version. On Cuda platform,
-// it comprises a pair of integers denoting major and minor version.
-// On ROCm platform, it comprises one integer for AMD GCN ISA version.
-using GpuVersion = absl::variant<std::pair<int, int>, int>;
-}  // namespace gpu
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.

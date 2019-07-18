@@ -48,6 +48,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_types",
+    hdrs = ["gpu_types.h"],
+    deps = [
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
     name = "partition_assignment",
     srcs = [
         "partition_assignment.cc",
@@ -453,6 +461,7 @@ cc_library(
         ":cudnn_conv_runner",
         ":cusolver_context",
         ":gpu_debug_info_manager",
+        ":gpu_types",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
