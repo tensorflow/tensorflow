@@ -223,6 +223,37 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
+// Try to load ptx from files defined in the FLAGS. If successful, return true.
+bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
+  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string ptx_filename;
+  for (const string filename : module->config().debug_options().xla_gpu_ptx_file()) {
+    // To ease comparing many PTX versions, accept different suffix then
+    // the original filename.
+    if(absl::StartsWith(filename, prefix)) {
+      ptx_filename = filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
+      break;
+    }
+  }
+  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
+      ptx_filename.empty()) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a PTX file to load.";
+  }
+
+  if(!ptx_filename.empty()) {
+    std::ifstream ifs(ptx_filename, std::ifstream::in);
+    *ptx = std::string(std::istreambuf_iterator<char>(ifs),
+                      std::istreambuf_iterator<char>());
+    CHECK(!ptx->empty()) << "Empty or non existing PTX file: " << ptx_filename;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
@@ -628,31 +659,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
 
   std::string ptx;
 
-  // Generate the PTX or load it if provided.
-  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
-  // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = FilenameFor(*module, ptx);
-  std::string ptx_filename;
-  for (const string filename : module->config().debug_options().xla_gpu_ptx_file()) {
-    // To ease comparing many PTX versions, accept different suffix then
-    // the original filename.
-    if(absl::StartsWith(filename, prefix)) {
-      ptx_filename = filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
-      break;
-    }
-  }
-  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
-      ptx_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
-            << "', we did not found a PTX file to load.";
-  }
-  if(!ptx_filename.empty()) {
-    std::ifstream ifs(ptx_filename, std::ifstream::in);
-    ptx = std::string(std::istreambuf_iterator<char>(ifs),
-                      std::istreambuf_iterator<char>());
-    CHECK(!ptx.empty()) << "Empty or non existing PTX file: " << ptx_filename;
-  } else {
+  if (!MaybeLoadPtxFromFile(module.get(), &ptx)) {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                           module->config(), libdevice_dir));
