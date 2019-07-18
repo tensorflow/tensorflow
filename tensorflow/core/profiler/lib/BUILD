@@ -42,18 +42,9 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "profiler_graph_lib",
+    name = "profiler_lib",
     visibility = ["//tensorflow:internal"],
     deps = tf_additional_profiler_lib_deps(),
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "profiler_eager_lib",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
-    ] + tf_additional_profiler_lib_deps(),
     alwayslink = 1,
 )
 
