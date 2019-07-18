@@ -27,11 +27,17 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
   ~CacheDatasetOpTest() {
     if (!filename_.empty()) {
       std::vector<string> cache_files;
-      device_->env()
-          ->GetMatchingPaths(strings::StrCat(filename_, "*"), &cache_files)
-          .IgnoreError();
+      Status s = device_->env()->GetMatchingPaths(
+          strings::StrCat(filename_, "*"), &cache_files);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to get matching files on " << filename_
+                     << "* : " << s.ToString();
+      }
       for (const string& path : cache_files) {
-        device_->env()->DeleteFile(path).IgnoreError();
+        s = device_->env()->DeleteFile(path);
+        if (!s.ok()) {
+          LOG(WARNING) << "Failed to delete " << path << " : " << s.ToString();
+        }
       }
     }
   }

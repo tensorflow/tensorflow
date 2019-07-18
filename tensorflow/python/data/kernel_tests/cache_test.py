@@ -181,9 +181,12 @@ class FileCacheTest(test_base.DatasetTestBase):
         except errors.OutOfRangeError:
           break
 
-    if context.executing_eagerly():
-      for i in [0, 3, 10, 12, 15]:
-        do_test(i)
+    if not context.executing_eagerly():
+      self.skipTest(
+          "Test requires eager mode for iterators to be deconstructed")
+
+    for i in [0, 3, 10, 12, 15]:
+      do_test(i)
 
 @test_util.run_all_in_graph_and_eager_modes
 class MemoryCacheTest(test_base.DatasetTestBase):
