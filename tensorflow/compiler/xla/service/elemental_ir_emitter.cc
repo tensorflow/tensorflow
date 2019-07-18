@@ -63,28 +63,44 @@ int64 GlobalRandomValue() {
   return rng();
 }
 
-llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
-                                      int64 mantissa_bits,
-                                      llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
+                                             llvm::Value* x,
+                                             int64 dest_exponent_bits,
+                                             int64 dest_mantissa_bits,
+                                             llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+
+  if (!primitive_util::IsFloatingPointType(src_ty)) {
+    return Unimplemented(
+        "ReducePrecision cannot accept non-floating-point type %s.",
+        PrimitiveType_Name(src_ty));
+  }
+
   // Integer and float types for casting and constant generation.
   llvm::Type* float_type = x->getType();
-  llvm::IntegerType* int_type = b->getInt32Ty();
+  int64 nbits = float_type->getPrimitiveSizeInBits();
+  llvm::IntegerType* int_type = b->getIntNTy(nbits);
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
 
-  if (mantissa_bits < 23) {
+  if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
-    const uint32_t last_mantissa_bit_mask = 1u << (23 - mantissa_bits);
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
 
     // Compute rounding bias for round-to-nearest with ties to even.  This is
     // equal to a base value of 0111... plus one bit if the last remaining
     // mantissa bit is 1.
-    const uint32_t base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
     llvm::Value* x_last_mantissa_bit = b->CreateLShr(
         b->CreateAnd(x_as_int,
                      llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
-        (23 - mantissa_bits));
+        (src_mantissa_bits - dest_mantissa_bits));
     llvm::Value* x_rounding_bias =
         b->CreateAdd(x_last_mantissa_bit,
                      llvm::ConstantInt::get(int_type, base_rounding_bias));
@@ -93,16 +109,19 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // where adding the rounding bias overflows into the exponent bits is
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
-    const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
     x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
     x_as_int = b->CreateAnd(x_as_int,
                             llvm::ConstantInt::get(int_type, truncation_mask));
   }
 
-  if (exponent_bits < 8) {
-    // Masks for f32 values.
-    const uint32_t f32_sign_bit_mask = 1u << 31;
-    const uint32_t f32_exp_bits_mask = 0xffu << 23;
+  if (dest_exponent_bits < src_exponent_bits) {
+    APInt sign_bit_mask(nbits, 1);
+    sign_bit_mask <<= nbits - 1;
+
+    APInt exp_bits_mask(nbits, 1);
+    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                    << src_mantissa_bits;
 
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
@@ -116,28 +135,31 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // (2^7-1) - 2^(n-1)-1.
     //
     // Note that we have already checked that exponents_bits >= 1.
-    const uint32_t f32_exponent_bias = (1 << 7) - 1;
-    const uint32_t reduced_exponent_bias = (1 << (exponent_bits - 1)) - 1;
-    const uint32_t reduced_max_exponent =
-        f32_exponent_bias + reduced_exponent_bias;
-    const uint32_t reduced_min_exponent =
-        f32_exponent_bias - reduced_exponent_bias;
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
 
     // Do we overflow or underflow?
-    llvm::Value* x_exponent = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+    llvm::Value* x_exponent =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, exp_bits_mask));
     llvm::Value* x_overflows = b->CreateICmpUGT(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_max_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_max_exponent << src_mantissa_bits));
     llvm::Value* x_underflows = b->CreateICmpULE(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_min_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_min_exponent << src_mantissa_bits));
 
     // Compute appropriately-signed values of zero and infinity.
-    llvm::Value* x_signed_zero = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_sign_bit_mask));
+    llvm::Value* x_signed_zero =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, sign_bit_mask));
     llvm::Value* x_signed_inf = b->CreateOr(
-        x_signed_zero, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+        x_signed_zero, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
     // Force to zero or infinity if overflow or underflow.  (Note that this
     // truncates all denormal values to zero, rather than rounding them.)
@@ -161,7 +183,7 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   if (!b->getFastMathFlags().noNaNs()) {
     llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (mantissa_bits > 0) {
+    if (dest_mantissa_bits > 0) {
       result = b->CreateSelect(x_is_nan, x, result);
     } else {
       result = b->CreateSelect(
@@ -171,11 +193,14 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   return result;
 }
 
-llvm::Value* EmitF32ToBF16(llvm::Value* f32_value, llvm::IRBuilder<>* b) {
-  auto reduced_precision = EmitReducePrecisionFloat(
-      f32_value,
-      /*exponent_bits=*/primitive_util::kBFloat16ExponentBits,
-      /*mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b);
+StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
+                                     llvm::IRBuilder<>* b) {
+  TF_ASSIGN_OR_RETURN(
+      auto reduced_precision,
+      EmitReducePrecisionIR(
+          /*src_ty=*/F32, f32_value,
+          /*dest_exponent_bits=*/primitive_util::kBFloat16ExponentBits,
+          /*dest_mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -1099,11 +1124,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
     const HloInstruction* hlo, llvm::Value* x) {
-  if (hlo->operand(0)->shape().element_type() != F32) {
-    return Unimplemented("reduce-precision only implemented for F32");
-  }
-  return EmitReducePrecisionFloat(x, /*exponent_bits=*/hlo->exponent_bits(),
-                                  /*mantissa_bits=*/hlo->mantissa_bits(), b_);
+  return EmitReducePrecisionIR(
+      /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
+      /*dest_exponent_bits=*/hlo->exponent_bits(),
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
@@ -1990,7 +2014,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == BF16) {
-            iota_result = EmitF32ToBF16(float_val, b_);
+            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val, b_));
           } else {
             iota_result = float_val;
           }
