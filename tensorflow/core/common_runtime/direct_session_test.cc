@@ -1718,7 +1718,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   // graph setup.
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   options.config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_constant_folding(RewriterConfig::OFF);
@@ -1865,7 +1865,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   SessionOptions options;
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   (*options.config.mutable_device_count())["CPU"] = 2;
 
   options.config.add_session_inter_op_thread_pool();

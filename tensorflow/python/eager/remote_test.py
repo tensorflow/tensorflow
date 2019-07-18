@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 
@@ -125,6 +126,38 @@ class MultiWorkersTest(test.TestCase):
         a = i + variable_b
       c = a + 1.0
       return c
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+  def testMultiDeviceWhileLoopOnRemoteDevice(self):
+    with ops.device('/job:worker/replica:0/task:1'):
+      variable_b = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_function(i):
+
+      def body(i, _):
+        with ops.device('/job:worker/replica:0/task:0'):
+          a = i + variable_b
+        return a + 1.0, 1
+
+      return control_flow_ops.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
 
     context.context().mirroring_policy = context.MIRRORING_NONE
 

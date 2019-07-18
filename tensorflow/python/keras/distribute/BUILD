@@ -220,8 +220,8 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # b/131937016
         "notsan",
     ],
     deps = [
@@ -377,11 +377,7 @@ cuda_py_test(
     shard_count = 14,
     # TODO(b/132384649): Enable once fixed.
     tags = [
-        "manual",
         "no_oss",
-        "no_tap",
-        "nogpu",  # b/136499799
-        "noguitar",
     ],
     xla_enable_strict_auto_jit = True,
 )

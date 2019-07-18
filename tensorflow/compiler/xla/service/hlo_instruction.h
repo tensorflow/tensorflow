@@ -559,6 +559,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
                                                        HloInstruction* operand);
 
+  // Creates a bitcast instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcast(const Shape& shape,
+                                                       HloInstruction* operand);
+
   // Creates a bitcast conversion instruction, where operand is the data to
   // convert and shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateBitcastConvert(
@@ -1663,7 +1668,35 @@ class HloInstruction {
   // Old methods kept for smooth subclassing transition END.
 
  protected:
-  enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+  // Indicates how an instruction uses a value (such as an operand).
+  //
+  // Does it (a) not use it, (b) use it, or (c) use it multiple times?
+  //
+  // In the kUse case (i.e. (b)) we may either (i) use the value elementwise, or
+  // (ii) use it after having permuted it somehow, e.g. through a reshape.  If
+  // the use is a permuting use, we set permutation_instr to the instruction
+  // that did the permuting.
+  struct UseKind {
+    enum Kind { kReuse, kUse, kNoUse };
+
+    // Creates a UseKind that represents a use that permutes an instruction's
+    // elements according to the given instruction.
+    static UseKind Permuting(const HloInstruction* permutation_instr) {
+      UseKind k(kUse);
+      k.permutation_instr = permutation_instr;
+      return k;
+    }
+
+    UseKind(Kind kind)  // NOLINT intentionally nonexplicit
+        : kind(kind), permutation_instr(nullptr) {}
+
+    bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
+    bool friend operator==(Kind a, UseKind b) { return b == a; }
+
+    Kind kind;
+    const HloInstruction* permutation_instr;
+  };
+
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
 

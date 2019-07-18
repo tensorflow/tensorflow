@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import compat
 
 
 UnliftableError = op_selector.UnliftableError
@@ -58,7 +59,7 @@ _ControlMutation = collections.namedtuple(
     ["copied_op", "old_graph_op"])
 
 
-def _copy_non_source(op, graph, op_map):
+def _copy_non_source(op, graph, op_map, base_graph):
   """Copy an op directly to a given graph.
 
   Generally `op`'s inputs should already have been copied. If this is not the
@@ -70,6 +71,7 @@ def _copy_non_source(op, graph, op_map):
     op: The op to be copied.
     graph: The destination graph.
     op_map: A dict mapping ops and tensors in the old graph to the new one.
+    base_graph: The graph we're copying from, for any necessary functions.
   Returns:
     A tuple of (required_inputs, required_control_inputs):
       required_inputs:
@@ -113,6 +115,11 @@ def _copy_non_source(op, graph, op_map):
   # to signal that the op was built inside a tpu_replicate context; if we're
   # lifting it to another graph we're similarly lifting it into another context.
   with ops.control_dependencies(copied_control_inputs), ops.device(op.device):
+    # pylint: disable=protected-access
+    f = base_graph._functions.get(op.type, None)
+    if f is not None and compat.as_str(f.name) not in graph._functions:
+      f.add_to_graph(graph)
+    # pylint: enable=protected-access
     copied_op = graph.create_op(
         op_type=op.type,
         inputs=copied_inputs,
@@ -133,7 +140,8 @@ def _copy_non_source(op, graph, op_map):
            for mutation in control_mutations])
 
 
-def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
+def _copy_source(s, graph, op_map, handle_captures, inverse_captures,
+                 base_graph):
   """Create a source in a graph based on a Tensor from a different graph.
 
   This function creates a placeholder analog of `s` in a graph with the
@@ -156,6 +164,7 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
       graph or simply create a vanilla placeholder.
     inverse_captures: A dict mapping s back to the Tensor or Variable that it
       captures.
+    base_graph: The graph being copied from.
   """
   if handle_captures and s in inverse_captures:
     copied_placeholder = graph.capture(inverse_captures[s], name=s.op.name)
@@ -163,7 +172,8 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
     # Copy the default value to the graph.
     default_value = s.op.inputs[0]
     unavailable_inputs, unavailable_control_inputs = _copy_non_source(
-        op=default_value.op, graph=graph, op_map=op_map)
+        op=default_value.op, graph=graph, op_map=op_map,
+        base_graph=base_graph)
     if unavailable_inputs or unavailable_control_inputs:
       raise AssertionError(
           "Could not copy source node {} because it has inputs."
@@ -289,7 +299,8 @@ def lift_to_graph(init_tensors, graph, sources=None,
             graph=graph,
             op_map=op_map,
             handle_captures=handle_captures,
-            inverse_captures=inverse_captures)
+            inverse_captures=inverse_captures,
+            base_graph=base_graph)
     for s in sources:
       source_ops.add(s.op)
       _copy_source(
@@ -297,7 +308,8 @@ def lift_to_graph(init_tensors, graph, sources=None,
           graph=graph,
           op_map=op_map,
           handle_captures=handle_captures,
-          inverse_captures=inverse_captures)
+          inverse_captures=inverse_captures,
+          base_graph=base_graph)
 
     input_mutations = []
     control_mutations = []
@@ -305,7 +317,7 @@ def lift_to_graph(init_tensors, graph, sources=None,
       if op in source_ops:
         continue
       new_input_mutations, new_control_mutations = _copy_non_source(
-          op=op, graph=graph, op_map=op_map)
+          op=op, graph=graph, op_map=op_map, base_graph=base_graph)
       input_mutations.extend(new_input_mutations)
       control_mutations.extend(new_control_mutations)
 
@@ -326,4 +338,3 @@ def lift_to_graph(init_tensors, graph, sources=None,
     # pylint: enable=protected-access
 
     return op_map
-

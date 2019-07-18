@@ -34,7 +34,6 @@ load(
 )
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
     "if_mkl_ml",
     "mkl_deps",
 )
@@ -820,6 +819,7 @@ cc_library(
     ],
     deps = [
         ":eigen_contraction_kernel",
+        ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
@@ -839,6 +839,7 @@ cc_library(
         "eigen_volume_patch.h",
     ],
     deps = [
+        ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
@@ -848,6 +849,16 @@ cc_library(
     name = "eigen_spatial_convolutions-inl",
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
+    ],
+    deps = [
+        ":eigen_convolution_helpers",
+    ],
+)
+
+cc_library(
+    name = "eigen_convolution_helpers",
+    hdrs = [
+        "eigen_convolution_helpers.h",
     ],
 )
 
@@ -1085,7 +1096,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_n_op",
     prefix = "identity_n_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core:core_cpu_internal",
+    ],
 )
 
 tf_kernel_library(
@@ -2999,7 +3012,6 @@ tf_cc_tests(
         "non_max_suppression_op_test.cc",
         "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
-        "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
         "scale_and_translate_op_test.cc",
     ],
@@ -3007,6 +3019,26 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        ":sampling_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resize_bilinear_op_test",
+    srcs = ["resize_bilinear_op_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":image",
         ":ops_testutil",
@@ -3759,7 +3791,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda([
+    deps = MATH_DEPS + if_cuda_or_rocm([
         ":cuda_solvers",
     ]),
 )
@@ -4317,6 +4349,7 @@ tf_kernel_library(
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
         ":fill_functor",
+        ":redux_functor",
     ] + if_cuda([
         "//tensorflow/core:stream_executor",
     ]),
@@ -5909,6 +5942,7 @@ filegroup(
         "eigen_attention.h",
         "eigen_backward_cuboid_convolutions.h",
         "eigen_backward_spatial_convolutions.h",
+        "eigen_convolution_helpers.h",
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "eigen_softmax.h",
@@ -6116,6 +6150,8 @@ filegroup(
         "resize_nearest_neighbor_op.h",
         "reverse_op.h",
         "save_restore_tensor.h",
+        "scatter_nd_op.h",
+        "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
         "softplus_op.h",
         "softsign_op.h",
@@ -6304,6 +6340,15 @@ filegroup(
         "save_op.cc",
         "save_restore_tensor.cc",
         "save_restore_v2_ops.cc",
+        "scatter_nd_op.cc",
+        "scatter_nd_op_cpu_impl_0.cc",
+        "scatter_nd_op_cpu_impl_1.cc",
+        "scatter_nd_op_cpu_impl_2.cc",
+        "scatter_nd_op_cpu_impl_3.cc",
+        "scatter_nd_op_cpu_impl_4.cc",
+        "scatter_nd_op_cpu_impl_5.cc",
+        "scatter_nd_op_cpu_impl_6.cc",
+        "scatter_nd_op_cpu_impl_7.cc",
         "segment_reduction_ops.cc",
         "session_ops.cc",
         "softplus_op.cc",
@@ -6377,6 +6422,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "eigen_convolution_helpers.h",
     "eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
     "gemm_functors.h",
@@ -7418,8 +7464,10 @@ tf_mkl_kernel_library(
     ],
     deps = [
         ":bounds_check",
+        ":fill_functor",
         ":matmul_op",
         ":ops_util",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

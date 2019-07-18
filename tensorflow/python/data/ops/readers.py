@@ -20,10 +20,10 @@ from __future__ import print_function
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -116,7 +116,7 @@ class _TextLineDataset(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 @tf_export("data.TextLineDataset", v1=[])
@@ -158,7 +158,7 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 @tf_export(v1=["data.TextLineDataset"])
@@ -210,7 +210,7 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
@@ -222,8 +222,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure,
-                      dataset_ops.DatasetStructure):
+    if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
       raise TypeError("`map_func` must return a `Dataset` object.")
     self._element_spec = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
@@ -240,16 +239,28 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        self._cycle_length,
-        self._block_length,
-        self._sloppy,
-        self._buffer_output_elements,
-        self._prefetch_input_elements,
-        f=self._map_func.function,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.parallel_interleave_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          self._cycle_length,
+          self._block_length,
+          self._sloppy,
+          self._buffer_output_elements,
+          self._prefetch_input_elements,
+          f=self._map_func.function,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          self._cycle_length,
+          self._block_length,
+          self._sloppy,
+          self._buffer_output_elements,
+          self._prefetch_input_elements,
+          f=self._map_func.function,
+          **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -322,7 +333,7 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 @tf_export(v1=["data.TFRecordDataset"])
@@ -409,7 +420,7 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 @tf_export("data.FixedLengthRecordDataset", v1=[])
@@ -467,7 +478,7 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return structure.TensorStructure(dtypes.string, [])
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 @tf_export(v1=["data.FixedLengthRecordDataset"])

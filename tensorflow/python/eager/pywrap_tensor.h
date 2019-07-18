@@ -26,14 +26,12 @@ tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
 tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
 
 namespace tensorflow {
-bool IsCompatible(int desired_dtype, TF_DataType returned_dtype);
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, DataType dtype);
 
-// TODO(nareshmodi): Move EagerCast and ReadVariableOp (which use the C API to
-// execute TFE Ops) to a separate common library.
-TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
-                            TF_DataType src_type_enum,
-                            TF_DataType dst_type_enum, TF_Status* out_status);
-}
+// Converts value to a TFE_TensorHandle of a given dtype. Note that the
+// resulting handle is always allocated on CPU.
+TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
+                                       DataType dtype);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -139,7 +139,9 @@ py_test(
     srcs = ["auto_shard_dataset_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
@@ -150,6 +152,32 @@ py_test(
         "//tensorflow/python/data/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_py_test(
+    name = "replicate_test",
+    srcs = ["replicate_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    grpc_enabled = True,
+    tags = ["no_oss"],
+)
+
+tf_py_test(
+    name = "replicate_cluster_test",
+    srcs = ["replicate_cluster_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    grpc_enabled = True,
+    tags = ["no_oss"],
 )
 
 py_test(
@@ -496,7 +524,10 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",

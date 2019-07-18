@@ -29,6 +29,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/137568139): enable after this is fixed.
+        "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
@@ -79,6 +81,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
@@ -148,6 +151,7 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:wrap_function",
     ],
 )
 
@@ -172,7 +176,7 @@ py_library(
         "wrap_toco.py",
     ],
     deps = [
-        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )

@@ -1829,9 +1829,7 @@ bool LiteralBase::IsR1Iota() const {
         return Get<complex64>({idx}) == complex64(idx, 0.0f);
       case C128:
         return Get<complex128>({idx}) == complex128(idx, 0.0f);
-      case PRED:
-        return Get<bool>({idx}) == idx;
-      // token, opaque, tuple, etc. are all not iota.
+      // pred, token, opaque, tuple, etc. are all not iota.
       default:
         return false;
     }

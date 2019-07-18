@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Fallback in case fast_tensor_util is not properly compiled.
@@ -239,134 +240,109 @@ _TENSOR_CONTENT_TYPES = frozenset([
 ])
 
 
-class _Message(object):
-
-  def __init__(self, message):
-    self._message = message
-
-  def __repr__(self):
-    return self._message
+# pylint: disable=invalid-name
+def _check_failed(v):
+  # NB. none of the _check_* functions could raise a ValueError, so
+  # it is safe to use here.
+  raise ValueError(v)
 
 
-def _FirstNotNone(l):
-  for x in l:
-    if x is not None:
-      if isinstance(x, ops.Tensor):
-        return _Message("list containing Tensors")
-      else:
-        return x
-  return None
-
-
-def _NotNone(v):
-  if v is None:
-    return _Message("None")
+def _check_quantized(values):
+  # Cannot rely on `nest` because the leaves are tuples.
+  if not isinstance(values, (list, tuple)):
+    _check_failed(values)
+  if isinstance(values, tuple):
+    _ = [_check_int(v) for v in values]
   else:
-    return v
+    _ = [_check_quantized(v) for v in values]
 
 
-def _FilterTuple(v):
-  if not isinstance(v, (list, tuple)):
-    return v
-  if isinstance(v, tuple):
-    if not any(isinstance(x, (list, tuple)) for x in v):
-      return None
-  if isinstance(v, list):
-    if not any(isinstance(x, (list, tuple)) for x in v):
-      return _FirstNotNone(
-          [None if isinstance(x, (list, tuple)) else x for x in v])
-  return _FirstNotNone([_FilterTuple(x) for x in v])
+def _generate_isinstance_check(expected_types):
+  def inner(values):
+    _ = [_check_failed(v) for v in nest.flatten(values)
+         if not isinstance(v, expected_types)]
+  return inner
+
+_check_int = _generate_isinstance_check(
+    (compat.integral_types, tensor_shape.Dimension))
+_check_float = _generate_isinstance_check(compat.real_types)
+_check_complex = _generate_isinstance_check(compat.complex_types)
+_check_str = _generate_isinstance_check(compat.bytes_or_text_types)
+_check_bool = _generate_isinstance_check(bool)
 
 
-def _FilterInt(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(
-      v, (compat.integral_types, tensor_shape.Dimension)) else _NotNone(v)
-
-
-def _FilterFloat(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterFloat(x) for x in v])
-  return None if isinstance(v, compat.real_types) else _NotNone(v)
-
-
-def _FilterComplex(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterComplex(x) for x in v])
-  return None if isinstance(v, compat.complex_types) else _NotNone(v)
-
-
-def _FilterStr(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterStr(x) for x in v])
-  if isinstance(v, compat.bytes_or_text_types):
-    return None
-  else:
-    return _NotNone(v)
-
-
-def _FilterBool(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterBool(x) for x in v])
-  return None if isinstance(v, bool) else _NotNone(v)
-
-
-def _FilterNotTensor(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterNotTensor(x) for x in v])
-  return str(v) if isinstance(v, ops.Tensor) else None
-
+def _check_not_tensor(values):
+  _ = [_check_failed(v) for v in nest.flatten(values)
+       if isinstance(v, ops.Tensor)]
+# pylint: enable=invalid-name
 
 _TF_TO_IS_OK = {
-    dtypes.bool: [_FilterBool],
-    dtypes.complex128: [_FilterComplex],
-    dtypes.complex64: [_FilterComplex],
-    dtypes.float16: [_FilterFloat],
-    dtypes.float32: [_FilterFloat],
-    dtypes.float64: [_FilterFloat],
-    dtypes.int16: [_FilterInt],
-    dtypes.int32: [_FilterInt],
-    dtypes.int64: [_FilterInt],
-    dtypes.int8: [_FilterInt],
-    dtypes.qint16: [_FilterInt, _FilterTuple],
-    dtypes.qint32: [_FilterInt, _FilterTuple],
-    dtypes.qint8: [_FilterInt, _FilterTuple],
-    dtypes.quint16: [_FilterInt, _FilterTuple],
-    dtypes.quint8: [_FilterInt, _FilterTuple],
-    dtypes.string: [_FilterStr],
-    dtypes.uint16: [_FilterInt],
-    dtypes.uint8: [_FilterInt],
-    dtypes.uint32: [_FilterInt],
-    dtypes.uint64: [_FilterInt],
+    dtypes.bool: _check_bool,
+    dtypes.complex128: _check_complex,
+    dtypes.complex64: _check_complex,
+    dtypes.float16: _check_float,
+    dtypes.float32: _check_float,
+    dtypes.float64: _check_float,
+    dtypes.int16: _check_int,
+    dtypes.int32: _check_int,
+    dtypes.int64: _check_int,
+    dtypes.int8: _check_int,
+    dtypes.qint16: _check_quantized,
+    dtypes.qint32: _check_quantized,
+    dtypes.qint8: _check_quantized,
+    dtypes.quint16: _check_quantized,
+    dtypes.quint8: _check_quantized,
+    dtypes.string: _check_str,
+    dtypes.uint16: _check_int,
+    dtypes.uint8: _check_int,
+    dtypes.uint32: _check_int,
+    dtypes.uint64: _check_int,
 }
 
 
 def _AssertCompatible(values, dtype):
   if dtype is None:
-    fn_list = [_FilterNotTensor]
+    fn = _check_not_tensor
   else:
     try:
-      fn_list = _TF_TO_IS_OK[dtype]
+      fn = _TF_TO_IS_OK[dtype]
     except KeyError:
-      # There isn't a specific fn_list, so we try to do the best possible.
+      # There isn't a specific fn, so we try to do the best possible.
       if dtype.is_integer:
-        fn_list = [_FilterInt]
+        fn = _check_int
       elif dtype.is_floating:
-        fn_list = [_FilterFloat]
+        fn = _check_float
       elif dtype.is_complex:
-        fn_list = [_FilterComplex]
+        fn = _check_complex
       elif dtype.is_quantized:
-        fn_list = [_FilterInt, _FilterTuple]
+        fn = _check_quantized
       else:
-        fn_list = [_FilterNotTensor]
-  mismatch = _FirstNotNone([fn(values) for fn in fn_list])
-  if mismatch is not None:
+        fn = _check_not_tensor
+
+  try:
+    fn(values)
+  except ValueError as e:
+    [mismatch] = e.args
     if dtype is None:
       raise TypeError("List of Tensors when single Tensor expected")
     else:
       raise TypeError("Expected %s, got %s of type '%s' instead." %
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
+
+
+def _is_array_like(obj):  # pylint: disable=invalid-name
+  """Check if a given object is array-like."""
+  # TODO(slebedev): an object could also implement C-level array interface.
+  if (callable(getattr(obj, "__array__", None)) or
+      isinstance(getattr(obj, "__array_interface__", None), dict)):
+    return True
+
+  try:
+    memoryview(obj)
+  except TypeError:
+    return False
+  else:
+    return not isinstance(obj, bytes)
 
 
 # pylint: disable=invalid-name
@@ -441,21 +417,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
           dtypes.qint32
       ])
 
+  if _is_array_like(values):
+    values = np.asarray(values)
+
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
-    if dtype:
+    if dtype and dtype.is_numpy_compatible:
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
-  elif callable(getattr(values, "__array__", None)) or isinstance(
-      getattr(values, "__array_interface__", None), dict):
-    # If a class has the __array__ method, or __array_interface__ dict, then it
-    # is possible to convert to numpy array.
-    nparray = np.asarray(values, dtype=dtype)
-
-    # This is the preferred way to create an array from the object, so replace
-    # the `values` with the array so that _FlattenToStrings is not run.
-    values = nparray
   else:
     if values is None:
       raise ValueError("None values not supported.")

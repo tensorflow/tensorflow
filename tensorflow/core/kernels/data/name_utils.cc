@@ -65,10 +65,11 @@ string IteratorPrefix(const string& dataset_type, const string& prefix) {
 string IteratorPrefix(const string& dataset_type, const string& prefix,
                       const IteratorPrefixParams& params) {
   if (params.op_version == 1) {
-    return strings::StrCat(prefix, kDelimiter, dataset_type);
+    return strings::StrCat(prefix, kDelimiter, params.dataset_prefix,
+                           dataset_type);
   }
-  return strings::StrCat(prefix, kDelimiter, dataset_type, kVersion,
-                         params.op_version);
+  return strings::StrCat(prefix, kDelimiter, params.dataset_prefix,
+                         dataset_type, kVersion, params.op_version);
 }
 
 }  // namespace name_utils

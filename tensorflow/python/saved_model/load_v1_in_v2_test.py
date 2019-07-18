@@ -28,6 +28,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -512,6 +513,39 @@ class LoadTest(test.TestCase):
     imported_fn = imported.signatures["serving_default"]
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
     self.assertEqual([84], imported_fn(forty_two)["output"].values.numpy())
+
+  def _model_with_defun(self):
+    """Generate a graph with a Defun and serialize in V1 format."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      @framework_function.Defun(dtypes.int64)
+      def z(x):
+        return x + 1
+
+      @framework_function.Defun(dtypes.int64)
+      def g(x):
+        return z(x) + 1
+
+      @framework_function.Defun(dtypes.int64)
+      def f(x):
+        return g(x) + 1
+      in_placeholder = array_ops.placeholder(dtype=dtypes.int64, shape=[1])
+      out = f(in_placeholder)
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": in_placeholder},
+            outputs={"output": out})
+    return path
+
+  def test_load_defun(self):
+    path = self._model_with_defun()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    forty_two = constant_op.constant([42], dtype=dtypes.int64)
+    self.assertEqual([45], imported_fn(forty_two)["output"].numpy())
 
 
 if __name__ == "__main__":

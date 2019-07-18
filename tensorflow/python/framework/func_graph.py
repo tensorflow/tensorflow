@@ -193,6 +193,10 @@ class FuncGraph(ops.Graph):
     self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    # If not None, records the names of output args of this function. Used to
+    # preserve the output names in the signature of a serialized+deserialized
+    # function. Private at the moment mostly because it's often out of date.
+    self._output_names = None
     self.deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
@@ -373,6 +377,10 @@ class FuncGraph(ops.Graph):
       # optimizers.
       old_graph_key = self._graph_key
       self._graph_key = graph._graph_key
+      # Inherit the auto_cast_variable_read_dtype, since this should not change
+      # inside a function.
+      old_auto_cast_var_read_dtype = self._auto_cast_variable_read_dtype
+      self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
       with outer_cm as g:
@@ -383,6 +391,7 @@ class FuncGraph(ops.Graph):
           self._device_function_stack = old_device_stack
           self._variable_creator_stack = old_creator_stack
           self._graph_key = old_graph_key
+          self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property

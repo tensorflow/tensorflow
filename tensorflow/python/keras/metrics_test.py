@@ -1967,7 +1967,8 @@ def _get_model(compile_metrics):
       loss='mae',
       metrics=compile_metrics,
       optimizer='rmsprop',
-      run_eagerly=testing_utils.should_run_eagerly())
+      run_eagerly=testing_utils.should_run_eagerly(),
+      run_distributed=testing_utils.should_run_distributed())
   return model
 
 

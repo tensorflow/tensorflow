@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -44,6 +45,18 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
+
+std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
+    const {
+  if (runner_) {
+    return runner_;
+  } else {
+    static auto* default_runner =
+        new std::function<void(std::function<void()>)>(
+            [](std::function<void()> f) { f(); });
+    return default_runner;
+  }
+}
 
 KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   if (handle_ != kInvalidHandle) {
@@ -165,18 +178,20 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 Status KernelAndDeviceFunc::Run(
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
   ScopedStepContainer step_container(0, [&devices](const string& name) {
     for (Device* device : devices) {
@@ -184,7 +199,7 @@ Status KernelAndDeviceFunc::Run(
     }
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 namespace {
@@ -221,7 +236,8 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -253,8 +269,12 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
-  params.cancellation_manager = &cm_;
-  cm_.Reset();
+  if (cancellation_manager) {
+    params.cancellation_manager = cancellation_manager;
+  } else {
+    params.cancellation_manager = &cm_;
+    cm_.Reset();
+  }
   params.log_memory = log_memory_;
   params.inc_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
@@ -274,7 +294,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     params.stats_collector = step_stats_collector.get();
     params.graph_collector = graph_collector;
   }
-  params.runner = runner_ != nullptr ? runner_ : &default_runner_;
+  params.runner = get_runner();
 
   params.step_container = step_container;
   params.collective_executor =
@@ -301,8 +321,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
@@ -314,8 +333,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
           [&] {
             return strings::StrCat(
                 op_name, ":", kernel_->type_string(),
-                "#id=n/a,step_container_name=",
-                step_container == nullptr ? "n/a" : step_container->name(),
+                "#id=", step_container ? step_container->step_id() : 0,
                 ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
@@ -340,7 +358,8 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container,
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   FunctionLibraryRuntime::Options opts;
 
   // We don't pass rendezvous from eager context because we can get tensor
@@ -350,8 +369,12 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
-  opts.cancellation_manager = &cm_;
-  cm_.Reset();
+  if (cancellation_manager) {
+    opts.cancellation_manager = cancellation_manager;
+  } else {
+    opts.cancellation_manager = &cm_;
+    cm_.Reset();
+  }
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;
   opts.collective_executor =
@@ -362,7 +385,7 @@ Status KernelAndDeviceFunc::Run(
     step_stats_collector.reset(new StepStatsCollector(step_stats));
   }
   opts.stats_collector = step_stats_collector.get();
-  opts.runner = (runner_ == nullptr) ? &default_runner_ : runner_;
+  opts.runner = get_runner();
 
   Notification done;
   Status status;

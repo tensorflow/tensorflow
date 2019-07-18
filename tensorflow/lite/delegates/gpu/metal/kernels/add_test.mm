@@ -63,9 +63,29 @@ using ::tflite::gpu::OperationType;
   XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8}));
   XCTAssertTrue(model.PopulateTensor(1, {0.1, 0.2, 0.3, 0.5}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.message().data());
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
   status = CompareVectors({-1.9, 0.4, 1.0, 1.3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status == util::OkStatus(), @"%s", status.message().data());
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testInputTensorAndScalar {
+  AddAttributes attr;
+  attr.param = 0.1f;
+  TensorRef<BHWC> input, output;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 3, 1, 2);
+
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 3, 1, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
 }
 
 @end

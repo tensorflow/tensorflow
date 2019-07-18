@@ -53,6 +53,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":core",
         ":def_function",
@@ -81,6 +82,26 @@ py_library(
         ":context",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_library(
+    name = "cancellation",
+    srcs = ["cancellation.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "cancellation_test",
+    size = "small",
+    srcs = ["cancellation_test.py"],
+    additional_deps = [
+        ":cancellation",
+        ":test",
     ],
 )
 
@@ -229,6 +250,7 @@ cuda_py_test(
         ":forwardprop",
         ":test",
     ],
+    shard_count = 5,
     xla_enable_strict_auto_jit = True,
 )
 
@@ -305,11 +327,13 @@ cuda_py_test(
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":def_function",
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:dtypes",
@@ -487,6 +511,7 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":forwardprop",
         ":function",
         ":test",
         ":profiler",
@@ -619,7 +644,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     additional_deps = [
@@ -700,5 +725,18 @@ cuda_py_test(
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+cuda_py_test(
+    name = "device_placement_test",
+    size = "small",
+    srcs = ["device_placement_test.py"],
+    additional_deps = [
+        ":context",
+        ":def_function",
+        ":test",
+        ":remote",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )

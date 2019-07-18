@@ -101,7 +101,11 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
+                                      TRTEngineCacheResource* cache_res,
                                       TRTCalibrationResource** cr);
+
+  Status GetEngineCacheResource(OpKernelContext* ctx,
+                                TRTEngineCacheResource** cache_res);
 
   // Get engine for the input shape
   StatusOr<EngineContext*> GetEngine(
@@ -274,14 +278,19 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
+  // Get the cache resource outside the LookupOrCreate() below to avoid
+  // deadlock.
+  TRTEngineCacheResource* cache_res = nullptr;
+  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
+  core::ScopedUnref unref_cache_res(cache_res);
   TRTCalibrationResource* calib_res = nullptr;
   OP_REQUIRES_OK_ASYNC(
       ctx,
       ctx->resource_manager()->LookupOrCreate(
           std::string(kCalibrationContainerName), name(),
           reinterpret_cast<TRTCalibrationResource**>(&calib_res),
-          {[ctx, this](TRTCalibrationResource** cr) -> Status {
-            return this->AllocateCalibrationResources(ctx, cr);
+          {[ctx, cache_res, this](TRTCalibrationResource** cr) -> Status {
+            return this->AllocateCalibrationResources(ctx, cache_res, cr);
           }}),
       *helper);
   core::ScopedUnref calib_sc(calib_res);
@@ -555,13 +564,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   return !kRetry;
 }
 
-StatusOr<EngineContext*> TRTEngineOp::GetEngine(
-    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
-  static EngineContext empty_context;
-  mutex_lock lock(engine_mutex_);
-  // TODO(tmorris): using first input to get batch size - is this reliable?
-  const int batch_size = input_shapes[0].dim_size(0);
-
+Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
+                                           TRTEngineCacheResource** cache_res) {
   // Canonicalize the op name by removing the scopes if any. This is mainly
   // because in TFv2, the function graph can be instantiated in various ways and
   // it'll insert scope names to the name of the TRTEngineOps, which will result
@@ -575,21 +579,24 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   }
 
   // Get engine cache.
-  TRTEngineCacheResource* cache_res = nullptr;
-  auto status = ctx->resource_manager()->LookupOrCreate(
-      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
+  return ctx->resource_manager()->LookupOrCreate(
+      "TF-TRT-Engine-Cache", string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
       }});
-  if (!status.ok()) {
-    LOG(WARNING) << "Not able to find or create engine cache for " << name()
-                 << ". The native segment will be used instead. "
-                 << "Reason: " << status;
-    return &empty_context;
-  }
+}
 
+StatusOr<EngineContext*> TRTEngineOp::GetEngine(
+    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
+  static EngineContext empty_context;
+  TRTEngineCacheResource* cache_res = nullptr;
+  TF_RETURN_IF_ERROR(GetEngineCacheResource(ctx, &cache_res));
   core::ScopedUnref sc(cache_res);
+
+  mutex_lock lock(engine_mutex_);
+  // TODO(tmorris): using first input to get batch size - is this reliable?
+  const int batch_size = input_shapes[0].dim_size(0);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
   if (allocator == nullptr) {
@@ -687,23 +694,15 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   return cache.at(engine_input_shapes).get();
 }
 
-Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
-                                                 TRTCalibrationResource** cr) {
+Status TRTEngineOp::AllocateCalibrationResources(
+    OpKernelContext* ctx, TRTEngineCacheResource* cache_res,
+    TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
-  // Get the allocator.
-  auto alloc = ctx->device()->GetAllocator(AllocatorAttributes());
-  if (!alloc) {
-    LOG(WARNING) << "Can't get device allocator will not be able to "
-                    "allocate memory from TensorFlow memory pool";
-    cres->allocator_.reset(new TRTCudaAllocator);
-  } else {
-    cres->allocator_.reset(new TRTDeviceAllocator(alloc));
-  }
   // Get the input shapes.
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
-  std::vector<PartialTensorShape> shapes;
+  std::vector<TensorShape> shapes;
   cres->device_tensors_.resize(num_inputs);
   VLOG(1) << " Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
@@ -725,8 +724,6 @@ Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
-  const string label(name());
-  auto segment_graph = &segment_graph_;
   const int platform_gpu_id =
       ctx->device()->tensorflow_gpu_device_info()->gpu_id;
   if (platform_gpu_id < 0) {
@@ -734,37 +731,57 @@ Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
     return errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
-  const int64 workspace_size_bytes = workspace_size_;
-  cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
-                                    platform_gpu_id, workspace_size_bytes]() {
-    LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
-              << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(platform_gpu_id);
-    if (err != cudaSuccess) {
-      // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
-                 << " in calibration thread";
-    }
-    // ConvertGraphDefToEngine() will try to build the engine. This thread
-    // will loop inside buildCudaEngine() consuming the calibration data
-    // that is set by the TF op, and drive the builder until calibrator returns
-    // false. Engine is discarded after calibration table is generated
-    //
-    // TODO(aaroey): maybe setting the max batch size using the python
-    // calibration wrapper class.
-    auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, TrtPrecisionMode::INT8,
-        cres->calibrator_->getBatchSize(), workspace_size_bytes, shapes,
-        &cres->logger_, cres->allocator_.get(), cres->calibrator_.get(),
-        &cres->engine_,
-        /*use_calibration=*/true,
-        /*convert_successfully=*/nullptr);
-    if (!s.ok()) {
-      LOG(ERROR) << "Calibration failed: " << s;
-      cres->calibrator_->setDone();  // Ignore further pushes
-    }
-    VLOG(1) << "Calibration loop terminated " << label;
-  }));
+
+  cache_res->Ref();
+  cres->thr_.reset(
+      new std::thread([this, cres, shapes, platform_gpu_id, cache_res]() {
+        core::ScopedUnref sc(cache_res);
+
+        LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
+                  << ", Calibration Resource @ " << cres;
+        auto err = cudaSetDevice(platform_gpu_id);
+        if (err != cudaSuccess) {
+          // TODO(aaroey): should return error here.
+          LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
+                     << " in calibration thread";
+        }
+        std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
+                                                       shapes.end());
+        // ConvertGraphDefToEngine() will try to build the engine. This thread
+        // will loop inside buildCudaEngine() consuming the calibration data
+        // that is set by the TF op, and drive the builder until calibrator
+        // returns false. Engine is discarded after calibration table is
+        // generated
+        //
+        // TODO(aaroey): maybe setting the max batch size using the python
+        // calibration wrapper class.
+        auto s = convert::ConvertGraphDefToEngine(
+            this->segment_graph_, TrtPrecisionMode::INT8,
+            cres->calibrator_->getBatchSize(), this->workspace_size_,
+            partial_shapes, &cres->logger_, cache_res->allocator_.get(),
+            cres->calibrator_.get(), &cres->engine_,
+            /*use_calibration=*/true,
+            /*convert_successfully=*/nullptr);
+        if (!s.ok()) {
+          LOG(ERROR) << "Calibration failed: " << s;
+          cres->calibrator_->setDone();  // Ignore further pushes
+        }
+
+        // Transfer the ownership of the engine to the engine cache, so we can
+        // dump it out during conversion for TF 2.0.
+        if (cache_res) {
+          mutex_lock lock(this->engine_mutex_);
+          cres->SetCalibrationTable();
+          this->calibrator_ = std::move(cres->calibrator_);
+          TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
+              cres->engine_->createExecutionContext());
+          cache_res->cache_.emplace(
+              shapes, absl::make_unique<EngineContext>(
+                          std::move(cres->engine_), std::move(exec_context)));
+        }
+
+        VLOG(1) << "Calibration loop terminated " << this->name();
+      }));
   VLOG(1) << "initialized calibrator resource";
   return Status::OK();
 }

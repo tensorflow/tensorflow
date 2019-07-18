@@ -1,8 +1,11 @@
 licenses(["notice"])
 
+package(default_visibility = [":test_friends"])
+
 # Please only depend on this from MLIR tests.
 package_group(
     name = "test_friends",
+    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 
@@ -12,7 +15,6 @@ cc_library(
     name = "IRProducingAPITest",
     hdrs = ["APITest.h"],
     includes = ["."],
-    visibility = [":test_friends"],
 )
 
 gentbl(
@@ -51,7 +53,6 @@ cc_library(
         "lib/TestDialect/TestDialect.h",
     ],
     includes = ["lib/TestDialect"],
-    visibility = [":test_friends"],
     deps = [
         ":TestOpsIncGen",
         "@llvm//:support",
@@ -71,7 +72,6 @@ cc_library(
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
-    visibility = [":test_friends"],
     deps = [
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",

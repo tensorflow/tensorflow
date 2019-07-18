@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -51,7 +51,7 @@ class ParameterAccessor : public InlineRewrite {
   RewriteStatus Rewrite(absl::string_view input, std::string* output) final;
 
   // Return true if parameter was successfully added.
-  bool AddParameter(UniformParameter param);
+  bool AddParameter(Variable param);
 
   // Returns const parameters that need to be inlined in the a shader's code.
   std::string GetConstDeclarations() const;
@@ -60,14 +60,14 @@ class ParameterAccessor : public InlineRewrite {
   std::string GetUniformDeclarations() const;
 
   // Returns a collection of uniform parameters.
-  std::vector<UniformParameter> GetUniformParameters() const;
+  std::vector<Variable> GetUniformParameters() const;
 
  private:
   const bool inline_values_;
   // Unique parameter index used for obfuscation.
   uint32_t unique_param_index_ = 0;
 
-  std::unordered_map<std::string, UniformParameter> name_to_param_;
+  std::unordered_map<std::string, Variable> name_to_param_;
 };
 
 // Implementation details below.

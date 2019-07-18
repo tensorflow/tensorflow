@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -99,7 +100,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
   }
   auto& module = module_or.ValueOrDie();
   std::srand(0);
-  for (auto fn : *module) {
+  for (auto fn : module->getOps<mlir::FuncOp>()) {
     for (auto& bb : fn) {
       for (auto& inst : bb) {
         auto attr_id = mlir::Identifier::get("value", context);
@@ -119,7 +120,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
               break;
             default:
               inst.emitWarning()
-                  << "Skipping splat converstion for "
+                  << "Skipping splat conversion for "
                   << "an unsupported attribute type " << element_type;
               continue;
           }

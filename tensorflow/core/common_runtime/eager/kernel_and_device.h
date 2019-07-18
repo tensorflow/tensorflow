@@ -70,9 +70,8 @@ class KernelAndDevice : public core::RefCounted {
       : device_(flr == nullptr ? nullptr : flr->device()),
         host_cpu_device_(host_cpu_device),
         flr_(flr),
-        runner_(runner),
-        default_runner_([](std::function<void()> f) { f(); }),
-        collective_executor_(std::move(collective_executor)) {}
+        collective_executor_(std::move(collective_executor)),
+        runner_(runner) {}
 
   // Not thread safe.
   virtual ~KernelAndDevice() {}
@@ -80,14 +79,14 @@ class KernelAndDevice : public core::RefCounted {
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Status Run(ScopedStepContainer* step_container,
                      const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -114,6 +113,8 @@ class KernelAndDevice : public core::RefCounted {
   virtual const string& name() const = 0;
 
  protected:
+  std::function<void(std::function<void()>)>* get_runner() const;
+
   // TODO(apassos) Consider a shared cancellation manager. Note that this
   // cancellation manager is not useful to actually cancel anything, and is
   // provided here only for the few kernels which can't handle one being
@@ -122,9 +123,10 @@ class KernelAndDevice : public core::RefCounted {
   Device* const device_;               // can be null
   Device* const host_cpu_device_;      // non-null
   FunctionLibraryRuntime* const flr_;  // can be null
-  std::function<void(std::function<void()>)>* const runner_;
-  std::function<void(std::function<void()>)> default_runner_;
   const std::unique_ptr<CollectiveExecutor::Handle> collective_executor_;
+
+ private:
+  std::function<void(std::function<void()>)>* const runner_;  // can be null
 };
 
 // Represents an op kernel and the device it will be run on.
@@ -147,12 +149,14 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return kernel_.get(); }
 
@@ -219,11 +223,13 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 

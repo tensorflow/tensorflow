@@ -651,6 +651,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
           [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]])
       self.assertLen(rt.nested_row_splits, 1)
       self.assertAllEqual(rt.nested_row_splits[0], [0, 2, 2, 5, 6, 7])
+      self.assertLen(rt.nested_value_rowids(), 1)
+
+      self.assertAllEqual(rt.nested_value_rowids()[0], [0, 0, 2, 2, 2, 3, 4])
 
   def testRaggedTensorAccessors_3d_with_ragged_rank_2(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
@@ -685,6 +688,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
       self.assertLen(rt.nested_row_splits, 2)
       self.assertAllEqual(rt.nested_row_splits[0], [0, 2, 3, 3, 5])
       self.assertAllEqual(rt.nested_row_splits[1], [0, 2, 2, 5, 6, 7])
+      self.assertLen(rt.nested_value_rowids(), 2)
+      self.assertAllEqual(rt.nested_value_rowids()[0], [0, 0, 1, 3, 3])
+      self.assertAllEqual(rt.nested_value_rowids()[1], [0, 0, 2, 2, 2, 3, 4])
 
   #=============================================================================
   # RaggedTensor.shape

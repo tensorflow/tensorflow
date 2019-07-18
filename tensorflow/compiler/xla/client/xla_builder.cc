@@ -1309,14 +1309,13 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
     instr.set_infeed_config(config);
 
     if (shape.IsArray() && sharding() &&
-        sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
+        sharding()->type() == OpSharding::OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
           "Tiled sharding is not yet supported for array-shaped infeeds");
     }
 
-    if (sharding() &&
-        sharding()->type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
+    if (sharding() && sharding()->type() == OpSharding::REPLICATED) {
       return InvalidArgument(
           "Replicated sharding is not yet supported for infeeds");
     }
@@ -1343,8 +1342,7 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
     // data and a token. For tuple sharding type, the sharding must be changed
     // to accommodate the token.
     XlaOp infeed;
-    if (sharding() &&
-        sharding()->type() == OpSharding::Type::OpSharding_Type_TUPLE) {
+    if (sharding() && sharding()->type() == OpSharding::TUPLE) {
       // TODO(b/80000000): Remove this when clients have been updated to handle
       // tokens.
       OpSharding infeed_instruction_sharding = *sharding();
@@ -1385,14 +1383,13 @@ XlaOp XlaBuilder::InfeedWithToken(const XlaOp& token, const Shape& shape,
     instr.set_infeed_config(config);
 
     if (shape.IsArray() && sharding() &&
-        sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
+        sharding()->type() == OpSharding::OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
           "Tiled sharding is not yet supported for array-shaped infeeds");
     }
 
-    if (sharding() &&
-        sharding()->type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
+    if (sharding() && sharding()->type() == OpSharding::REPLICATED) {
       return InvalidArgument(
           "Replicated sharding is not yet supported for infeeds");
     }

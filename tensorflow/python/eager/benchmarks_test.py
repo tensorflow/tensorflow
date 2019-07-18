@@ -39,6 +39,7 @@ from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import remote
@@ -190,10 +191,35 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
-  def benchmark_create_constant(self):
-    func = lambda: constant_op.constant(3.0)
+  def _benchmark_create_constant(self, value, dtype):
+    def func():
+      return constant_op.constant(value, dtype=dtype)
+
+    for _ in range(1000):
+      func()  # Warmup.
 
     self._run(func, 30000)
+
+  def benchmark_create_float_constant(self):
+    self._benchmark_create_constant(42.0, dtype=None)
+
+  def benchmark_create_int32_constant(self):
+    self._benchmark_create_constant(42, dtype=dtypes.int32)
+
+  def _benchmark_add_scalars(self, a, b):
+    def func():
+      return math_ops.add(a, b)
+
+    for _ in range(1000):
+      func()  # Warmup.
+
+    self._run(func, 30000)
+
+  def benchmark_add_float_scalars(self):
+    self._benchmark_add_scalars(42.0, 24.0)
+
+  def benchmark_add_int_scalars(self):
+    self._benchmark_add_scalars(42, 24)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
@@ -649,6 +675,75 @@ class MicroBenchmarks(test.Benchmark):
     self._benchmark_nested_defun_matmul(
         m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
+  def _benchmark_forwardprop_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+
+      def func():
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(m, tangent)
+          result = math_ops.matmul(m, m, transpose_b=True)
+        return result, acc.jvp(result)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def _benchmark_forwardprop_in_defun_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      @def_function.function
+      def compiled_function(x, tangent):
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(x, tangent)
+          result = math_ops.matmul(x, x, transpose_b=True)
+        return result, acc.jvp(result)
+
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+      func = lambda: compiled_function(m, tangent)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def _benchmark_forwardprop_of_defun_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+      matmul = def_function.function(math_ops.matmul)
+
+      def func():
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(m, tangent)
+          result = matmul(m, m, transpose_b=True)
+        return result, acc.jvp(result)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
+  def benchmark_forwardprop_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_in_defun_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_of_defun_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(256, 2096))
+
+  def benchmark_forwardprop_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_matmul_CPU(shape=(100, 784))
+
+  def benchmark_forwardprop_in_defun_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(100, 784))
+
+  def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
+
   def benchmark_defun_without_signature(self):
 
     def func(t1, t2, t3, t4, t5, t6, t7, t8):
@@ -934,6 +1029,26 @@ class MicroBenchmarks(test.Benchmark):
       return gen_math_ops.add(c, 1)
 
     self._run(fn, 10000)
+
+  def benchmark_convert_3x_list_to_tensor(self):
+    xs = [1, 2, 3]
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_convert_3x_array_to_tensor(self):
+    xs = np.array([1, 2, 3], dtype=np.int32)
+    self._run(lambda: ops.convert_to_tensor(xs), 1000)
+
+  def benchmark_constant_40x2_list_to_tensor(self):
+    xs = [[0] * 2] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x2_array_to_tensor(self):
+    xs = np.array([[0] * 2] * 40, dtype=np.int32)
+    self._run(lambda: constant_op.constant(xs), 1000)
+
+  def benchmark_constant_40x_list_of_2x_arrays_to_tensor(self):
+    xs = [np.array([0] * 2, dtype=np.int32)] * 40
+    self._run(lambda: constant_op.constant(xs), 1000)
 
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function

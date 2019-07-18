@@ -134,7 +134,8 @@ class CallbackCountsTest(keras_parameterized.TestCase):
     model.compile(
         adam.AdamOptimizer(0.001),
         'binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
@@ -236,7 +237,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   @keras_parameterized.run_with_all_model_types
@@ -1286,7 +1288,11 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
     opt = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        opt,
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1339,6 +1345,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
     See: <https://github.com/tensorflow/tensorflow/issues/25707>
     """
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir)
@@ -1402,6 +1410,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_TensorBoard_weight_histograms(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
@@ -1432,6 +1442,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_TensorBoard_weight_images(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(
@@ -1516,7 +1528,11 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Dense(1),
     ])
     opt = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        opt,
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   def fitModelAndAssertKerasModelWritten(self, model):

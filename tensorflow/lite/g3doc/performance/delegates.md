@@ -14,13 +14,15 @@ Running inference on compute-heavy machine learning models on mobile devices is 
 
 Instead of relying on the CPU, some devices have hardware accelerators, such as GPU or DSP, that allows for better performance and higher energy efficiency.
 
+## Using the GPU delegate
 
-## Using the experimental GPU delegate
+TensorFlow Lite provides a GPU delegate that can be used to accelerate models on
+devices that have a GPU available.
 
-TensorFlow Lite provides an experimental GPU delegate that can be used to accelerate models on devices that have a GPU available.
-
-For an overview of the experimental GPU delegate, see [TensorFlow Lite on GPU](https://www.tensorflow.org/lite/performance/gpu_advanced). For step-by-step tutorials on using the GPU delegate with Android and iOS, see [TensorFlow Lite GPU Delegate Tutorial](https://www.tensorflow.org/lite/performance/gpu).
-
+For an overview of the GPU delegate, see
+[TensorFlow Lite on GPU](https://www.tensorflow.org/lite/performance/gpu_advanced).
+For step-by-step tutorials on using the GPU delegate with Android and iOS, see
+[TensorFlow Lite GPU Delegate Tutorial](https://www.tensorflow.org/lite/performance/gpu).
 
 ## How do delegates work?
 

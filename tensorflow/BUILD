@@ -446,6 +446,7 @@ package_group(
     packages = [
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
+        "//tensorflow_models/official/...",
     ],
 )
 

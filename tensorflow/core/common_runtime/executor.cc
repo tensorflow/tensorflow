@@ -1816,20 +1816,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        if (TF_PREDICT_FALSE(
-                MightTrace(item, event_collector_, trace_using_annotations_))) {
+        {
           profiler::TraceMe activity(
               [&] {
                 return strings::StrCat(
                     op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", step_id_, ",step_container_name=",
-                    step_container_ == nullptr ? "n/a"
-                                               : step_container_->name(),
+                    "#id=", step_container_ ? step_container_->step_id() : 0,
                     ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
-          device->ComputeAsync(async, &state->ctx, done);
-        } else {
           device->ComputeAsync(async, &state->ctx, done);
         }
       } else {
@@ -1841,9 +1836,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", step_id_,
-              ",step_container_name=",
-              step_container_ == nullptr ? "n/a" : step_container_->name(),
+              op_name, ":", op_kernel->type_string(),
+              "#id=", step_container_ ? step_container_->step_id() : 0,
               ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
@@ -2534,6 +2528,12 @@ void ExecutorState::Finish() {
       // TODO(b/124523000): Always call Finish in a separate thread, so even if
       // StartCancel blocks the current thread's execution, we won't encounter
       // deadlocks caused by inter-op thread exhaustion.
+      if (rendezvous_) {
+        rendezvous_->StartAbort(status);
+      }
+      if (collective_executor_) {
+        collective_executor_->StartAbort(status);
+      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
       }

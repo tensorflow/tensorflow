@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
@@ -48,7 +49,8 @@ class TestEagerServiceImpl : public EagerServiceImpl {
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
 
-    return context->GetTensorHandle(remote_handle, handle);
+    return context->Context()->RemoteMgr()->GetTensorHandle(remote_handle,
+                                                            handle);
   }
 };
 
@@ -360,8 +362,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
   Device* device = tensor_handle->device();
-  EXPECT_NE(device, nullptr);
-  EXPECT_EQ(device->name(), "/job:localhost/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(device, nullptr);
 
   auto actual = t->flat<float>();
   EXPECT_EQ(4, actual.size());

@@ -31,35 +31,35 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 3,
   // CHECK-NEXT:       name: "squared_difference",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 4,
   // CHECK-NEXT:       name: "mul",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 5,
   // CHECK-NEXT:       name: "div",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 6,
   // CHECK-NEXT:       name: "exp",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 7,
   // CHECK-NEXT:       name: "neg",
   // CHECK-NEXT:       quantization: {

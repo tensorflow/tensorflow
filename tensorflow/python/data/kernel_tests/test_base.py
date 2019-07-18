@@ -47,11 +47,14 @@ class DatasetTestBase(test.TestCase):
     with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
       self.evaluate(op)
 
-  def assertSparseValuesEqual(self, a, b):
-    """Asserts that two SparseTensors/SparseTensorValues are equal."""
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
+  def assertValuesEqual(self, expected, actual):
+    """Asserts that two values are equal."""
+    if sparse_tensor.is_sparse(expected):
+      self.assertAllEqual(expected.indices, actual.indices)
+      self.assertAllEqual(expected.values, actual.values)
+      self.assertAllEqual(expected.dense_shape, actual.dense_shape)
+    else:
+      self.assertAllEqual(expected, actual)
 
   def getNext(self, dataset, requires_initialization=False, shared_name=None):
     """Returns a callable that returns the next element of the dataset.
@@ -107,16 +110,7 @@ class DatasetTestBase(test.TestCase):
       nest.assert_same_structure(result_values[i], expected_values[i])
       for result_value, expected_value in zip(
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
-        if sparse_tensor.is_sparse(result_value):
-          self.assertSparseValuesEqual(result_value, expected_value)
-        elif ragged_tensor.is_ragged(result_value):
-          self.assertAllEqual(result_value, expected_value)
-        else:
-          self.assertAllEqual(
-              result_value,
-              expected_value,
-              msg=("Result value: {}.  Expected value: {}"
-                   .format(result_value, expected_value)))
+        self.assertValuesEqual(expected_value, result_value)
 
   def assertDatasetProduces(self,
                             dataset,
@@ -208,10 +202,8 @@ class DatasetTestBase(test.TestCase):
       op2 = nest.flatten(op2)
       assert len(op1) == len(op2)
       for i in range(len(op1)):
-        if sparse_tensor.is_sparse(op1[i]):
-          self.assertSparseValuesEqual(op1[i], op2[i])
-        elif ragged_tensor.is_ragged(op1[i]):
-          self.assertAllEqual(op1[i], op2[i])
+        if sparse_tensor.is_sparse(op1[i]) or ragged_tensor.is_ragged(op1[i]):
+          self.assertValuesEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:

@@ -72,7 +72,8 @@ class TestSequential(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.random.random((batch_size, input_dim))
     y = np.random.random((batch_size, num_classes))
     model.fit(x, y, epochs=1)
@@ -82,7 +83,8 @@ class TestSequential(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     y = np.random.random((batch_size, num_hidden))
     model.fit(x, y, epochs=1)
 
@@ -110,7 +112,8 @@ class TestSequential(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.layers), 2)
     with self.assertRaisesRegexp(
         ValueError, 'Weights for model .* have not yet been created'):
@@ -137,7 +140,8 @@ class TestSequential(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.layers), 2)
     with self.assertRaisesRegexp(
         ValueError, 'Weights for model .* have not yet been created'):
@@ -286,7 +290,8 @@ class TestSequential(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -331,9 +336,11 @@ class TestSequential(keras_parameterized.TestCase):
     model(array_ops.zeros([1, 2]))
     self.assertTrue(model.built)
     self.assertEqual(len(model.outputs), 0)
-    model.compile('rmsprop',
-                  loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.outputs), 0)
     model.train_on_batch(np.zeros((1, 2)), np.zeros((1, 5)))
     self.assertEqual(len(model.outputs), 1)
@@ -347,7 +354,8 @@ class TestSequential(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
@@ -373,11 +381,14 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):
+    if testing_utils.should_run_distributed():
+      self.skipTest('b/137397816')
     seq = keras.Sequential([
         keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
         keras.layers.Lambda(lambda x: x[0])
     ])
     seq.run_eagerly = testing_utils.should_run_eagerly()
+    seq._run_distributed = testing_utils.should_run_distributed()
     preds = seq.predict([['tensorflow eager']])
     self.assertEqual(preds.shape, (1,))
 
@@ -417,6 +428,25 @@ class TestSequential(keras_parameterized.TestCase):
     model.compile('adam', loss='mse')
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
 
+  def test_sequential_layer_tracking(self):
+    """Test that Sequential only tracks layers added in init or `.add`."""
+    layer = keras.layers.Dense(1)
+    model = keras.Sequential([layer])
+    self.assertEqual(model._layers[-1], layer)
+
+    model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
+    self.assertEqual(model._layers[-1], layer)
+
+    layer2 = keras.layers.Dense(2)
+    model.add(layer2)
+    self.assertEqual(model._layers[-1], layer2)
+
+    model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
+    self.assertEqual(model._layers[-1], layer2)
+
+    model.pop()
+    self.assertEqual(model._layers[-1], layer)
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 
@@ -437,7 +467,8 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
@@ -450,7 +481,8 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     model.build((None, 6))
 
@@ -468,7 +500,8 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
         metrics=['acc'],
         weighted_metrics=['mae'],
         loss='categorical_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = {'dense_input': np.random.random((10, 1))}
     y = np.random.randint(num_classes, size=(10, 1))

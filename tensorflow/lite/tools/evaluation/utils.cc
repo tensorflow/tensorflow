@@ -23,8 +23,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-
 namespace tflite {
 namespace evaluation {
 
@@ -81,6 +79,18 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
       NnApiDelegate(),
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options) {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
 #else
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)

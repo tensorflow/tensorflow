@@ -20,6 +20,7 @@ from __future__ import print_function
 import functools
 import weakref
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
@@ -172,14 +173,21 @@ class CapturableResourceDeleter(object):
 
   def __init__(self, destroy_resource_fn=None):
     if destroy_resource_fn:
-      self.destroy_resource = destroy_resource_fn
+      self._destroy_resource = destroy_resource_fn
+      self._destruction_context = (
+          context.eager_mode if context.executing_eagerly()
+          else ops.get_default_graph().as_default)
+    else:
+      self._destroy_resource = None
 
   def destroy_resource(self):
-    """A function that destroys the resource."""
-    pass
+    if self._destroy_resource:
+      return self._destroy_resource()
 
   def __del__(self):
-    self.destroy_resource()
+    if self._destroy_resource:
+      with self._destruction_context():
+        self._destroy_resource()
 
 
 class CapturableResource(base.Trackable):

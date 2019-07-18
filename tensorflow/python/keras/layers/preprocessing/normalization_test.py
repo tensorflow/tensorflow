@@ -68,7 +68,8 @@ class NormalizationTest(keras_parameterized.TestCase,
     self.validate_accumulator_extract_and_restore(combiner, data, expected)
     self.validate_accumulator_serialize_and_deserialize(combiner, data,
                                                         expected)
-    self.validate_accumulator_uniqueness(combiner, data, expected)
+    self.validate_accumulator_uniqueness(combiner, data)
+    self.validate_accumulator_extract(combiner, data, expected)
 
   @parameterized.named_parameters(
       {
@@ -123,7 +124,8 @@ class NormalizationTest(keras_parameterized.TestCase,
       })
   def test_combiner_computation_multi_value_axis(self, data, axis, expected):
     combiner = normalization.Normalization._NormalizingCombiner(axis=axis)
-    self.validate_accumulator_computation(combiner, data, expected)
+    expected_accumulator = combiner._create_accumulator(**expected)
+    self.validate_accumulator_computation(combiner, data, expected_accumulator)
 
   @parameterized.named_parameters(
       {

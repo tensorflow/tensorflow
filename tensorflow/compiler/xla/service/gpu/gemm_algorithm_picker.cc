@@ -61,7 +61,9 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     se::DeviceMemoryBase reference_result_buffer, se::Stream* stream,
     const se::cuda::RedzoneAllocator& allocator,
     const BufferComparator& comparator, bool crash_on_checking_failure) {
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 

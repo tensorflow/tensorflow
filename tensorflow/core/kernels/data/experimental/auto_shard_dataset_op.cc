@@ -59,8 +59,7 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
     RewriterConfig rewriter_config;
     rewriter_config.set_fail_on_optimizer_errors(true);
     rewriter_config.add_optimizers(kOptimizerName);
-    rewriter_config.set_meta_optimizer_iterations(
-        RewriterConfig_NumIterationsType_ONE);
+    rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
     auto custom_optimizer = rewriter_config.add_custom_optimizers();
     custom_optimizer->set_name(kOptimizerName);
     AttrValue num_workers_attr;
@@ -76,6 +75,8 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("AutoShardDataset").Device(DEVICE_CPU),
+                        AutoShardDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalAutoShardDataset").Device(DEVICE_CPU),
                         AutoShardDatasetOp);
 

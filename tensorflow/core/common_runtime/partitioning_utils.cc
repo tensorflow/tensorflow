@@ -50,9 +50,9 @@ Status PartitionFunctionGraph(
   std::unordered_map<string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     const string& device = partition.first;
-    const GraphDef& graph_def = partition.second;
+    GraphDef& graph_def = partition.second;
     // Each partition gets a copy of all the
     // std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
     std::unique_ptr<Graph> subgraph(
@@ -62,7 +62,8 @@ Status PartitionFunctionGraph(
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def, subgraph.get()));
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToGraph(opts, std::move(graph_def), subgraph.get()));
     subgraphs->emplace(device, std::move(subgraph));
   }
 

@@ -162,11 +162,15 @@ class SingleOpModel {
 
   // Templated version of AddConstInput().
   template <typename T>
-  int AddConstInput(TensorType type, std::initializer_list<T> data,
-                    std::initializer_list<int> shape) {
-    int id = AddTensor(TensorData{type, shape}, data);
+  int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
+    int id = AddTensor(t, data);
     inputs_.push_back(id);
     return id;
+  }
+  template <typename T>
+  int AddConstInput(TensorType type, std::initializer_list<T> data,
+                    std::initializer_list<int> shape) {
+    return AddConstInput(TensorData{type, shape}, data);
   }
 
   // Add a null input tensor (optional input) and return kOptionalTensor.
@@ -250,7 +254,15 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16 = false);
+                        int num_threads, bool allow_fp32_relax_to_fp16);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        int num_threads);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        bool allow_fp32_relax_to_fp16);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
   // Executes inference, asserting success.
   void Invoke();
@@ -315,8 +327,8 @@ class SingleOpModel {
 
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
-  std::vector<T> ExtractVector(int index) {
-    T* v = interpreter_->typed_tensor<T>(index);
+  std::vector<T> ExtractVector(int index) const {
+    const T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v);
     return std::vector<T>(v, v + GetTensorSize(index));
   }
@@ -586,7 +598,7 @@ TensorType GetTensorType() {
 
 // Strings have a special implementation that is in test_util.cc
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index);
+std::vector<string> SingleOpModel::ExtractVector(int index) const;
 
 // The TypeUnion struct specializations hold a collection of related types.
 // Each struct holds: 1. a primitive type (e.g. float), 2. a TensorType (e.g.

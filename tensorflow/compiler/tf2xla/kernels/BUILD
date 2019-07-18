@@ -121,6 +121,7 @@ tf_kernel_library(
         "xla_svd_op.cc",
     ],
     hdrs = [
+        "image_resize_ops.h",
         "index_ops.h",
         "shape_util.h",
     ],

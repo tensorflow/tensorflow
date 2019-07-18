@@ -1966,20 +1966,6 @@ TEST(NNAPIDelegate, Relu6) {
                              }));
 }
 
-TEST(NNAPIDelegate, Tanh) {
-  FloatActivationsOpModel m(BuiltinOperator_TANH,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
-  m.SetInput({
-      0, -6, 2, 4,   //
-      3, -2, 10, 1,  //
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0, -0.9999877, 0.9640275, 0.999329,    //
-                                 0.99505475, -0.9640275, 1, 0.7615941,  //
-                             })));
-}
-
 TEST(NNAPIDelegate, LogisticFloat) {
   FloatActivationsOpModel m(BuiltinOperator_LOGISTIC,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});

@@ -207,8 +207,7 @@ Status CreateFunctionLibraryDefinition(
   }
   *result = absl::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
-  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
-  return Status::OK();
+  return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
 
 }  // namespace

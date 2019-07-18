@@ -55,6 +55,11 @@ class GetCalibrationDataOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
+
+    // Destroy the resource.
+    OP_REQUIRES_OK(context,
+                   context->resource_manager()->Delete<TRTCalibrationResource>(
+                       std::string(kCalibrationContainerName), resource_name));
     output->scalar<string>()() = serialized_resource;
   }
 };

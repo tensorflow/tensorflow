@@ -1,5 +1,5 @@
-load("//java/com/google/wireless/qa/mobileharness/client/builddefs:mobile_test.bzl", "mobile_test")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -15,6 +15,7 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
+        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -44,6 +45,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "add_test_lib",
+    testonly = 1,
+    srcs = ["add_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":add",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "add_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":add_test_lib"],
+)
+
 cc_library(
     name = "concat",
     srcs = ["concat.cc"],
@@ -56,6 +79,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],
+)
+
+objc_library(
+    name = "concat_test_lib",
+    testonly = 1,
+    srcs = ["concat_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":concat",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "concat_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":concat_test_lib"],
 )
 
 cc_library(
@@ -122,6 +167,18 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "hard_swish",
+    srcs = ["hard_swish.cc"],
+    hdrs = ["hard_swish.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 
@@ -328,40 +385,4 @@ objc_library(
     ],
 )
 
-objc_library(
-    name = "add_tests_lib",
-    testonly = 1,
-    srcs = ["add_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":add",
-        ":test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "add_test_unit",
-    minimum_os_version = "9.0",
-    tags = ["notap"],
-    deps = [":add_tests_lib"],
-)
-
-mobile_test(
-    name = "add_test_mh",
-    decorators = ["IosRealDeviceSysLogDecorator"],
-    device = "IosRealDevice",
-    dimensions = {
-        "pool": "shared",
-        "device_class": "iphone",
-        "architecture": "arm64",
-    },
-    driver = "IosXcTest",
-    files = {
-        "test_app": ["//tools/build_defs/apple/testing:ios_default_host.ipa"],
-        "xctest": ["//tensorflow/lite/delegates/gpu/metal/kernels:add_test_unit.zip"],
-    },
-    tags = [
-        "local",
-        "notap",
-    ],
-)
+tflite_portable_test_suite()

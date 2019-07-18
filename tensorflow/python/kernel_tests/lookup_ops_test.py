@@ -37,6 +37,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -367,6 +368,31 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
     result = lookup_table_func(constant_op.constant([2, -1, 1]))
     self.assertAllEqual([b"surgery", b"n/a", b"salad"], result)
+
+  def testTwoTablesInControlFlow(self):
+    keys = constant_op.constant([1, 2, 3], dtypes.int32)
+    values = constant_op.constant([5, 10, 15], dtypes.int32)
+
+    def table_func1(x):
+      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+          keys, values), -1)
+      return table.lookup(x)
+
+    elems = np.array([2, 4, 1], dtype=np.int32)
+    result1 = map_fn.map_fn(table_func1, elems, dtype=dtypes.int32)
+
+    def table_func2(x):
+      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+          keys, values), -1)
+      return table.lookup(x)
+
+    elems = np.array([2, 4, 1], dtype=np.int32)
+    result2 = map_fn.map_fn(table_func2, elems, dtype=dtypes.int32)
+
+    self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertAllEqual([10, -1, 5], self.evaluate(result1))
+    self.assertAllEqual([10, -1, 5], self.evaluate(result2))
 
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
@@ -1996,17 +2022,6 @@ class IndexTableFromTensor(test.TestCase):
           vocabulary_list=("brain", "salad", "surgery"), num_oov_buckets=1)
     self.evaluate(lookup_ops.tables_initializer())
     ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
-    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
-
-  def test_index_table_from_tensor_with_tensor_init_in_function(self):
-    @function.defun()
-    def lookup_fn():
-      vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.index_table_from_tensor(
-          vocabulary_list=vocabulary_list, num_oov_buckets=1)
-      return table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
-
-    ids = lookup_fn()
     self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int32_index_table_from_tensor_with_tensor_init(self):

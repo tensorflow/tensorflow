@@ -23,11 +23,14 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 // into regular tensors. We also assume that each element in the `TensorList` has
 // a same constant shape.
 //===----------------------------------------------------------------------===//
-def : Pat<(TF_TensorListFromTensorOp $tensor, $element_shape),
-            (replaceWithValue $tensor)>;
+def ConvertTFTensorListFromTensor : Pat<
+  (TF_TensorListFromTensorOp $tensor, $element_shape),
+  (replaceWithValue $tensor)>;
 
-def : Pat<(TF_TensorListStackOp $input, $element_shape, $num_elements),
-            (replaceWithValue $input)>;
+def ConvertTFTensorListStack : Pat<
+  (TF_TensorListStackOp $input, $element_shape, $num_elements),
+  (replaceWithValue $input)>;
 
-def : Pat<(TF_TensorListGetItemOp $input, $index, $element_shape),
-            (TF_GatherOp $input, $index, (NativeCodeCall<"$_builder.getBoolAttr(true)">))>;
+def ConvertTFTensorListGetItem : Pat<
+  (TF_TensorListGetItemOp $input, $index, $element_shape),
+  (TF_GatherOp $input, $index, (NativeCodeCall<"$_builder.getBoolAttr(true)">))>;
