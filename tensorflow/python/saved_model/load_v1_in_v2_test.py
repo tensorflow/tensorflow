@@ -111,11 +111,14 @@ class LoadTest(test.TestCase):
         8.,
         self.evaluate(tape.gradient(output, imported.variables[0])))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_ref_variable_import(self):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
-    self.assertEqual(6., fn(start=constant_op.constant(2.))["output"].numpy())
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertEqual(
+        6., self.evaluate(fn(start=constant_op.constant(2.))["output"]))
 
   def _v1_output_shape_saved_model(self):
     export_graph = ops.Graph()
