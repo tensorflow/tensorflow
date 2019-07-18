@@ -825,18 +825,6 @@ class BinaryCrossentropyTest(test.TestCase):
     expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
     self.assertAlmostEqual(self.evaluate(loss), expected_value, 3)
 
-  def test_shape_mismatch(self):
-    y_true = np.array([[1.], [1.], [1.], [0.], [1.], [0.], [0.], [1.], [1.],
-                       [0.]]).astype(np.float32)
-    y_pred = np.array([[0.], [0.], [0.], [1.], [1.], [0.], [0.], [1.], [0.],
-                       [1.]]).astype(np.float32)
-
-    bce_obj = keras.losses.BinaryCrossentropy()
-    loss = bce_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), 9.23662, 3)
-    with self.assertRaisesRegexp(ValueError, 'Shapes .+ are incompatible'):
-      loss = bce_obj(np.squeeze(y_true), y_pred)
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class CategoricalCrossentropyTest(test.TestCase):

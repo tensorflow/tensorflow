@@ -793,7 +793,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     with self.cached_session():
       with distribution.scope():
         input_img = keras.layers.Input([64, 64, 3], name='img')
-        input_lbl = keras.layers.Input([64, 64, 2], name='lbl')
+        input_lbl = keras.layers.Input([64, 64, 1], name='lbl')
         input_weight = keras.layers.Input([64, 64], name='weight')
         predict = keras.layers.Conv2D(2, [1, 1], padding='same')(input_img)
         loss_lambda = keras.layers.Lambda(
@@ -811,7 +811,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         return inputs, targets
 
       fake_imgs = np.ones([50, 64, 64, 3], dtype=np.float32)
-      fake_lbls = np.ones([50, 64, 64, 2], dtype=np.float32)
+      fake_lbls = np.ones([50, 64, 64, 1], dtype=np.float32)
       fake_weights = np.ones([50, 64, 64], dtype=np.float32)
 
       data = dataset_ops.Dataset.from_tensor_slices(
