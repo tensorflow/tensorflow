@@ -313,6 +313,8 @@ class _TensorCacheDeleter(object):
     self._context_id = context_id
 
   def __del__(self):
+    if _tensor_caches_map is None:
+      return
     if self._context_id in _tensor_caches_map:
       del _tensor_caches_map[self._context_id]
 
