@@ -152,7 +152,8 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
   // For all the batching datasets the batch_size is input number 1 except for
   // MapAndBatchDataset.
   int64 batch_size_arg_index = 1;
-  if (node.op() == "ExperimentalMapAndBatchDataset") {
+  if (node.op() == "ExperimentalMapAndBatchDataset" ||
+      node.op() == "MapAndBatchDataset") {
     // For MapAndBatch we take the 3rd last input.
     batch_size_arg_index = node.input_size() - 3;
   }
