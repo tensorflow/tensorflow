@@ -1,7 +1,7 @@
 # MLIR Specification
 
-MLIR is a compiler intermediate representation with similarities to traditional
-three-address SSA representations (like
+MLIR (Multi-Level IR) is a compiler intermediate representation with
+similarities to traditional three-address SSA representations (like
 [LLVM IR](http://llvm.org/docs/LangRef.html) or
 [SIL](https://github.com/apple/swift/blob/master/docs/SIL.rst)), but which
 introduces notions from polyhedral loop optimization as first-class concepts.
@@ -11,10 +11,8 @@ data parallel systems. Beyond its representational capabilities, its single
 continuous design provides a framework to lower from dataflow graphs to
 high-performance target-specific code.
 
-MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
-"Machine Learning IR" - the MLIR team prefers the first interpretation. This
-document defines and describes the key concepts in MLIR, and is intended to be a
-dry reference document - [rationale documentation](Rationale.md) and other
+This document defines and describes the key concepts in MLIR, and is intended to
+be a dry reference document - [rationale documentation](Rationale.md) and other
 content is hosted elsewhere.
 
 MLIR is designed to be used in three different forms: a human-readable textual
