@@ -191,10 +191,35 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
-  def benchmark_create_constant(self):
-    func = lambda: constant_op.constant(3.0)
+  def _benchmark_create_constant(self, value, dtype):
+    def func():
+      return constant_op.constant(value, dtype=dtype)
+
+    for _ in range(1000):
+      func()  # Warmup.
 
     self._run(func, 30000)
+
+  def benchmark_create_float_constant(self):
+    self._benchmark_create_constant(42.0, dtype=None)
+
+  def benchmark_create_int32_constant(self):
+    self._benchmark_create_constant(42, dtype=dtypes.int32)
+
+  def _benchmark_add_scalars(self, a, b):
+    def func():
+      return math_ops.add(a, b)
+
+    for _ in range(1000):
+      func()  # Warmup.
+
+    self._run(func, 30000)
+
+  def benchmark_add_float_scalars(self):
+    self._benchmark_add_scalars(42.0, 24.0)
+
+  def benchmark_add_int_scalars(self):
+    self._benchmark_add_scalars(42, 24)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
