@@ -2610,35 +2610,6 @@ void MaybeNotifyVariableAccessed(PyObject* input) {
   TFE_Py_TapeVariableAccessed(input);
 }
 
-bool CastTensor(const FastPathOpExecInfo& op_exec_info,
-                const TF_DataType& desired_dtype,
-                tensorflow::Safe_TFE_TensorHandlePtr* handle,
-                TF_Status* status) {
-  TF_DataType input_dtype = TFE_TensorHandleDataType(handle->get());
-  TF_DataType output_dtype = input_dtype;
-
-  if (desired_dtype >= 0 && desired_dtype != input_dtype) {
-    *handle = tensorflow::make_safe(
-        tensorflow::EagerCast(op_exec_info.ctx, handle->get(), input_dtype,
-                              static_cast<TF_DataType>(desired_dtype), status));
-    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-      return false;
-    }
-    output_dtype = desired_dtype;
-  }
-
-  if (output_dtype != TF_INT32) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
-    *handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
-        handle->get(), op_exec_info.ctx, op_exec_info.device_name, status));
-    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
                     PyObject* input, tensorflow::Safe_PyObjectPtr* output,
                     TF_Status* status) {
@@ -2727,38 +2698,19 @@ bool ConvertToTensor(
   // The hint comes from a supposedly similarly typed tensor.
   tensorflow::DataType dtype_hint = dtype_hint_getter();
 
-  tensorflow::Safe_TFE_TensorHandlePtr handle =
-      tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(input, dtype_hint)));
+  tensorflow::Safe_TFE_TensorHandlePtr handle = tensorflow::make_safe(
+      tensorflow::ConvertToEagerTensor(op_exec_info.ctx, input, dtype_hint));
   if (handle == nullptr) {
     return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
-  int desired_dtype = -1;
-  if (dtype_hint != tensorflow::DT_INVALID) {
-    desired_dtype = static_cast<int>(dtype_hint);
-  }
-
-  // Maybe cast to the desired type. This is intended to match python
-  // convert_to_tensor behavior.
-  TF_DataType output_dtype = TFE_TensorHandleDataType(handle.get());
-  if (desired_dtype >= 0 && desired_dtype != output_dtype) {
-    if (tensorflow::IsCompatible(desired_dtype, output_dtype)) {
-      if (!CastTensor(op_exec_info, static_cast<TF_DataType>(desired_dtype),
-                      &handle, status)) {
-        return false;
-      }
-      output_dtype = TFE_TensorHandleDataType(handle.get());
-    } else {
-      tensorflow::Safe_PyObjectPtr input_str(PyObject_Str(input));
-      PyErr_SetString(
-          PyExc_TypeError,
-          tensorflow::strings::StrCat(
-              "Cannot convert provided value to EagerTensor. Provided value: ",
-              TFE_GetPythonString(input_str.get()), " Requested dtype: ",
-              tensorflow::DataTypeString(
-                  static_cast<tensorflow::DataType>(desired_dtype)))
-              .c_str());
+  auto output_dtype = TFE_TensorHandleDataType(handle.get());
+  if (output_dtype != TF_INT32) {
+    // Note that this is a shallow copy and will share the underlying buffer
+    // if copying to the same device.
+    handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
+        handle.get(), op_exec_info.ctx, op_exec_info.device_name, status));
+    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
       return false;
     }
   }
