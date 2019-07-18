@@ -358,7 +358,7 @@ class WhileOp(object):
     output = False
     if op.type in [
         "Shape",
-        "Rank"
+        "Rank",
         "ShapeN",
         "ZerosLike",
         "TensorArrayV3",
