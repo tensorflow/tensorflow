@@ -640,6 +640,14 @@ class TypeAttrBase<string retType, string description> :
 
 def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
 
+
+// TODO(antiagainst): UnitAttr cannot be used for op definition because there
+// is no valid builder and getter defined. We should add them to complete
+// the definition.
+def UnitAttr : Attr<CPred<"$_self.isa<UnitAttr>()">, "unit attribute"> {
+  let storageType = [{ UnitAttr }];
+}
+
 //===----------------------------------------------------------------------===//
 // Enum attribute kinds
 

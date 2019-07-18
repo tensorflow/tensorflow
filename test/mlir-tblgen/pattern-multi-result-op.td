@@ -1,4 +1,4 @@
-// RUN: mlir-tblgen -gen-rewriters -I %S/../../include %s | FileCheck %s
+// RUN: mlir-tblgen -gen-rewriters -I %S/../../include %s | FileCheck %s --dump-input-on-failure
 
 include "mlir/IR/OpBase.td"
 
@@ -67,3 +67,23 @@ def c : Pattern<(TwoResultOp $input), [
 // CHECK-NEXT:   /*input=*/interm
 // CHECK:      auto vOneResultOp1 = rewriter.create<OneResultOp>(
 // CHECK:      rewriter.replaceOp(op, {vOneResultOp0.getOperation()->getResult(0), vOneResultOp1.getOperation()->getResult(0)});
+
+
+// Test UnitAttr in rewrite patterns
+// ---
+
+def UnitAttrOp : NS_Op<"unit_attr_op", []> {
+  let arguments = (ins AnyAttr:$value);
+  let results = (outs NoneType:$output);
+}
+
+def NoneOp : NS_Op<"none_op", []> {
+  let results = (outs NoneType:$output);
+}
+
+def d : Pat<(UnitAttrOp UnitAttr:$ignore),
+            (NoneOp)>;
+
+// CHECK-LABEL: struct d
+// CHECK: PatternMatchResult match(Operation *op0) const override {
+// CHECK: if (!((attr.isa<UnitAttr>()))) return matchFailure();
