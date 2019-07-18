@@ -812,7 +812,6 @@ class Network(base_layer.Layer):
     """Computes output tensors for new inputs.
 
     # Note:
-        - Expects `inputs` to be a list (potentially with 1 element).
         - Can be run on non-Keras tensors.
 
     Arguments:
@@ -842,7 +841,7 @@ class Network(base_layer.Layer):
     # Dictionary mapping reference tensors to computed tensors.
     tensor_dict = {}
 
-    for x, y, mask in zip(self.inputs, inputs, masks):
+    for x, y in zip(self.inputs, inputs):
       tensor_dict[str(id(x))] = y
 
     depth_keys = list(self._nodes_by_depth.keys())
@@ -865,15 +864,20 @@ class Network(base_layer.Layer):
               lambda t: tensor_dict[str(id(t))], node.input_tensors)
 
           # Ensure `training` and `mask` arg propagation if applicable.
-          kwargs = node.arguments or {}
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
-          if 'mask' in argspec:
-            computed_masks = nest.map_structure(
-                lambda t: getattr(t, '_keras_mask', None),
-                computed_tensors)
-            kwargs.setdefault('mask', computed_masks)
+          if 'mask' in kwargs:
+
+            def _map_mask_if_from_keras_layer(m):
+              # Replace input mask that originates from a Keras layer with
+              # its computed value.
+              m_id = str(id(m))
+              return tensor_dict[m_id] if m_id in tensor_dict else m
+
+            kwargs['mask'] = nest.map_structure(_map_mask_if_from_keras_layer,
+                                                kwargs['mask'])
 
           # Compute outputs.
           output_tensors = layer(computed_tensors, **kwargs)

@@ -879,6 +879,31 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
 
   @keras_parameterized.run_all_keras_modes
+  def test_mask_derived_from_keras_layer(self):
+    inputs = keras.Input((5, 10))
+    mask = keras.Input((5,))
+    outputs = keras.layers.RNN(keras.layers.LSTMCell(100))(inputs, mask=mask)
+    model = keras.Model([inputs, mask], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed()
+    )
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # All data is masked, returned values are 0's.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.ones((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # Data is not masked, returned values are random.
+    self.assertGreater(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
     def func(x):
       return [x * 0.2, x * 0.3]

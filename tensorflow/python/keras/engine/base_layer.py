@@ -627,9 +627,11 @@ class Layer(module.Module):
     # be propagated explicitly via the `mask` argument, or implicitly via
     # setting the `_keras_mask` attribute on the inputs to a Layer. Masks passed
     # explicitly take priority.
+    mask_arg_passed_by_framework = False
     input_masks = self._collect_input_masks(inputs, args, kwargs)
     if (self._expects_mask_arg and input_masks is not None and
         not self._call_arg_was_passed('mask', args, kwargs)):
+      mask_arg_passed_by_framework = True
       kwargs['mask'] = input_masks
 
     # If `training` argument was not explicitly passed, propagate `training`
@@ -738,6 +740,8 @@ class Layer(module.Module):
           if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
               kwargs.pop('training')
+            if mask_arg_passed_by_framework:
+              kwargs.pop('mask')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
@@ -1836,7 +1840,6 @@ class Layer(module.Module):
         call_args=(inputs,) + args, call_kwargs=kwargs)
     # Add an inbound node to the layer, so it can keep track of this call.
     # This updates the layer history of the output tensor(s).
-    kwargs.pop('mask', None)  # `mask` should not be serialized.
     self._add_inbound_node(
         input_tensors=inputs, output_tensors=outputs, arguments=kwargs)
     return inputs, outputs
