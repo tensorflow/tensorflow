@@ -62,8 +62,9 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
   TestRegionRewriteBlockMovement(MLIRContext *ctx)
       : ConversionPattern("test.region", 1, ctx) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const final {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const final {
     // Inline this region into the parent region.
     auto &parentRegion = *op->getContainingRegion();
     rewriter.inlineRegionBefore(op->getRegion(0), parentRegion,
@@ -101,8 +102,9 @@ struct TestRegionRewriteUndo : public RewritePattern {
 /// This pattern simply erases the given operation.
 struct TestDropOp : public ConversionPattern {
   TestDropOp(MLIRContext *ctx) : ConversionPattern("test.drop_op", 1, ctx) {}
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const final {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const final {
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -111,8 +113,9 @@ struct TestDropOp : public ConversionPattern {
 struct TestPassthroughInvalidOp : public ConversionPattern {
   TestPassthroughInvalidOp(MLIRContext *ctx)
       : ConversionPattern("test.invalid", 1, ctx) {}
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const final {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const final {
     rewriter.replaceOpWithNewOp<TestValidOp>(op, llvm::None, operands,
                                              llvm::None);
     return matchSuccess();
@@ -122,8 +125,9 @@ struct TestPassthroughInvalidOp : public ConversionPattern {
 struct TestSplitReturnType : public ConversionPattern {
   TestSplitReturnType(MLIRContext *ctx)
       : ConversionPattern("test.return", 1, ctx) {}
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const final {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const final {
     // Check for a return of F32.
     if (op->getNumOperands() != 1 || !op->getOperand(0)->getType().isF32())
       return matchFailure();

@@ -164,8 +164,9 @@ public:
                                    LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferAllocOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto indexType = IndexType::get(op->getContext());
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
@@ -227,8 +228,9 @@ public:
       : LLVMOpLowering(BufferDeallocOp::getOperationName(), context,
                        lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
@@ -261,8 +263,9 @@ public:
   BufferSizeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferSizeOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     edsc::ScopedContext context(rewriter, op->getLoc());
     rewriter.replaceOp(
@@ -277,8 +280,9 @@ public:
   explicit DimOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(linalg::DimOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto dimOp = cast<linalg::DimOp>(op);
     auto indexTy = lowering.convertType(rewriter.getIndexType());
     edsc::ScopedContext context(rewriter, op->getLoc());
@@ -307,7 +311,7 @@ public:
   // a getelementptr. This must be called under an edsc::ScopedContext.
   Value *obtainDataPtr(Operation *op, Value *viewDescriptor,
                        ArrayRef<Value *> indices,
-                       PatternRewriter &rewriter) const {
+                       ConversionPatternRewriter &rewriter) const {
     auto loadOp = cast<Op>(op);
     auto elementTy = getPtrToElementType(loadOp.getViewType(), lowering);
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
@@ -333,8 +337,9 @@ public:
 // an LLVM IR load.
 class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   using Base::Base;
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     auto elementTy = lowering.convertType(*op->result_type_begin());
     Value *viewDescriptor = operands[0];
@@ -351,8 +356,9 @@ public:
   explicit RangeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(RangeOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto rangeOp = cast<RangeOp>(op);
     auto rangeDescriptorTy =
         convertLinalgType(rangeOp.getResult()->getType(), lowering);
@@ -380,8 +386,9 @@ public:
       : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
                        lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto rangeIntersectOp = cast<RangeIntersectOp>(op);
     auto rangeDescriptorTy =
         convertLinalgType(rangeIntersectOp.getResult()->getType(), lowering);
@@ -423,8 +430,9 @@ public:
   explicit SliceOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(SliceOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto sliceOp = cast<SliceOp>(op);
     auto viewDescriptorTy = convertLinalgType(sliceOp.getViewType(), lowering);
     auto viewType = sliceOp.getBaseViewType();
@@ -503,8 +511,9 @@ public:
 // an LLVM IR store.
 class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   using Base::Base;
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     Value *data = operands[0];
     Value *viewDescriptor = operands[1];
@@ -521,8 +530,9 @@ public:
   explicit ViewOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(ViewOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto viewOp = cast<ViewOp>(op);
     auto viewDescriptorTy = convertLinalgType(viewOp.getViewType(), lowering);
     auto elementTy = getPtrToElementType(viewOp.getViewType(), lowering);
@@ -598,9 +608,9 @@ static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
 // Get function definition for the LinalgOp. If it doesn't exist, insert a
 // definition.
 template <typename LinalgOp>
-static FuncOp getLLVMLibraryCallDeclaration(Operation *op,
-                                            LLVMTypeConverter &lowering,
-                                            PatternRewriter &rewriter) {
+static FuncOp
+getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
+                              ConversionPatternRewriter &rewriter) {
   assert(isa<LinalgOp>(op));
   auto fnName = LinalgOp::getLibraryCallName();
   auto module = op->getParentOfType<ModuleOp>();
@@ -689,8 +699,9 @@ public:
                               LinalgTypeConverter &lowering_)
       : LLVMOpLowering(LinalgOp::getOperationName(), context, lowering_) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
     static_cast<LinalgTypeConverter &>(lowering).addLibraryFnDeclaration(f);

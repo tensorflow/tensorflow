@@ -104,8 +104,9 @@ struct ForLowering : public ConversionPattern {
   ForLowering(MLIRContext *ctx)
       : ConversionPattern(ForOp::getOperationName(), 1, ctx) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override;
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
 };
 
 // Create a CFG subgraph for the loop.if operation (including its "then" and
@@ -154,16 +155,18 @@ struct IfLowering : public ConversionPattern {
   IfLowering(MLIRContext *ctx)
       : ConversionPattern(IfOp::getOperationName(), 1, ctx) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override;
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
 };
 
 struct TerminatorLowering : public ConversionPattern {
   TerminatorLowering(MLIRContext *ctx)
       : ConversionPattern(TerminatorOp::getOperationName(), 1, ctx) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, {});
     return matchSuccess();
   }
@@ -172,7 +175,7 @@ struct TerminatorLowering : public ConversionPattern {
 
 PatternMatchResult
 ForLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                             PatternRewriter &rewriter) const {
+                             ConversionPatternRewriter &rewriter) const {
   auto forOp = cast<ForOp>(op);
   Location loc = op->getLoc();
 
@@ -228,7 +231,7 @@ ForLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
 
 PatternMatchResult
 IfLowering::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                            PatternRewriter &rewriter) const {
+                            ConversionPatternRewriter &rewriter) const {
   auto ifOp = cast<IfOp>(op);
   auto loc = op->getLoc();
 

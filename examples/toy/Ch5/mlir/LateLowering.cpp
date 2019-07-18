@@ -92,8 +92,9 @@ public:
   /// the rewritten operands for `op` in the new function.
   /// The results created by the new IR with the builder are returned, and their
   /// number must match the number of result of `op`.
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto add = cast<toy::AddOp>(op);
     auto loc = add.getLoc();
     // Create a `toy.alloc` operation to allocate the output buffer for this op.
@@ -133,8 +134,9 @@ public:
   explicit PrintOpConversion(MLIRContext *context)
       : ConversionPattern(toy::PrintOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
     FuncOp printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
 
@@ -232,8 +234,9 @@ public:
   explicit ConstantOpConversion(MLIRContext *context)
       : ConversionPattern(toy::ConstantOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     toy::ConstantOp cstOp = cast<toy::ConstantOp>(op);
     auto loc = cstOp.getLoc();
     auto retTy = cstOp.getResult()->getType().cast<toy::ToyArrayType>();
@@ -276,8 +279,9 @@ public:
   explicit TransposeOpConversion(MLIRContext *context)
       : ConversionPattern(toy::TransposeOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto transpose = cast<toy::TransposeOp>(op);
     auto loc = transpose.getLoc();
     Value *result = memRefTypeCast(
@@ -309,8 +313,9 @@ public:
   explicit ReturnOpConversion(MLIRContext *context)
       : ConversionPattern(toy::ReturnOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     // Argument is optional, handle both cases.
     if (op->getNumOperands())
       rewriter.replaceOpWithNewOp<ReturnOp>(op, operands[0]);

@@ -321,7 +321,10 @@ public:
   /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
   virtual void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                         ArrayRef<Value *> valuesToRemoveIfDead = {});
+                         ArrayRef<Value *> valuesToRemoveIfDead);
+  void replaceOp(Operation *op, ArrayRef<Value *> newValues) {
+    replaceOp(op, newValues, llvm::None);
+  }
 
   /// Replaces the result op with a new op that is created without verification.
   /// The result values of the two ops must be the same types.

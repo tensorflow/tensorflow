@@ -31,6 +31,7 @@ namespace mlir {
 
 // Forward declarations.
 class Block;
+class ConversionPatternRewriter;
 class FuncOp;
 class MLIRContext;
 class Operation;
@@ -192,7 +193,7 @@ public:
   /// have successors. This function should not fail. If some specific cases of
   /// the operation are not supported, these cases should not be matched.
   virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
-                       PatternRewriter &rewriter) const {
+                       ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite");
   }
 
@@ -209,7 +210,7 @@ public:
   virtual void rewrite(Operation *op, ArrayRef<Value *> properOperands,
                        ArrayRef<Block *> destinations,
                        ArrayRef<ArrayRef<Value *>> operands,
-                       PatternRewriter &rewriter) const {
+                       ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite for terminators");
   }
 
@@ -218,7 +219,7 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
                   ArrayRef<Block *> destinations,
                   ArrayRef<ArrayRef<Value *>> operands,
-                  PatternRewriter &rewriter) const {
+                  ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
     rewrite(op, properOperands, destinations, operands, rewriter);
@@ -226,9 +227,9 @@ public:
   }
 
   /// Hook for derived classes to implement combined matching and rewriting.
-  virtual PatternMatchResult matchAndRewrite(Operation *op,
-                                             ArrayRef<Value *> operands,
-                                             PatternRewriter &rewriter) const {
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
     rewrite(op, operands, rewriter);
@@ -241,6 +242,50 @@ public:
 
 private:
   using RewritePattern::rewrite;
+};
+
+//===----------------------------------------------------------------------===//
+// Conversion PatternRewriter
+//===----------------------------------------------------------------------===//
+
+namespace detail {
+struct ConversionPatternRewriterImpl;
+} // end namespace detail
+
+/// This class implements a pattern rewriter for use with ConversionPatterns.
+class ConversionPatternRewriter final : public PatternRewriter {
+public:
+  ConversionPatternRewriter(MLIRContext *ctx, TypeConverter *converter);
+  ~ConversionPatternRewriter() override;
+
+  //===--------------------------------------------------------------------===//
+  // PatternRewriter Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// PatternRewriter hook for replacing the results of an operation.
+  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
+                 ArrayRef<Value *> valuesToRemoveIfDead) override;
+  using PatternRewriter::replaceOp;
+
+  /// PatternRewriter hook for splitting a block into two parts.
+  Block *splitBlock(Block *block, Block::iterator before) override;
+
+  /// PatternRewriter hook for moving blocks out of a region.
+  void inlineRegionBefore(Region &region, Region &parent,
+                          Region::iterator before) override;
+  using PatternRewriter::inlineRegionBefore;
+
+  /// PatternRewriter hook for creating a new operation.
+  Operation *createOperation(const OperationState &state) override;
+
+  /// PatternRewriter hook for updating the root operation in-place.
+  void notifyRootUpdated(Operation *op) override;
+
+  /// Return a reference to the internal implementation.
+  detail::ConversionPatternRewriterImpl &getImpl();
+
+private:
+  std::unique_ptr<detail::ConversionPatternRewriterImpl> impl;
 };
 
 //===----------------------------------------------------------------------===//
@@ -260,7 +305,7 @@ public:
     /// by the target.
     Dynamic,
 
-    /// This target explicitly does not support this operation.
+    /// The target explicitly does not support this operation.
     Illegal,
   };
 

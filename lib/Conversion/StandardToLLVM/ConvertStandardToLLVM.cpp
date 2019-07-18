@@ -229,7 +229,7 @@ public:
   }
 
   // Create an LLVM IR pseudo-operation defining the given index constant.
-  Value *createIndexConstant(PatternRewriter &builder, Location loc,
+  Value *createIndexConstant(ConversionPatternRewriter &builder, Location loc,
                              uint64_t value) const {
     auto attr = builder.getIntegerAttr(builder.getIndexType(), value);
     return builder.create<LLVM::ConstantOp>(loc, getIndexType(), attr);
@@ -237,7 +237,7 @@ public:
 
   // Get the array attribute named "position" containing the given list of
   // integers as integer attribute elements.
-  static ArrayAttr getIntegerArrayAttr(PatternRewriter &builder,
+  static ArrayAttr getIntegerArrayAttr(ConversionPatternRewriter &builder,
                                        ArrayRef<int64_t> values) {
     SmallVector<Attribute, 4> attrs;
     attrs.reserve(values.size());
@@ -247,7 +247,8 @@ public:
   }
 
   // Extract raw data pointer value from a value representing a memref.
-  static Value *extractMemRefElementPtr(PatternRewriter &builder, Location loc,
+  static Value *extractMemRefElementPtr(ConversionPatternRewriter &builder,
+                                        Location loc,
                                         Value *convertedMemRefValue,
                                         Type elementTypePtr,
                                         bool hasStaticShape) {
@@ -274,8 +275,9 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     unsigned numResults = op->getNumResults();
 
     Type packedType;
@@ -398,7 +400,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
   }
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+               ConversionPatternRewriter &rewriter) const override {
     auto allocOp = cast<AllocOp>(op);
     MemRefType type = allocOp.getType();
 
@@ -495,8 +497,9 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   using LLVMLegalizationPattern<DeallocOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     assert(operands.size() == 1 && "dealloc takes one operand");
     OperandAdaptor<DeallocOp> transformed(operands);
 
@@ -538,7 +541,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   }
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+               ConversionPatternRewriter &rewriter) const override {
     auto memRefCastOp = cast<MemRefCastOp>(op);
     OperandAdaptor<MemRefCastOp> transformed(operands);
     auto targetType = memRefCastOp.getType();
@@ -610,7 +613,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   }
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+               ConversionPatternRewriter &rewriter) const override {
     auto dimOp = cast<DimOp>(op);
     OperandAdaptor<DimOp> transformed(operands);
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
@@ -660,7 +663,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   // by accumulating the running linearized value.
   // Note that `indices` and `allocSizes` are passed in the same order as they
   // appear in load/store operations and memref type declarations.
-  Value *linearizeSubscripts(PatternRewriter &builder, Location loc,
+  Value *linearizeSubscripts(ConversionPatternRewriter &builder, Location loc,
                              ArrayRef<Value *> indices,
                              ArrayRef<Value *> allocSizes) const {
     assert(indices.size() == allocSizes.size() &&
@@ -686,7 +689,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   Value *getElementPtr(Location loc, Type elementTypePtr,
                        ArrayRef<int64_t> shape, Value *memRefDescriptor,
                        ArrayRef<Value *> indices,
-                       PatternRewriter &rewriter) const {
+                       ConversionPatternRewriter &rewriter) const {
     // Get the list of MemRef sizes.  Static sizes are defined as constants.
     // Dynamic sizes are extracted from the MemRef descriptor, where they start
     // from the position 1 (the buffer is at position 0).
@@ -722,7 +725,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   Value *getRawElementPtr(Location loc, Type elementTypePtr,
                           ArrayRef<int64_t> shape, Value *rawDataPtr,
                           ArrayRef<Value *> indices,
-                          PatternRewriter &rewriter) const {
+                          ConversionPatternRewriter &rewriter) const {
     if (shape.empty())
       return rawDataPtr;
 
@@ -738,7 +741,8 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   }
 
   Value *getDataPtr(Location loc, MemRefType type, Value *dataPtr,
-                    ArrayRef<Value *> indices, PatternRewriter &rewriter,
+                    ArrayRef<Value *> indices,
+                    ConversionPatternRewriter &rewriter,
                     llvm::Module &module) const {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
     auto shape = type.getShape();
@@ -755,8 +759,9 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
 struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   using Base::Base;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto loadOp = cast<LoadOp>(op);
     OperandAdaptor<LoadOp> transformed(operands);
     auto type = loadOp.getMemRefType();
@@ -776,8 +781,9 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto type = cast<StoreOp>(op).getMemRefType();
     OperandAdaptor<StoreOp> transformed(operands);
 
@@ -796,8 +802,9 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
 struct IndexCastOpLowering : public LLVMLegalizationPattern<IndexCastOp> {
   using LLVMLegalizationPattern<IndexCastOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     IndexCastOpOperandAdaptor transformed(operands);
     auto indexCastOp = cast<IndexCastOp>(op);
 
@@ -829,8 +836,9 @@ static LLVM::ICmpPredicate convertCmpIPredicate(CmpIPredicate pred) {
 struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
   using LLVMLegalizationPattern<CmpIOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto cmpiOp = cast<CmpIOp>(op);
     CmpIOpOperandAdaptor transformed(operands);
 
@@ -851,11 +859,11 @@ struct OneToOneLLVMTerminatorLowering
   using LLVMLegalizationPattern<SourceOp>::LLVMLegalizationPattern;
   using Super = OneToOneLLVMTerminatorLowering<SourceOp, TargetOp>;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     ArrayRef<Value *> properOperands,
-                                     ArrayRef<Block *> destinations,
-                                     ArrayRef<ArrayRef<Value *>> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<Value *>> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
                                           operands, op->getAttrs());
     return this->matchSuccess();
@@ -871,8 +879,9 @@ struct OneToOneLLVMTerminatorLowering
 struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
   using LLVMLegalizationPattern<ReturnOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     unsigned numArguments = op->getNumOperands();
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.

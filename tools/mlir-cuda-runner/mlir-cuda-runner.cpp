@@ -115,8 +115,9 @@ public:
                        lowering_.getDialect()->getContext(), lowering_) {}
 
   // Convert the kernel arguments to an LLVM type, preserve the rest.
-  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                                     PatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     rewriter.clone(*op)->setOperands(operands);
     return rewriter.replaceOp(op, llvm::None), matchSuccess();
   }
