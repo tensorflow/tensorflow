@@ -392,31 +392,9 @@ Status ValidateOutsideCompilationCallNode(Node* call_node) {
 }
 
 // Replace outside compilation function call node with XlaHostCompute node.
-// If the function call node has no input/output edges, we will just remove it
-// and not create a XlaHostCompute node.
-xla::StatusOr<Node*> ReplaceOrRemoveOutsideCompilationCallNode(
+xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
     const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
-  // If the function call node has no input/output edges, just remove it.
-  bool has_edge = false;
-  for (auto e : call_node->in_edges()) {
-    if (!e->IsControlEdge() || e->src() != g->source_node()) {
-      has_edge = true;
-      break;
-    }
-  }
-  for (auto e : call_node->out_edges()) {
-    if (!e->IsControlEdge() || e->dst() != g->sink_node()) {
-      has_edge = true;
-      break;
-    }
-  }
-  if (!has_edge) {
-    VLOG(4) << "Did not add HostCompute node for " << call_node->DebugString();
-    g->RemoveNode(call_node);
-    return nullptr;
-  }
-
   // Build XlaHostCompute NodeDef.
   TF_ASSIGN_OR_RETURN(
       NodeDef node_def,
@@ -1934,13 +1912,11 @@ Status ExtractOutsideCompilationForFunction(
   std::map<string, Node*> host_compute_nodes;
   for (Node* n : outside_compilation_nodes) {
     TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
-    auto host_compute_node_or = ReplaceOrRemoveOutsideCompilationCallNode(
+    auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
         graph_out.get(), n, host_compute_core, *cluster_deps);
     TF_RETURN_IF_ERROR(host_compute_node_or.status());
     Node* host_compute_node = host_compute_node_or.ValueOrDie();
-    if (host_compute_node) {
-      host_compute_nodes[host_compute_node->name()] = host_compute_node;
-    }
+    host_compute_nodes[host_compute_node->name()] = host_compute_node;
   }
   // For XlaHostCompute nodes with dependencies, add control edges between them
   // so XlaCompiler can handle them in correct order.
@@ -1956,9 +1932,8 @@ Status ExtractOutsideCompilationForFunction(
       }
 
       auto iter = host_compute_nodes.find(node_name);
-      if (iter != host_compute_nodes.end()) {
-        graph_out->AddControlEdge(iter->second, host_compute_node);
-      }
+      TF_RET_CHECK(iter != host_compute_nodes.end());
+      graph_out->AddControlEdge(iter->second, host_compute_node);
     }
   }
 
