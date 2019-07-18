@@ -2016,6 +2016,17 @@ class NNAPIDelegateKernel {
           };
         }
       } break;
+      case kTfLiteBuiltinQuantize: {
+        const auto value_type = context->tensors[node->inputs->data[0]].type;
+        const auto output_type = context->tensors[node->outputs->data[0]].type;
+        const auto quantization_params =
+            context->tensors[node->outputs->data[0]].params;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            value_type == kTfLiteFloat32 && output_type == kTfLiteUInt8 &&
+            quantization_params.scale > 0.f) {
+          return BasicMappingFn<ANEURALNETWORKS_QUANTIZE>;
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
