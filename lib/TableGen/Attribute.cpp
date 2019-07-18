@@ -63,6 +63,10 @@ bool tblgen::Attribute::isTypeAttr() const {
   return def->isSubClassOf("TypeAttrBase");
 }
 
+bool tblgen::Attribute::isEnumAttr() const {
+  return def->isSubClassOf("EnumAttrInfo");
+}
+
 bool tblgen::Attribute::hasStorageType() const {
   const auto *init = def->getValueInit("storageType");
   return !getValueAsString(init).empty();

@@ -88,9 +88,24 @@ private:
   LogicalResult processType(spirv::Opcode opcode, ArrayRef<uint32_t> operands);
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
-  /// Process SPIR-V instructions that dont have any operands
+  /// Method to dispatch to the specialized deserialization function for an
+  /// operation in SPIR-V dialect that is a mirror of an operation in the SPIR-V
+  /// spec. This is auto-generated from ODS. Dispatch is handled for all
+  /// operations in SPIR-V dialect that have hasOpcode == 1
+  LogicalResult dispatchToAutogenDeserialization(spirv::Opcode opcode,
+                                                 ArrayRef<uint32_t> words);
+
+  /// Method to deserialize an operation in the SPIR-V dialect that is a mirror
+  /// of an instruction in the SPIR-V spec. This is auto generated if hasOpcode
+  /// == 1 and autogenSerialization == 1 in ODS.
+  template <typename OpTy> LogicalResult processOp(ArrayRef<uint32_t> words) {
+    return processOpImpl<OpTy>(words);
+  }
   template <typename OpTy>
-  LogicalResult processNullaryInstruction(ArrayRef<uint32_t> operands);
+  LogicalResult processOpImpl(ArrayRef<uint32_t> words) {
+    return emitError(unknownLoc, "unsupported deserialization for op '")
+           << OpTy::getOperationName() << "')";
+  }
 
   /// Process function objects in binary
   LogicalResult processFunction(ArrayRef<uint32_t> operands);
@@ -232,23 +247,44 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     }
     typeMap[operands[0]] = NoneType::get(context);
     break;
+  case spirv::Opcode::OpTypeFloat: {
+    if (operands.size() != 2) {
+      return emitError(unknownLoc, "OpTypeFloat must have bitwidth parameter");
+    }
+    Type floatTy;
+    switch (operands[1]) {
+    case 16:
+      floatTy = opBuilder.getF16Type();
+      break;
+    case 32:
+      floatTy = opBuilder.getF32Type();
+      break;
+    case 64:
+      floatTy = opBuilder.getF64Type();
+      break;
+    default:
+      return emitError(unknownLoc, "unsupported bitwdith ")
+             << operands[1] << " with OpTypeFloat";
+    }
+    typeMap[operands[0]] = floatTy;
+  } break;
+  case spirv::Opcode::OpTypePointer: {
+    if (operands.size() != 3) {
+      return emitError(unknownLoc, "OpTypePointer must have two parameters");
+    }
+    auto pointeeType = getType(operands[2]);
+    if (!pointeeType) {
+      return emitError(unknownLoc, "unknown OpTypePointer pointee type <id> : ")
+             << operands[2];
+    }
+    auto storageClass = static_cast<spirv::StorageClass>(operands[1]);
+    typeMap[operands[0]] = spirv::PointerType::get(pointeeType, storageClass);
+  } break;
   case spirv::Opcode::OpTypeFunction:
     return processFunctionType(operands);
   default:
     return emitError(unknownLoc, "unhandled type instruction");
   }
-  return success();
-}
-
-template <typename OpTy>
-LogicalResult
-Deserializer::processNullaryInstruction(ArrayRef<uint32_t> operands) {
-  if (!operands.empty()) {
-    return emitError(unknownLoc) << stringifyOpcode(spirv::getOpcode<OpTy>())
-                                 << " must have no operands, but found "
-                                 << operands.size() << " operands";
-  }
-  opBuilder.create<OpTy>(unknownLoc);
   return success();
 }
 
@@ -314,7 +350,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
             "expected result type and result <id> for OpFunctionParameter");
       }
       auto argDefinedType = getType(operands[0]);
-      if (argDefinedType || argDefinedType != argType) {
+      if (!argDefinedType || argDefinedType != argType) {
         return emitError(unknownLoc,
                          "mismatch in argument type between function type "
                          "definition ")
@@ -352,23 +388,26 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   return success();
 }
 
+#define GET_DESERIALIZATION_FNS
+#include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
+
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands) {
+  // First dispatch all the instructions whose opcode does not correspond to
+  // those that have a direct mirror in the SPIR-V dialect
   switch (opcode) {
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
-  case spirv::Opcode::OpTypeVoid:
+  case spirv::Opcode::OpTypeFloat:
   case spirv::Opcode::OpTypeFunction:
+  case spirv::Opcode::OpTypePointer:
+  case spirv::Opcode::OpTypeVoid:
     return processType(opcode, operands);
-  case spirv::Opcode::OpReturn:
-    return processNullaryInstruction<spirv::ReturnOp>(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
-  default:
-    break;
+  default:;
   }
-  return emitError(unknownLoc, "NYI: opcode ")
-         << spirv::stringifyOpcode(opcode);
+  return dispatchToAutogenDeserialization(opcode, operands);
 }
 
 LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {

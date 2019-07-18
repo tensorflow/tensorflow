@@ -132,7 +132,7 @@ public:
   int getNumArgs() const { return arguments.size(); }
 
   // Op argument (attribute or operand) accessors.
-  Argument getArg(int index);
+  Argument getArg(int index) const;
   StringRef getArgName(int index) const;
 
   // Returns the number of `PredOpTrait` traits.

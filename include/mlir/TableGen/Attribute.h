@@ -96,6 +96,10 @@ public:
   // of `TypeAttrBase`).
   bool isTypeAttr() const;
 
+  // Returns true if this attribute is an enum attribute (i.e., a subclass of
+  // `EnumAttrInfo`)
+  bool isEnumAttr() const;
+
   // Returns this attribute's TableGen def name. If this is an `OptionalAttr`
   // or `DefaultValuedAttr` without explicit name, returns the base attribute's
   // name.

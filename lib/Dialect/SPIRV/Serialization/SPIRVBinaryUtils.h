@@ -35,6 +35,7 @@ constexpr unsigned kHeaderWordCount = 5;
 /// SPIR-V magic number
 constexpr uint32_t kMagicNumber = 0x07230203;
 
+#define GET_SPIRV_SERIALIZATION_UTILS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 
 } // end namespace spirv

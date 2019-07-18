@@ -217,7 +217,7 @@ auto tblgen::Operator::getOperands() -> value_range {
   return {operand_begin(), operand_end()};
 }
 
-auto tblgen::Operator::getArg(int index) -> Argument {
+auto tblgen::Operator::getArg(int index) const -> Argument {
   return arguments[index];
 }
 

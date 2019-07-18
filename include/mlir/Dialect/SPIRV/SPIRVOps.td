@@ -143,6 +143,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
   );
 
   let results = (outs SPV_EntryPoint:$id);
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -344,7 +345,7 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     SPV_AnyPtr:$ptr,
     SPV_Type:$value,
     OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
-    OptionalAttr<APIntAttr>:$alignment
+    OptionalAttr<I32Attr>:$alignment
   );
 
   let results = (outs);

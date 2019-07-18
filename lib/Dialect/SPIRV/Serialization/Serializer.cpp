@@ -41,7 +41,9 @@ static inline void buildInstruction(spirv::Opcode op,
                                     SmallVectorImpl<uint32_t> &binary) {
   uint32_t wordCount = 1 + operands.size();
   binary.push_back(getPrefixedOpcode(wordCount, op));
-  binary.append(operands.begin(), operands.end());
+  if (!operands.empty()) {
+    binary.append(operands.begin(), operands.end());
+  }
 }
 
 namespace {
@@ -90,17 +92,40 @@ private:
   // Main method to dispatch operation serialization
   LogicalResult processOperation(Operation *op);
 
+  /// Method to dispatch to the serialization function for an operation in
+  /// SPIR-V dialect that is a mirror of an instruction in the SPIR-V spec. This
+  /// is auto-generated from ODS. Dispatch is handled for all operations in
+  /// SPIR-V dialect that have hasOpcode == 1
+  LogicalResult dispatchToAutogenSerialization(Operation *op);
+
+  /// Method to serialize an operation in the SPIR-V dialect that is a mirror of
+  /// an instruction in the SPIR-V spec. This is auto generated if hasOpcode ==
+  /// 1 and autogenSerialization == 1 in ODS
+  template <typename OpTy> LogicalResult processOp(OpTy op) {
+    return processOpImpl(op);
+  }
+  template <typename OpTy> LogicalResult processOpImpl(OpTy op) {
+    return op.emitError("unsupported op serialization");
+  }
+
   // Methods to serialize individual operation types
   LogicalResult processFuncOp(FuncOp op);
-  // Serialize op that dont produce a value and have no operands, like
-  // spirv::ReturnOp
-  template <typename OpType> LogicalResult processNullaryOp(OpType op);
 
   uint32_t getNextID() { return nextID++; }
 
   Optional<uint32_t> findTypeID(Type type) const {
     auto it = typeIDMap.find(type);
     return (it != typeIDMap.end() ? it->second : Optional<uint32_t>(None));
+  }
+
+  Optional<uint32_t> findValueID(Value *val) const {
+    auto it = valueIDMap.find(val);
+    return (it != valueIDMap.end() ? it->second : Optional<uint32_t>(None));
+  }
+
+  Optional<uint32_t> findFunctionID(Operation *op) const {
+    auto it = funcIDMap.find(op);
+    return (it != funcIDMap.end() ? it->second : Optional<uint32_t>(None));
   }
 
   Type voidType() { return mlir::NoneType::get(module.getContext()); }
@@ -133,6 +158,9 @@ private:
 
   // Map from FuncOps to IDs
   DenseMap<Operation *, uint32_t> funcIDMap;
+
+  // Map from Value to Ids
+  DenseMap<Value *, uint32_t> valueIDMap;
 };
 } // namespace
 
@@ -245,6 +273,20 @@ Serializer::processBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
   if (isVoidType(type)) {
     typeEnum = spirv::Opcode::OpTypeVoid;
     return success();
+  } else if (type.isa<FloatType>()) {
+    typeEnum = spirv::Opcode::OpTypeFloat;
+    operands.push_back(type.cast<FloatType>().getWidth());
+    return success();
+  } else if (type.isa<spirv::PointerType>()) {
+    auto ptrType = type.cast<spirv::PointerType>();
+    uint32_t pointeeTypeID = 0;
+    if (failed(processType(loc, ptrType.getPointeeType(), pointeeTypeID))) {
+      return failure();
+    }
+    typeEnum = spirv::Opcode::OpTypePointer;
+    operands.push_back(static_cast<uint32_t>(ptrType.getStorageClass()));
+    operands.push_back(pointeeTypeID);
+    return success();
   }
   /// TODO(ravishankarm) : Handle other types
   return emitError(loc, "unhandled type in serialization : ") << type;
@@ -275,15 +317,14 @@ Serializer::processFunctionType(Location loc, FunctionType type,
 }
 
 LogicalResult Serializer::processOperation(Operation *op) {
+  // First dispatch the methods that do not directly mirror an operation from
+  // the SPIR-V spec
   if (isa<FuncOp>(op)) {
     return processFuncOp(cast<FuncOp>(op));
-  } else if (isa<spirv::ReturnOp>(op)) {
-    return processNullaryOp(cast<spirv::ReturnOp>(op));
   } else if (isa<spirv::ModuleEndOp>(op)) {
     return success();
   }
-  /// TODO(ravishankarm) : Handle other ops
-  return op->emitError("unhandled operation serialization");
+  return dispatchToAutogenSerialization(op);
 }
 
 LogicalResult Serializer::processFuncOp(FuncOp op) {
@@ -314,13 +355,15 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   buildInstruction(spirv::Opcode::OpFunction, operands, functions);
 
   // Declare the parameters
-  for (auto argType : op.getType().getInputs()) {
+  for (auto arg : op.getArguments()) {
     uint32_t argTypeID = 0;
-    if (failed(processType(op.getLoc(), argType, argTypeID))) {
+    if (failed(processType(op.getLoc(), arg->getType(), argTypeID))) {
       return failure();
     }
+    auto argValueID = getNextID();
+    valueIDMap[arg] = argValueID;
     buildInstruction(spirv::Opcode::OpFunctionParameter,
-                     {argTypeID, getNextID()}, functions);
+                     {argTypeID, argValueID}, functions);
   }
 
   // Process the body
@@ -345,11 +388,8 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   return success();
 }
 
-template <typename OpType>
-LogicalResult Serializer::processNullaryOp(OpType op) {
-  buildInstruction(spirv::getOpcode<OpType>(), ArrayRef<uint32_t>(), functions);
-  return success();
-}
+#define GET_SERIALIZATION_FNS
+#include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 
 LogicalResult spirv::serialize(spirv::ModuleOp module,
                                SmallVectorImpl<uint32_t> &binary) {
