@@ -279,3 +279,5 @@ def : Pat<
     (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
 
 def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
+
+def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;
