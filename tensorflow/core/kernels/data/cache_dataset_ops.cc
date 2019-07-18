@@ -218,12 +218,18 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       ~FileWriterIterator() {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           std::vector<string> cache_files;
-          dataset()
-              ->env_
-              ->GetMatchingPaths(strings::StrCat(filename_, "*"), &cache_files)
-              .IgnoreError();
+          Status s = dataset()->env_->GetMatchingPaths(
+              strings::StrCat(filename_, "*"), &cache_files);
+          if (!s.ok()) {
+            LOG(WARNING) << "Failed to get matching files on " << filename_
+                         << "* : " << s.ToString();
+          }
           for (const string& path : cache_files) {
-            dataset()->env_->DeleteFile(path).IgnoreError();
+            s = dataset()->env_->DeleteFile(path);
+            if (!s.ok()) {
+              LOG(WARNING) << "Failed to delete " << path << " : "
+                           << s.ToString();
+            }
           }
         }
       }
