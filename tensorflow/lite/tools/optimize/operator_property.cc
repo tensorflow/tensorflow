@@ -59,7 +59,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.inputs = {{0, {}}, {1, tensor_property}};
       property.outputs = {{0, {}}};
       property.biases = {2};
-      property.version = 2;
+      property.version = 3;
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
