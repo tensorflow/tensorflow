@@ -1733,6 +1733,116 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
+  let summary = "Returns a one-hot tensor.";
+
+  let description = [{
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+```
+output =
+  [5.0 0.0 0.0]  // one_hot(0)
+  [0.0 0.0 5.0]  // one_hot(2)
+  [0.0 0.0 0.0]  // one_hot(-1)
+  [0.0 5.0 0.0]  // one_hot(1)
+```
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+```
+output =
+  [0.0 3.0 3.0 3.0]
+  [3.0 3.0 3.0 0.0]
+  [3.0 3.0 3.0 3.0]
+  [3.0 0.0 3.0 3.0]
+//  ^                one_hot(0)
+//      ^            one_hot(2)
+//          ^        one_hot(-1)
+//              ^    one_hot(1)
+```
+
+Suppose that
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+```
+output =
+  [
+    [1.0, 0.0, 0.0]  // one_hot(0)
+    [0.0, 0.0, 1.0]  // one_hot(2)
+  ][
+    [0.0, 1.0, 0.0]  // one_hot(1)
+    [0.0, 0.0, 0.0]  // one_hot(-1)
+  ]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[I32, I64, I8]>:$indices,
+    I32Tensor:$depth,
+    TF_Tensor:$on_value,
+    TF_Tensor:$off_value,
+
+    DefaultValuedAttr<I64Attr, "-1">:$axis
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
   let summary = [{
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.

@@ -1170,6 +1170,34 @@ def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
   let customOption = "ReducerOptions";
 }
 
+def TFL_OneHotOp : TFL_Op<"one_hot", [NoSideEffect]> {
+  let summary = "OneHot operator";
+
+  let description = [{
+    Returns a one-hot tensor.The locations represented by indices in `indices`
+    take value `on_value`, while all other locations take value `off_value`.
+
+    If the input `indices` is rank `N`, the output will have rank `N+1`,
+    The new axis is created at dimension `axis` (default: the new axis is
+    appended at the end).
+  }];
+
+  let arguments = (ins
+    TensorOf<[I32, I64]>:$indices,
+    I32Tensor:$depth,
+    TensorOf<[F32, I32, I64, I1]>:$on_value,
+    TensorOf<[F32, I32, I64, I1]>:$off_value,
+
+    I32Attr:$axis
+  );
+
+  let results = (outs
+    TensorOf<[F32, I32, I64, I1]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_SliceOp : TFL_Op<"slice", [NoSideEffect]> {
   let summary = "Return a slice from 'input'.";
 
