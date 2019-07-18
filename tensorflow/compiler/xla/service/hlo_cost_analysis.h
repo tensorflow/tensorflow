@@ -38,11 +38,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
  public:
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
+  // MSVC 14.0 limitation requires the consts.
   typedef std::map<string, float> Properties;
-  static constexpr char kFlopsKey[] = "flops";
-  static constexpr char kTranscendentalsKey[] = "transcendentals";
-  static constexpr char kBytesAccessedKey[] = "bytes accessed";
-  static constexpr char kOptimalSecondsKey[] = "optimal_seconds";
+  static constexpr const char kFlopsKey[] = "flops";
+  static constexpr const char kTranscendentalsKey[] = "transcendentals";
+  static constexpr const char kBytesAccessedKey[] = "bytes accessed";
+  static constexpr const char kOptimalSecondsKey[] = "optimal_seconds";
 
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
