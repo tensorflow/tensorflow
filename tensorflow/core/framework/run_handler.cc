@@ -17,6 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/run_handler.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -165,14 +168,26 @@ class RunHandlerThreadPool {
   }
 
   // Set work queues from which the thread 'tid' can steal its work.
+  // The request with start_request_idx will be attempted first. Other requests
+  // will be attempted in FIFO order based on their arrival time.
+
+  // TODO(donglin) Change the task steal order to be round-robin such that if
+  // an attempt to steal task from request i failed, then attempt to steal task
+  // from the next request in terms of the arrival time. This approach may
+  // provide better performance due to less lock retention. The drawback is that
+  // the profiler will be a bit harder to read.
   void SetThreadWorkSources(
-      int tid,
+      int tid, int start_request_idx,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
     mutex_lock l(thread_data_[tid].mu);
     thread_data_[tid].thread_work_sources.resize(0);
+    thread_data_[tid].thread_work_sources.emplace_back(
+        thread_work_sources[start_request_idx]);
     for (int i = 0; i < thread_work_sources.size(); ++i) {
-      thread_data_[tid].thread_work_sources.emplace_back(
-          thread_work_sources[i]);
+      if (i != start_request_idx) {
+        thread_data_[tid].thread_work_sources.emplace_back(
+            thread_work_sources[i]);
+      }
     }
   }
 
@@ -461,13 +476,27 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
       thread_work_sources(num_active_requests);
 
   thread_work_sources.resize(num_active_requests);
-
   for (int i = 0; i < num_active_requests; ++i) {
     thread_work_sources[i] = sorted_active_handlers_[i]->tws();
   }
-  for (int i = 0; i < run_handler_thread_pool()->NumThreads(); ++i) {
-    VLOG(2) << "Setting work for tid = " << i;
-    run_handler_thread_pool()->SetThreadWorkSources(i, thread_work_sources);
+
+  int num_threads = run_handler_thread_pool()->NumThreads();
+  int num_blocking_threads = run_handler_thread_pool()->NumBlockingThreads();
+  std::vector<int> request_idx_list = ChooseRequestsWithExponentialDistribution(
+      num_active_requests, num_blocking_threads);
+
+  for (int tid = 0; tid < num_blocking_threads; ++tid) {
+    VLOG(2) << "Set work for tid=" << tid
+            << " with start_request_idx=" << request_idx_list[tid];
+    run_handler_thread_pool()->SetThreadWorkSources(tid, request_idx_list[tid],
+                                                    thread_work_sources);
+  }
+
+  // Non-blocking (i.e. intra-op) threads always steal requests in FIFO order
+  for (int tid = num_blocking_threads; tid < num_threads; ++tid) {
+    VLOG(2) << "Set work for tid=" << tid << " with start_request_idx=0";
+    run_handler_thread_pool()->SetThreadWorkSources(tid, 0,
+                                                    thread_work_sources);
   }
 
   if (iterations_++ % 50000 == 10 && VLOG_IS_ON(1)) {
