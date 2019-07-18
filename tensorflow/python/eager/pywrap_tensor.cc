@@ -211,7 +211,7 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
                             TF_DataType dst_type_enum, TF_Status* out_status) {
   if (ctx == nullptr) return nullptr;
   const char* op_name = "Cast";
-  const char* device_name = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const char* device_name = "/device:CPU:0";
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
 #define RETURN_ERROR  \
   {                   \
