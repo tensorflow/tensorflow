@@ -622,7 +622,7 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
-  HloInstruction* custom_call = [&]() -> HloInstruction* {
+  HloInstruction* custom_call = [&]() -> StatusOr<HloInstruction*> {
     bool match;
     Window window;
     ConvolutionDimensionNumbers dnums;
@@ -648,7 +648,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
       if (primitive_util::IsIntegralType(
               conv->operand(0)->shape().element_type()) &&
           conv->shape().element_type() != F32) {
-        Unimplemented(
+        return Unimplemented(
             "The convolution instruction with integer inputs only allows "
             "float outputs.  Insert a clamp instruction with range [-128, 127) "
             "followed by a convert "
@@ -662,7 +662,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     }
 
     return nullptr;
-  }();
+  }().ValueOrDie();
 
   if (custom_call == nullptr) {
     return false;
