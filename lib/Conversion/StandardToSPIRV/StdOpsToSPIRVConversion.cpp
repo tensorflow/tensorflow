@@ -27,10 +27,6 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/StandardOps/Ops.h"
 
-namespace mlir {
-#include "StdOpsToSPIRVConversion.cpp.inc"
-} // namespace mlir
-
 using namespace mlir;
 
 namespace {
@@ -39,6 +35,8 @@ class StdOpsToSPIRVConversionPass
     : public FunctionPass<StdOpsToSPIRVConversionPass> {
   void runOnFunction() override;
 };
+
+#include "StdOpsToSPIRVConversion.cpp.inc"
 } // namespace
 
 void StdOpsToSPIRVConversionPass::runOnFunction() {
