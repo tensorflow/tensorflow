@@ -117,35 +117,34 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     autotune_cache_stats.cache_misses++;
   }
 
-  StatusOr<AutotuneResult> result_or = PickBestAlgorithmNoCache(instr);
+  // Make sure any previous activity on this executor is done. We don't want to
+  // interfere with programs that are still running on the GPU.
+  if (!stream_exec_->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
+  // Create a stream for us to do our work on
+  se::Stream stream{stream_exec_};
+  stream.Init();
+
+  // Allocator either points to this->allocator_ or, if that's null, to a
+  // StreamExecutorMemoryAllocator for stream_exec_
+  se::DeviceMemoryAllocator* allocator;
+  optional<se::StreamExecutorMemoryAllocator> se_allocator;
+  if (allocator_ != nullptr) {
+    allocator = allocator_;
+  } else {
+    se_allocator.emplace(stream_exec_);
+    allocator = &*se_allocator;
+  }
+
+  StatusOr<AutotuneResult> result_or =
+      PickBestAlgorithmNoCache(*instr, allocator, &stream);
   if (result_or.ok()) {
     tensorflow::mutex_lock lock(autotune_cache_lock);
     CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
   }
   return result_or;
-}
-
-StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
-  XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
-
-  if (module->config().debug_options().xla_gpu_disable_autotune()) {
-    VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
-               "returning early.";
-    return false;
-  }
-
-  bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
-    changed |= result;
-  }
-
-  {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
-    autotune_cache_stats.LogStats();
-  }
-
-  return changed;
 }
 
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
@@ -213,6 +212,29 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
     TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr));
     changed |= result;
   }
+  return changed;
+}
+
+StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
+  XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
+
+  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+    VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
+               "returning early.";
+    return false;
+  }
+
+  bool changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    changed |= result;
+  }
+
+  {
+    tensorflow::mutex_lock lock(autotune_cache_lock);
+    autotune_cache_stats.LogStats();
+  }
+
   return changed;
 }
 

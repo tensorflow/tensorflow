@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -48,7 +49,23 @@ class CudnnConvAlgorithmPicker : public GpuConvAlgorithmPicker {
 
  protected:
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
-      const HloCustomCallInstruction* instr);
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+  Status AllocateInitializeBuffers(
+      const HloCustomCallInstruction& instr,
+      se::ScratchAllocator* input_output_allocator, se::Stream* stream,
+      std::vector<se::DeviceMemoryBase>* operand_buffers,
+      se::DeviceMemoryBase* result_buffer);
+
+  Status ProfileConvCandidates(
+      const HloCustomCallInstruction& instr, se::Stream* stream,
+      se::cuda::RedzoneAllocator* input_output_allocator,
+      se::cuda::RedzoneAllocator* scratch_allocator,
+      std::vector<se::DeviceMemoryBase>* operand_buffers,
+      se::DeviceMemoryBase* result_buffer,
+      std::vector<tensorflow::AutotuneResult>* profile_results,
+      bool* crash_on_checking_failure);
 };
 
 }  // namespace gpu

@@ -57,8 +57,10 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
+
   virtual StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
-      const HloCustomCallInstruction* instr) = 0;
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream) = 0;
 
   se::StreamExecutor* stream_exec_;       // never null
   se::DeviceMemoryAllocator* allocator_;  // may be null

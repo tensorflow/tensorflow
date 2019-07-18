@@ -46,70 +46,28 @@ using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
 using tensorflow::AutotuneResult;
 
-StatusOr<AutotuneResult> MiopenConvAlgorithmPicker::PickBestAlgorithmNoCache(
-    const HloCustomCallInstruction* instr) {
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithmImpl for ",
-                   instr->ToString()));
-
-  // Make sure any previous activity on this executor is done. We don't want to
-  // interfere with programs that are still running on the GPU.
-  if (!stream_exec_->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
-  }
-
-  // Create a stream for us to do our work on.
-  se::Stream stream{stream_exec_};
-  stream.Init();
+StatusOr<tensorflow::AutotuneResult>
+MiopenConvAlgorithmPicker::PickBestAlgorithmNoCache(
+    const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream) {
   const auto device_ordinal = stream_exec_->device_ordinal();
-
-  // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  se::DeviceMemoryAllocator* allocator;
-  optional<se::StreamExecutorMemoryAllocator> se_allocator;
-  if (allocator_ != nullptr) {
-    allocator = allocator_;
-  } else {
-    se_allocator.emplace(stream_exec_);
-    allocator = &*se_allocator;
-  }
-
-  const auto initialize_buffer = [&stream](DeviceMemoryBase buffer) {
-    // Although we don't have evidence this matters, zero out the buffers
-    // before autotuning.  It's conceivable that using uninitialized memory as
-    // the inputs might affect performance if e.g. the inputs contain
-    // denormals, and this is easy enough.
-    stream.ThenMemZero(&buffer, buffer.size());
-  };
-
-  // Allocate space for the input, filter, and output of the convolution.  We
-  // use a ScratchAllocator for this instead of calling allocator_ directly so
-  // that our allocations don't leak.
-  ScratchAllocator input_output_allocator(device_ordinal, allocator);
   std::vector<se::DeviceMemoryBase> operand_buffers;
-  for (const auto* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(auto buffer,
-                        input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
-    operand_buffers.push_back(buffer);
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto result_buffer,
-      input_output_allocator.AllocateBytes(
-          &stream, ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
-  initialize_buffer(result_buffer);
+  se::DeviceMemoryBase result_buffer;
+
+  ScratchAllocator input_output_allocator(device_ordinal, allocator);
+  AllocateInitializeBuffers(instr, &input_output_allocator, stream,
+                            &operand_buffers, &result_buffer);
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
   se::dnn::ProfileResult profile_result;
-  VLOG(3) << "Auto-tuning for " << instr->ToString();
+  VLOG(3) << "Auto-tuning for " << instr.ToString();
   RunConvOptions options;
   options.profile_result = &profile_result;
   options.first_call_from_algorithm_picker = true;
 
   bool launch_ok =
-      RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                   &scratch_allocator, &stream, options)
+      RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+                   &scratch_allocator, stream, options)
           .ok();
 
   AutotuneResult best_result;
@@ -126,12 +84,42 @@ StatusOr<AutotuneResult> MiopenConvAlgorithmPicker::PickBestAlgorithmNoCache(
     return best_result;
   }
 
-  // TODO ROCm: Log the autotuning result.
-
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
       "default algorithm.",
-      instr->ToString());
+      instr.ToString());
+}
+
+Status MiopenConvAlgorithmPicker::AllocateInitializeBuffers(
+    const HloCustomCallInstruction& instr,
+    se::ScratchAllocator* input_output_allocator, se::Stream* stream,
+    std::vector<se::DeviceMemoryBase>* operand_buffers,
+    se::DeviceMemoryBase* result_buffer) {
+  const auto initialize_buffer = [&stream](DeviceMemoryBase buffer) {
+    // Although we don't have evidence this matters, zero out the buffers
+    // before autotuning.  It's conceivable that using uninitialized memory as
+    // the inputs might affect performance if e.g. the inputs contain
+    // denormals, and this is easy enough.
+    stream->ThenMemZero(&buffer, buffer.size());
+  };
+
+  // Allocate space for the input, filter, and output of the convolution.  We
+  // use a ScratchAllocator for this instead of calling allocator_ directly so
+  // that our allocations don't leak.
+  for (const auto* operand : instr.operands()) {
+    TF_ASSIGN_OR_RETURN(auto buffer,
+                        input_output_allocator->AllocateBytes(
+                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+    initialize_buffer(buffer);
+    operand_buffers->push_back(buffer);
+  }
+  TF_ASSIGN_OR_RETURN(
+      *result_buffer,
+      input_output_allocator->AllocateBytes(
+          stream, ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
+  initialize_buffer(*result_buffer);
+
+  return Status::OK();
 }
 
 }  // namespace gpu

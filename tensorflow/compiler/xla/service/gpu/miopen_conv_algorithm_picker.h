@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -46,9 +47,16 @@ class MiopenConvAlgorithmPicker : public GpuConvAlgorithmPicker {
     return "miopen-conv-algorithm-picker";
   }
 
-protected:
+ protected:
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
-                  const HloCustomCallInstruction* instr);
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+  Status AllocateInitializeBuffers(
+      const HloCustomCallInstruction& instr,
+      se::ScratchAllocator* input_output_allocator, se::Stream* stream,
+      std::vector<se::DeviceMemoryBase>* operand_buffers,
+      se::DeviceMemoryBase* result_buffer);
 };
 
 }  // namespace gpu
