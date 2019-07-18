@@ -70,7 +70,7 @@ public:
     UniformQuantizedType uniformElementType = fakeQuantAttrsToType(
         fqOp.getLoc(), fqOp.num_bits().getSExtValue(),
         fqOp.min().convertToFloat(), fqOp.max().convertToFloat(),
-        fqOp.narrow_range(), converter.expressedType);
+        fqOp.narrow_range(), converter.expressedType, fqOp.is_signed());
 
     if (!uniformElementType) {
       // Note that the fakeQuantAttrsToType will have emitted the error.

@@ -122,7 +122,9 @@ def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
     // The bitwidth of the quantization; between 2 and 16, inclusive.
     I64Attr:$num_bits,
     // Quantization range starts from 0 or 1; starts from 1 if true.
-    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    // The sign of the quantization.
+    DefaultValuedAttr<BoolAttr, "false">:$is_signed
   );
 
   let results = (outs

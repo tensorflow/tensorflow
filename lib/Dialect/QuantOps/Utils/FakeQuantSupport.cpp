@@ -45,9 +45,15 @@ mlir::quant::fakeQuantAttrsToType(Location loc, unsigned numBits, double rmin,
     }
   } else if (numBits <= 16) {
     storageType = IntegerType::get(16, ctx);
-    flags = QuantizationFlags::Signed;
-    qmin = -32768;
-    qmax = 32767;
+    if (isSigned) {
+      flags = QuantizationFlags::Signed;
+      qmin = -32768;
+      qmax = 32767;
+    } else {
+      flags = 0;
+      qmin = 0;
+      qmax = 65535;
+    }
   } else {
     emitError(loc, "unsupported FakeQuant number of bits: ") << numBits;
     return nullptr;
