@@ -178,6 +178,9 @@ class EagerContext : public core::RefCounted {
   Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
+  Device* CanonicalDevice(Device* d) const {
+    return HostCPU() == d ? nullptr : d;
+  }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 

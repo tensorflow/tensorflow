@@ -666,7 +666,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   for (int i = 0; i < num_outputs; ++i) {
     TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-        /* d= */ kernel->OutputDevice(i),
+        /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
         /* op_device= */ kernel->device(),
         /* resource_device= */ kernel->OutputResourceDevice(i),
         output_dtypes[i], ctx, &retvals[i]));
@@ -1136,7 +1136,8 @@ Status EagerKernelExecute(EagerContext* ctx,
   DCHECK_EQ(retvals.size(), outputs.size());
   for (int i = 0; i < retvals.size(); ++i) {
     DCHECK_EQ(kernel->device(), retvals[i]->op_device());
-    DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
+    DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
+              retvals[i]->device());
 
     TF_RETURN_IF_ERROR(retvals[i]->SetTensor(outputs[i]));
   }
@@ -1150,7 +1151,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
   TF_RETURN_IF_ERROR(ctx->GetStatus());
   Device* resource_device = (h->dtype == DT_RESOURCE) ? dstd : nullptr;
   TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-      dstd, dstd, resource_device, h->dtype, ctx, result));
+      ctx->CanonicalDevice(dstd), dstd, resource_device, h->dtype, ctx,
+      result));
 
   // Note that `h` may not be currently ready. However execution order will
   // make sure that `h` is ready before the copy is actually done.
