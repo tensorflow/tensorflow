@@ -124,6 +124,15 @@ static const int kSmallBatchSize = 32;
 
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
+#define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
+#define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
+  GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
+#define MEMORY_CONSTRUCTOR(mem_desc, cpu_engine, data) \
+  memory(mem_desc, cpu_engine, data)
+#define MEMORY_CONSTRUCTOR_WITH_MEM_PD(mem_ptr, cpu_engine, data) \
+  memory(GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr), cpu_engine, data)
+#define MEMORY_CONSTRUCTOR_WITHOUT_DATA(mem_desc, cpu_engine) \
+  memory(mem_desc, cpu_engine)
 #define MEMORY_FORMAT memory::format_tag
 #define MKL_TENSOR_FORMAT MklTensorFormat
 #define MKL_TENSOR_FORMAT_BLOCKED MklTensorFormat::FORMAT_BLOCKED
@@ -139,6 +148,14 @@ static const int kSmallBatchSize = 32;
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #else
 #define ENGINE_CPU engine::cpu
+#define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
+  mem_ptr->get_primitive_desc().desc()
+#define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
+  mem_ptr->get_primitive_desc()
+#define MEMORY_CONSTRUCTOR(mem_pd, cpu_engine, data) memory(mem_pd, data)
+#define MEMORY_CONSTRUCTOR_WITH_MEM_PD(mem_ptr, cpu_engine, data) \
+  memory({GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr), cpu_engine}, data)
+#define MEMORY_CONSTRUCTOR_WITHOUT_DATA(mem_pd, cpu_engine) memory(mem_pd)
 #define MEMORY_FORMAT memory::format
 #define MKL_TENSOR_FORMAT memory::format
 #define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked
@@ -633,9 +650,6 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                                        &output_tensor));
 
     engine cpu_engine(ENGINE_CPU, 0);
-#ifdef ENABLE_MKLDNN_V1
-    stream cpu_stream(cpu_engine);
-#endif  // ENABLE_MKLDNN_V1
     MklDnnData<T> input(&cpu_engine);
 
     // Get MKL layout of input tensor.
@@ -655,6 +669,7 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       DCHECK(input.CheckReorderToOpMem(output_tf_md, &output_tensor, net,
                                        net_args, &cpu_engine));
       DCHECK_EQ(net.size(), net_args.size());
+      stream cpu_stream(cpu_engine);
       for (size_t i = 0; i < net.size(); ++i) {
         net.at(i).execute(cpu_stream, net_args.at(i));
       }
@@ -1308,17 +1323,9 @@ class MklDnnData {
     if (user_memory_) delete user_memory_;
     // TODO(nhasabni): can we remove dynamic memory allocation?
     if (data_buffer) {
-#ifdef ENABLE_MKLDNN_V1
-      user_memory_ = new memory(pd, *cpu_engine_, data_buffer);
-#else
-      user_memory_ = new memory(pd, data_buffer);
-#endif  // ENABLE_MKLDNN_V1
+      user_memory_ = new MEMORY_CONSTRUCTOR(pd, *cpu_engine_, data_buffer);
     } else {
-#ifdef ENABLE_MKLDNN_V1
-      user_memory_ = new memory(pd, *cpu_engine_);
-#else
-      user_memory_ = new memory(pd);
-#endif  // ENABLE_MKLDNN_V1
+      user_memory_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(pd, *cpu_engine_);
     }
   }
 
@@ -1415,11 +1422,7 @@ class MklDnnData {
   /// @return: true in case reorder of input is needed; false, otherwise.
   inline bool IsReorderNeeded(const MEMORY_PRIMITIVE_DESC& op_pd) const {
     DCHECK(user_memory_);
-#ifdef ENABLE_MKLDNN_V1
-    return op_pd != user_memory_->get_desc();
-#else
-    return op_pd != user_memory_->get_primitive_desc();
-#endif  // ENABLE_MKLDNN_V1
+    return op_pd != GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(user_memory_);
   }
 
 #ifndef ENABLE_MKLDNN_V1
@@ -1665,12 +1668,9 @@ class MklDnnData {
   inline bool PrepareReorderToUserMemIfReq(const MEMORY_PRIMITIVE_DESC& op_pd) {
     DCHECK(user_memory_);
     if (IsReorderNeeded(op_pd)) {
-// TODO(nhasabni): can we remove dynamic memory allocation?
-#ifdef ENABLE_MKLDNN_V1
-      reorder_memory_ = new memory(op_pd, *cpu_engine_);
-#else
-      reorder_memory_ = new memory(op_pd);
-#endif  // ENABLE_MKLDNN_V1
+      // TODO(nhasabni): can we remove dynamic memory allocation?
+      reorder_memory_ =
+          new MEMORY_CONSTRUCTOR_WITHOUT_DATA(op_pd, *cpu_engine_);
       return true;
     }
     return false;
@@ -1965,18 +1965,10 @@ class MklReorderPrimitive : public MklPrimitive {
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
 
   void Setup(const memory* from, const memory* to) {
-    context_.src_mem.reset(new memory(
-#ifdef ENABLE_MKLDNN_V1
-        from->get_desc(), cpu_engine_, DummyData));
-#else
-        {from->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-#endif  // ENABLE_MKLDNN_V1
-    context_.dst_mem.reset(new memory(
-#ifdef ENABLE_MKLDNN_V1
-        to->get_desc(), cpu_engine_, DummyData));
-#else
-        {to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-#endif  // ENABLE_MKLDNN_V1
+    context_.src_mem.reset(
+        new MEMORY_CONSTRUCTOR_WITH_MEM_PD(from, cpu_engine_, DummyData));
+    context_.dst_mem.reset(
+        new MEMORY_CONSTRUCTOR_WITH_MEM_PD(to, cpu_engine_, DummyData));
     context_.reorder_prim = std::make_shared<mkldnn::reorder>(
         reorder(*context_.src_mem, *context_.dst_mem));
   }
@@ -2009,13 +2001,8 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
   static string CreateKey(const memory* from, const memory* to) {
     string prefix = "reorder";
     FactoryKeyCreator key_creator;
-#ifdef ENABLE_MKLDNN_V1
-    auto const& from_desc = from->get_desc().data;
-    auto const& to_desc = to->get_desc().data;
-#else
-    auto const& from_desc = from->get_primitive_desc().desc().data;
-    auto const& to_desc = to->get_primitive_desc().desc().data;
-#endif  // ENABLE_MKLDNN_V1
+    auto const& from_desc = GET_MEMORY_DESC_FROM_MEM_PTR(from).data;
+    auto const& to_desc = GET_MEMORY_DESC_FROM_MEM_PTR(to).data;
     const int KIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
@@ -2089,6 +2076,11 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 #undef ENGINE_CPU
+#undef GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
+#undef GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr)
+#undef MEMORY_CONSTRUCTOR(mem_desc, cpu_engine, data)
+#undef MEMORY_CONSTRUCTOR_WITH_MEM_PD(mem_ptr, cpu_engine, data)
+#undef MEMORY_CONSTRUCTOR_WITHOUT_DATA(mem_desc, cpu_engine)
 #undef MEMORY_FORMAT
 #undef MKL_TENSOR_FORMAT
 #undef MKL_TENSOR_FORMAT_BLOCKED
