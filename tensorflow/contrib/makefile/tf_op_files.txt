@@ -1,4 +1,3 @@
-tensorflow/c/kernels/bitcast_op.cc
 tensorflow/contrib/image/kernels/image_ops.cc
 tensorflow/contrib/image/kernels/segmentation_ops.cc
 tensorflow/contrib/image/ops/image_ops.cc
@@ -117,6 +116,7 @@ tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/depthtospace_op.cc
 tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
+tensorflow/core/kernels/dilation_ops.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/encode_proto_op.cc

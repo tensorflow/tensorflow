@@ -1,4 +1,3 @@
-tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 # This Makefile compiles a library containing the C++ runtime for the TensorFlow
 # library. It's designed for use on platforms with limited resources where
 # running a full Bazel build would be prohibitive, or for cross-compilation onto
