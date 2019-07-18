@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/nccl/nccl_manager.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/cuda.h"
 #elif TENSORFLOW_USE_ROCM
@@ -249,8 +248,6 @@ class BaseGPUDevice::StreamGroupFactory {
       group->compute->Init();
       VLOG(2) << "Created stream[" << stream_group_within_gpu
               << "] = " << group->compute;
-
-      NcclManager::instance()->CreateStream(executor);
 
       group->host_to_device = new se::Stream(executor);
       group->host_to_device->Init();

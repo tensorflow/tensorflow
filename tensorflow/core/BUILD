@@ -3571,7 +3571,6 @@ tf_cuda_library(
         ":graph",
         ":lib",
         ":lib_internal",
-        "//tensorflow/core/nccl:nccl_lib",
         ":protos_all_cc",
         ":stream_executor",
         "//third_party/eigen3",
