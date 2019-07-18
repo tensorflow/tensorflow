@@ -1417,12 +1417,12 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(
       EvaluateOneFoldable(*node, &const_nodes, result_too_large));
-  VLOG(1) << "Folded node:\n" << node->DebugString();
+  VLOG(2) << "Folded node: " << SummarizeNodeDef(*node);
 
   NodeDef* constant_output = nullptr;
   for (int i = 0; i < const_nodes.size(); i++) {
     NodeDef* const_node = &const_nodes[i];
-    VLOG(1) << "Generated constant node:\n" << const_node->DebugString();
+    VLOG(3) << "Generated constant node: " << SummarizeNodeDef(*const_node);
     if (const_node->name().empty()) {
       // Dead output: we can't create a constant to encode its value, so we'll
       // just skip it. We'll preserve the edges that originate from that
@@ -1431,18 +1431,26 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
       continue;
     }
 
+    // Returns `true` iff `const_node` already has control input named `input`.
+    const auto is_duplicate_control_input = [&](const string& input) -> bool {
+      auto it = absl::c_find(const_node->input(), input);
+      return it != const_node->input().end();
+    };
+
     // Forward control dependencies.
-    for (const auto& input : node->input()) {
-      if (IsControlInput(input) &&
-          std::find(const_node->input().begin(), const_node->input().end(),
-                    input) == const_node->input().end()) {
-        *const_node->add_input() = input;
-      } else {
+    for (const string& input : node->input()) {
+      // Forward control dependencies from folded node.
+      if (IsControlInput(input)) {
+        if (!is_duplicate_control_input(input)) {
+          *const_node->add_input() = input;
+        }
+      }
+
+      // Forward control dependencies from constant inputs to folded node.
+      if (!IsControlInput(input)) {
         NodeDef* input_node = node_map_->GetNode(input);
-        for (const auto& fanin_of_input : input_node->input()) {
-          if (IsControlInput(fanin_of_input) &&
-              std::find(const_node->input().begin(), const_node->input().end(),
-                        fanin_of_input) == const_node->input().end()) {
+        for (const string& fanin_of_input : input_node->input()) {
+          if (!is_duplicate_control_input(fanin_of_input)) {
             *const_node->add_input() = fanin_of_input;
           }
         }
@@ -1507,7 +1515,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
             *output->mutable_input(i) = const_nodes[port].name();
           } else {
             // Leave this edge alone.
-            VLOG(1) << "Preserving edge from " << node->name() << ":" << port
+            VLOG(3) << "Preserving edge from " << node->name() << ":" << port
                     << "[" << node->op() << "] to " << output->name() << ":"
                     << i << "[" << output->op() << "]";
           }
