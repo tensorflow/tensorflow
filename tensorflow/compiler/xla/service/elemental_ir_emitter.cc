@@ -1093,7 +1093,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_large_x = FSub(exp_x, one);
   // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
   // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
-  auto x_squared = FAdd(x, x);
+  // We use the second degree approximation of exp(x)-1 = x + x^2/2.
+  auto x_squared = FMul(x, x);
   auto x_squared_over_two = FMul(x_squared, half);
   auto for_small_x = FAdd(x, x_squared_over_two);
   const auto kExponentIsSmallThreshold = 1e-5;

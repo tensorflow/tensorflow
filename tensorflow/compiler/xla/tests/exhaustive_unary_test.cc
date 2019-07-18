@@ -439,6 +439,10 @@ XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Expm1) {
   auto error_spec_gen = [default_spec_gen](float x) {
     if (x < -105) {
       return ErrorSpec{0, 0};
+    } else if (std::abs(x) < 5e-6) {
+      // For points around x=0, we should make sure that the result is accurate
+      // within 1 ULP of the value.
+      return ErrorSpec{0, 1.1921e-7};
     }
     return default_spec_gen(x);
   };
