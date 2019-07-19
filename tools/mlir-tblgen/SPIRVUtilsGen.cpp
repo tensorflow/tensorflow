@@ -210,7 +210,7 @@ static void emitDeserializationFunction(const Record *record,
                 op.getQualCppClassName());
   os << " {\n";
   os << "  SmallVector<Type, 1> resultTypes;\n";
-  os << "  size_t wordIndex = 0;\n";
+  os << "  size_t wordIndex = 0; (void)wordIndex;\n";
 
   // Deserialize result information if it exists
   bool hasResult = false;
@@ -270,7 +270,7 @@ static void emitDeserializationFunction(const Record *record,
   }
 
   os << formatv("  auto op = opBuilder.create<{0}>(unknownLoc, resultTypes, "
-                "operands, attributes);\n",
+                "operands, attributes); (void)op;\n",
                 op.getQualCppClassName());
   if (hasResult) {
     os << "  valueMap[valueID] = op.getResult();\n";
