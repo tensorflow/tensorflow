@@ -319,8 +319,13 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
 
 void BFCAllocator::DeallocateRegions(
     const absl::flat_hash_set<void*>& region_ptrs) {
-  auto it = region_manager_.regions().begin();
-  while (it != region_manager_.regions().end()) {
+  // Explicitly remove the const qualifier as some compilers disallow passing
+  // const_iterator to std::vector::erase(), which is used in
+  // RemoveAllocationRegion().
+  auto regions =
+      const_cast<std::vector<AllocationRegion>*>(&region_manager_.regions());
+  auto it = regions->begin();
+  while (it != regions->end()) {
     if (!region_ptrs.contains(it->ptr())) {
       ++it;
       continue;

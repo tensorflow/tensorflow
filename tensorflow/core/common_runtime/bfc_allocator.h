@@ -311,8 +311,8 @@ class BFCAllocator : public Allocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
-    std::vector<AllocationRegion>::const_iterator RemoveAllocationRegion(
-        std::vector<AllocationRegion>::const_iterator it) {
+    std::vector<AllocationRegion>::iterator RemoveAllocationRegion(
+        std::vector<AllocationRegion>::iterator it) {
       return regions_.erase(it);
     }
 
