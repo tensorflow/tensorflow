@@ -1874,7 +1874,7 @@ tf_module {
   }
   member_method {
     name: "reduce_join"
-    argspec: "args=[\'inputs\', \'axis\', \'keep_dims\', \'separator\', \'name\', \'reduction_indices\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'axis\', \'keep_dims\', \'separator\', \'name\', \'reduction_indices\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_logsumexp"
