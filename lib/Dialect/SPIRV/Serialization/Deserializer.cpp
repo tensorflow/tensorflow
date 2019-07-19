@@ -28,17 +28,9 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
 
 using namespace mlir;
-
-template <typename Dst, typename Src>
-inline Dst bitwiseCast(Src source) noexcept {
-  Dst dest;
-  static_assert(sizeof(source) == sizeof(dest),
-                "bitwiseCast requires same source and destination bitwidth");
-  std::memcpy(&dest, &source, sizeof(dest));
-  return dest;
-}
 
 namespace {
 /// A SPIR-V module serializer.
@@ -219,9 +211,10 @@ LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
 
   module->setAttr(
       "addressing_model",
-      opBuilder.getI32IntegerAttr(bitwiseCast<int32_t>(operands.front())));
-  module->setAttr("memory_model", opBuilder.getI32IntegerAttr(
-                                      bitwiseCast<int32_t>(operands.back())));
+      opBuilder.getI32IntegerAttr(llvm::bit_cast<int32_t>(operands.front())));
+  module->setAttr(
+      "memory_model",
+      opBuilder.getI32IntegerAttr(llvm::bit_cast<int32_t>(operands.back())));
 
   return success();
 }
