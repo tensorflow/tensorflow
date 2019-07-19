@@ -1060,7 +1060,7 @@ inline memory::dims TFShapeToMklDnnDims(const TensorShape& shape) {
 inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
                                               TensorFormat format) {
   // Check validity of format.
-  CHECK_NE(TFDataFormatToMklDnnDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
+  DCHECK_NE(TFDataFormatToMklDnnDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
 
   int n = shape.dim_size(GetTensorDimIndex(format, 'N'));
   int c = shape.dim_size(GetTensorDimIndex(format, 'C'));
@@ -1074,7 +1074,7 @@ inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
 inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
                                                TensorFormat format) {
   // Validate format.
-  CHECK_NE(TFDataFormatToMklDnn3DDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
+  DCHECK_NE(TFDataFormatToMklDnn3DDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
 
   int n = shape.dim_size(GetTensorDimIndex<3>(format, 'N'));
   int c = shape.dim_size(GetTensorDimIndex<3>(format, 'C'));
@@ -1091,7 +1091,7 @@ inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
 inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
                                      TensorFormat format) {
   // Validate format.
-  CHECK_NE(TFDataFormatToMklDnnDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
+  DCHECK_NE(TFDataFormatToMklDnnDataFormat(format), MKL_TENSOR_FORMAT_INVALID);
 
   int n = in_dims[GetTensorDimIndex(format, 'N')];
   int c = in_dims[GetTensorDimIndex(format, 'C')];
