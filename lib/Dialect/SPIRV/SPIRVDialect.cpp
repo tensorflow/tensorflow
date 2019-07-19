@@ -38,8 +38,7 @@ using namespace mlir::spirv;
 
 SPIRVDialect::SPIRVDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addTypes<ArrayType, EntryPointType, ImageType, PointerType, RuntimeArrayType,
-           StructType>();
+  addTypes<ArrayType, ImageType, PointerType, RuntimeArrayType, StructType>();
 
   addOperations<
 #define GET_OP_LIST
@@ -533,17 +532,10 @@ static void print(StructType type, llvm::raw_ostream &os) {
   os << ">";
 }
 
-static void print(EntryPointType type, llvm::raw_ostream &os) {
-  os << "entrypoint";
-}
-
 void SPIRVDialect::printType(Type type, llvm::raw_ostream &os) const {
   switch (type.getKind()) {
   case TypeKind::Array:
     print(type.cast<ArrayType>(), os);
-    return;
-  case TypeKind::EntryPoint:
-    print(type.cast<EntryPointType>(), os);
     return;
   case TypeKind::Pointer:
     print(type.cast<PointerType>(), os);

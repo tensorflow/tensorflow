@@ -45,7 +45,6 @@ struct StructTypeStorage;
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
-  EntryPoint,
   Image,
   Pointer,
   RuntimeArray,
@@ -82,19 +81,6 @@ public:
   unsigned getNumElements() const;
 
   Type getElementType() const;
-};
-
-// SPIR-V type for return of EntryPointOp. The EntryPointOp returns a value that
-// can be used in other ops (like ExecutionModeOp) to refer to the
-// EntryPointOp. The type of the return value contains no other information
-class EntryPointType
-    : public Type::TypeBase<EntryPointType, Type, DefaultTypeStorage> {
-public:
-  using Base::Base;
-
-  static bool kindof(unsigned kind) { return kind == TypeKind::EntryPoint; }
-
-  static Type get(MLIRContext *context);
 };
 
 // SPIR-V image type

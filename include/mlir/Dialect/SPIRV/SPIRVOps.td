@@ -130,8 +130,8 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
     For example:
 
     ```
-    %4 = spv.EntryPoint "GLCompute" "foo"
-    %3 = spv.EntryPoint "Kernel" "foo", %1, %2 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+    spv.EntryPoint "GLCompute" @foo
+    spv.EntryPoint "Kernel" @foo, %1, %2 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
 
     ```
   }];
@@ -142,7 +142,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
     Variadic<SPV_AnyPtr>:$interface
   );
 
-  let results = (outs SPV_EntryPoint:$id);
+  let results = (outs);
   let autogenSerialization = 0;
 }
 
@@ -174,13 +174,13 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
     For example:
 
     ```
-    spv.ExecutionMode %7 "ContractionOff"
-    spv.ExecutionMode %8 "LocalSizeHint", 3, 4, 5
+    spv.ExecutionMode @foo "ContractionOff"
+    spv.ExecutionMode @bar "LocalSizeHint", 3, 4, 5
     ```
   }];
 
   let arguments = (ins
-    SPV_EntryPoint:$entry_point,
+    SymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
     OptionalAttr<I32ArrayAttr>:$values
   );
@@ -188,6 +188,8 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
   let results = (outs);
 
   let verifier = [{ return success(); }];
+
+  let autogenSerialization = 0;
 }
 
 // -----

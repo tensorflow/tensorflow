@@ -385,8 +385,6 @@ static ParseResult parseEntryPointOp(OpAsmParser *parser,
   if (!fn.isa<SymbolRefAttr>()) {
     return parser->emitError(loc, "expected symbol reference attribute");
   }
-  state->addTypes(
-      spirv::EntryPointType::get(parser->getBuilder().getContext()));
   return success();
 }
 
@@ -436,12 +434,9 @@ static LogicalResult verify(spirv::EntryPointOp entryPointOp) {
 
 static ParseResult parseExecutionModeOp(OpAsmParser *parser,
                                         OperationState *state) {
-  OpAsmParser::OperandType entryPointInfo;
   spirv::ExecutionMode execMode;
-  if (parser->parseOperand(entryPointInfo) ||
-      parser->resolveOperand(entryPointInfo,
-                             spirv::EntryPointType::get(state->getContext()),
-                             state->operands) ||
+  Attribute fn;
+  if (parser->parseAttribute(fn, kFnNameAttrName, state->attributes) ||
       parseEnumAttribute(execMode, parser, state)) {
     return failure();
   }
@@ -462,10 +457,9 @@ static ParseResult parseExecutionModeOp(OpAsmParser *parser,
 }
 
 static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
-  *printer << spirv::ExecutionModeOp::getOperationName() << " ";
-  printer->printOperand(execModeOp.entry_point());
-  *printer << " \"" << stringifyExecutionMode(execModeOp.execution_mode())
-           << "\"";
+  *printer << spirv::ExecutionModeOp::getOperationName() << " @"
+           << execModeOp.fn() << " \""
+           << stringifyExecutionMode(execModeOp.execution_mode()) << "\"";
   auto values = execModeOp.values();
   if (!values) {
     return;
