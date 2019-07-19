@@ -717,6 +717,7 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y, target)
       self.assertEqual(y.dtype.base_dtype, target.dtype.base_dtype)
 
+  @test_util.run_in_graph_and_eager_modes
   def testInverse(self):
     for dtype in self.allowed_dtypes:
       x = np.random.choice([0, 1, 2, 4, 5], size=(5, 5, 5))
