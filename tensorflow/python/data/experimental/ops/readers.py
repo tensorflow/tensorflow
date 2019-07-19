@@ -110,7 +110,8 @@ def _infer_type(str_val, na_value, prev_type):
       return type_list[i]
 
 
-def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header, file_io_fn):
+def _next_csv_row(
+    filenames, num_cols, field_delim, use_quote_delim, header, file_io_fn):
   """Generator that yields rows of CSV file(s) in order."""
   for fn in filenames:
     with file_io_fn(fn, "r") as f:
@@ -138,7 +139,9 @@ def _infer_column_defaults(filenames, num_cols, field_delim, use_quote_delim,
   inferred_types = [None] * len(select_columns)
 
   for i, csv_row in enumerate(
-      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header, file_io_fn)):
+      _next_csv_row(
+          filenames, num_cols, field_delim, use_quote_delim,
+          header, file_io_fn)):
     if num_rows_for_inference is not None and i >= num_rows_for_inference:
       break
 
@@ -438,14 +441,18 @@ def make_csv_dataset_v2(
       if compression_type_value == "GZIP":
         file_io_fn = gzip.GzipFile
       elif compression_type_value == "ZLIB":
-        raise ValueError("compression_type (%s) is not supported for probing columns" % compression_type)
+        raise ValueError(
+            "compression_type (%s) is not supported for probing columns" %
+            compression_type)
       elif compression_type_value != "":
-        raise ValueError("compression_type (%s) is not supported" % compression_type)
+        raise ValueError(
+            "compression_type (%s) is not supported" % compression_type)
   if column_names is None:
     if not header:
       raise ValueError("Cannot infer column names without a header line.")
     # If column names are not provided, infer from the header lines
-    column_names = _infer_column_names(filenames, field_delim, use_quote_delim, file_io_fn)
+    column_names = _infer_column_names(
+        filenames, field_delim, use_quote_delim, file_io_fn)
   if len(column_names) != len(set(column_names)):
     raise ValueError("Cannot have duplicate column names.")
 
