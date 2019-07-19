@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 func @const() -> () {
-  // CHECK: %0 = spv.constant true : i1
+  // CHECK: %0 = spv.constant true
   // CHECK: %1 = spv.constant 42 : i32
   // CHECK: %2 = spv.constant 5.000000e-01 : f32
-  // CHECK: %3 = spv.constant dense<[2, 3]> : vector<2xi32> : vector<2xi32>
+  // CHECK: %3 = spv.constant dense<[2, 3]> : vector<2xi32>
   // CHECK: %4 = spv.constant [dense<3.000000e+00> : vector<2xf32>] : !spv.array<1 x vector<2xf32>>
 
   %0 = spv.constant true

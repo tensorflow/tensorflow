@@ -320,8 +320,10 @@ static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
 }
 
 static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value()
-           << " : " << constOp.getType();
+  *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value();
+  if (constOp.getType().isa<spirv::ArrayType>()) {
+    *printer << " : " << constOp.getType();
+  }
 }
 
 static LogicalResult verify(spirv::ConstantOp constOp) {
