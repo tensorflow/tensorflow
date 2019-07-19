@@ -1123,6 +1123,7 @@ distribute_py_test(
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
         "no_rocm",
+        "notap",  # TODO(b/137972256) Re-enable this test.
     ],
     deps = [
         ":saved_model_test_base",
