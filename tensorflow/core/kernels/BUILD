@@ -38,10 +38,7 @@ load(
     "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-)
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 # Description:
 # Op kernel implementations for TensorFlow.
