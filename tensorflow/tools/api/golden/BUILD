@@ -1,7 +1,10 @@
 # TensorFlow API backwards compatibility test goldens.
 
 package(
-    default_visibility = ["//tensorflow/tools/api:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:tensorflow_py:__subpackages__",
+        "//tensorflow/tools/api:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
