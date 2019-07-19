@@ -2321,13 +2321,14 @@ def LstmResultConstraint : PredOpTrait<
   "the input and result tensor elemental types must be same",
   TCresVTEtIsSameAsOp<0, 0>>;
 
+// This is the FULL kernel type LSTM op.
 def TFL_LSTMOp :
   TFL_Op<"lstm",
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint]> {
-  let summary = "lstm operator";
+  let summary = "The full lstm operator";
 
   let description = [{
 Long short-term memory unit (LSTM) recurrent network layer.
@@ -2395,10 +2396,10 @@ Ba et al. “Layer Normalization”
     TFL_AFAttr:$fused_activation_function,
     DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
     DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
-    // TODO(ashwinm): add a constraint to restrict this to FULL
-    // since BASIC has only 5 inputs and will be modelled as a separate
-    // TFL_Op.
-    DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">:$kernel_type
+    // Since this op is the FULL kernel only, constrain it.
+    Confined<
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
+      [TFL_LSTM_KT_FULL]>:$kernel_type
   );
 
   let results = (outs AnyTensor:$output);
