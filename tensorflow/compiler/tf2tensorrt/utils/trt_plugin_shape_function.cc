@@ -80,12 +80,20 @@ Status TRTPluginShapeFunction(
     tensorflow::shape_inference::InferenceContext* c) {
   std::vector<tensorflow::shape_inference::ShapeHandle> input_shapes;
   std::vector<nvinfer1::Dims> plugin_shapes;
+  bool unknown_rank = false;
+  const auto attr_slice = c->attrs();
+  string plugin_name;
+  GetNodeAttr(attr_slice, "plugin_name", &plugin_name);
   for (int i = 0; i < c->num_inputs(); ++i) {
     input_shapes.emplace_back(c->input(i));
     // Require fully defined shapes for the time being
     if (!c->RankKnown(input_shapes.back())) {
-      LOG(ERROR) << "Need Rank to be known for plugin op shape inference!";
-      return tensorflow::shape_inference::UnknownShape(c);
+      LOG(ERROR)
+          << "Need Rank to be known for plugin op shape inference! Input " << i
+          << " " << c->DebugString(input_shapes.back()) << " for plugin "
+          << plugin_name;
+      unknown_rank = true;
+      continue;
     }
     if (c->Rank(input_shapes.back()) > nvinfer1::Dims::MAX_DIMS) {
       LOG(ERROR) << "Input rank seems to be greater than "
@@ -96,10 +104,13 @@ Status TRTPluginShapeFunction(
     // we should not ignore batch dim since it may not have a meaning for a
     // plugin.
     plugin_shapes.emplace_back(ShapeHandleToTrtDims(input_shapes.back(), c));
-    VLOG(1) << "Input " << i << ": " << DebugString(plugin_shapes.back());
+    VLOG(1) << plugin_name << " input " << i << ": " << DebugString(plugin_shapes.back());
+  }
+  if (unknown_rank) {
+    return tensorflow::shape_inference::UnknownShape(c);
   }
   InitializeTrtPlugins();
-  const auto attr_slice = c->attrs();
+
   nvinfer1::IPluginV2* plugin_ptr = nullptr;
   Status plugin_status =
       ConstructPlugin(attr_slice, "For_shapeInference", plugin_ptr, false);
@@ -116,7 +127,7 @@ Status TRTPluginShapeFunction(
   for (int i = 0; i < num_outputs; ++i) {
     output_dimensions.emplace_back(plugin->getOutputDimensions(
         i, &plugin_shapes[0], (int)plugin_shapes.size()));
-    VLOG(1) << "Output " << i << ": " << DebugString(output_dimensions.back());
+    VLOG(1) << plugin_name << " output " << i << ": " << DebugString(output_dimensions.back());
     const nvinfer1::Dims& dim = output_dimensions[i];
     std::vector<tensorflow::shape_inference::DimensionHandle> dims;
     for (int k = 0; k < dim.nbDims; ++k) {
