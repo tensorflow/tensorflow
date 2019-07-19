@@ -191,7 +191,7 @@ public:
   /// abort.
   unsigned getElementTypeBitWidth() const;
 
-  /// If this is a ranked type, return the number of elements. Otherwise, abort.
+  /// If it has static shape, return the number of elements. Otherwise, abort.
   int64_t getNumElements() const;
 
   /// If this is a ranked type, return the rank. Otherwise, abort.
