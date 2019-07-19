@@ -27,6 +27,59 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+class DataFormatDimMapOp : public XlaOpKernel {
+ public:
+  explicit DataFormatDimMapOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {
+    string src_format;
+    OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
+    string dst_format;
+    OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
+    OP_REQUIRES(context, src_format.size() == 4,
+                errors::InvalidArgument(absl::StrCat(
+                    "Source format must of length 4, received src_format = ",
+                    src_format)));
+    OP_REQUIRES(
+        context, dst_format.size() == 4,
+        errors::InvalidArgument(absl::StrCat(
+            "Destination format must of length 4, received dst_format = ",
+            dst_format)));
+    for (int i = 0; i < src_format.size(); ++i) {
+      for (int j = 0; j < dst_format.size(); ++j) {
+        if (dst_format[j] == src_format[i]) {
+          dst_idx_[i] = j;
+          break;
+        }
+      }
+      OP_REQUIRES(context, dst_idx_[i] != -1,
+                  errors::InvalidArgument(absl::StrCat(
+                      src_format, " is not a permutation of ", dst_format)));
+    }
+  }
+
+  void Compile(XlaOpKernelContext* context) override {
+    auto builder = context->builder();
+    xla::XlaOp dst_indices =
+        xla::ConstantR1(builder, absl::Span<const int32>(dst_idx_));
+    xla::XlaOp four = xla::ConstantR0<int32>(builder, 4);
+    xla::XlaOp src_indices =
+        (xla::ConvertElementType(context->Input(0), xla::S32) + four) % four;
+    xla::XlaOp output =
+        xla::TorchIndexSelect(dst_indices, src_indices, /*dim=*/0);
+    context->SetOutput(
+        0, xla::ConvertElementType(output, context->input_xla_type(0)));
+  }
+
+ private:
+  std::array<int32, 4> dst_idx_ = {{-1, -1, -1, -1}};
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatDimMapOp);
+};
+
+REGISTER_XLA_OP(
+    Name("DataFormatDimMap").TypeConstraint("T", {DT_INT32, DT_INT64}),
+    DataFormatDimMapOp);
+
 class DataFormatVecPermuteOp : public XlaOpKernel {
  public:
   explicit DataFormatVecPermuteOp(OpKernelConstruction* ctx)

@@ -27,6 +27,43 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
+class XlaDataFormatDimMapTest(xla_test.XLATestCase):
+
+  def _test(self, input_data, src_format, dst_format, expected):
+    for dtype in {np.int32, np.int64}:
+      x = np.array(input_data, dtype=dtype)
+      with self.session() as session:
+        with self.test_scope():
+          placeholder = array_ops.placeholder(dtypes.as_dtype(x.dtype), x.shape)
+          param = {placeholder: x}
+          output = nn_ops.data_format_dim_map(
+              placeholder, src_format=src_format, dst_format=dst_format)
+        result = session.run(output, param)
+      self.assertAllEqual(result, expected)
+
+  def test(self):
+    self._test(0, "NHWC", "NCHW", 0)
+    self._test(1, "NHWC", "NCHW", 2)
+    self._test(2, "NHWC", "NCHW", 3)
+    self._test(3, "NHWC", "NCHW", 1)
+    self._test(-1, "NHWC", "NCHW", 1)
+    self._test(-2, "NHWC", "NCHW", 3)
+    self._test(-3, "NHWC", "NCHW", 2)
+    self._test(-4, "NHWC", "NCHW", 0)
+    self._test([1, 3], "NHWC", "NCHW", [2, 1])
+    self._test([1, 3, -2], "NHWC", "NCHW", [2, 1, 3])
+    self._test([1, -3, -2], "NHWC", "NCHW", [2, 2, 3])
+    self._test([[1, -3], [1, -1]], "NHWC", "NCHW", [[2, 2], [2, 1]])
+
+    self._test([1, -3, -2], "NHWC", "NCHW", [2, 2, 3])
+    self._test([-4, -3, -2, -1, 0, 1, 2, 3], "NHWC", "HWNC",
+               [2, 0, 1, 3, 2, 0, 1, 3])
+    self._test([-4, -3, -2, -1, 0, 1, 2, 3], "NHWC", "WHCN",
+               [3, 1, 0, 2, 3, 1, 0, 2])
+    self._test([-4, -3, -2, -1, 0, 1, 2, 3], "qwer", "rewq",
+               [3, 2, 1, 0, 3, 2, 1, 0])
+
+
 class XlaPermuteOpTest(xla_test.XLATestCase):
 
   def _runPermuteAndCompare(self, x, src_format, dst_format, expected):
