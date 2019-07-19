@@ -20,32 +20,25 @@ from __future__ import print_function
 
 from setuptools import setup
 
-_VERSION = '1.12.0'
+from cloud_tpu_profiler.version import __version__
 
 CONSOLE_SCRIPTS = [
-    'capture_tpu_profile=cloud_tpu_profiler.main:run_main',
+    'capture_tpu_profile=cloud_tpu_profiler.capture_tpu_profile:run_main',
 ]
 
 setup(
     name='cloud_tpu_profiler',
-    version=_VERSION.replace('-', ''),
+    version=__version__.replace('-', ''),
     description='Trace and profile Cloud TPU performance',
     long_description='Tools for capture TPU profile',
     url='https://www.tensorflow.org/tfrc/',
     author='Google Inc.',
     author_email='packages@tensorflow.org',
     packages=['cloud_tpu_profiler'],
-    package_data={
-        'cloud_tpu_profiler': ['data/*'],
-    },
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
     },
     classifiers=[
-        # How mature is this project? Common values are
-        #   3 - Alpha
-        #   4 - Beta
-        #   5 - Production/Stable
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',

@@ -17,9 +17,15 @@
 
 set -e
 
-BINARY="bazel-bin/tensorflow/contrib/tpu/profiler/capture_tpu_profile"
+if [ "$(uname)" = "Darwin" ]; then
+  sedi="sed -i ''"
+else
+  sedi="sed -i"
+fi
+
 PACKAGE_NAME="cloud_tpu_profiler"
-PIP_PACKAGE="tensorflow/contrib/tpu/profiler/pip_package"
+PIP_PACKAGE="tensorflow/python/tpu/profiler/pip_package"
+RUNFILES="bazel-bin/tensorflow/python/tpu/profiler/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow/python/tpu/profiler"
 
 function main() {
   if [ $# -lt 1 ] ; then
@@ -32,16 +38,16 @@ function main() {
 
   echo $(date) : "=== Using tmpdir: ${TMPDIR}"
 
-  if [ ! -f "${BINARY}" ]; then
-    echo "Could not find ${BINARY}.  Did you run from the root of the build tree?"
-    exit 1
-  fi
-
   cp ${PIP_PACKAGE}/README ${TMPDIR}
   cp ${PIP_PACKAGE}/setup.py ${TMPDIR}
-  cp -R ${PIP_PACKAGE}/${PACKAGE_NAME} ${TMPDIR}
-  mkdir ${TMPDIR}/${PACKAGE_NAME}/data
-  cp ${BINARY} ${TMPDIR}/${PACKAGE_NAME}/data
+  mkdir ${TMPDIR}/${PACKAGE_NAME}
+  cp -a ${RUNFILES}/. ${TMPDIR}/${PACKAGE_NAME}/
+
+  # Fix the import statements to reflect the copied over path.
+  find  ${TMPDIR}/${PACKAGE_NAME} -name \*.py |
+    xargs $sedi -e '
+      s/^from tensorflow.python.tpu.profiler/from '${PACKAGE_NAME}'/
+  '
   echo $(ls $TMPDIR)
 
   pushd ${TMPDIR}

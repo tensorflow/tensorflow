@@ -10,6 +10,6 @@ sh_binary(
     srcs = ["build_pip_package.sh"],
     data = [
         "setup.py",
-        "//tensorflow/contrib/tpu/profiler:capture_tpu_profile",
+        "//tensorflow/python/tpu/profiler:capture_tpu_profile_bin",
     ],
 )
