@@ -1209,7 +1209,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_INT32:
         POPULATE_TENSOR_PROTO(tensor, t, int32, int);
       case DT_UINT32:
-        POPULATE_TENSOR_PROTO(tensor, t, uint32, int);
+        POPULATE_TENSOR_PROTO(tensor, t, uint32, uint32);
       case DT_INT16:
         POPULATE_TENSOR_PROTO(tensor, t, int16, int);
       case DT_UINT16:
