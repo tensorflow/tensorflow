@@ -4003,3 +4003,10 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+@tf_export("math.reciprocal_no_nan", "reciprocal_no_nan")
+def reciprocal_no_nan(x, name=None):
+  with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
+    x = ops.convert_to_tensor(x, name="x")
+    one = constant_ops.constant(1, dtype=x.dtype, name="one")
+    return gen_math_ops.div_no_nan(one, x, name=scope)
