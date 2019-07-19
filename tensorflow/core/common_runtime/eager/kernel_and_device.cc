@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -65,16 +66,6 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
                 << status.ToString();
-    }
-  }
-}
-
-KernelAndDeviceOp::~KernelAndDeviceOp() {
-  // Make sure that the device execution has finished before deleting cm_.
-  {
-    mutex_lock lock(num_deferred_ops_mu_);
-    while (num_deferred_ops_ > 0) {
-      no_deferred_ops_cv_.wait(lock);
     }
   }
 }
@@ -230,6 +221,15 @@ void UpdateStats(OpKernelContext* context,
   ms->set_persistent_memory_size(context->persistent_memory_allocated());
   step_stats_collector->Finalize();
 }
+
+// In certain contexts (e.g. TPU async executions), the CancellationManager is
+// used to shut down the device in error scenarios (as opposed to using the
+// AsyncCompute's DoneCallback). This is handled through the
+// {inc,dec}_num_deferred_ops_function.
+struct OpExecutionState : public core::RefCounted {
+  // TODO(nareshmodi): consider refcounting the cancellation_manager.
+  CancellationManager cancellation_manager;
+};
 }  // anonymous namespace
 
 Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
@@ -269,22 +269,22 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
+  OpExecutionState* op_execution_state = nullptr;
   if (cancellation_manager) {
     params.cancellation_manager = cancellation_manager;
   } else {
-    params.cancellation_manager = &cm_;
-    cm_.Reset();
+    op_execution_state = new OpExecutionState;
+    params.cancellation_manager = &op_execution_state->cancellation_manager;
   }
   params.log_memory = log_memory_;
-  params.inc_num_deferred_ops_function = [this]() {
-    mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops_++;
+  params.inc_num_deferred_ops_function = [op_execution_state]() {
+    if (op_execution_state != nullptr) {
+      op_execution_state->Ref();
+    }
   };
-  params.dec_num_deferred_ops_function = [this]() {
-    mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops_--;
-    if (num_deferred_ops_ == 0) {
-      no_deferred_ops_cv_.notify_all();
+  params.dec_num_deferred_ops_function = [op_execution_state]() {
+    if (op_execution_state != nullptr) {
+      op_execution_state->Unref();
     }
   };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
@@ -340,6 +340,12 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
       device_->Compute(kernel_.get(), &context);
     }
   }
+
+  // Clean up execution op_execution_state if deferred ops aren't running.
+  if (op_execution_state != nullptr) {
+    op_execution_state->Unref();
+  }
+
   if (!context.status().ok()) return context.status();
 
   if (outputs != nullptr) {
@@ -369,11 +375,11 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
+  CancellationManager cm;
   if (cancellation_manager) {
     opts.cancellation_manager = cancellation_manager;
   } else {
-    opts.cancellation_manager = &cm_;
-    cm_.Reset();
+    opts.cancellation_manager = &cm;
   }
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;

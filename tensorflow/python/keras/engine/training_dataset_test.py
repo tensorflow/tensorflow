@@ -385,9 +385,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_dataset_fit_correctness(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
-
     class SumLayer(keras.layers.Layer):
 
       def build(self, _):
@@ -467,8 +464,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_known_cardinality_no_steps_arg(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.compile(
         'rmsprop',
@@ -493,8 +488,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_unknown_cardinality_no_steps_arg(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.compile(
         'rmsprop',
@@ -521,8 +514,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_finite_dataset_unknown_cardinality_no_step_with_train_and_val(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
 
     class CaptureStdout(object):
 

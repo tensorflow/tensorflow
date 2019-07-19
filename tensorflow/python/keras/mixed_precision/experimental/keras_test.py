@@ -579,8 +579,6 @@ class KerasModelTest(keras_parameterized.TestCase):
   def test_dynamic_loss_scaling(self, strategy_fn, run_distributed=True):
     if not self._is_strategy_supported(strategy_fn):
       return
-    if run_distributed:
-      self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4

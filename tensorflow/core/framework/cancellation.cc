@@ -27,12 +27,6 @@ CancellationManager::CancellationManager()
       is_cancelled_(false),
       next_cancellation_token_(0) {}
 
-void CancellationManager::Reset() {
-  mutex_lock l(mu_);
-  is_cancelling_ = false;
-  is_cancelled_.store(false);
-}
-
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
   {
