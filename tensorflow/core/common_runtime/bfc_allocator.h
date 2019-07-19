@@ -48,7 +48,8 @@ class BFCAllocator : public Allocator {
  public:
   // Takes ownership of sub_allocator.
   BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-               bool allow_growth, const string& name);
+               bool allow_growth, const string& name,
+               bool garbage_collection = false);
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
@@ -485,6 +486,10 @@ class BFCAllocator : public Allocator {
   // An indicator that expansion of a region has hit the limits
   // of the available memory.
   bool started_backpedal_ = false;
+
+  // Whether the allocator will deallocate free regions to avoid OOM due to
+  // memory fragmentation.
+  bool garbage_collection_;
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;

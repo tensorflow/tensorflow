@@ -30,8 +30,10 @@ limitations under the License.
 namespace tensorflow {
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                           bool allow_growth, const string& name)
+                           bool allow_growth, const string& name,
+                           bool garbage_collection)
     : sub_allocator_(sub_allocator),
+      garbage_collection_(garbage_collection),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
@@ -261,6 +263,11 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
 }
 
 bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
+  // Do nothing if garbage collection is off.
+  if (!garbage_collection_) {
+    return false;
+  }
+
   // Searching for free regions.
   absl::flat_hash_set<void*> free_region_ptrs;
   size_t total_free_bytes = 0;
@@ -294,13 +301,15 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes) {
     return false;
   }
 
-  LOG(WARNING) << "Re-allocate memory regions (i.e., allocations) to avoid OOM"
-               << " due to memory fragmentation. If you see this message"
-               << " frequently, you are running near the threshold of the"
-               << " available device memory and re-allocation can incur great"
-               << " performance overhead. You may try smaller batch sizes to"
-               << " observe the performance impact. Alternatively you may try"
-               << " setting `allow_growth=false` in GPUOptions.";
+  LOG(WARNING) << "Garbage collection: deallocate free memory regions"
+               << " (i.e., allocations) so that we can re-allocate a larger"
+               << " region to avoid OOM due to memory fragmentation. If you"
+               << " see this message frequently, you are running near the"
+               << " threshold of the available device memory and re-allocation"
+               << " may incur great performance overhead. You may try smaller"
+               << " batch sizes to observe the performance impact."
+               << " Set TF_ENABLE_GPU_GARBAGE_COLLECTION=false if you'd like to"
+               << " disable this feature.";
 
   // Deallocate free regions.
   DeallocateRegions(free_region_ptrs);
