@@ -239,7 +239,21 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
                        [10, 11, 12, 13, b"14"], [15, 16, 17, 18, b"19"]]
     label = "col0"
 
-    for compression_type in ["GZIP"]:
+    self._test_dataset(
+        inputs,
+        expected_output=expected_output,
+        expected_keys=column_names,
+        label_name=label,
+        batch_size=1,
+        num_epochs=1,
+        shuffle=False,
+        header=True,
+        column_defaults=record_defaults,
+        compression_type="GZIP",
+    )
+
+    with self.assertRaisesRegexp(
+        ValueError, "compression_type .ZLIB. is not supported"):
       self._test_dataset(
           inputs,
           expected_output=expected_output,
@@ -250,7 +264,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           shuffle=False,
           header=True,
           column_defaults=record_defaults,
-          compression_type=compression_type,
+          compression_type="ZLIB",
       )
 
   def testMakeCSVDataset_withBadInputs(self):
