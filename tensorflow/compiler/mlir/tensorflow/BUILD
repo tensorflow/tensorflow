@@ -1,5 +1,5 @@
 load("@local_config_mlir//:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -281,6 +281,7 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
+        "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
     ],

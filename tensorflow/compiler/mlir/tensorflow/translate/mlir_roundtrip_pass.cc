@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_pass.h"
 
+#include "mlir/Analysis/Verifier.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -35,9 +36,15 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
-  // TODO(jpienaar): Remove, just simple verification that this works.
-  module->dump();
-  return ConvertMlirToGraph(*module, confs, options.graph, options.flib_def);
+  if (failed(mlir::verify(*module))) {
+    // TODO(jpienaar): Remove, just simple verification that this works.
+    module->dump();
+    return errors::Internal("Verifier failed on MLIR import for the graph");
+  }
+  auto status =
+      ConvertMlirToGraph(*module, confs, options.graph, options.flib_def);
+  if (!status.ok()) module->dump();
+  return status;
 }
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
