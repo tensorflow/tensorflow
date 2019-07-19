@@ -13,20 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
 
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -34,41 +32,40 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class CudnnConvAlgorithmPicker : public GpuConvAlgorithmPicker {
+class GpuConvAlgorithmPicker : public HloModulePass {
  public:
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  CudnnConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* allocator)
-      : GpuConvAlgorithmPicker(stream_exec, allocator) {}
+  GpuConvAlgorithmPicker(se::StreamExecutor* stream_exec,
+                         se::DeviceMemoryAllocator* allocator)
+      : stream_exec_(stream_exec), allocator_(allocator) {}
 
-  absl::string_view name() const override {
-    return "cudnn-conv-algorithm-picker";
-  }
+  virtual absl::string_view name() const = 0;
+
+  StatusOr<bool> Run(HloModule* module) override;
 
  protected:
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
-      const HloCustomCallInstruction& instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+  string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
+    if (algo.tensor_ops_enabled()) {
+      return absl::StrCat(algo.algo_id(), "+TC");
+    }
+    return absl::StrCat(algo.algo_id());
+  }
 
-  Status AllocateInitializeBuffers(
-      const HloCustomCallInstruction& instr,
-      se::ScratchAllocator* input_output_allocator, se::Stream* stream,
-      std::vector<se::DeviceMemoryBase>* operand_buffers,
-      se::DeviceMemoryBase* result_buffer);
+  StatusOr<bool> RunOnComputation(HloComputation* computation);
+  StatusOr<bool> RunOnInstruction(HloInstruction* instr);
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
 
-  Status ProfileConvCandidates(
-      const HloCustomCallInstruction& instr, se::Stream* stream,
-      se::cuda::RedzoneAllocator* input_output_allocator,
-      se::cuda::RedzoneAllocator* scratch_allocator,
-      std::vector<se::DeviceMemoryBase>* operand_buffers,
-      se::DeviceMemoryBase* result_buffer,
-      std::vector<tensorflow::AutotuneResult>* profile_results,
-      bool* crash_on_checking_failure);
+  virtual StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream) = 0;
+
+  se::StreamExecutor* stream_exec_;       // never null
+  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu
 }  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONV_ALGORITHM_PICKER_H_
