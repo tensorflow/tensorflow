@@ -211,8 +211,8 @@ def validate_callbacks(input_callbacks, optimizer):
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
         callbacks passed.
-    ValueError: If `histogram_freq` or `write_grads` is one of the parameters
-        passed as part of the TensorBoard callback.
+    ValueError: If `write_grads` is one of the parameters passed as part of the
+        TensorBoard callback.
   """
   if input_callbacks:
     for callback in input_callbacks:
@@ -227,20 +227,13 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if getattr(callback, 'histogram_freq', False):
-          logging.warning(
-              UserWarning(
-                  '`histogram_freq` in the TensorBoard callback is not '
-                  'supported when using DistributionStrategy. Setting '
-                  '`histogram_freq` to `0`.'))
-          callback.histogram_freq = 0
         if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
                   'when using DistributionStrategy. Setting `write_grads` '
                   'to `False`.'))
-          callback.histogram_freq = False
+          callback.write_grads = False
 
 
 def validate_distributed_dataset_inputs(distribution_strategy, x, y,
