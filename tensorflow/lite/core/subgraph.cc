@@ -523,8 +523,11 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
     TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
                       kTfLiteArenaRwPersistent);
     TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-
-    memset(tensor.data.raw, 0, tensor.bytes);
+    int value = 0;
+    if (tensor.type == kTfLiteInt8) {
+      value = tensor.params.zero_point;
+    }
+    memset(tensor.data.raw, value, tensor.bytes);
   }
   return kTfLiteOk;
 }
