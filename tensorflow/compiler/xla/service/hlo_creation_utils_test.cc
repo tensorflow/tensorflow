@@ -277,5 +277,43 @@ TEST_F(HloCreationUtilsTest, MakeIotaHlo_I32) {
            LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {1.0f, 1.0f}}));
 }
 
+TEST_F(HloCreationUtilsTest, MakeBroadcast_F32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(F32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
+  auto* input = MakeR0ConstantHlo<float>(module->entry_computation(), 0);
+  HloInstruction* output = MakeBroadcastHlo(input, {}, {2, 2});
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<float>(0.0f)}));
+  CHECK_EQ(result_literal,
+           LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
+}
+
+TEST_F(HloCreationUtilsTest, MakeBroadcast_Shape_I32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
+  auto* input = MakeR0ConstantHlo<int32>(module->entry_computation(), 0);
+  HloInstruction* output =
+      MakeBroadcastHlo(input, {}, ShapeUtil::MakeShape(S32, {2, 2}));
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(0.0)}));
+  CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}}));
+}
+
 }  // namespace
 }  // namespace xla

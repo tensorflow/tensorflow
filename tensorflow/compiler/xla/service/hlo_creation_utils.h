@@ -91,6 +91,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64> broadcast_dimensions,
                                  absl::Span<const int64> result_shape_bounds);
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 const Shape& shape);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.

@@ -185,6 +185,12 @@ HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
       broadcast_shape, operand, broadcast_dimensions));
 }
 
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 const Shape& shape) {
+  return MakeBroadcastHlo(operand, broadcast_dimensions, shape.dimensions());
+}
+
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
                                                  int64 index) {
   HloComputation* computation = operand->parent();
