@@ -1,4 +1,4 @@
-## TensorFlow Lite delegates
+# TensorFlow Lite delegates
 
 _Note: Delegate API is still experimental and is subject to change._
 
