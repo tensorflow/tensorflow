@@ -49,28 +49,11 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 // ForOp
 //===----------------------------------------------------------------------===//
 
-// Check that if a "block" is not empty, it has a `TerminatorOp` terminator.
-static LogicalResult checkHasTerminator(OpState &op, Block &block) {
-  if (block.empty() || isa<TerminatorOp>(block.back()))
-    return success();
-
-  return op.emitOpError("expects regions to end with '" +
-                        TerminatorOp::getOperationName() + "'")
-             .attachNote()
-         << "in custom textual format, the absence of terminator implies '"
-         << TerminatorOp::getOperationName() << "'";
-}
-
-void mlir::loop::ensureLoopTerminator(Region &region, Builder &builder,
-                                      Location loc) {
-  impl::ensureRegionTerminator<TerminatorOp>(region, builder, loc);
-}
-
 void ForOp::build(Builder *builder, OperationState *result, Value *lb,
                   Value *ub, Value *step) {
   result->addOperands({lb, ub, step});
   Region *bodyRegion = result->addRegion();
-  ensureLoopTerminator(*bodyRegion, *builder, result->location);
+  ForOp::ensureTerminator(*bodyRegion, *builder, result->location);
   bodyRegion->front().addArgument(builder->getIndexType());
 }
 
@@ -86,8 +69,6 @@ LogicalResult verify(ForOp op) {
       !body->getArgument(0)->getType().isIndex())
     return op.emitOpError("expected body to have a single index argument for "
                           "the induction variable");
-  if (failed(checkHasTerminator(op, *body)))
-    return failure();
   return success();
 }
 
@@ -123,7 +104,7 @@ static ParseResult parseForOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseRegion(*body, inductionVariable, indexType))
     return failure();
 
-  ensureLoopTerminator(*body, builder, result->location);
+  ForOp::ensureTerminator(*body, builder, result->location);
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
@@ -150,9 +131,9 @@ void IfOp::build(Builder *builder, OperationState *result, Value *cond,
   result->addOperands(cond);
   Region *thenRegion = result->addRegion();
   Region *elseRegion = result->addRegion();
-  ensureLoopTerminator(*thenRegion, *builder, result->location);
+  IfOp::ensureTerminator(*thenRegion, *builder, result->location);
   if (withElseRegion)
-    ensureLoopTerminator(*elseRegion, *builder, result->location);
+    IfOp::ensureTerminator(*elseRegion, *builder, result->location);
 }
 
 static LogicalResult verify(IfOp op) {
@@ -160,13 +141,6 @@ static LogicalResult verify(IfOp op) {
   for (auto &region : op.getOperation()->getRegions()) {
     if (region.empty())
       continue;
-
-    // TODO(riverriddle) We currently do not allow multiple blocks in child
-    // regions.
-    if (std::next(region.begin()) != region.end())
-      return op.emitOpError("expected one block per 'then' or 'else' regions");
-    if (failed(checkHasTerminator(op, region.front())))
-      return failure();
 
     for (auto &b : region)
       if (b.getNumArguments() != 0)
@@ -192,13 +166,13 @@ static ParseResult parseIfOp(OpAsmParser *parser, OperationState *result) {
   // Parse the 'then' region.
   if (parser->parseRegion(*thenRegion, {}, {}))
     return failure();
-  ensureLoopTerminator(*thenRegion, parser->getBuilder(), result->location);
+  IfOp::ensureTerminator(*thenRegion, parser->getBuilder(), result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
   if (!parser->parseOptionalKeyword("else")) {
     if (parser->parseRegion(*elseRegion, {}, {}))
       return failure();
-    ensureLoopTerminator(*elseRegion, parser->getBuilder(), result->location);
+    IfOp::ensureTerminator(*elseRegion, parser->getBuilder(), result->location);
   }
 
   // Parse the optional attribute list.

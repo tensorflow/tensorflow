@@ -32,6 +32,7 @@
 namespace mlir {
 class AffineBound;
 class AffineValueMap;
+class AffineTerminatorOp;
 class FlatAffineConstraints;
 class OpBuilder;
 

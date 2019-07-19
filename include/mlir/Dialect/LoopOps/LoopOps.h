@@ -30,6 +30,8 @@
 namespace mlir {
 namespace loop {
 
+class TerminatorOp;
+
 class LoopOpsDialect : public Dialect {
 public:
   LoopOpsDialect(MLIRContext *context);

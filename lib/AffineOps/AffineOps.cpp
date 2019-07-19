@@ -965,26 +965,6 @@ void AffineDmaWaitOp::getCanonicalizationPatterns(
 // AffineForOp
 //===----------------------------------------------------------------------===//
 
-// Check that if a "block" has a terminator, it is an `AffineTerminatorOp`.
-static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
-  if (block.empty() || isa<AffineTerminatorOp>(block.back()))
-    return success();
-
-  return op.emitOpError("expects regions to end with '" +
-                        AffineTerminatorOp::getOperationName() + "'")
-             .attachNote()
-         << "in custom textual format, the absence of terminator implies '"
-         << AffineTerminatorOp::getOperationName() << "'";
-}
-
-// Insert `affine.terminator` at the end of the region's only block if it does
-// not have a terminator already.  If the region is empty, insert a new block
-// first.
-static void ensureAffineTerminator(Region &region, Builder &builder,
-                                   Location loc) {
-  impl::ensureRegionTerminator<AffineTerminatorOp>(region, builder, loc);
-}
-
 void AffineForOp::build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> lbOperands, AffineMap lbMap,
                         ArrayRef<Value *> ubOperands, AffineMap ubMap,
@@ -1017,7 +997,7 @@ void AffineForOp::build(Builder *builder, OperationState *result,
   Block *body = new Block();
   body->addArgument(IndexType::get(builder->getContext()));
   bodyRegion->push_back(body);
-  ensureAffineTerminator(*bodyRegion, *builder, result->location);
+  ensureTerminator(*bodyRegion, *builder, result->location);
 
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
@@ -1031,12 +1011,6 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
 }
 
 static LogicalResult verify(AffineForOp op) {
-  auto &bodyRegion = op.region();
-
-  // The body region must contain a single basic block.
-  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
-    return op.emitOpError("expected body region to have a single block");
-
   // Check that the body defines as single block argument for the induction
   // variable.
   auto *body = op.getBody();
@@ -1045,9 +1019,6 @@ static LogicalResult verify(AffineForOp op) {
     return op.emitOpError(
         "expected body to have a single index argument for the "
         "induction variable");
-
-  if (failed(checkHasAffineTerminator(op, *body)))
-    return failure();
 
   // Verify that there are enough operands for the bounds.
   AffineMap lowerBoundMap = op.getLowerBoundMap(),
@@ -1198,7 +1169,7 @@ ParseResult parseAffineForOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseRegion(*body, inductionVariable, builder.getIndexType()))
     return failure();
 
-  ensureAffineTerminator(*body, builder, result->location);
+  AffineForOp::ensureTerminator(*body, builder, result->location);
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
@@ -1486,17 +1457,6 @@ static LogicalResult verify(AffineIfOp op) {
 
   // Verify that the entry of each child region does not have arguments.
   for (auto &region : op.getOperation()->getRegions()) {
-    if (region.empty())
-      continue;
-
-    // TODO(riverriddle) We currently do not allow multiple blocks in child
-    // regions.
-    if (std::next(region.begin()) != region.end())
-      return op.emitOpError(
-          "expects only one block per 'then' or 'else' regions");
-    if (failed(checkHasAffineTerminator(op, region.front())))
-      return failure();
-
     for (auto &b : region)
       if (b.getNumArguments() != 0)
         return op.emitOpError(
@@ -1534,13 +1494,15 @@ ParseResult parseAffineIfOp(OpAsmParser *parser, OperationState *result) {
   // Parse the 'then' region.
   if (parser->parseRegion(*thenRegion, {}, {}))
     return failure();
-  ensureAffineTerminator(*thenRegion, parser->getBuilder(), result->location);
+  AffineIfOp::ensureTerminator(*thenRegion, parser->getBuilder(),
+                               result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
   if (!parser->parseOptionalKeyword("else")) {
     if (parser->parseRegion(*elseRegion, {}, {}))
       return failure();
-    ensureAffineTerminator(*elseRegion, parser->getBuilder(), result->location);
+    AffineIfOp::ensureTerminator(*elseRegion, parser->getBuilder(),
+                                 result->location);
   }
 
   // Parse the optional attribute list.

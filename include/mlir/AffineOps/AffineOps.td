@@ -47,7 +47,9 @@ class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
-def AffineForOp : Affine_Op<"for"> {
+def AffineForOp : Affine_Op<"for",
+    [NativeOpTrait<"SingleBlockImplicitTerminator<AffineTerminatorOp>::Impl">]>
+  {
   let summary = "for operation";
   let description = [{
     The "affine.for" operation represents an affine loop nest, defining an SSA
@@ -181,7 +183,9 @@ def AffineForOp : Affine_Op<"for"> {
   let hasCanonicalizer = 1;
 }
 
-def AffineIfOp : Affine_Op<"if"> {
+def AffineIfOp : Affine_Op<"if",
+    [NativeOpTrait<"SingleBlockImplicitTerminator<AffineTerminatorOp>::Impl">]>
+  {
   let summary = "if-then-else operation";
   let description = [{
     The "if" operation represents an if-then-else construct for conditionally

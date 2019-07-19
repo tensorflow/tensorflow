@@ -729,7 +729,10 @@ func @std_for_step(%arg0: f32, %arg1: index) {
 func @std_for_step_nonnegative(%arg0: index) {
   // expected-error@+2 {{constant step operand must be nonnegative}}
   %c0 = constant 0 : index
-  "loop.for"(%arg0, %arg0, %c0) ({^bb0:}) : (index, index, index) -> ()
+  "loop.for"(%arg0, %arg0, %c0) ({
+    ^bb0(%arg1: index):
+      "loop.terminator"() : () -> ()
+  }) : (index, index, index) -> ()
   return
 }
 
@@ -747,7 +750,7 @@ func @std_for_one_region(%arg0: index) {
 // -----
 
 func @std_for_single_block(%arg0: index) {
-  // expected-error@+1 {{region #0 ('region') failed to verify constraint: region with 1 blocks}}
+  // expected-error@+1 {{expects region #0 to have 0 or 1 blocks}}
   "loop.for"(%arg0, %arg0, %arg0) (
     {
     ^bb1:
@@ -791,7 +794,7 @@ func @std_if_more_than_2_regions(%arg0: i1) {
 // -----
 
 func @std_if_not_one_block_per_region(%arg0: i1) {
-  // expected-error@+1 {{region #0 ('thenRegion') failed to verify constraint: region with 1 blocks}}
+  // expected-error@+1 {{expects region #0 to have 0 or 1 blocks}}
   "loop.if"(%arg0) ({
     ^bb0:
       "loop.terminator"() : () -> ()
