@@ -1134,6 +1134,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_save_load_test.py"],
     main = "keras_save_load_test.py",
+    shard_count = 3,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
