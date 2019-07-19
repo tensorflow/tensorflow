@@ -399,19 +399,21 @@ class TFLiteOperationParser {
                              const TfLiteRegistration* registration) = 0;
 };
 
-Status CheckActivationSupported(TfLiteFusedActivation fused_activation) {
-  if (fused_activation == kTfLiteActNone) {
-    return OkStatus();
-  }
+Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
   switch (fused_activation) {
+    case kTfLiteActNone:
     case kTfLiteActRelu:
     case kTfLiteActRelu1:
     case kTfLiteActRelu6:
     case kTfLiteActTanh:
       return OkStatus();
-    default:
-      return NotFoundError(absl::StrFormat("Unsupported fused activation: %d.",
-                                           fused_activation));
+    case kTfLiteActSignBit:
+      return UnimplementedError("TfLiteFusedActivation.kTfLiteActSignBit");
+    case kTfLiteActSigmoid:
+      return UnimplementedError("TfLiteFusedActivation.kTfLiteActSigmoid");
+
+      // Do not add default; we want compilation error rather than run-time
+      // error.
   }
 }
 
@@ -497,15 +499,15 @@ Status GetFullyConnectedAttributes(int weights_tensor_id, int bias_tensor_id,
   return OkStatus();
 }
 
-template <typename ParamsType>
+template <typename ParamsT>
 Status RetrieveBuiltinData(const TfLiteNode* tflite_node,
-                           ParamsType** tf_options) {
+                           ParamsT** tf_options) {
   const auto* params =
-      reinterpret_cast<const ParamsType*>(tflite_node->builtin_data);
+      reinterpret_cast<const ParamsT*>(tflite_node->builtin_data);
   if (!params) {
     return InternalError("Unable to retrieve builtin_data.");
   }
-  *tf_options = const_cast<ParamsType*>(params);
+  *tf_options = const_cast<ParamsT*>(params);
   return OkStatus();
 }
 
@@ -599,8 +601,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckStridesAndDilation(
         tf_options->stride_height, tf_options->stride_width,
         tf_options->dilation_height_factor, tf_options->dilation_width_factor));
-    RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    return OkStatus();
+    return IsActivationSupported(tf_options->activation);
   }
 
   Status Parse(const TfLiteNode* tflite_node,
@@ -784,8 +785,7 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckStridesAndDilation(
         tf_options->stride_height, tf_options->stride_width,
         tf_options->dilation_height_factor, tf_options->dilation_width_factor));
-    RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    return OkStatus();
+    return IsActivationSupported(tf_options->activation);
   }
 
   Status Parse(const TfLiteNode* tflite_node,
@@ -892,8 +892,7 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckKernelsAndStrides(
         tf_options->filter_height, tf_options->filter_width,
         tf_options->stride_height, tf_options->stride_width));
-    RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    return OkStatus();
+    return IsActivationSupported(tf_options->activation);
   }
 
  public:
@@ -1307,22 +1306,25 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
  public:
   explicit ElementwiseOperationParser(OperationType operation_type)
       : operation_type_(operation_type) {}
+
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    if (IsTwoArgumentOperation()) {
+    TfLiteSubParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    if (IsOneArgumentOperation()) {
+      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+                                         /*outputs=*/1));
+    } else if (IsTwoArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/2,
                                          /*outputs=*/1));
-      TfLiteSubParams* tf_options = nullptr;
-      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-      RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    } else if (!IsOneArgumentOperation()) {
-      return InvalidArgumentError("Incorrect operation type passed");
+    } else {
+      return InvalidArgumentError("Op can only handle 1 or 2 operand(s).");
     }
-
-    return OkStatus();
+    return IsActivationSupported(tf_options->activation);
   }
+
   Status Parse(const TfLiteNode* tflite_node,
                const TfLiteRegistration* registration, GraphFloat32* graph,
                ObjectReader* reader) final {
@@ -1376,13 +1378,13 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsOneArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::ABS:
-      case OperationType::SIN:
       case OperationType::COS:
       case OperationType::LOG:
-      case OperationType::SQRT:
       case OperationType::RSQRT:
-      case OperationType::SQUARE:
       case OperationType::SIGMOID:
+      case OperationType::SIN:
+      case OperationType::SQRT:
+      case OperationType::SQUARE:
       case OperationType::TANH:
         return true;
       default:
@@ -1392,10 +1394,10 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
 
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
-      case OperationType::SUB:
       case OperationType::DIV:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
+      case OperationType::SUB:
         return true;
       default:
         return false;
