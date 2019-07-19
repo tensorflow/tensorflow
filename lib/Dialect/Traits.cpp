@@ -159,8 +159,12 @@ static bool areCompatibleShapes(ArrayRef<int64_t> shape1,
   auto isCompatible = [](int64_t dim1, int64_t dim2) {
     return dim1 == dim2 || dim1 == -1 || dim2 == -1;
   };
-  return std::equal(shape1.begin(), shape1.end(), shape2.begin(), shape2.end(),
-                    isCompatible);
+  if (shape1.size() != shape2.size())
+    return false;
+  for (const auto &p : llvm::zip(shape1, shape2))
+    if (!isCompatible(std::get<0>(p), std::get<1>(p)))
+      return false;
+  return true;
 }
 
 LogicalResult OpTrait::impl::verifyCompatibleOperandBroadcast(Operation *op) {
