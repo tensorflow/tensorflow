@@ -79,14 +79,14 @@ class KernelAndDevice : public core::RefCounted {
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Status Run(ScopedStepContainer* step_container,
                      const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -149,12 +149,14 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return kernel_.get(); }
 
@@ -221,11 +223,13 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 

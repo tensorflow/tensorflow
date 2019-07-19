@@ -50,6 +50,7 @@ Status EagerKernelExecute(EagerContext* ctx,
                           NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
+                          CancellationManager* cancellation_manager,
                           absl::Span<TensorHandle*> retvals);
 
 // Low-level utility to copy a tensor handle from one device to another. If

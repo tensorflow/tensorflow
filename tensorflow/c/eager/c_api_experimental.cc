@@ -580,3 +580,10 @@ void TFE_DeleteCancellationManager(
     TFE_CancellationManager* cancellation_manager) {
   delete cancellation_manager;
 }
+
+void TFE_OpSetCancellationManager(TFE_Op* op,
+                                  TFE_CancellationManager* cancellation_manager,
+                                  TF_Status* status) {
+  op->operation.SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+}

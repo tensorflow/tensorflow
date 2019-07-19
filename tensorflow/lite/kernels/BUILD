@@ -1221,6 +1221,7 @@ cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1759,6 +1760,7 @@ cc_test(
     name = "quantize_test",
     size = "small",
     srcs = ["quantize_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

@@ -358,7 +358,7 @@ class WhileOp(object):
     output = False
     if op.type in [
         "Shape",
-        "Rank"
+        "Rank",
         "ShapeN",
         "ZerosLike",
         "TensorArrayV3",
@@ -2198,10 +2198,14 @@ def _convert_unsortedsegmentsum(pfor_input):
   segment_ids = pfor_input.stacked_input(1)
   # TODO(agarwal): handle stacked?
   num_segments = pfor_input.unstacked_input(2)
-  segment_shape = array_ops.shape(segment_ids)
+  if segment_ids.dtype != num_segments.dtype:
+    segment_ids = math_ops.cast(segment_ids, dtypes.int64)
+    num_segments = math_ops.cast(num_segments, dtypes.int64)
+  dtype = segment_ids.dtype
+  segment_shape = array_ops.shape(segment_ids, out_type=dtype)
   n = segment_shape[0]
-  ones = array_ops.ones_like(segment_shape)[1:]
-  segment_offset = num_segments * math_ops.range(n)
+  ones = array_ops.ones_like(segment_shape, dtype=dtype)[1:]
+  segment_offset = num_segments * math_ops.range(n, dtype=dtype)
   segment_offset = array_ops.reshape(segment_offset,
                                      array_ops.concat([[n], ones], axis=0))
   segment_ids += segment_offset

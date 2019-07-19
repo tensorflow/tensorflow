@@ -33,6 +33,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -878,6 +880,32 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
     self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
+
+  def testFunctionHasNoSecondOrderGradient(self):
+
+    # This test needs nn_grad imported. We could just disable the lint error,
+    # but this way if the test is deleted we'll know the import isn't needed.
+    _ = nn_grad
+
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def f(labels, logits):
+      return def_function.function(
+          nn_ops.sparse_softmax_cross_entropy_with_logits)(
+              labels=labels, logits=logits + v)
+
+    @def_function.function
+    def f_grad():
+      with backprop.GradientTape() as tape:
+        logits = constant_op.constant([1., 2.])
+        tape.watch(logits)
+        out = f(constant_op.constant(1), logits)
+      return tape.gradient(out, logits)
+    # Mainly we want to check that the function builds despite
+    # sparse_softmax_cross_entropy_with_logits not having a second-order
+    # gradient defined.
+    self.assertAllEqual([2], f_grad().shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNone(self):

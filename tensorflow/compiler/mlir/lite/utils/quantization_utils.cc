@@ -30,23 +30,23 @@ namespace TFL {
 // input_type/min/max/storag_type_width/narrow_range.
 static Type GetQuantizedType(Builder builder, Type input_type, double min,
                              double max, int storage_type_width,
-                             bool narrow_range) {
+                             bool narrow_range, bool is_signed) {
   auto converter =
       quant::ExpressedToUniformQuantizedConverter::forInputType(input_type);
 
   quant::UniformQuantizedType quantizedEleType = quant::fakeQuantAttrsToType(
       builder.getUnknownLoc(), storage_type_width, min, max, narrow_range,
-      converter.expressedType);
+      converter.expressedType, is_signed);
   return converter.convert(quantizedEleType);
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               FloatAttr max, Type storage_type,
-                              bool narrow_range) {
+                              bool narrow_range, bool is_signed) {
   int storage_type_width = storage_type.cast<IntegerType>().getWidth();
   Type final_type = GetQuantizedType(
       builder, input_type, min.getValueAsDouble(), max.getValueAsDouble(),
-      storage_type_width, narrow_range);
+      storage_type_width, narrow_range, is_signed);
   return builder.getTypeAttr(final_type);
 }
 
@@ -58,12 +58,12 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
   if (!min_value || !max_value) return {};
   return GetQuantizedTypeAttr(builder, input_type, min_value, max_value,
                               builder.getIntegerType(num_bits.getInt()),
-                              narrow_range.getValue());
+                              narrow_range.getValue(), /*is_signed=*/false);
 }
 
 Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
                                             unsigned storage_type_width,
-                                            bool narrow_range) {
+                                            bool is_signed, bool narrow_range) {
   Builder builder(attr.getContext());
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
@@ -76,7 +76,7 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
     // The range must straddle zero.
     if (min > 0.0 || max < 0.0) return {};
     auto type = GetQuantizedType(builder, attr.getType(), min, max,
-                                 storage_type_width, narrow_range);
+                                 storage_type_width, narrow_range, is_signed);
     if (auto ele_type = type.dyn_cast_or_null<TensorType>())
       return ele_type.getElementType();
   }
@@ -99,6 +99,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
   }
   auto type = op_types.back().cast<quant::UniformQuantizedType>();
   Builder builder(type.getContext());
+  // TODO(fengliuai): make the bit width configurable.
   IntegerType storageType = builder.getIntegerType(32);
   return quant::UniformQuantizedType::getChecked(
       /*flags=*/true, storageType, type.getExpressedType(), scale,

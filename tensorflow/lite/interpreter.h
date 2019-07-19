@@ -376,6 +376,7 @@ class Interpreter {
   /// Allow a delegate to look at the graph and modify the graph to handle
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
+  /// 'delegate' must outlive the interpreter.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 

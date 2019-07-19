@@ -135,6 +135,12 @@ class HloComputation {
   HloInstruction* AddEntryComputationParameter(
       std::unique_ptr<HloInstruction> instruction);
 
+  // Replaces an old parameter with a new parameter. Adds the new parameter
+  // instruction to the entry computation.
+  Status ReplaceEntryComputationParameter(
+      int64 param_no, HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> instruction);
+
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
@@ -147,8 +153,11 @@ class HloComputation {
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
   // removing an instruction. The instruction must have no users. Instruction is
-  // deallocated with this call.
-  Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
+  // deallocated with this call. If given, the cleanup routine is executed on a
+  // removed instruction before its deallocation.
+  Status RemoveInstructionAndUnusedOperands(
+      HloInstruction* instruction,
+      std::function<void(HloInstruction*)> cleanup = nullptr);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -292,6 +301,13 @@ class HloComputation {
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
   Status ReplaceWithNewInstruction(
+      HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> new_instruction);
+
+  // Replaces an old instruction with a newly created instruction, and adds the
+  // new instruction as an entry computation's parameter. Removes old
+  // instruction from computation. Updates uses and root instruction.
+  Status ReplaceWithNewEntryComputationParameter(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 

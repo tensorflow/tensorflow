@@ -71,13 +71,13 @@ run
 exit
 EOF
 
-cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline
+cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline --use_random_config_path
 run
 ni -a -d -t v/read
 exit
 EOF
 
-cat << EOF | ${DEBUG_MNIST_BIN} --debug --max_steps=1 --fake_data --ui_type=readline
+cat << EOF | ${DEBUG_MNIST_BIN} --debug --max_steps=1 --fake_data --ui_type=readline --use_random_config_path
 run -t 1
 run --node_name_filter hidden --op_type_filter MatMul
 run -f has_inf_or_nan

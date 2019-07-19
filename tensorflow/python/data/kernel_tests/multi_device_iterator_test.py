@@ -27,11 +27,13 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
@@ -336,6 +338,94 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
+
+
+class MultiDeviceIteratorV2Test(test_base.DatasetTestBase):
+
+  @test_util.run_v2_only
+  def testBasic(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/cpu:0"):
+      dataset = dataset_ops.Dataset.range(1000)
+
+    mdi = multi_device_iterator_ops.MultiDeviceIteratorV2(
+        dataset, ["/cpu:0", "/gpu:0"])
+
+    for i, el in enumerate(mdi):
+      self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
+
+  @test_util.run_v2_only
+  def testBasicFunction(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
+
+    @def_function.function
+    def fn():
+      with ops.device("/cpu:0"):
+        dataset = dataset_ops.Dataset.range(10)
+      iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+          dataset, ["/cpu:0", "/gpu:0"])
+      for _ in range(5):
+        el0, el1 = next(iterator)
+        queue.enqueue(el0)
+        queue.enqueue(el1)
+
+    fn()
+
+    for i in range(10):
+      self.assertEqual(queue.dequeue().numpy(), i)
+
+  @test_util.run_v2_only
+  def testFunctionError(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    # In this test we verify that a function that raises an error ends up
+    # properly deallocating the iterator resource.
+
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
+    queue.enqueue(0)
+
+    def init_fn(n):
+      return n
+
+    def next_fn(_):
+      ds = dataset_ops.Dataset.range(0)
+      return next(iter(ds))
+
+    def finalize_fn(n):
+      queue.enqueue(0)
+      return n
+
+    @def_function.function
+    def fn():
+      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
+      iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+          dataset, ["/cpu:0", "/gpu:0"])
+      next(iterator)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      fn()
+
+    self.assertEqual(queue.size().numpy(), 2)
+
+  @test_util.run_v2_only
+  def testMultipleInitializations(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/cpu:0"):
+      dataset = dataset_ops.Dataset.range(1000)
+
+    for _ in range(5):
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+          dataset, ["/cpu:0", "/gpu:0"])
+      for i, el in enumerate(multi_device_iterator):
+        self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
 
 if __name__ == "__main__":

@@ -134,7 +134,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
     auto op_type = OperationTypeFromString(node->operation.type);
     switch (op_type) {
       case OperationType::ADD:
-        tasks = AddTable(node_id, inputs, outputs[0]);
+        tasks = Add(node_id, inputs, outputs[0],
+                    absl::any_cast<AddAttributes>(node->operation.attributes),
+                    options);
         break;
       case OperationType::CONCAT: {
         std::vector<BHWC> input_shapes;
@@ -261,6 +263,7 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       case OperationType::MUL:
       case OperationType::RESIZE:
       case OperationType::SPACE_TO_BATCH:
+      case OperationType::STRETCH_TIME:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

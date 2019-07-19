@@ -87,6 +87,7 @@ class CuDNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(state), num_states)
     model = keras.models.Model(inputs, state[0])
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     state = model.predict(inputs)
@@ -141,9 +142,11 @@ class CuDNNTest(keras_parameterized.TestCase):
     self.assertIn(initial_state[0], layer._inbound_nodes[0].input_tensors)
 
     model = keras.models.Model([inputs] + initial_state, output)
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=RMSprop(learning_rate=0.001),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=RMSprop(learning_rate=0.001),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     initial_state = [

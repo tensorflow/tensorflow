@@ -254,7 +254,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -376,7 +376,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ELU, Register_ELU());
   AddBuiltin(BuiltinOperator_REVERSE_SEQUENCE, Register_REVERSE_SEQUENCE());
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
-  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
+  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

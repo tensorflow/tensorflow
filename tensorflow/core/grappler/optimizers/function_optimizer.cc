@@ -57,6 +57,9 @@ namespace {
 
 constexpr const char* const kFuncAttr = FunctionLibraryDefinition::kFuncAttr;
 
+// Do not specialize functions marked with '_nospecialize' attribute.
+constexpr const char* const kNoSpecializeAttr = "_nospecialize";
+
 // Mark functions that were created as a result of function specialization.
 constexpr const char* const kGrapplerSpecializedFuncAttr =
     "_GrapplerSpecializedFunc";
@@ -139,6 +142,13 @@ class FakeDevice : public Device {
 // Given the fully specified graph we can apply all the Grappler optimizers to
 // it (see details in MetaOptimizer). Also we can push known constant inputs
 // into the function body, and remove unused outputs/inputs.
+
+bool MarkedNoSpecialize(const FunctionDef& fdef) {
+  const auto attr = AttrSlice(&fdef.attr());
+  bool nospecialize = false;
+  return GetNodeAttr(attr, kNoSpecializeAttr, &nospecialize).ok() &&
+         nospecialize;
+}
 
 // Specialized function instantiation type parameters, body parameters, and
 // const inputs.
@@ -1102,7 +1112,26 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 
   VLOG(3) << "Add a frame forwarding control edge: from=" << frame->name()
           << " to=" << caller->name();
-  g->AddControlEdge(g->FindNodeId(frame->id()), caller);
+  Node* enter = g->FindNodeId(frame->id());
+  bool is_constant_enter = enter->attrs().Find("is_constant")->b();
+  if (is_constant_enter) {
+    // Enter[is_constant=true] is always alive. So we directly add a control
+    // edge from that.
+    g->AddControlEdge(enter, caller);
+  } else {
+    // Enter[is_constant=false] activates nodes only in 0th iteration so we
+    // add an edge from the Merge node which is activated in every iteration.
+    // A non-constant Enter node must have an edge to a Merge node.
+    auto it = absl::c_find_if(enter->out_edges(), [](const Edge* e) {
+      return !e->IsControlEdge() && e->dst()->IsMerge();
+    });
+    if (it != enter->out_edges().end()) {
+      g->AddControlEdge((*it)->dst(), caller);
+    } else {
+      LOG(WARNING) << "Enter[is_constant=false] node: " << enter->name()
+                   << " does not have an outgoing edge to a Merge.";
+    }
+  }
 }
 
 // Inlines all function calls that are safe for inlining into the main graph.
@@ -1369,13 +1398,15 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Specialize it to its instantiation context if it has something worth
     // specializing.
-    bool specialization_worthy = IsParametrized(*func) ||
-                                 HasTrulyConstInputs(node, ctx) ||
-                                 HasUnusedOutputs(node, *func, ctx);
-    // Do not specialize if function has custom gradient.
-    const string grad_func = ctx.function_library().FindGradient(func_name);
+    const bool specialization_worthy = IsParametrized(*func) ||
+                                       HasTrulyConstInputs(node, ctx) ||
+                                       HasUnusedOutputs(node, *func, ctx);
 
-    if (grad_func.empty() && specialization_worthy) {
+    // Do not specialize if function has custom gradient or marked nospecialize.
+    const string grad_func = ctx.function_library().FindGradient(func_name);
+    const bool no_specialize = !grad_func.empty() || MarkedNoSpecialize(*func);
+
+    if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.
       // Specialize function body for its instantiation attributes and inputs.
       Status status = SpecializeFunction(node, *func, &ctx, optimized_graph);

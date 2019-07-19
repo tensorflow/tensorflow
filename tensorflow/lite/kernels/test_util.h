@@ -162,11 +162,15 @@ class SingleOpModel {
 
   // Templated version of AddConstInput().
   template <typename T>
-  int AddConstInput(TensorType type, std::initializer_list<T> data,
-                    std::initializer_list<int> shape) {
-    int id = AddTensor(TensorData{type, shape}, data);
+  int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
+    int id = AddTensor(t, data);
     inputs_.push_back(id);
     return id;
+  }
+  template <typename T>
+  int AddConstInput(TensorType type, std::initializer_list<T> data,
+                    std::initializer_list<int> shape) {
+    return AddConstInput(TensorData{type, shape}, data);
   }
 
   // Add a null input tensor (optional input) and return kOptionalTensor.

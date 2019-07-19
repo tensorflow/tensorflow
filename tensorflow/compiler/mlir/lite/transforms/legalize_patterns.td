@@ -50,6 +50,10 @@ def HasAll3Attrs : Constraint<CPred<"HasAll3Attrs($0, $1, $2)">>;
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Extracts the single integer element from $_self.
+def ExtractSingleElementAsInteger : NativeCodeCall<
+    "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
+
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -123,6 +127,10 @@ def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
 // The second operand is captured in the type for this transform.
 def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
           (TFL_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
+          (TFL_ReverseSequenceOp $input, $seq_lengths,
+           (convertIntAttrTo32Bit $seq_dim),
+           (convertIntAttrTo32Bit $batch_dim))>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 // TODO(jpienaar): this is not true for all selects, TF's select supports rank 0
 // condition
@@ -157,6 +165,20 @@ def : Pat<(TF_GreaterOp $l, $r), (TFL_GreaterOp $l, $r)>;
 
 def : Pat<(TF_LessEqualOp $l, $r), (TFL_LessEqualOp $l, $r)>;
 def : Pat<(TF_GreaterEqualOp $l, $r), (TFL_GreaterEqualOp $l, $r)>;
+
+// Gather in TF -> Gather in TFL with axis=0
+// The 'validate_indices' attribute is deprecated.
+def : Pat<(TF_GatherOp $params, $indices, $ignored_validate_indices),
+          (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
+
+def : Pat<(TF_GatherNdOp $params, $indices),
+          (TFL_GatherNdOp $params, $indices)>;
+
+def : Pat<(TF_GatherV2Op $params, $indices,
+                         (ConstantOp ElementsAttr:$axis),
+                         ConstantAttr<I64Attr, "0">:$batch_dims),
+          (TFL_GatherOp $params, $indices,
+                        ExtractSingleElementAsInteger:$axis)>;
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
@@ -255,3 +277,7 @@ def : Pat<
   (TFL_StridedSliceOp $input, $begin, $end, $strides,
     (convertIntAttrTo32Bit $begin_mask), (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
+
+def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;

@@ -79,6 +79,17 @@ TEST(QuantizeOpTest, INT8) {
                   {-128, -127, -126, -125, -124, 123, 124, 125, 126, 127}));
 }
 
+TEST(QuantizeOpTest, INT16) {
+  QuantizeOpModel m({TensorType_FLOAT32, {2, 5}},
+                    {TensorType_INT16, {2, 5}, 0, 0, 0.005, 0});
+
+  m.SetInput({-63.5, -63, -3, -2, -1, 1, 2, 3, 63.5, 64});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({-12700, -12600, -600, -400, -200, 200, 400, 600,
+                                12700, 12800}));
+}
+
 // Input scale 0.500000, output scale 0.500000, input zeropoint -1, output
 // zeropoint -1
 TEST(QuantizeOpTest, Int8Int8SameScale) {

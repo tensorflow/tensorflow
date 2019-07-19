@@ -56,6 +56,25 @@ tf_cc_binary(
     ],
 )
 
+tf_cc_binary(
+    name = "tf-mlir-translate",
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tensorflow:translate_registration",
+        "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
+        "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
+        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Translation",
+        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
+    ],
+)
+
 filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),

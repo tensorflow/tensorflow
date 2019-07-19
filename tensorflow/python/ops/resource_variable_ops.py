@@ -1539,9 +1539,14 @@ class ResourceVariable(BaseResourceVariable):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
-          # Don't use `shape or initial_value.shape` since TensorShape has
-          # overridden `__bool__`.
-          shape = shape if shape is not None else initial_value.shape
+          if shape is not None:
+            if not initial_value.shape.is_compatible_with(shape):
+              raise ValueError(
+                  "The initial value's shape (%s) is not compatible with "
+                  "the explicitly supplied `shape` argument (%s)." %
+                  (initial_value.shape, shape))
+          else:
+            shape = initial_value.shape
           handle = eager_safe_variable_handle(
               initial_value=initial_value,
               shape=shape,
@@ -1779,7 +1784,7 @@ class UninitializedVariable(BaseResourceVariable):
         synchronization=synchronization, aggregation=aggregation)
 
 
-pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
+pywrap_tensorflow.RegisterType("ResourceVariable", ResourceVariable)
 math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 

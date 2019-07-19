@@ -650,14 +650,11 @@ def is_distributing_by_cloning(model):
     otherwise.
   """
   if (is_tpu_strategy(model._distribution_strategy) and
-      context.executing_eagerly):
-    if model._cloning:
-      logging.warning(
-          'Model cloning is not supported in TPU Strategy in Eager mode.'
-          'cloning argument will be ignored.')
+      context.executing_eagerly):  # b/137580852
     return False
-  return (model._cloning or model._compile_distribution or
-          not ops.executing_eagerly_outside_functions())
+  elif ops.executing_eagerly_outside_functions():
+    return bool(model._compile_distribution)
+  return True
 
 
 def _custom_compile_for_predict(model):

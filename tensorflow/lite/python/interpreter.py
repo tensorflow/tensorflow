@@ -89,7 +89,8 @@ class Delegate(object):
     self._library = ctypes.pydll.LoadLibrary(library)
     self._library.tflite_plugin_create_delegate.argtypes = [
         ctypes.POINTER(ctypes.c_char_p),
-        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+        ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 

@@ -83,8 +83,8 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     const Tensor& t = call->ins[i];
     if (call->eager) {
       TensorHandle* handle;
-      TF_RETURN_IF_ERROR(
-          TensorHandle::CreateLocalHandle(t, device, ctx, &handle));
+      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+          t, ctx->CanonicalDevice(device), ctx, &handle));
       arg = EagerTensorFromHandle(new TFE_TensorHandle(handle));
       if (arg == nullptr) {
         Py_DECREF(lst);

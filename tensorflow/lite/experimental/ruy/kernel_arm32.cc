@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 
-#if (defined RUY_NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_LABEL_STORE_UINT8 91
 #define RUY_ASM_LABEL_STORE_INT8 92
@@ -124,7 +125,7 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
   //  \---------------------/  \--------------------------/
   //                             accumulators 8x4 block
   asm volatile(
-#define RUY_MAKE_ZERO(reg) "mov r0, 0\n vdup.32 " #reg ", r0\n"
+#define RUY_MAKE_ZERO(reg) "mov r0, #0\n vdup.32 " #reg ", r0\n"
 
         // clang-format off
 
@@ -539,5 +540,5 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
 #undef RUY_OFFSET_RHS_BASE_PTR
 #undef RUY_OFFSET_DST_BASE_PTR
 
-#endif  // (defined RUY_NEON_32) && (RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(NEON_32) && (RUY_OPT_ENABLED(RUY_OPT_ASM)
 }  // namespace ruy

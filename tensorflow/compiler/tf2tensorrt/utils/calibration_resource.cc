@@ -25,11 +25,6 @@ const absl::string_view kCalibrationContainerName = "TF-TRT-Calibration";
 
 TRTCalibrationResource::~TRTCalibrationResource() {
   VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
-  builder_.reset();
-  engine_.reset();
-  // We need to manually destroy the builder and engine before the allocator
-  // is destroyed.
-  allocator_.reset();
 }
 
 string TRTCalibrationResource::DebugString() const {
@@ -41,15 +36,18 @@ string TRTCalibrationResource::DebugString() const {
       << " Builder    = " << hex << builder_.get() << dec << endl
       << " Engine     = " << hex << engine_.get() << dec << endl
       << " Logger     = " << hex << &logger_ << dec << endl
-      << " Allocator  = " << hex << allocator_.get() << dec << endl
       << " Thread     = " << hex << thr_.get() << dec << endl;
   return oss.str();
+}
+
+void TRTCalibrationResource::SetCalibrationTable() {
+  calibration_table_ = calibrator_->getCalibrationTableAsString();
 }
 
 Status TRTCalibrationResource::SerializeToString(string* serialized) {
   calibrator_->waitAndSetDone();
   thr_->join();
-  *serialized = calibrator_->getCalibrationTableAsString();
+  *serialized = calibration_table_;
   if (serialized->empty()) {
     return errors::Unknown("Calibration table is empty.");
   }

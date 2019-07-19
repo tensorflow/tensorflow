@@ -143,8 +143,6 @@ class TestDistributionStrategyDnnMetricCorrectness(
                                    kernel_initializer='ones'))
       model.compile(
           loss=keras.losses.mean_squared_error,
-          # TODO(b/130808953):  Switch back to the V1 optimizer after
-          # global_step is made mirrored.
           optimizer=gradient_descent_keras.SGD(0.05),
           metrics=[keras.metrics.BinaryAccuracy()],
           cloning=cloning)
@@ -266,8 +264,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data,
                            cloning):
-    if ((not cloning and context.executing_eagerly()) or
-        is_default_strategy(distribution)):
+    if (context.executing_eagerly() or is_default_strategy(distribution)):
       self.run_correctness_test(distribution, use_numpy, use_validation_data,
                                 cloning)
     elif K.is_tpu_strategy(distribution) and not context.executing_eagerly():

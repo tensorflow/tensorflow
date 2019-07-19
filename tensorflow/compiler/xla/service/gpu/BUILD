@@ -7,7 +7,7 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
@@ -525,6 +525,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
     ],
 )
@@ -962,7 +963,7 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_compiler",
+    name = "nvptx_compiler_impl",
     srcs = ["nvptx_compiler.cc"],
     hdrs = ["nvptx_compiler.h"],
     deps = [
@@ -1054,6 +1055,12 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ],
+)
+
+cc_library(
+    name = "nvptx_compiler",
+    srcs = ["nvptx_compiler_registration.cc"],
+    deps = [":nvptx_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -1215,6 +1222,7 @@ cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",

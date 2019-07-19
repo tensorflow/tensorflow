@@ -26,7 +26,13 @@ limitations under the License.
 // Create an area of memory to use for input, output, and intermediate arrays.
 // TODO(rocky): This is too big for many platforms.  Need to implement a more
 // efficient memory manager for intermediate tensors.
-const int tensor_arena_size = 291 * 1024;
+// TODO(petewarden): Temporarily reduce the size for Arduino builds, so we can
+// make sure the continuous-integration builds work.
+#ifdef ARDUINO
+constexpr int tensor_arena_size = 10 * 1024;
+#else   // ARDUINO
+constexpr int tensor_arena_size = 270 * 1024;
+#endif  // ARDUINO
 uint8_t tensor_arena[tensor_arena_size];
 
 int main(int argc, char* argv[]) {
@@ -40,7 +46,7 @@ int main(int argc, char* argv[]) {
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
@@ -57,13 +63,14 @@ int main(int argc, char* argv[]) {
 
   while (true) {
     // Get image from provider.
-    GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-             input->data.uint8);
+    if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
+                              input->data.uint8)) {
+      error_reporter->Report("Image capture failed.");
+    }
 
     // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed\n");
+    if (kTfLiteOk != interpreter.Invoke()) {
+      error_reporter->Report("Invoke failed.");
     }
 
     TfLiteTensor* output = interpreter.output(0);

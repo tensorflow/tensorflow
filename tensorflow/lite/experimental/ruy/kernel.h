@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
@@ -217,7 +218,7 @@ RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
 // KernelParams are shared across 32-bit and 64-bit NEON code.
-#if ((defined RUY_NEON_64) || (defined RUY_NEON_32)) && \
+#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
     (RUY_OPT_ENABLED(RUY_OPT_ASM))
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
@@ -369,7 +370,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
 
-#ifdef RUY_NEON_64
+#if RUY_PLATFORM(NEON_64)
 template <typename DstScalar>
 struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
               BasicSpec<std::int32_t, DstScalar>> {
@@ -489,7 +490,7 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params);
 void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params);
 void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params);
 
-#ifdef RUY_NEON_64
+#if RUY_PLATFORM(NEON_64)
 // A Float kernel for ARM64 Neon.
 template <>
 struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
@@ -512,7 +513,7 @@ struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
 };
 #endif
 
-#ifdef RUY_NEON_32
+#if RUY_PLATFORM(NEON_32)
 // A Float kernel for ARM32 Neon.
 template <>
 struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
@@ -559,7 +560,7 @@ struct Kernel<Path::kNeonDotprod, float, float, float,
   }
 };
 
-#endif  // ((defined RUY_NEON_64) || (defined RUY_NEON_32)) &&
+#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
         // (RUY_OPT_ENABLED(RUY_OPT_ASM)
 }  // namespace ruy
 

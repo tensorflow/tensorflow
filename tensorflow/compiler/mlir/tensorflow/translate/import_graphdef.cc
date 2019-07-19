@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -123,7 +124,7 @@ class Importer {
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                  llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
-  // Adds all the ordered_ndoes_ to the shape refiner shape_refiner_. Then all
+  // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
   Status AddNodesToShapeRefiner();
 
@@ -186,7 +187,6 @@ class Importer {
   // "NextIteration" node, there are two operations, "NextIteration.source"
   // and "NextIteration.sink" are added to the MLIR module.
   using BackEdge = BackEdgeHelper::BackEdge;
-  using Backedges = std::vector<const BackEdge*>;
 
   // Removes backedges from the input graph. The removed edges are added back to
   // to OpBuilder after the remaining graph is converted to the Function.
@@ -240,16 +240,17 @@ class Importer {
   StatusOr<Node*> ReplaceWithPlaceholderNode(const TensorShapeProto& shape,
                                              DataType dtype, Node* input_node);
 
-  // Gets the output_nodes corresponding to the specified output_arrays in
-  // specs_. If there are no output_arrays set, output_nodes will be empty
-  Status GetOutputNodes(std::unordered_set<const Node*>* output_nodes);
+  // Gets the input and output nodes corresponding to the specified input and
+  // output nodes in specs_. If there are no input or output nodes specified,
+  // nodes will be empty
+  Status GetInputOutputNodes(std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
   // in the back_edge_helper.
   BackEdgeHelper back_edge_helper_;
   // A map between node and output index, for each backedge.
   absl::flat_hash_map<const Node*, int> back_edge_node_output_;
-  absl::flat_hash_map<const Node*, Backedges> back_edge_dst_inputs_;
+  absl::flat_hash_map<const Node*, BackEdge> back_edge_dst_inputs_;
   // A map between sink and source operation of NextIteration
   absl::flat_hash_map<mlir::Operation*, mlir::Operation*>
       next_iteration_sink_source_;
@@ -315,7 +316,10 @@ Status Importer::RemoveBackedges(const Graph& graph) {
           "More than one of the src node outputs are backedges!");
     }
     back_edge_node_output_[edge.src] = edge.src_output;
-    back_edge_dst_inputs_[edge.dst].push_back(&edge);
+    // We expect a merge to receive a single backedge (multiple NextIteration
+    // nodes feeding into the same merge is unexpected here).
+    DCHECK(!back_edge_dst_inputs_.contains(edge.dst));
+    back_edge_dst_inputs_[edge.dst] = edge;
   }
 
   // Obtains a RPO ordering, using node names as a tiebreak for stable sorting.
@@ -347,17 +351,26 @@ StatusOr<Node*> Importer::ReplaceWithPlaceholderNode(
   return placeholder_node;
 }
 
-Status Importer::GetOutputNodes(std::unordered_set<const Node*>* output_nodes) {
+Status Importer::GetInputOutputNodes(std::unordered_set<const Node*>* nodes) {
   auto node_name_map = graph_->BuildNodeNameIndex();
-  for (auto& output_node_name : specs_.output_arrays) {
-    auto it = node_name_map.find(output_node_name);
+  auto add_node = [&](const string& name) {
+    auto it = node_name_map.find(name);
     if (it == node_name_map.end()) {
-      return errors::FailedPrecondition(absl::StrCat(
-          "Graph does not contain a node corresponding to output array:",
-          output_node_name));
+      return errors::FailedPrecondition(
+          absl::StrCat("Graph does not contain node :", name));
     }
-    output_nodes->insert(it->second);
+    nodes->insert(it->second);
+    return Status::OK();
+  };
+
+  for (const auto& input : specs_.inputs) {
+    TF_RETURN_IF_ERROR(add_node(input.first));
   }
+
+  for (const auto& output_node_name : specs_.output_arrays) {
+    TF_RETURN_IF_ERROR(add_node(output_node_name));
+  }
+
   return Status::OK();
 }
 
@@ -432,7 +445,7 @@ Status Importer::AddNodesToShapeRefiner() {
   // Prune nodes in the graph that are not reachable from the output.
   if (specs_.prune_unused_nodes) {
     std::unordered_set<const Node*> prune_start;
-    TF_RETURN_IF_ERROR(GetOutputNodes(&prune_start));
+    TF_RETURN_IF_ERROR(GetInputOutputNodes(&prune_start));
     if (!prune_start.empty()) {
       if (PruneForReverseReachability(graph_.get(), prune_start)) {
         VLOG(1) << "Pruned unused nodes in graphdef";
@@ -906,6 +919,8 @@ mlir::Location Importer::GetLocation(const NodeDef& node_def) {
 
   auto original_nodes =
       node_def.experimental_debug_info().original_node_names();
+  auto original_funcs =
+      node_def.experimental_debug_info().original_func_names();
 
   if (original_nodes.empty()) {
     // If the original nodes are not defined in the node def, but the current
@@ -924,8 +939,12 @@ mlir::Location Importer::GetLocation(const NodeDef& node_def) {
     // call sites, and then fuse them to a single fused location.
     llvm::SmallVector<mlir::Location, 4> node_call_sites;
     node_call_sites.reserve(original_nodes.size());
-    for (const auto& node_name : original_nodes) {
-      node_call_sites.push_back(node_name_to_call_site(node_name));
+    for (int i = 0, e = original_nodes.size(); i != e; ++i) {
+      auto node_name = original_nodes[i];
+      auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
+      // Use the catenation of function and node names as the lookup key. This
+      // is to match the utility of generating the GraphDebugInfo.
+      node_call_sites.push_back(node_name_to_call_site(func_name + node_name));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }
@@ -1080,20 +1099,15 @@ Status Importer::ConvertNode(const Node& node) {
 // TODO(fengliuai): Preserve the order of the results and operands if
 // necessary.
 Status Importer::AddBackedges() {
-  for (auto& it : back_edge_dst_inputs_) {
-    auto& back_edges = it.second;
-    absl::c_stable_sort(back_edges, [](const BackEdge* e1, const BackEdge* e2) {
-      return e1->dst_input < e2->dst_input;
-    });
-    for (const auto* edge : back_edges) {
-      if (!edge->src->IsNextIteration() || !edge->dst->IsMerge()) {
-        return errors::FailedPrecondition(
-            "Invalid backedge; should be from NextIteration to Merge!");
-      }
-      auto* sink = node_values_[edge->src->id()];
-      auto* dst = node_values_[edge->dst->id()];
-      TF_RETURN_IF_ERROR(AddBackedge(sink, dst, edge->dst_input));
+  for (auto it : back_edge_dst_inputs_) {
+    BackEdge& edge = it.second;
+    if (!edge.src->IsNextIteration() || !edge.dst->IsMerge()) {
+      return errors::FailedPrecondition(
+          "Invalid backedge; should be from NextIteration to Merge!");
     }
+    auto* sink = node_values_[edge.src->id()];
+    auto* dst = node_values_[edge.dst->id()];
+    TF_RETURN_IF_ERROR(AddBackedge(sink, dst, edge.dst_input));
   }
   return Status::OK();
 }
@@ -1313,6 +1327,8 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
   TF_ASSIGN_OR_RETURN(auto func_type,
                       importer.InferMainFunctionType(&arg_nodes, &ret_nodes));
 
+  // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
+  // tf.versions) shared by importer and exporter in a centralized place.
   // Record the input and output mapping.
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
   if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
@@ -1330,6 +1346,23 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
 
     attrs.push_back(b.getNamedAttr("tf.entry_function",
                                    b.getDictionaryAttr({inputs, outputs})));
+  }
+
+  // Record version info.
+  if (importer.graph_versions_) {
+    mlir::Builder b(context);
+    auto producer = b.getNamedAttr(
+        "producer", b.getI32IntegerAttr(importer.graph_versions_->producer()));
+    auto min_consumer = b.getNamedAttr(
+        "min_consumer",
+        b.getI32IntegerAttr(importer.graph_versions_->min_consumer()));
+    auto bad_consumers = b.getNamedAttr(
+        "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
+                             importer.graph_versions_->bad_consumers().begin(),
+                             importer.graph_versions_->bad_consumers().end())));
+    module->setAttr("tf.versions",
+                    b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
+                        {producer, min_consumer, bad_consumers})));
   }
 
   TF_RETURN_IF_ERROR(

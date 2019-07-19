@@ -168,6 +168,9 @@ tf_cc_test(
     size = "small",
     srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_oss",  # TODO(b/137652456): remove when fixed
+    ],
     deps = [
         ":debug_callback_registry",
         ":debug_grpc_testlib",

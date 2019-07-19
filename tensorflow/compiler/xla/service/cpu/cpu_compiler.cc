@@ -655,7 +655,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(

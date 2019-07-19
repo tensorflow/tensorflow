@@ -96,7 +96,7 @@ class ConverterError(Exception):
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,
-                        debug_info_str="",
+                        debug_info_str=None,
                         enable_mlir_converter=False):
   """Convert `input_data_str` according to model and toco parameters.
 
@@ -110,7 +110,7 @@ def toco_convert_protos(model_flags_str,
       `toco/toco_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
-      information. (default "")
+      information. (default None)
     enable_mlir_converter: Enables the MLIR converter instead of the TOCO
       converter. (default False)
   Returns:
@@ -152,6 +152,7 @@ def toco_convert_protos(model_flags_str,
       fp_model.write(model_flags_str)
       fp_toco.write(toco_flags_str)
       fp_input.write(input_data_str)
+      debug_info_str = debug_info_str if debug_info_str else ""
       fp_debug.write(debug_info_str)
 
     # Reserve an output file
@@ -428,7 +429,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
   """
   model_flags, toco_flags, debug_info = build_toco_convert_protos(
       input_tensors, output_tensors, *args, **kwargs)
-  debug_info_str = debug_info.SerializeToString() if debug_info else ""
+  debug_info_str = debug_info.SerializeToString() if debug_info else None
   data = toco_convert_protos(
       model_flags.SerializeToString(),
       toco_flags.SerializeToString(),

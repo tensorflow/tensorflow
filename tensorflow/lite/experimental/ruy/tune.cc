@@ -19,11 +19,12 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 namespace ruy {
 
-#ifdef RUY_NEON_64
+#if RUY_PLATFORM(NEON_64)
 
 namespace {
 
@@ -130,7 +131,7 @@ Tuning TuningResolver::ResolveNow() {
   return is_probably_inorder ? Tuning::kInOrder : Tuning::kOutOfOrder;
 }
 
-#else  // not defined RUY_NEON_64
+#else  // not RUY_PLATFORM(NEON_64)
 
 float TuningResolver::EvalRatio() { return 0; }
 float TuningResolver::ThresholdRatio() { return 0; }

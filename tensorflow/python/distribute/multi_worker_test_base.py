@@ -178,15 +178,23 @@ def create_in_process_cluster(num_workers,
   # 2) there is something global in CUDA such that if we initialize CUDA in the
   # parent process, the child process cannot initialize it again and thus cannot
   # use GPUs (https://stackoverflow.com/questions/22950047).
-  return _create_cluster(
-      num_workers,
-      num_ps=num_ps,
-      has_chief=has_chief,
-      has_eval=has_eval,
-      worker_config=worker_config,
-      ps_config=ps_config,
-      eval_config=eval_config,
-      protocol=rpc_layer)
+  cluster = None
+  try:
+    cluster = _create_cluster(
+        num_workers,
+        num_ps=num_ps,
+        has_chief=has_chief,
+        has_eval=has_eval,
+        worker_config=worker_config,
+        ps_config=ps_config,
+        eval_config=eval_config,
+        protocol=rpc_layer)
+  except errors.UnknownError as e:
+    if 'Could not start gRPC server' in e.message:
+      test.TestCase.SkipTest('Cannot start std servers.')
+    else:
+      raise
+  return cluster
 
 
 # TODO(rchao): Remove `test_obj` once estimator repo picks up the updated

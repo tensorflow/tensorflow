@@ -23,6 +23,7 @@ import itertools
 import numpy as np
 import six
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -172,6 +173,57 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # Subclasses should over-ride if they want to skip some tests.
     # To skip "test_foo", add "foo" to this list.
     return []
+
+  def check_tape_safe(self, operator):
+    """Check gradients are not None w.r.t. Variables.
+
+    Meant to be called from the derived class.
+
+    Args:
+      operator: LinearOperator.  Exact checks done will depend on hints.
+    """
+    def _assert_not_none(iterable):
+      for item in iterable:
+        self.assertIsNotNone(item)
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.to_dense(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.adjoint().to_dense(), operator.variables))
+
+    x = array_ops.ones(shape=operator.H.shape_tensor()[:-1])
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.matvec(x), operator.variables))
+
+    if not operator.is_square:
+      return
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.determinant(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.diag_part(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.trace(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.inverse().to_dense(), operator.variables))
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(tape.gradient(operator.solvevec(x), operator.variables))
+
+    if not (operator.is_self_adjoint and operator.is_positive_definite):
+      return
+
+    with backprop.GradientTape() as tape:
+      _assert_not_none(
+          tape.gradient(operator.cholesky().to_dense(), operator.variables))
 
 
 # pylint:disable=missing-docstring

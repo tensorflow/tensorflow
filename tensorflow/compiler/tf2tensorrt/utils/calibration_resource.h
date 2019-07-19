@@ -45,6 +45,8 @@ class TRTCalibrationResource : public ResourceBase {
 
   string DebugString() const override;
 
+  void SetCalibrationTable();
+
   Status SerializeToString(string* serialized);
 
   // Lookup table for temporary staging areas of input tensors for calibration.
@@ -53,10 +55,10 @@ class TRTCalibrationResource : public ResourceBase {
   // Temporary staging areas for calibration inputs.
   std::vector<PersistentTensor> device_tensors_;
 
+  string calibration_table_;
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
-  std::unique_ptr<TRTBaseAllocator> allocator_;
   Logger logger_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;

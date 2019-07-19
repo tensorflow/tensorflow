@@ -172,6 +172,7 @@ cc_library(
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/lite/schema:schema_fbs",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
@@ -303,7 +304,7 @@ genrule(
     srcs = [
         "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/lite:ir/tfl_ops.td",
+        ":ir/tfl_ops.td",
     ],
     outs = [
         "utils/generated_op_quant_spec_getters.inc",
@@ -344,7 +345,7 @@ genrule(
     srcs = [
         "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/lite:ir/tfl_ops.td",
+        ":ir/tfl_ops.td",
     ],
     outs = [
         "operator_writers.inc",
@@ -402,9 +403,11 @@ cc_library(
 cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
+        "flatbuffer_import.cc",
         "flatbuffer_translate.cc",
     ],
     hdrs = [
+        "flatbuffer_import.h",
         "flatbuffer_translate.h",
     ],
     deps = [

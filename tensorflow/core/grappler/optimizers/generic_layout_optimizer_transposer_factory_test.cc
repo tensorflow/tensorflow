@@ -59,8 +59,9 @@ TEST(TransposerFactoryTest, SanityCheck) {
   TransposerFactory factory;
   absl::flat_hash_set<Transposer*> transposers;
 
-  CheckSameTransposerForOps({"Conv2D", "FusedBatchNorm"}, &factory,
-                            &transposers);
+  CheckSameTransposerForOps(
+      {"Conv2D", "FusedBatchNorm", "DepthwiseConv2dNative"}, &factory,
+      &transposers);
 
   CheckSameTransposerForOps({"AvgPoolGrad"}, &factory, &transposers);
 
@@ -69,7 +70,13 @@ TEST(TransposerFactoryTest, SanityCheck) {
   CheckSameTransposerForOps({"FusedBatchNormGrad", "FusedBatchNormGradV2"},
                             &factory, &transposers);
 
-  CheckSameTransposerForOps({"Conv2DBackpropFilter"}, &factory, &transposers);
+  CheckSameTransposerForOps(
+      {"Conv2DBackpropFilter", "DepthwiseConv2dNativeBackpropFilter"}, &factory,
+      &transposers);
+
+  CheckSameTransposerForOps(
+      {"Conv2DBackpropInput", "DepthwiseConv2dNativeBackpropInput"}, &factory,
+      &transposers);
 
   CheckSameTransposerForOps({"MaxPoolGrad", "MaxPoolGradGrad"}, &factory,
                             &transposers);

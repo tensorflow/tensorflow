@@ -241,6 +241,11 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                           const HloInstruction& consumer) {
+  // Skip multiple output fusion. It's not yet supported.
+  if (producer.IsMultiOutputFusion()) {
+    return false;
+  }
+
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
