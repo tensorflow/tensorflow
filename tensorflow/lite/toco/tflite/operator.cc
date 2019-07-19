@@ -2237,6 +2237,11 @@ class Dequantize
   int GetVersion(const OperatorSignature& op_signature) const override {
     const string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 3 supports signed int16 input types.
+    if (input_array.data_type == ArrayDataType::kInt16 ||
+        input_array.data_type == ArrayDataType::kFloat16) {
+      return 3;
+    }
     // Version 2 supports signed int8 input types.
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
