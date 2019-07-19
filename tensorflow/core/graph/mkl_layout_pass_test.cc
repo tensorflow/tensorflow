@@ -3683,7 +3683,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_DeviceTest) {
       kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(Input);E(Input);"
-            "F(FusedBatchNormV3);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
+            "F(FusedBatchNorm);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
             "E->F:4;F->G:1");
 }
 
