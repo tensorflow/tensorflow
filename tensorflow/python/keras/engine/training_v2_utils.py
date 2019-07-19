@@ -73,7 +73,9 @@ def _make_execution_function(model, mode):
   if model.run_eagerly:
     execution_function = distributed_function
   else:
-    distributed_function = def_function.function(distributed_function)
+    distributed_function = def_function.function(
+        distributed_function, autograph=False)
+
     def execution_function(input_fn):
       # `numpy` translates Tensors to values in Eager mode.
       return [out.numpy() for out in distributed_function(input_fn)]
