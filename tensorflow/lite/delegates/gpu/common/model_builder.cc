@@ -2220,9 +2220,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
     return nullptr;
   }
   TfLiteIntArray* subgraph = TfLiteIntArrayCreate(execution_plan->size);
-  std::vector<int> pruned_graph;
   subgraph->size = 0;
-  // pruned_graph will not include dequantize operations.
   std::set<std::string> errors;
 
   // Map the output tensor of a Dequantize nodes to its input tensor.
@@ -2241,31 +2239,23 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
             TfLiteType::kTfLiteFloat16) {
       // Record the output->input mapping for the op.
       node_map[node->outputs->data[0]] = node->inputs->data[0];
-    } else {
-      // Fix the node's inputs.
+      continue;
+    }
+    status = IsSupported(context, node, registration);
+    if (status.ok() &&
+        // TODO(eignasheva): resolve sub operation support for metal delegate
+        // registration->builtin_code != kTfLiteBuiltinSub &&
+        IsAllFloatTensors(context, node->inputs) &&
+        IsAllFloatTensors(context, node->outputs)) {
+      // Fix the node's inputs (i.e. prune out the preceding dequantize node)
+      // if the op is supported.
       TfLiteIntArray* inputs = node->inputs;
       for (int j = 0; j < inputs->size; ++j) {
         if (node_map.find(inputs->data[j]) != node_map.end()) {
           inputs->data[j] = node_map[inputs->data[j]];
         }
       }
-      // Add the op to the graph.
-      pruned_graph.push_back(i);
-    }
-  }
-
-  for (int i = 0; i < pruned_graph.size(); ++i) {
-    TfLiteNode* node = nullptr;
-    TfLiteRegistration* registration = nullptr;
-    GetNodeAndRegistration(context, pruned_graph[i], &node, &registration)
-        .IgnoreError();
-    const auto status = IsSupported(context, node, registration);
-    if (status.ok() &&
-        // TODO(eignasheva): resolve sub operation support for metal delegate
-        // registration->builtin_code != kTfLiteBuiltinSub &&
-        IsAllFloatTensors(context, node->inputs) &&
-        IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) subgraph->data[subgraph->size++] = pruned_graph[i];
+      if (errors.empty()) subgraph->data[subgraph->size++] = i;
     } else {
       errors.insert(GetOpNameByRegistration(registration) + ": " +
                     status.error_message());
