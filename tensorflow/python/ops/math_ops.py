@@ -4006,8 +4006,8 @@ def polyval(coeffs, x, name=None):
 
 @tf_export("math.reciprocal_no_nan", "reciprocal_no_nan")
 def reciprocal_no_nan(x, name=None):
-  """Performs a safe reciprocal operation, element wise. 
-  If a particular element is zero, the reciprocal for that element is 
+  """Performs a safe reciprocal operation, element wise.
+  If a particular element is zero, the reciprocal for that element is
   also set to zero.
 
   For example:
@@ -4023,12 +4023,17 @@ def reciprocal_no_nan(x, name=None):
 
   Returns:
     A `Tensor` of same shape and type as `x`.
-  
-  Raises: 
+
+  Raises:
     TypeError: x must be of a valid dtype.
 
   """
+  allowed_dtypes = [dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.complex64, dtypes.complex128]
   with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
     x = ops.convert_to_tensor(x, name="x")
-    one = constant_ops.constant(1, dtype=x.dtype, name="one")
+    if x.dtype.base_dtype not in allowed_dtypes:
+      raise TypeError("x has incorrect data type: {} \n "
+                      "Expected: {}".format(x.dtype.name, allowed_dtypes))
+    one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
     return gen_math_ops.div_no_nan(one, x, name=scope)
