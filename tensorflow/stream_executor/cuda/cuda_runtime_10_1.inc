@@ -571,11 +571,11 @@ cudaDestroyExternalSemaphore(cudaExternalSemaphore_t extSem) {
 }
 
 extern __host__ cudaError_t CUDARTAPI
-GpuLaunchKernel(const void *func, dim3 gridDim, dim3 blockDim, void **args,
+cudaLaunchKernel(const void *func, dim3 gridDim, dim3 blockDim, void **args,
                  size_t sharedMem, cudaStream_t stream) {
   using FuncPtr = cudaError_t(CUDARTAPI *)(const void *, dim3, dim3, void **,
                                            size_t, cudaStream_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("GpuLaunchKernel");
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaLaunchKernel");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(func, gridDim, blockDim, args, sharedMem, stream);
 }
