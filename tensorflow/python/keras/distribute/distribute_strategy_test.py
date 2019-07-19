@@ -887,8 +887,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       combinations.times(strategy_minus_tpu_combinations(),
                          combinations.combine(run_distributed=[True, False])))
   def test_on_dataset_with_unknown_cardinality_without_steps(
-      self, distribution, run_distributed):
-    if run_distributed:
+      self, distribution, run_distributed, mode):
+    if mode == 'eager':
       self.skipTest('b/137776821 : Fails with -c opt=-undebug')
     with self.cached_session():
       with distribution.scope():
