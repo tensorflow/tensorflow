@@ -2095,6 +2095,7 @@ class DnnSupport {
   //  state_allocator: an memory allocator that will be used to store the state
   //    for dropout layer. The user has to maintain the memory until the model
   //    is no longer in use.
+  //  use_padded_io: a bool to specify whether the input is using padded IO. 
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
@@ -2103,7 +2104,8 @@ class DnnSupport {
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
-                      ScratchAllocator* state_allocator) {
+                      ScratchAllocator* state_allocator,
+                      bool use_padded_io) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "createRnnDescriptor is unimplemented");
   }

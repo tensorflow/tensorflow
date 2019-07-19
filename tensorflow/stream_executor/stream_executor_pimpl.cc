@@ -340,7 +340,8 @@ StreamExecutor::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
-    float dropout, uint64 seed, ScratchAllocator *state_allocator) {
+    float dropout, uint64 seed, ScratchAllocator *state_allocator,
+    bool use_padded_io) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return port::Status(port::error::UNKNOWN,
@@ -349,7 +350,7 @@ StreamExecutor::createRnnDescriptor(
   return dnn_support->createRnnDescriptor(
       num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
       direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
-      state_allocator);
+      state_allocator, use_padded_io);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
