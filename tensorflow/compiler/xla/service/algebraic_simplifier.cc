@@ -431,8 +431,8 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
-  auto bitcast = computation_->AddInstruction(HloInstruction::CreateUnary(
-      instruction->shape(), HloOpcode::kBitcast, operand));
+  auto bitcast = computation_->AddInstruction(
+      HloInstruction::CreateBitcast(instruction->shape(), operand));
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -573,8 +573,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
     return ReplaceWithNewInstruction(
-        bitcast,
-        HloInstruction::CreateUnary(bitcast->shape(), HloOpcode::kBitcast, op));
+        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
   }
   // All bitcasts can be eliminated (assuming layout constraints are
   // satisified).
@@ -3807,7 +3806,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     std::vector<int64> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);
     return computation_->AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kBitcast, operand));
+        HloInstruction::CreateBitcast(shape, operand));
   };
 
   // Replace it with a dot, with bitcasts around it to get the right shape.
