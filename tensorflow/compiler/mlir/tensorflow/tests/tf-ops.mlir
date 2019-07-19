@@ -191,6 +191,14 @@ func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
 }
 
 // -----
+// tf.Reshape with a first operand that has non-static shape.
+func @testReshape(%arg0: tensor<10x10x?xf32>) -> tensor<10x10xf32> {
+  %shape1 = constant dense<[10, 10]> : tensor<2xi32>
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x?xf32>, tensor<2xi32>) -> (tensor<10x10xf32>)
+  return %r1 : tensor<10x10xf32>
+}
+
+// -----
 
 // CHECK-LABEL: func @testValidAvgPool
 func @testValidAvgPool(tensor<1x7x7x16xf32>) -> tensor<1x1x1x16xf32> {

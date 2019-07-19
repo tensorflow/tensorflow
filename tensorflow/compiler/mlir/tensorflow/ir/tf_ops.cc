@@ -504,7 +504,7 @@ static LogicalResult Verify(ReshapeOp op) {
   auto rankByShape = shapeType.getShape()[0];
   auto typeOfTensor = op.tensor()->getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
-  if (rankByShape == -1 || !typeOfTensor.hasRank()) return success();
+  if (rankByShape == -1 || !typeOfTensor.hasStaticShape()) return success();
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
   auto *shapeOp = op.shape()->getDefiningOp();
