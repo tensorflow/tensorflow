@@ -105,6 +105,7 @@ class Convolution : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/
         GetIdealWorkgroupIfPossible(
@@ -241,6 +242,7 @@ class Convolution1x1 : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/
         uint3(output->tensor.shape.w / multiplier, output->tensor.shape.h,
               IntegralDivideRoundUp(output->tensor.shape.c, 4)),
