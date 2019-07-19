@@ -2076,11 +2076,11 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 #undef ENGINE_CPU
-#undef GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
-#undef GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr)
-#undef MEMORY_CONSTRUCTOR(mem_desc, cpu_engine, data)
-#undef MEMORY_CONSTRUCTOR_WITH_MEM_PD(mem_ptr, cpu_engine, data)
-#undef MEMORY_CONSTRUCTOR_WITHOUT_DATA(mem_desc, cpu_engine)
+#undef GET_MEMORY_DESC_FROM_MEM_PTR
+#undef GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR
+#undef MEMORY_CONSTRUCTOR
+#undef MEMORY_CONSTRUCTOR_WITH_MEM_PD
+#undef MEMORY_CONSTRUCTOR_WITHOUT_DATA
 #undef MEMORY_FORMAT
 #undef MKL_TENSOR_FORMAT
 #undef MKL_TENSOR_FORMAT_BLOCKED
