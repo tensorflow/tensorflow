@@ -1334,6 +1334,7 @@ py_library(
     deps = [
         ":framework_ops",
         ":framework_test_combinations_lib",
+        ":tf2",
         ":util",
         "//tensorflow/python/eager:context",
     ],
