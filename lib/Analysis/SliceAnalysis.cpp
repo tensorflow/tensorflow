@@ -22,6 +22,7 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
@@ -54,8 +55,13 @@ static void getForwardSliceImpl(Operation *op,
     for (auto *ownerInst : forOp.getInductionVar()->getUsers())
       if (forwardSlice->count(ownerInst) == 0)
         getForwardSliceImpl(ownerInst, forwardSlice, filter);
+  } else if (auto forOp = dyn_cast<loop::ForOp>(op)) {
+    for (auto *ownerInst : forOp.getInductionVar()->getUsers())
+      if (forwardSlice->count(ownerInst) == 0)
+        getForwardSliceImpl(ownerInst, forwardSlice, filter);
   } else {
-    assert(op->getNumResults() <= 1 && "NYI: multiple results");
+    assert(op->getNumRegions() == 0 && "unexpected generic op with regions");
+    assert(op->getNumResults() <= 1 && "unexpected multiple results");
     if (op->getNumResults() > 0) {
       for (auto *ownerInst : op->getResult(0)->getUsers())
         if (forwardSlice->count(ownerInst) == 0)
@@ -86,6 +92,10 @@ static void getBackwardSliceImpl(Operation *op,
   if (!op) {
     return;
   }
+
+  assert((op->getNumRegions() == 0 || isa<AffineForOp>(op) ||
+          isa<loop::ForOp>(op)) &&
+         "unexpected generic op with regions");
 
   // Evaluate whether we should keep this def.
   // This is useful in particular to implement scoping; i.e. return the

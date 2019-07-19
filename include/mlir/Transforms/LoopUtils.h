@@ -134,9 +134,14 @@ void sinkLoop(AffineForOp forOp, unsigned loopDepth);
 /// occurrence in `forOps`, under each of the `targets`.
 /// Returns the new AffineForOps, one per each of (`forOps`, `targets`) pair,
 /// nested immediately under each of `targets`.
+using Loops = SmallVector<loop::ForOp, 8>;
+using TileLoops = std::pair<Loops, Loops>;
 SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
                                                  ArrayRef<uint64_t> sizes,
                                                  ArrayRef<AffineForOp> targets);
+SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
+                           ArrayRef<Value *> sizes,
+                           ArrayRef<loop::ForOp> targets);
 
 /// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
 /// and sinking them, in their order of occurrence in `forOps`, under `target`.
@@ -144,17 +149,21 @@ SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
 /// `target`.
 SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
                                  ArrayRef<uint64_t> sizes, AffineForOp target);
+Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
+           loop::ForOp target);
 
-/// Tile a nest of standard for loops rooted at `rootForOp` with the given
+/// Tile a nest of loop::ForOp loops rooted at `rootForOp` with the given
 /// (parametric) sizes. Sizes are expected to be strictly positive values at
-/// runtime.  If more sizes than loops provided, discard the trailing values in
-/// sizes.  Assumes the loop nest is permutable.
-void tile(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
+/// runtime.  If more sizes than loops are provided, discard the trailing values
+/// in sizes.  Assumes the loop nest is permutable.
+/// Returns the newly created intra-tile loops.
+Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
 
 /// Tile a nest of standard for loops rooted at `rootForOp` by finding such
 /// parametric tile sizes that the outer loops have a fixed number of iterations
 /// as defined in `sizes`.
-void extractFixedOuterLoops(loop::ForOp rootFOrOp, ArrayRef<int64_t> sizes);
+TileLoops extractFixedOuterLoops(loop::ForOp rootFOrOp,
+                                 ArrayRef<int64_t> sizes);
 
 /// Replace a perfect nest of "for" loops with a single linearized loop. Assumes
 /// `loops` contains a list of perfectly nested loops with bounds and steps
