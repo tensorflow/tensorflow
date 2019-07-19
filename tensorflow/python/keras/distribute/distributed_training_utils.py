@@ -638,9 +638,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
-  We are going to distribute the model by cloning if the user has signaled
-  that intent by setting `cloning=True` in `Model.compile()` unless we are in
-  graph mode.
+  We are going to distribute the model by cloning in graph mode.
 
   Args:
     model: Keras model to distribute.

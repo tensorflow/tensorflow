@@ -245,7 +245,6 @@ class Model(network.Network):
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
-        or (kwargs.get('cloning', False))
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
       self._run_distributed = False
@@ -268,12 +267,6 @@ class Model(network.Network):
         if distribution_strategy_context.in_cross_replica_context():
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
-
-    # Check whether the experimental feature of distributing the Model without
-    # cloning is requested.
-    # TODO(b/124517980, b/124377929): Remove this temporary undocumented way
-    # of enabling the feature and graduate it to the main distributed code path.
-    self._cloning = kwargs.pop('cloning', False)
 
     if not self._run_distributed:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
@@ -479,8 +472,7 @@ class Model(network.Network):
         # TODO(scottzhu): Finish getting sequences working with the v2 loops.
         and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)
-        and not getattr(self, '_cloning', False)):
+            self._distribution_strategy)):
       return training_v2.Loop()
 
     # Case 1: distribution strategy.
@@ -2417,8 +2409,7 @@ class Model(network.Network):
           loss_weights=self.loss_weights,
           target_tensors=target_tensors,
           run_eagerly=self.run_eagerly,
-          run_distributed=self._run_distributed,
-          cloning=self._cloning)
+          run_distributed=self._run_distributed)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to
