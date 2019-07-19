@@ -409,10 +409,12 @@ LogicalResult Serializer::processOperation(Operation *op) {
   return dispatchToAutogenSerialization(op);
 }
 
+namespace {
 // Pull in auto-generated Serializer::dispatchToAutogenSerialization() and
 // various processOpImpl specializations.
 #define GET_SERIALIZATION_FNS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
+} // namespace
 
 LogicalResult spirv::serialize(spirv::ModuleOp module,
                                SmallVectorImpl<uint32_t> &binary) {

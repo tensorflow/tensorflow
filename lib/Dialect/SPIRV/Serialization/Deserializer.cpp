@@ -462,10 +462,12 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   return dispatchToAutogenDeserialization(opcode, operands);
 }
 
+namespace {
 // Pull in auto-generated Deserializer::dispatchToAutogenDeserialization() and
 // various processOpImpl specializations.
 #define GET_DESERIALIZATION_FNS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
+} // namespace
 
 Optional<spirv::ModuleOp> spirv::deserialize(ArrayRef<uint32_t> binary,
                                              MLIRContext *context) {
