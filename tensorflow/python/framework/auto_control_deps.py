@@ -302,15 +302,20 @@ class AutomaticControlDependencies(object):
               last_op_using_resource_tensor[inp] = op
         ops_which_must_run = set([op])
         continue
-      found_resource = False
+
+      resource_inputs = set()
       # Check for any resource inputs. If we find any, we update control_inputs
-      # and last_op_using_resource_tensor. Note that we dedup op.inputs in case
-      # op receives the same resource tensor twice as input, which would result
-      # in op getting a control dependency on itself.
-      for inp in set(op.inputs):
+      # and last_op_using_resource_tensor.
+      for inp in op.inputs:
         if inp.dtype != dtypes_module.resource:
           continue
-        found_resource = True
+
+        # If the op receives the same resource tensor twice as an input, we skip
+        # to avoid the op getting a control dependency on itself.
+        if id(inp) in resource_inputs:
+          continue
+
+        resource_inputs.add(id(inp))
         # Deal with switches, finally.
         if inp.op.type == "Switch":
           self._process_switch(inp.op, ops_which_must_run,
@@ -325,7 +330,8 @@ class AutomaticControlDependencies(object):
         if inp in merge_for_resource:
           merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
         last_op_using_resource_tensor[inp] = op
-      if (op_is_stateful(op) and not found_resource
+
+      if (op_is_stateful(op) and not resource_inputs
           and op._control_flow_context is None):  # pylint: disable=protected-access
         if None in last_op_using_resource_tensor:
           op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
