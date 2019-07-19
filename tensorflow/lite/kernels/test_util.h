@@ -288,9 +288,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -308,9 +310,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
