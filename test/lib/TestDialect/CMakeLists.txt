@@ -19,6 +19,7 @@ add_dependencies(MLIRTestDialect
   LLVMSupport
 )
 target_link_libraries(MLIRTestDialect
+  MLIRDialect
   MLIRTypeUtilities
   LLVMSupport
 )
