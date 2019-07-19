@@ -553,8 +553,8 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 
   // Add AMDGPU version-specific bitcodes.
   result.push_back(tensorflow::io::JoinPath(
-      rocdl_dir_path, tensorflow::strings::StrCat(
-                          "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+      rocdl_dir_path,
+      absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
   return std::move(result);
 }
 
@@ -562,7 +562,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
                             const string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   return LinkWithBitcodeVector(module,
