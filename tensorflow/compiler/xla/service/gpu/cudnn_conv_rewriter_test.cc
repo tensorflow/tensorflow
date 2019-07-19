@@ -760,7 +760,7 @@ TEST_F(CudnnConvRewriterTest, ForwardIntegerOutputConvolution) {
     })");
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  //   ASSERT_FALSE(CudnnConvRewriter().Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(CudnnConvRewriter().Run(m.get()).ok());
 }
 }  // anonymous namespace
 }  // namespace gpu
