@@ -312,15 +312,12 @@ public:
   /// The type used to store operation legality information.
   using LegalityMapTy = llvm::MapVector<OperationName, LegalizationAction>;
 
+  /// The signature of the callback used to determine if an operation is
+  /// dynamically legal on the target.
+  using DynamicLegalityCallbackFn = std::function<bool(Operation *)>;
+
   ConversionTarget(MLIRContext &ctx) : ctx(ctx) {}
   virtual ~ConversionTarget() = default;
-
-  /// Runs a custom legalization query for the given operation. This should
-  /// return true if the given operation is legal, otherwise false.
-  virtual bool isDynamicallyLegal(Operation *op) const {
-    llvm_unreachable(
-        "targets with custom legalization must override 'isDynamicallyLegal'");
-  }
 
   //===--------------------------------------------------------------------===//
   // Legality Registration
@@ -350,6 +347,26 @@ public:
   void addDynamicallyLegalOp() {
     addDynamicallyLegalOp<OpT>();
     addDynamicallyLegalOp<OpT2, OpTs...>();
+  }
+
+  /// Register the given operation as dynamically legal and set the dynamic
+  /// legalization callback to the one provided.
+  template <typename OpT>
+  void addDynamicallyLegalOp(const DynamicLegalityCallbackFn &callback) {
+    OperationName opName(OpT::getOperationName(), &ctx);
+    setOpAction(opName, LegalizationAction::Dynamic);
+    setLegalityCallback(opName, callback);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs>
+  void addDynamicallyLegalOp(const DynamicLegalityCallbackFn &callback) {
+    addDynamicallyLegalOp<OpT>(callback);
+    addDynamicallyLegalOp<OpT2, OpTs...>(callback);
+  }
+  template <typename OpT, class Callable>
+  typename std::enable_if<!is_invocable<Callable, Operation *>::value>::type
+  addDynamicallyLegalOp(Callable &&callback) {
+    addDynamicallyLegalOp<OpT>(
+        [=](Operation *op) { return callback(cast<OpT>(op)); });
   }
 
   /// Register the given operation as illegal, i.e. this operation is known to
@@ -384,9 +401,13 @@ public:
     SmallVector<StringRef, 2> dialectNames({name, names...});
     setDialectAction(dialectNames, LegalizationAction::Dynamic);
   }
-  template <typename... Args> void addDynamicallyLegalDialect() {
+  template <typename... Args>
+  void addDynamicallyLegalDialect(
+      llvm::Optional<DynamicLegalityCallbackFn> callback = llvm::None) {
     SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
     setDialectAction(dialectNames, LegalizationAction::Dynamic);
+    if (callback)
+      setLegalityCallback(dialectNames, *callback);
   }
 
   /// Register the operations of the given dialects as illegal, i.e.
@@ -408,14 +429,39 @@ public:
   /// Get the legality action for the given operation.
   llvm::Optional<LegalizationAction> getOpAction(OperationName op) const;
 
+  /// Return true if the given operation instance is legal on this target.
+  bool isLegal(Operation *op) const;
+
+protected:
+  /// Runs a custom legalization query for the given operation. This should
+  /// return true if the given operation is legal, otherwise false.
+  virtual bool isDynamicallyLegal(Operation *op) const {
+    llvm_unreachable(
+        "targets with custom legalization must override 'isDynamicallyLegal'");
+  }
+
 private:
+  /// Set the dynamic legality callback for the given operation.
+  void setLegalityCallback(OperationName name,
+                           const DynamicLegalityCallbackFn &callback);
+
+  /// Set the dynamic legality callback for the given dialects.
+  void setLegalityCallback(ArrayRef<StringRef> dialects,
+                           const DynamicLegalityCallbackFn &callback);
+
   /// A deterministic mapping of operation name to the specific legality action
   /// to take.
   LegalityMapTy legalOperations;
 
+  /// A set of dynamic legality callbacks for given operation names.
+  DenseMap<OperationName, DynamicLegalityCallbackFn> opLegalityFns;
+
   /// A deterministic mapping of dialect name to the specific legality action to
   /// take.
   llvm::StringMap<LegalizationAction> legalDialects;
+
+  /// A set of dynamic legality callbacks for given dialect names.
+  llvm::StringMap<DynamicLegalityCallbackFn> dialectLegalityFns;
 
   /// The current context this target applies to.
   MLIRContext &ctx;

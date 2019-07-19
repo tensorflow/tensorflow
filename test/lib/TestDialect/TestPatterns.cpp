@@ -182,19 +182,6 @@ struct TestTypeConverter : public TypeConverter {
   }
 };
 
-struct TestConversionTarget : public ConversionTarget {
-  TestConversionTarget(MLIRContext &ctx) : ConversionTarget(ctx) {
-    addLegalOp<LegalOpA, TestValidOp>();
-    addDynamicallyLegalOp<TestReturnOp>();
-    addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
-  }
-  bool isDynamicallyLegal(Operation *op) const final {
-    // Don't allow F32 operands.
-    return llvm::none_of(op->getOperandTypes(),
-                         [](Type type) { return type.isF32(); });
-  }
-};
-
 struct TestLegalizePatternDriver
     : public ModulePass<TestLegalizePatternDriver> {
   void runOnModule() override {
@@ -204,8 +191,17 @@ struct TestLegalizePatternDriver
                        TestDropOp, TestPassthroughInvalidOp,
                        TestSplitReturnType>::build(patterns, &getContext());
 
+    // Define the conversion target used for the test.
+    ConversionTarget target(getContext());
+    target.addLegalOp<LegalOpA, TestValidOp>();
+    target.addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
+    target.addDynamicallyLegalOp<TestReturnOp>([](TestReturnOp op) {
+      // Don't allow F32 operands.
+      return llvm::none_of(op.getOperandTypes(),
+                           [](Type type) { return type.isF32(); });
+    });
+
     TestTypeConverter converter;
-    TestConversionTarget target(getContext());
     (void)applyPartialConversion(getModule(), target, std::move(patterns),
                                  &converter);
   }

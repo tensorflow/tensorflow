@@ -782,20 +782,11 @@ OperationLegalizer::legalize(Operation *op,
   LLVM_DEBUG(llvm::dbgs() << "Legalizing operation : " << op->getName()
                           << "\n");
 
-  // Check if this was marked legal by the target.
-  if (auto action = target.getOpAction(op->getName())) {
-    // Check if this operation is always legal.
-    if (*action == LegalizationAction::Legal)
-      return success();
-
-    // Otherwise, handle dynamic legalization.
-    if (*action == LegalizationAction::Dynamic) {
-      LLVM_DEBUG(llvm::dbgs() << "- Trying dynamic legalization.\n");
-      if (target.isDynamicallyLegal(op))
-        return success();
-    }
-
-    // Fallthough to see if a pattern can convert this into a legal operation.
+  // Check if this operation is legal on the target.
+  if (target.isLegal(op)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "-- Success : Operation marked legal by the target\n");
+    return success();
   }
 
   // Otherwise, we need to apply a legalization pattern to this operation.
@@ -1291,6 +1282,43 @@ auto ConversionTarget::getOpAction(OperationName op) const
   if (dialectIt != legalDialects.end())
     return dialectIt->second;
   return llvm::None;
+}
+
+/// Return if the given operation instance is legal on this target.
+bool ConversionTarget::isLegal(Operation *op) const {
+  auto action = getOpAction(op->getName());
+
+  // Handle dynamic legality.
+  if (action == LegalizationAction::Dynamic) {
+    // Check for callbacks on the operation or dialect.
+    auto opFn = opLegalityFns.find(op->getName());
+    if (opFn != opLegalityFns.end())
+      return opFn->second(op);
+    auto dialectFn = dialectLegalityFns.find(op->getName().getDialect());
+    if (dialectFn != dialectLegalityFns.end())
+      return dialectFn->second(op);
+
+    // Otherwise, invoke the hook on the derived instance.
+    return isDynamicallyLegal(op);
+  }
+
+  // Otherwise, the operation is only legal if it was marked 'Legal'.
+  return action == LegalizationAction::Legal;
+}
+
+/// Set the dynamic legality callback for the given operation.
+void ConversionTarget::setLegalityCallback(
+    OperationName name, const DynamicLegalityCallbackFn &callback) {
+  assert(callback && "expected valid legality callback");
+  opLegalityFns[name] = callback;
+}
+
+/// Set the dynamic legality callback for the given dialects.
+void ConversionTarget::setLegalityCallback(
+    ArrayRef<StringRef> dialects, const DynamicLegalityCallbackFn &callback) {
+  assert(callback && "expected valid legality callback");
+  for (StringRef dialect : dialects)
+    dialectLegalityFns[dialect] = callback;
 }
 
 //===----------------------------------------------------------------------===//
