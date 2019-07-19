@@ -170,6 +170,39 @@ TileLoops extractFixedOuterLoops(loop::ForOp rootFOrOp,
 /// independent of any loop induction variable involved in the nest.
 void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 
+/// Maps `forOp` for execution on a parallel grid of virtual `processorIds` of
+/// size given by `numProcessors`. This is achieved by embedding the SSA values
+/// corresponding to `processorIds` and `numProcessors` into the bounds and step
+/// of the `forOp`. No check is performed on the legality of the rewrite, it is
+/// the caller's responsibility to ensure legality.
+///
+/// Requires that `processorIds` and `numProcessors` have the same size and that
+/// for each idx, `processorIds`[idx] takes, at runtime, all values between 0
+/// and `numProcessors`[idx] - 1. This corresponds to traditional use cases for:
+///   1. GPU (threadIdx, get_local_id(), ...)
+///   2. MPI (MPI_Comm_rank)
+///   3. OpenMP (omp_get_thread_num)
+///
+/// Example:
+/// Assuming a 2-d grid with processorIds = [blockIdx.x, threadIdx.x] and
+/// numProcessors = [gridDim.x, blockDim.x], the loop:
+///
+/// ```
+///    loop.for %i = %lb to %ub step %step {
+///      ...
+///    }
+/// ```
+///
+/// is rewritten into a version resembling the following pseudo-IR:
+///
+/// ```
+///    loop.for %i = %lb + threadIdx.x + blockIdx.x * blockDim.x to %ub
+///       step %gridDim.x * blockDim.x {
+///      ...
+///    }
+/// ```
+void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<Value *> processorId,
+                           ArrayRef<Value *> numProcessors);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

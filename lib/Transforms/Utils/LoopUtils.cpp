@@ -1062,3 +1062,25 @@ void mlir::coalesceLoops(MutableArrayRef<loop::ForOp> loops) {
       innermost.getBody()->getOperations());
   second.erase();
 }
+
+void mlir::mapLoopToProcessorIds(loop::ForOp forOp,
+                                 ArrayRef<Value *> processorId,
+                                 ArrayRef<Value *> numProcessors) {
+  assert(processorId.size() == numProcessors.size());
+  if (processorId.empty())
+    return;
+
+  OpBuilder b(forOp);
+  Location loc(forOp.getLoc());
+  Value *mul = processorId.front();
+  for (unsigned i = 1, e = processorId.size(); i < e; ++i)
+    mul = b.create<AddIOp>(loc, b.create<MulIOp>(loc, mul, numProcessors[i]),
+                           processorId[i]);
+  Value *lb = b.create<AddIOp>(loc, forOp.lowerBound(), mul);
+  forOp.setLowerBound(lb);
+
+  Value *step = numProcessors.front();
+  for (auto *numProcs : numProcessors.drop_front())
+    step = b.create<MulIOp>(loc, step, numProcs);
+  forOp.setStep(step);
+}
