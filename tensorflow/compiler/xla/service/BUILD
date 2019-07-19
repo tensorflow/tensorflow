@@ -2783,6 +2783,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "memory_space_assignment",
+    srcs = ["memory_space_assignment.cc"],
+    hdrs = ["memory_space_assignment.h"],
+    deps = [
+        ":heap_simulator",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "memory_space_assignment_test",
+    srcs = ["memory_space_assignment_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":memory_space_assignment",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_dce",
     srcs = ["hlo_dce.cc"],
     hdrs = ["hlo_dce.h"],
