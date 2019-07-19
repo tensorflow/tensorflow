@@ -294,6 +294,30 @@ class ForwardpropTest(test.TestCase):
     self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
 
+  def testFunctionGradInFunctionPureForward(self):
+
+    @def_function.function
+    def take_gradients():
+      @def_function.function
+      def f(x):
+        return x ** 3.5
+
+      primal = constant_op.constant(1.1)
+      with forwardprop.ForwardGradientAccumulator() as outer_acc:
+        outer_acc.watch(primal, constant_op.constant(1.))
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(primal, constant_op.constant(1.))
+          primal_out = f(primal)
+      inner_jvp = acc.jvp(primal_out)
+      outer_jvp = outer_acc.jvp(inner_jvp)
+      self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+      return primal_out, inner_jvp, outer_jvp
+
+    primal_out, inner_jvp, outer_jvp = take_gradients()
+    self.assertAllClose(1.1 ** 3.5, primal_out)
+    self.assertAllClose(3.5 * 1.1 ** 2.5, inner_jvp)
+    self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
+
   def testFunctionGrad(self):
 
     @def_function.function

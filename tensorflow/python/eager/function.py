@@ -485,13 +485,19 @@ class _EagerDefinedFunction(object):
       # branch if a TPU kernel is registered for `PartitionedCall`.
       with _InterpolateFunctionError(self):
         with ops.control_dependencies(self._control_captures):
-          outputs = functional_ops.partitioned_call(
-              args=args,
-              f=self,
-              tout=self._output_types,
-              executing_eagerly=executing_eagerly,
-              config=config,
-              executor_type=executor_type)
+          # The caller must use record_operation to record this operation in the
+          # eager case, so we enforce the same requirement for the non-eager
+          # case by explicitly pausing recording. We don't have a gradient
+          # registered for PartitionedCall, so recording this operation confuses
+          # forwardprop code (GradientTape manages to ignore it).
+          with tape.stop_recording():
+            outputs = functional_ops.partitioned_call(
+                args=args,
+                f=self,
+                tout=self._output_types,
+                executing_eagerly=executing_eagerly,
+                config=config,
+                executor_type=executor_type)
 
     if executing_eagerly:
       return outputs
