@@ -684,33 +684,6 @@ static void augmentMapAndBounds(OpBuilder &b, Value *iv, AffineMap *map,
   canonicalizeMapAndOperands(map, operands);
 }
 
-// Clone the original body of `forOp` into the body of `newForOp` while
-// substituting `oldIv` in place of
-// `forOp.getInductionVariable()` and ignoring the terminator.
-// Note: `newForOp` may be nested under `forOp`.
-template <typename ForOpType>
-void cloneLoopBodyInto(ForOpType forOp, Value *oldIv, ForOpType newForOp) {
-  BlockAndValueMapping map;
-  map.map(oldIv, newForOp.getInductionVar());
-  OpBuilder b = newForOp.getBodyBuilder();
-  for (auto &op : *forOp.getBody()) {
-    // Step over newForOp in case it is nested under forOp.
-    if (&op == newForOp.getOperation()) {
-      continue;
-    }
-    if (op.isKnownTerminator()) {
-      continue;
-    }
-    auto *instClone = b.clone(op, map);
-    unsigned idx = 0;
-    for (auto r : op.getResults()) {
-      // Since we do a forward pass over the body, we iteratively augment
-      // the `map` with everything we clone.
-      map.map(r, instClone->getResult(idx++));
-    }
-  }
-}
-
 // Stripmines `forOp` by `factor` and sinks it under each of the `targets`.
 // Stripmine-sink is a primitive building block for generalized tiling of
 // imperfectly nested loops.
@@ -740,19 +713,21 @@ stripmineSink(AffineForOp forOp, uint64_t factor,
   augmentMapAndBounds(b, forOp.getInductionVar(), &ubMap, &ubOperands,
                       /*offset=*/scaledStep);
 
+  auto *iv = forOp.getInductionVar();
   SmallVector<AffineForOp, 8> innerLoops;
   for (auto t : targets) {
     // Insert newForOp before the terminator of `t`.
     OpBuilder b = t.getBodyBuilder();
     auto newForOp = b.create<AffineForOp>(t.getLoc(), lbOperands, lbMap,
                                           ubOperands, ubMap, originalStep);
-    cloneLoopBodyInto(t, forOp.getInductionVar(), newForOp);
-    // Remove all operations from `t` except `newForOp`.
-    auto rit = ++newForOp.getOperation()->getReverseIterator();
-    auto re = t.getBody()->rend();
-    for (auto &op : llvm::make_early_inc_range(llvm::make_range(rit, re))) {
-      op.erase();
-    }
+    auto begin = t.getBody()->begin();
+    // Skip terminator and `newForOp` which is just before the terminator.
+    auto nOps = t.getBody()->getOperations().size() - 2;
+    newForOp.getBody()->getOperations().splice(
+        newForOp.getBody()->getOperations().begin(),
+        t.getBody()->getOperations(), begin, std::next(begin, nOps));
+    replaceAllUsesInRegionWith(iv, newForOp.getInductionVar(),
+                               newForOp.region());
     innerLoops.push_back(newForOp);
   }
 
