@@ -1078,14 +1078,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
-    ],
-)
-
-cc_library(
-    name = "gpu_compiler",
-    srcs = ["gpu_compiler_registration.cc"],
-    deps = [
-        ":gpu_compiler_impl"
     ] + if_cuda_is_configured([
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
@@ -1101,6 +1093,17 @@ cc_library(
         #":miopen_conv_algorithm_picker",
         #"//tensorflow/core:rocm_rocdl_path",
     ]),
+)
+
+cc_library(
+    name = "gpu_compiler",
+    srcs = if_cuda_is_configured([
+        "nvptx_compiler_registration.cc",
+    ]) + if_rocm_is_configured([
+        # ROCM TODO: Enable these after pending PRs get merged.
+        #"amdgpu_compiler_registration.cc",
+    ]),
+    deps = [":gpu_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
 

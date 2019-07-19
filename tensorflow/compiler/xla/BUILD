@@ -131,7 +131,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 

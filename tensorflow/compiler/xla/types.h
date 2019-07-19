@@ -19,7 +19,7 @@ limitations under the License.
 #include <Eigen/Core>
 #include <complex>
 
-#include "absl/types/variant.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 

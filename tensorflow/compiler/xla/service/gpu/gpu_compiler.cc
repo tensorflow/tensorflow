@@ -117,65 +117,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       pointer_size_(llvm::DataLayout(data_layout)
                         .getPointerSize(0 /* default address space */)) {}
 
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
-  }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  return absl::nullopt;
-}
-
-// Prints a warning if the ptx->sass JIT in the driver has known bugs.
-//
-// Using such a driver only a problem if we fail to use ptxas to compile our ptx
-// and have to use the driver instead, so you should only call this function if
-// we're going to use the driver JIT.
-//
-// Only prints a warning the first time it's called.
-void WarnIfBadDriverJITVersion() {
-  static std::once_flag run_once;
-  std::call_once(run_once, [] {
-    auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
-    if (!version_or_status.ok()) {
-      LOG(WARNING) << "Couldn't read CUDA driver version.";
-      return;
-    }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
-
-    // The following versions of the driver JIT miscompile some address
-    // calculations with large offsets (e.g. "load ptr + large_constant"),
-    // b/70245379:
-    //
-    //  - 384.x before 384.108
-    //  - 387.x before 387.40
-    //  - 390.x before 390.10.
-    //
-    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
-    // fix for the "large multioutput fusions" miscompile, b/111107644.
-    if (version < std::make_tuple(396, 20, 0)) {
-      LOG(WARNING)
-          << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
-          << se::cuda::DriverVersionToString(version)
-          << ", which is older than 396.20.0. These versions are known to "
-             "miscompile XLA code, leading to incorrect results or "
-             "invalid-address errors.\nXLA only uses the driver JIT if it "
-             "cannot find ptxas; you don't need to update your driver if "
-             "you can point XLA to ptxas 9.2.88 or newer.";
-    }
-  });
-}
-
-}  // namespace
-
 // Runs optimization passes on the given HLO module.
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -387,9 +328,9 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      impl::OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
 
-  TF_RETURN_IF_ERROR(impl::PrepareHloModuleForIrEmitting(module.get()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
 }
