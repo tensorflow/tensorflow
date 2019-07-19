@@ -399,6 +399,70 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     for expected, actual in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(expected.numpy(), actual)
 
+  @test_util.run_v2_only
+  def testLoop(self):
+    input_data = constant_op.constant([1., 2., 3., 4.], shape=[2, 2])
+
+    weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=dtypes.float32)
+
+    def condition(x):
+      return math_ops.reduce_sum(x) < 100
+
+    def body(x):
+      return math_ops.add(x, weights)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
+    ])
+    def model(x):
+      return control_flow_ops.while_loop(condition, body, [x])
+
+    concrete_func = model.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
+    if tflite_model is None:
+      return
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testDynamicRnn(self):
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((3, 10, 10)), dtype=np.float32))
+
+    cell = rnn_cell_impl.LSTMCell(10)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[3, 10, 10], dtype=dtypes.float32)
+    ])
+    def model(x):
+      return rnn.dynamic_rnn(cell, x, dtype=dtypes.float32)
+
+    concrete_func = model.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
+    if tflite_model is None:
+      return
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    for expected, actual in zip(expected_value, actual_value):
+      if isinstance(expected, ops.EagerTensor):
+        expected = expected.numpy()
+      else:
+        expected = expected.c.numpy()
+      np.testing.assert_almost_equal(expected, actual)
+
 
 class TestFlexMode(test_util.TensorFlowTestCase):
 
