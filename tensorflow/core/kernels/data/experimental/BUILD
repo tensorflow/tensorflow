@@ -45,6 +45,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "auto_shard_dataset_op",
     srcs = ["auto_shard_dataset_op.cc"],
+    hdrs = ["auto_shard_dataset_op.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -54,6 +55,23 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/optimizers/data:auto_shard",
         "//tensorflow/core/kernels/data:dataset_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "auto_shard_dataset_op_test",
+    size = "small",
+    srcs = ["auto_shard_dataset_op_test.cc"],
+    deps = [
+        ":auto_shard_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:shard_dataset_op",
+        "//third_party/eigen3",
     ],
 )
 
