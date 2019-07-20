@@ -893,6 +893,8 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -900,7 +902,6 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
-    tags = ["notsan"],  # TODO(b/137795054): re-enable after fixing race.
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",
