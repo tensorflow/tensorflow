@@ -99,8 +99,8 @@ class Delegate(object):
     options_keys = (ctypes.c_char_p * len(options))()
     options_values = (ctypes.c_char_p * len(options))()
     for idx, (key, value) in enumerate(options.items()):
-      options_keys[idx] = str(key)
-      options_values[idx] = str(value)
+      options_keys[idx] = str(key).encode('utf-8')
+      options_values[idx] = str(value).encode('utf-8')
 
     class ErrorMessageCapture(object):
 
