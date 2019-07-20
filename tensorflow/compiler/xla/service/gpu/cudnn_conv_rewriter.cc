@@ -265,18 +265,37 @@ MatchBackwardFilter(HloInstruction* conv) {
   int64 input_feature_dimension = backward_conv_dnums.input_feature_dimension();
 
   int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
+  int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
+
+  // Reshape batch_dim G*N -> [G,N]
+  std::vector<int64> reshape_dims = lhs->shape().dimensions();
+  auto num_groups = conv->feature_group_count();
   // Ensure that input_batch is exact multiple of conv->feature_group_count()
   CHECK_EQ(input_batch % conv->feature_group_count(), 0)
       << "Input batch should be an exact multiple of feature group count";
-  int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
-
-  Shape new_shape = lhs->shape();
-  new_shape.set_dimensions(input_batch_dimension,
-                           input_batch / conv->feature_group_count());
-  new_shape.set_dimensions(input_feature_dimension,
-                           input_feature * conv->feature_group_count());
+  reshape_dims[input_batch_dimension] =
+      reshape_dims[input_batch_dimension] / num_groups;
+  reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
 
   HloComputation* c = conv->parent();
+  lhs = c->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims), lhs));
+
+  // Transpose G to the axis before C/G, For eg: [G, N, C/G, H, W] -> [N, G,
+  // C/G, H, W]
+  std::vector<int64> transpose_dims(lhs->shape().dimensions_size());
+  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
+  transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
+                        input_batch_dimension);
+  lhs = c->AddInstruction(
+      HloInstruction::CreateTranspose(lhs->shape(), lhs, transpose_dims));
+
+  // Merge [G,C/G] -> [C]
+  Shape new_shape = lhs->shape();
+  new_shape.DeleteDimension(input_feature_dimension);
+  new_shape.set_dimensions(input_feature_dimension,
+                           input_feature * conv->feature_group_count());
   lhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, lhs));
   return std::make_tuple(true, backward_conv_window, backward_conv_dnums, lhs);
 }
