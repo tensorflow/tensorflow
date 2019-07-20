@@ -368,9 +368,14 @@ class Translator {
                                                      const std::string& name,
                                                      unsigned buffer_idx);
 
-  CustomOptionsOffset CreateIfOpCustomOptions(mlir::TF::IfOp op);
-
-  CustomOptionsOffset CreateWhileOpCustomOptions(mlir::TF::WhileOp op);
+  // TODO(b/137395003): Legalize control flow ops to TFLite dialect, and remove
+  // these 2 functions here.
+  BufferOffset<tflite::Operator> BuildIfOperator(
+      mlir::TF::IfOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+  BufferOffset<tflite::Operator> BuildWhileOperator(
+      mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
 
   Optional<CustomOptionsOffset> CreateFlexOpCustomOptions(
       const ::tensorflow::NodeDef& node_def, const mlir::Location& loc);
@@ -544,31 +549,36 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       builder_.CreateString(name), q_params, /*is_variable=*/false);
 }
 
-CustomOptionsOffset Translator::CreateIfOpCustomOptions(mlir::TF::IfOp op) {
+BufferOffset<tflite::Operator> Translator::BuildIfOperator(
+    mlir::TF::IfOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex("if", tflite::BuiltinOperator_IF);
   int then_subgraph_index = subgraph_index_map_.at(op.then_branch().str());
   int else_subgraph_index = subgraph_index_map_.at(op.else_branch().str());
-
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
-  flex_builder->Map([&]() {
-    flex_builder->Int("then_subgraph_index", then_subgraph_index);
-    flex_builder->Int("else_subgraph_index", else_subgraph_index);
-  });
-  flex_builder->Finish();
-  return builder_.CreateVector(flex_builder->GetBuffer());
+  auto builtin_options = tflite::CreateIfOptions(builder_, then_subgraph_index,
+                                                 else_subgraph_index)
+                             .Union();
+  auto inputs = builder_.CreateVector(operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_IfOptions,
+                                builtin_options);
 }
 
-CustomOptionsOffset Translator::CreateWhileOpCustomOptions(
-    mlir::TF::WhileOp op) {
+BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
+    mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
   int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
   int body_subgraph_index = subgraph_index_map_.at(op.body().str());
-
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
-  flex_builder->Map([&]() {
-    flex_builder->Int("cond_subgraph_index", cond_subgraph_index);
-    flex_builder->Int("body_subgraph_index", body_subgraph_index);
-  });
-  flex_builder->Finish();
-  return builder_.CreateVector(flex_builder->GetBuffer());
+  auto builtin_options = tflite::CreateWhileOptions(
+                             builder_, cond_subgraph_index, body_subgraph_index)
+                             .Union();
+  auto inputs = builder_.CreateVector(operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_WhileOptions,
+                                builtin_options);
 }
 
 Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
@@ -712,63 +722,60 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   if (dialect == tf_dialect_) {
     std::string op_name;
+    if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
+      return BuildIfOperator(ifOp, operands, results);
+    } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
+      return BuildWhileOperator(whileOp, operands, results);
+    }
+
     CustomOptionsOffset custom_options;
 
-    if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
-      op_name = "Experimental_If";
-      custom_options = CreateIfOpCustomOptions(ifOp);
-    } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
-      op_name = "Experimental_While";
-      custom_options = CreateWhileOpCustomOptions(whileOp);
-    } else {
-      // Ops in TF dialect can either be custom ops or flex ops.
-      // The reason we go directly from TensorFlow dialect MLIR to tensorflow
-      // node instead of going to TF table gen'd ops via generated code is that
-      // we do not want to restrict custom and flex op conversion support to
-      // only those TF ops that are currently registered in MLIR. The current
-      // model is of an open op system.
-      //
-      //  The following algorithm is followed:
-      //   if flex is enabled and the op is whitelisted as flex
-      //     we emit op as flex.
-      //   if custom is enabled
-      //    we emit the op as custom.
-      auto node_def = getTensorFlowNodeDef(inst);
-      if (!node_def) {
+    // Ops in TF dialect can either be custom ops or flex ops.
+    // The reason we go directly from TensorFlow dialect MLIR to tensorflow
+    // node instead of going to TF table gen'd ops via generated code is that
+    // we do not want to restrict custom and flex op conversion support to
+    // only those TF ops that are currently registered in MLIR. The current
+    // model is of an open op system.
+    //
+    //  The following algorithm is followed:
+    //   if flex is enabled and the op is whitelisted as flex
+    //     we emit op as flex.
+    //   if custom is enabled
+    //    we emit the op as custom.
+    auto node_def = getTensorFlowNodeDef(inst);
+    if (!node_def) {
+      return llvm::None;
+    }
+
+    // Flex op case
+    // Eventually, the whitelist will go away and we will rely on some TF op
+    // trait (e.g. No side effect) to determine if it is a supported "Flex"
+    // op or not.
+    if (enabled_op_types_.contains(OpType::kSelectTf) &&
+        IsWhitelistedFlexOp(node_def->op())) {
+      // Construct ops as flex op encoding TensorFlow node definition
+      // as custom options.
+      // Flex ops are named with the kFlexOpNamePrefix prefix to the actual
+      // TF op name.
+      op_name = std::string(kFlexOpNamePrefix) + node_def->op();
+      if (auto options = CreateFlexOpCustomOptions(*node_def, inst->getLoc())) {
+        custom_options = *options;
+      } else {
         return llvm::None;
       }
-
-      // Flex op case
-      // Eventually, the whitelist will go away and we will rely on some TF op
-      // trait (e.g. No side effect) to determine if it is a supported "Flex"
-      // op or not.
-      if (enabled_op_types_.contains(OpType::kSelectTf) &&
-          IsWhitelistedFlexOp(node_def->op())) {
-        // Construct ops as flex op encoding TensorFlow node definition
-        // as custom options.
-        // Flex ops are named with the kFlexOpNamePrefix prefix to the actual
-        // TF op name.
-        op_name = std::string(kFlexOpNamePrefix) + node_def->op();
-        if (auto options =
-                CreateFlexOpCustomOptions(*node_def, inst->getLoc())) {
-          custom_options = *options;
-        } else {
-          return llvm::None;
-        }
-      } else if (enabled_op_types_.contains(OpType::kCustomOp)) {
-        // Generic case of custom ops - write using flex buffers since that
-        // is the only custom options supported by TFLite today.
-        op_name = node_def->op();
-        if (auto options =
-                CreateCustomOpCustomOptions(*node_def, inst->getLoc())) {
-          custom_options = *options;
-        } else {
-          return llvm::None;
-        }
+    } else if (enabled_op_types_.contains(OpType::kCustomOp)) {
+      // Generic case of custom ops - write using flex buffers since that
+      // is the only custom options supported by TFLite today.
+      op_name = node_def->op();
+      if (auto options =
+              CreateCustomOpCustomOptions(*node_def, inst->getLoc())) {
+        custom_options = *options;
       } else {
-        return inst->emitOpError("is neither a custom op nor a flex op"),
-               llvm::None;
+        return llvm::None;
       }
+    } else {
+      return inst->emitOpError("is neither a custom op nor a flex op"),
+             llvm::None;
     }
 
     uint32_t opcode_index =

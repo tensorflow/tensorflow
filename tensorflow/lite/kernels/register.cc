@@ -381,6 +381,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
 
+  // WARNING: Control flow ops are experimental and subject to change.
+  AddBuiltin(BuiltinOperator_IF, tflite::ops::custom::Register_IF());
+  AddBuiltin(BuiltinOperator_WHILE, tflite::ops::custom::Register_WHILE());
+
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
@@ -388,10 +392,6 @@ BuiltinOpResolver::BuiltinOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
-
-  // WARNING: Control flow ops are experimental and subject to change.
-  AddCustom("Experimental_If", tflite::ops::custom::Register_IF());
-  AddCustom("Experimental_While", tflite::ops::custom::Register_WHILE());
 }
 
 }  // namespace builtin

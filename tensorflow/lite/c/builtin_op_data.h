@@ -391,6 +391,16 @@ typedef struct {
   EmptyStructPlaceholder placeholder;
 } TfLiteMatrixSetDiagParams;
 
+typedef struct {
+  int then_subgraph_index;
+  int else_subgraph_index;
+} TfLiteIfParams;
+
+typedef struct {
+  int cond_subgraph_index;
+  int body_subgraph_index;
+} TfLiteWhileParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
