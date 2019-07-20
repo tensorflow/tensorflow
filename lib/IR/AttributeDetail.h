@@ -480,15 +480,22 @@ struct DenseElementsAttributeStorage : public AttributeStorage {
   /// Construct a new storage instance.
   static DenseElementsAttributeStorage *
   construct(AttributeStorageAllocator &allocator, KeyTy key) {
-    // If the data buffer is non-empty, we copy it into the allocator.
-    ArrayRef<char> data = allocator.copyInto(key.data);
+    // If the data buffer is non-empty, we copy it into the allocator with a
+    // 64-bit alignment.
+    ArrayRef<char> copy, data = key.data;
+    if (!data.empty()) {
+      char *rawData = reinterpret_cast<char *>(
+          allocator.allocate(data.size(), alignof(uint64_t)));
+      std::memcpy(rawData, data.data(), data.size());
 
-    // If this is a boolean splat, make sure only the first bit is used.
-    if (key.isSplat && key.type.getElementTypeBitWidth() == 1)
-      const_cast<char &>(data.front()) &= 1;
+      // If this is a boolean splat, make sure only the first bit is used.
+      if (key.isSplat && key.type.getElementTypeBitWidth() == 1)
+        rawData[0] &= 1;
+      copy = ArrayRef<char>(rawData, data.size());
+    }
 
     return new (allocator.allocate<DenseElementsAttributeStorage>())
-        DenseElementsAttributeStorage(key.type, data, key.isSplat);
+        DenseElementsAttributeStorage(key.type, copy, key.isSplat);
   }
 
   ArrayRef<char> data;
