@@ -179,6 +179,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
@@ -2451,6 +2452,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
+    "platform/annotation.h",
     "platform/demangle.h",
     "platform/denormal.h",
     "platform/host_info.h",
@@ -2463,6 +2465,19 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/tracing.h",
     "util/env_var.h",
 ]
+
+cc_library(
+    name = "annotation",
+    srcs = [],
+    hdrs = [
+        "platform/annotation.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
 
 # Replicated for lib_internal and lib_internal_impl.
 LIB_INTERNAL_DEFINES = (

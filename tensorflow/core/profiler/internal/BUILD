@@ -370,7 +370,6 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
-        "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
@@ -435,7 +434,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/profiler/lib:profiler_session",
         "@com_google_absl//absl/strings",
     ],
 )
