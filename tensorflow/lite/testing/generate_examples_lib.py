@@ -870,7 +870,7 @@ def make_identity_tests(options):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1], [3, 3]],
-      "use_snapshot": [False, True],
+      "op_to_use": ["identity", "identity_n", "snapshot"],
   }]
 
   def build_graph(parameters):
@@ -884,10 +884,13 @@ def make_identity_tests(options):
     # shape, this conversion still fails.
     # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     input_doubled = input_tensor * 2.0
-    if parameters["use_snapshot"]:
-      identity_output = array_ops.snapshot(input_doubled)
-    else:
+    if parameters["op_to_use"] == "identity":
       identity_output = tf.identity(input_doubled)
+    elif parameters["op_to_use"] == "identity_n":
+      # Testing `IdentityN` with a single tensor.
+      identity_output = tf.identity_n([input_doubled])[0]
+    elif parameters["op_to_use"] == "snapshot":
+      identity_output = array_ops.snapshot(input_doubled)
     return [input_tensor], [identity_output]
 
   def build_inputs(parameters, sess, inputs, outputs):
