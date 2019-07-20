@@ -51,8 +51,8 @@ static std::string GetConversionFunction(
   return "Convert_" + named_attr.name.str();
 }
 
-using ArgumentName = string;
-using ArgumentDeclaration = string;
+using ArgumentName = std::string;
+using ArgumentDeclaration = std::string;
 using Argument = std::pair<ArgumentName, ArgumentDeclaration>;
 using ArgumentList = std::vector<Argument>;
 
