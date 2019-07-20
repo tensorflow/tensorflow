@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "if_mlir", "py_binary", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_mlir_tflite", "py_binary", "tf_py_test")
 
 package(
     default_visibility = [
@@ -22,7 +22,7 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
-    defines = if_mlir(
+    defines = if_mlir_tflite(
         if_false = [],
         if_true = ["TFLITE_BUILD_WITH_MLIR_CONVERTER"],
     ),
@@ -46,7 +46,7 @@ cc_library(
             "//tensorflow/core:ops",
         ],
         "//conditions:default": [],
-    }) + if_mlir(
+    }) + if_mlir_tflite(
         if_false = [],
         if_true = ["//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer"],
     ),

@@ -2493,5 +2493,8 @@ def if_mlir(if_true, if_false = []):
         "//tensorflow:with_mlir_support": if_true,
     })
 
+def if_mlir_tflite(if_true, if_false = []):
+    return if_mlir(if_true, if_false)
+
 def tfcompile_extra_flags():
     return ""
