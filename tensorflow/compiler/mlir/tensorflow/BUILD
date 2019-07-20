@@ -105,6 +105,7 @@ cc_library(
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
         "translate/control_to_executor_dialect.cc",
+        "translate/executor_to_control_dialect.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
