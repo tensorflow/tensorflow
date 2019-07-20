@@ -32,9 +32,9 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
-from tensorflow.python.framework import kernels
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -45,6 +45,8 @@ def _get_devices(devices):
     return tuple(device_util.resolve(d) for d in devices)
   elif isinstance(devices, value_lib.DistributedValues):
     return devices.devices
+  elif isinstance(devices, ops.Tensor):
+    return (device_util.resolve(devices.device),)
   return (device_util.resolve(devices),)
 
 
@@ -64,7 +66,7 @@ def _make_per_replica(values, devices, regroup=False):
     with ops.device(d):
       placed_v = array_ops.identity(v)
     index.append(placed_v)
-  return value_lib.PerReplica(value_lib.ReplicaDeviceMap(devices), index)
+  return value_lib.regroup(value_lib.ReplicaDeviceMap(devices), index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -75,8 +77,14 @@ def _fake_mirrored(value, devices):
   true in reality.
   """
   devices = _get_devices(devices)
-  return value_lib.Mirrored(value_lib.ReplicaDeviceMap(devices),
-                            [value] * len(devices))
+  values = []
+  for d in devices:
+    with ops.device(d):
+      values.append(array_ops.identity(value))
+  return value_lib.regroup(
+      value_lib.ReplicaDeviceMap(devices),
+      values,
+      wrap_class=value_lib.Mirrored)
 
 
 def _make_indexed_slices(values, indices, dense_shape, device):
@@ -91,7 +99,10 @@ def _make_indexed_slices(values, indices, dense_shape, device):
 def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
   values = [_make_indexed_slices(values, indices, dense_shape, d)
             for d in devices]
-  return value_lib.Mirrored(value_lib.ReplicaDeviceMap(devices), values)
+  return value_lib.regroup(
+      value_lib.ReplicaDeviceMap(devices),
+      values,
+      wrap_class=value_lib.Mirrored)
 
 
 _cpu_device = "/device:CPU:0"
@@ -109,22 +120,25 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         self.evaluate(ops.convert_to_tensor(right)))
 
   def _assert_values_equal(self, left, right):
-    if isinstance(left, list):
+    self.assertEqual(type(left), type(right))
+    if isinstance(left, (list, tuple)):
       for l, r in zip(left, right):
         self._assert_values_equal(l, r)
     else:
-      self.assertEqual(type(left), type(right))
-      self.assertEqual(set(left.devices), set(right.devices))
-      if isinstance(left.values[0], ops.IndexedSlices):
-        for d in left.devices:
-          self._assert_indexed_slices_equal(left.get(d), right.get(d))
-      elif context.executing_eagerly():
-        self.assertEqual([v.numpy() for v in left.values],
-                         list(right.values))
+      if isinstance(left, value_lib.DistributedValues):
+        self.assertEqual(set(left.devices), set(right.devices))
+        self._assert_values_equal([left.get(d) for d in sorted(left.devices)],
+                                  [right.get(d) for d in sorted(right.devices)])
       else:
-        with self.cached_session() as sess:
-          self.assertEqual(
-              sess.run(list(left.values)), list(right.values))
+        self.assertEqual(
+            device_util.resolve(left.device), device_util.resolve(right.device))
+        if isinstance(left, ops.IndexedSlices):
+          self._assert_indexed_slices_equal(left, right)
+        elif context.executing_eagerly():
+          self.assertEqual(left.numpy(), right.numpy())
+        else:
+          with self.cached_session() as sess:
+            self.assertEqual(sess.run(left), sess.run(right))
 
   def _testReductionAndBroadcast(self, cross_device_ops, devices):
     if context.num_gpus() < sum(1 for d in devices if "GPU" in d.upper()):
@@ -139,8 +153,8 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     mean_2 = mean + 1.
 
     destination_mirrored = _fake_mirrored(1., devices)
-    destination_different = _fake_mirrored(1., _cpu_device)
-    destination_str = _cpu_device
+    destination_different = _fake_mirrored(1., device_util.resolve(_cpu_device))
+    destination_str = device_util.resolve(_cpu_device)
 
     all_destinations = [
         destination_mirrored, destination_different, destination_str,
@@ -416,7 +430,9 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
 
   @combinations.generate(multi_worker_allreduce_combinations)
   def testReductionAndBroadcast(self, cross_device_ops, devices):
-    self._testReductionAndBroadcast(cross_device_ops, devices)
+    # Mimic the default device of multi-worker strategies.
+    with ops.device("/job:worker/replica:0/task:0"):
+      self._testReductionAndBroadcast(cross_device_ops, devices)
 
 
 NUM_WORKERS = 3
@@ -493,22 +509,27 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                 "grpc://" + self._cluster_spec[task_type][task_id])
 
   def _assert_values_equal(self, left, right, sess):
-    if isinstance(left, list):
+    self.assertEqual(type(left), type(right))
+    if isinstance(left, (list, tuple)):
       for l, r in zip(left, right):
         self._assert_values_equal(l, r, sess)
     else:
-      self.assertEqual(type(left), type(right))
-      self.assertEqual(set(left.devices), set(right.devices))
-
-      run_options = config_pb2.RunOptions()
-      run_options.experimental.collective_graph_key = 6
-
-      left_values = np.array(
-          sess.run(list(left.values), options=run_options)).flatten()
-      right_values = np.array(list(right.values)).flatten()
-      self.assertEqual(len(left_values), len(right_values))
-      for l, r in zip(left_values, right_values):
-        self.assertEqual(l, r)
+      if isinstance(left, value_lib.DistributedValues):
+        self.assertEqual(set(left.devices), set(right.devices))
+        self._assert_values_equal(left.values, right.values, sess)
+      else:
+        self.assertEqual(
+            device_util.resolve(left.device), device_util.resolve(right.device))
+        if isinstance(left, ops.IndexedSlices):
+          self._assert_indexed_slices_equal(left, right)
+        elif context.executing_eagerly():
+          self.assertEqual(left.numpy(), right.numpy())
+        else:
+          run_options = config_pb2.RunOptions()
+          run_options.experimental.collective_graph_key = 6
+          self.assertEqual(
+              sess.run(left, options=run_options),
+              sess.run(right, options=run_options))
 
   def _test_reduction(self,
                       task_type,
@@ -533,10 +554,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
     def _reduce(test_object, reduce_op, per_replica, destinations):
       if use_strategy_object:
         with test_object.scope():
-          # Mimic the behavior that distribution strategy usually strips the
-          # wrapper if there is only one value.
-          if len(per_replica.values) == 1:
-            per_replica = per_replica.values[0]
           return test_object.extended.reduce_to(reduce_op, per_replica,
                                                 destinations)
       else:
@@ -663,12 +680,16 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       else:
         result = collective_all_reduce.reduce(reduce_util.ReduceOp.SUM,
                                               per_replica, per_replica)
-      self.assertIsInstance(result, value_lib.Mirrored)
+      if num_gpus > 1:
+        self.assertIsInstance(result, value_lib.Mirrored)
 
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 7
-      result = sess.run([ops.convert_to_tensor(v) for v in result.values],
-                        options=run_options)[0]
+      if num_gpus > 1:
+        result = sess.run([ops.convert_to_tensor(v) for v in result.values],
+                          options=run_options)[0]
+      else:
+        result = sess.run(ops.convert_to_tensor(result), options=run_options)
 
       # Reduce the same indexed slices on CPU locally as our expected results.
       devices_cpu = [(worker_device or "") + "/device:CPU:0"] * (
