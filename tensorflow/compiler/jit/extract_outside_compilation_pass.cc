@@ -523,7 +523,8 @@ xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
 
 // Add edges from lifted outside compilation argument nodes to `n` in Graph `g`.
 void AddEdgesFromOutsideCompilationNodes(
-    const int original_arg_count, const std::vector<DataType>& data_types,
+    const int original_arg_count, const int arg_to_input_edge_offset,
+    const std::vector<DataType>& data_types,
     const std::vector<std::pair<Node*, Node*>>&
         lifted_arg_nodes_and_outside_compilation_nodes,
     Graph* g, Node* n) {
@@ -532,7 +533,7 @@ void AddEdgesFromOutsideCompilationNodes(
     Node* outside_compilation_node =
         lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
             .second;
-    g->AddEdge(outside_compilation_node, 0, n, i);
+    g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
   }
 }
 
@@ -630,7 +631,8 @@ Status PostprocessLiftedArgsForWhile(
 
   // Add edges from outside compilation nodes to While node.
   AddEdgesFromOutsideCompilationNodes(
-      original_arg_count, data_types,
+      original_arg_count,
+      /*arg_to_input_edge_offset=*/0, data_types,
       lifted_arg_nodes_and_outside_compilation_nodes, g, n);
 
   // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
@@ -682,6 +684,103 @@ Status PostprocessLiftedArgsForWhile(
   return Status::OK();
 }
 
+Status PostprocessLiftedArgsForIf(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  TF_RET_CHECK(n->type_string() == "If");
+
+  NameAttrList then_branch_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
+  const FunctionDef* then_branch_function_def =
+      fld->Find(then_branch_func.name());
+  TF_RET_CHECK(then_branch_function_def);
+
+  NameAttrList else_branch_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "else_branch", &else_branch_func));
+  const FunctionDef* else_branch_function_def =
+      fld->Find(else_branch_func.name());
+  TF_RET_CHECK(else_branch_function_def);
+
+  // Nothing to do if neither branch contains any lifted arguments.
+  if (!HasLiftedArgs(*then_branch_function_def) &&
+      !HasLiftedArgs(*else_branch_function_def)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<FunctionBody> then_branch_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *then_branch_function_def, AttrSlice(&then_branch_func.attr()), fld,
+      &then_branch_function_body));
+
+  std::unique_ptr<FunctionBody> else_branch_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *else_branch_function_def, AttrSlice(&else_branch_func.attr()), fld,
+      &else_branch_function_body));
+
+  // Then and else branches have same argument count and argument data types.
+  int original_arg_count = then_branch_function_body->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(
+      auto then_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+          *then_branch_function_body, outside_compilation_attr_to_node));
+
+  TF_ASSIGN_OR_RETURN(
+      auto else_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+          *else_branch_function_body, outside_compilation_attr_to_node));
+
+  // Append lifted args' types to If node's Tin attribute.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DataType> data_types,
+      UpdateTypesAttribute(
+          then_branch_lifted_arg_nodes_and_outside_compilation_nodes, "Tin",
+          n));
+
+  // Add edges from outside compilation nodes to If node. If node's input #0
+  // is predicate input, input #1 maps to _Arg #0 of branch functions, thus
+  // arg_to_input_edge_offset is set to 1.
+  AddEdgesFromOutsideCompilationNodes(
+      original_arg_count,
+      /*arg_to_input_edge_offset=*/1, data_types,
+      then_branch_lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+
+  for (int i = original_arg_count; i < data_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
+                        AddOutsideCompilationInputArgToFunctionBody(
+                            *then_branch_function_body, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *then_branch_function_body, original_arg_count, i,
+        then_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+        then_branch_arg_node);
+
+    TF_ASSIGN_OR_RETURN(Node * else_branch_arg_node,
+                        AddOutsideCompilationInputArgToFunctionBody(
+                            *else_branch_function_body, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *else_branch_function_body, original_arg_count, i,
+        else_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+        else_branch_arg_node);
+  }
+
+  FunctionDef rewritten_then_branch_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *then_branch_function_body->graph, then_branch_func.name(),
+      HostGraphControlRetMapping, &rewritten_then_branch_function_def));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(then_branch_func.name(),
+                                          rewritten_then_branch_function_def));
+
+  FunctionDef rewritten_else_branch_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *else_branch_function_body->graph, else_branch_func.name(),
+      HostGraphControlRetMapping, &rewritten_else_branch_function_def));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(else_branch_func.name(),
+                                          rewritten_else_branch_function_def));
+  return Status::OK();
+}
+
 // Creates a mapping from outside compilation cluster name to lifted argument
 // placeholder.
 xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
@@ -714,6 +813,11 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
 
     if (n->type_string() == "While") {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForWhile(
+          outside_compilation_attr_to_node, g, n, fld));
+    }
+
+    if (n->type_string() == "If") {
+      TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
   }
