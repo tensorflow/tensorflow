@@ -131,7 +131,6 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:TypeUtilities",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
