@@ -1356,9 +1356,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # which is comparable with:
     #   np.arange(np.int(5), dtype=np.float32)
     if dtype is not None:
-      start = cast(start, dtype=dtype)
-      limit = cast(limit, dtype=dtype)
-      delta = cast(delta, dtype=dtype)
+      start = cast(start, dtype=dtype, name="start")
+      limit = cast(limit, dtype=dtype, name="limit")
+      delta = cast(delta, dtype=dtype, name="delta")
     else:
       start = ops.convert_to_tensor(start, name="start")
       limit = ops.convert_to_tensor(limit, name="limit")
