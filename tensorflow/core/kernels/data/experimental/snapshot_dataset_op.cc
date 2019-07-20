@@ -567,9 +567,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               kbytes_read_ += static_cast<double>(num_bytes) / 1024.0;
               elements_produced_++;
               if (elements_produced_ % 10000 == 0) {
-                VLOG(2) << "Current read throughput (MBPS): "
-                        << ((kbytes_read_ / 1024.0) /
-                            (time_spent_micros_ / 1000000.0));
+                LOG(INFO) << "Current read throughput (MBPS): "
+                          << ((kbytes_read_ / 1024.0) /
+                              (time_spent_micros_ / 1000000.0));
               }
             }
             buffer_.pop_front();
@@ -802,9 +802,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           elements_produced_++;
 
           if (elements_produced_ % 10000 == 0) {
-            VLOG(2) << "Current write throughput (MBPS): "
-                    << (bytes_produced_ * 1000000.0) /
-                           (time_spent_micros_ * 1024.0 * 1024.0);
+            LOG(INFO) << "Current write throughput (MBPS): "
+                      << (bytes_produced_ * 1000000.0) /
+                             (time_spent_micros_ * 1024.0 * 1024.0);
           }
           return Status::OK();
         }
