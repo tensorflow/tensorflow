@@ -388,7 +388,7 @@ class PolynomialDecay(LearningRateSchedule):
         global_step_recomp = math_ops.minimum(global_step_recomp,
                                               self.decay_steps)
 
-      p = math_ops.div(global_step_recomp, decay_steps_recomp)
+      p = math_ops.divide(global_step_recomp, decay_steps_recomp)
       return math_ops.add(
           math_ops.multiply(initial_learning_rate - end_learning_rate,
                             math_ops.pow(1 - p, power)),
@@ -499,7 +499,7 @@ class InverseTimeDecay(LearningRateSchedule):
         p = math_ops.floor(p)
       const = math_ops.cast(constant_op.constant(1), dtype)
       denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
-      return math_ops.div(initial_learning_rate, denom, name=name)
+      return math_ops.divide(initial_learning_rate, denom, name=name)
 
   def get_config(self):
     return {

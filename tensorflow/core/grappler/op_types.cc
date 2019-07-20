@@ -253,6 +253,10 @@ bool IsFusedBatchNorm(const NodeDef& node) {
          op == "FusedBatchNormV3";
 }
 
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||

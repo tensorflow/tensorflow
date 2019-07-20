@@ -62,9 +62,9 @@ namespace {
 
 // Mark nodes created or optimized by a stage with a tag.
 constexpr char kAddOpsRewriteTag[] =
-    "_grappler:ArithmeticOptimizer:AddOpsRewriteStage";
+    "_grappler_ArithmeticOptimizer_AddOpsRewriteStage";
 constexpr char kMinimizeBroadcastsTag[] =
-    "_grappler:ArithmeticOptimizer:MinimizeBroadcasts";
+    "_grappler_ArithmeticOptimizer_MinimizeBroadcasts";
 
 // Extract values from a Const op to `values`. Returns true if succeeds.
 template <typename T>

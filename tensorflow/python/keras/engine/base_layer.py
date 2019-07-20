@@ -627,9 +627,11 @@ class Layer(module.Module):
     # be propagated explicitly via the `mask` argument, or implicitly via
     # setting the `_keras_mask` attribute on the inputs to a Layer. Masks passed
     # explicitly take priority.
+    mask_arg_passed_by_framework = False
     input_masks = self._collect_input_masks(inputs, args, kwargs)
     if (self._expects_mask_arg and input_masks is not None and
         not self._call_arg_was_passed('mask', args, kwargs)):
+      mask_arg_passed_by_framework = True
       kwargs['mask'] = input_masks
 
     # If `training` argument was not explicitly passed, propagate `training`
@@ -738,6 +740,8 @@ class Layer(module.Module):
           if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
               kwargs.pop('training')
+            if mask_arg_passed_by_framework:
+              kwargs.pop('mask')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
@@ -995,13 +999,7 @@ class Layer(module.Module):
     else:
       for symbolic_loss in symbolic_losses:
         if getattr(self, '_is_graph_network', False):
-          new_layers = base_layer_utils.create_keras_history(symbolic_loss)
-          # Losses must be keyed on inputs no matter what in order to
-          # be supported in DistributionStrategy.
-          add_loss_layer = AddLoss(unconditional=False)
-          add_loss_layer(symbolic_loss)
-          new_layers.append(add_loss_layer)
-          self._insert_layers(new_layers)
+          self._graph_network_add_loss(symbolic_loss)
         else:
           # Possible a loss was added in a Layer's `build`.
           self._losses.append(symbolic_loss)
@@ -1088,11 +1086,7 @@ class Layer(module.Module):
                          'Tensor to monitor directly.')
 
       # Insert layers into the Keras Graph Network.
-      new_layers = base_layer_utils.create_keras_history(value)
-      add_metric_layer = AddMetric(aggregation, name)
-      add_metric_layer(value)
-      new_layers.append(add_metric_layer)
-      self._insert_layers(new_layers)
+      self._graph_network_add_metric(value, aggregation, name)
 
   @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
                                'inputs')
@@ -1836,7 +1830,6 @@ class Layer(module.Module):
         call_args=(inputs,) + args, call_kwargs=kwargs)
     # Add an inbound node to the layer, so it can keep track of this call.
     # This updates the layer history of the output tensor(s).
-    kwargs.pop('mask', None)  # `mask` should not be serialized.
     self._add_inbound_node(
         input_tensors=inputs, output_tensors=outputs, arguments=kwargs)
     return inputs, outputs
@@ -2170,18 +2163,25 @@ class Layer(module.Module):
     for val in nest.flatten(value):
       # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
       # no longer return True for isinstance Variable checks.
-      if (isinstance(val, tf_variables.Variable) and
-          not isinstance(val, resource_variable_ops._UnreadVariable)):  # pylint: disable=protected-access
-        # Users may add extra weights/variables
-        # simply by assigning them to attributes (invalid for graph networks)
-        self._maybe_create_attribute('_trainable_weights', [])
-        self._maybe_create_attribute('_non_trainable_weights', [])
-        if val not in self._trainable_weights + self._non_trainable_weights:
-          if val.trainable:
-            self._trainable_weights.append(val)
-          else:
-            self._non_trainable_weights.append(val)
-          backend.track_variable(val)
+      if not isinstance(val, tf_variables.Variable):
+        continue
+      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
+        continue
+
+      # Users may add extra weights/variables
+      # simply by assigning them to attributes (invalid for graph networks)
+      self._maybe_create_attribute('_trainable_weights', [])
+      self._maybe_create_attribute('_non_trainable_weights', [])
+      if val.trainable:
+        if any(val is w for w in self._trainable_weights):
+          continue
+        self._trainable_weights.append(val)
+      else:
+        if any(val is w for w in self._non_trainable_weights):
+          continue
+        self._non_trainable_weights.append(val)
+
+      backend.track_variable(val)
 
     # Skip the auto trackable from tf.Module to keep status quo. See the comment
     # at __delattr__.

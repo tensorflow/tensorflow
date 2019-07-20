@@ -263,7 +263,6 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       case OperationType::MUL:
       case OperationType::RESIZE:
       case OperationType::SPACE_TO_BATCH:
-      case OperationType::STRETCH_TIME:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

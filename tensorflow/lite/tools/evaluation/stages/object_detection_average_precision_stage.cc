@@ -57,26 +57,26 @@ TfLiteStatus ObjectDetectionAveragePrecisionStage::Init() {
 }
 
 TfLiteStatus ObjectDetectionAveragePrecisionStage::Run() {
-  for (int i = 0; i < ground_truth_objects_.objects_size(); ++i) {
-    const int class_id = ground_truth_objects_.objects(i).class_id();
+  for (int i = 0; i < ground_truth_objects_->objects_size(); ++i) {
+    const int class_id = ground_truth_objects_->objects(i).class_id();
     if (class_id >= num_classes_) {
       LOG(ERROR) << "Encountered invalid class ID: " << class_id;
       return kTfLiteError;
     }
 
     ground_truth_object_vectors_[class_id].push_back(ConvertProtoToDetection(
-        ground_truth_objects_.objects(i), current_image_index_));
+        ground_truth_objects_->objects(i), current_image_index_));
   }
 
-  for (int i = 0; i < predicted_objects_.objects_size(); ++i) {
-    const int class_id = predicted_objects_.objects(i).class_id();
+  for (int i = 0; i < predicted_objects_->objects_size(); ++i) {
+    const int class_id = predicted_objects_->objects(i).class_id();
     if (class_id >= num_classes_) {
       LOG(ERROR) << "Encountered invalid class ID: " << class_id;
       return kTfLiteError;
     }
 
     predicted_object_vectors_[class_id].push_back(ConvertProtoToDetection(
-        predicted_objects_.objects(i), current_image_index_));
+        predicted_objects_->objects(i), current_image_index_));
   }
 
   current_image_index_++;

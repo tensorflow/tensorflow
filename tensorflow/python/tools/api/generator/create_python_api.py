@@ -143,6 +143,7 @@ class _ModuleInitCodeBuilder(object):
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
+    self._underscore_names_in_root = []
     self._api_version = api_version
 
   def _check_already_imported(self, symbol_id, api_name):
@@ -178,6 +179,9 @@ class _ModuleInitCodeBuilder(object):
       full_api_name = dest_module_name + '.' + full_api_name
     symbol_id = -1 if not symbol else id(symbol)
     self._check_already_imported(symbol_id, full_api_name)
+
+    if not dest_module_name and dest_name.startswith('_'):
+      self._underscore_names_in_root.append(dest_name)
 
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
@@ -249,6 +253,20 @@ class _ModuleInitCodeBuilder(object):
                 sorted(imports_list))
       else:
         module_text_map[dest_module] = '\n'.join(sorted(imports_list))
+
+    # Expose exported symbols with underscores in root module since we import
+    # from it using * import. Don't need this for lazy_loading because the
+    # underscore symbols are already included in __all__ when passed in and
+    # handled by TFModuleWrapper.
+    if not _LAZY_LOADING:
+      underscore_names_str = ', '.join(
+          '\'%s\'' % name for name in self._underscore_names_in_root)
+
+      module_text_map[''] = module_text_map.get('', '') + '''
+_names_with_underscore = [%s]
+__all__ = [_s for _s in dir() if not _s.startswith('_')]
+__all__.extend([_s for _s in _names_with_underscore])
+''' % underscore_names_str
 
     for dest_module, _ in self._module_imports.items():
       deprecation = 'False'

@@ -265,10 +265,14 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt.beta_1  # pylint: disable=pointless-statement
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
     # Test that attributes defined by OptimizerV2 subclasses are not exposed in
-    # LossScaleOptimizer.
-    with self.assertRaises(AttributeError):
+    # LossScaleOptimizer, and that the error message is sensible.
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'epsilon'"):
       opt.epsilon  # pylint: disable=pointless-statement
-    with self.assertRaises(AttributeError):
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'beta_1'"):
       opt.beta_1  # pylint: disable=pointless-statement
 
   @test_util.run_in_graph_and_eager_modes

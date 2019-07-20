@@ -1757,6 +1757,25 @@ class _FeatureColumn(object):
     """Returns string. Used for naming and for name_scope."""
     pass
 
+  def __lt__(self, other):
+    """Allows feature columns to be sortable in Python 3 as they are in 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    `__lt__` is the only method needed for sorting in CPython:
+    https://docs.python.org/3/library/stdtypes.html#list.sort
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically less
+      than the string representation of `other`. For FeatureColumn objects,
+      this looks like "<__main__.FeatureColumn object at 0x7fa1fc02bba8>".
+    """
+    return str(self) < str(other)
+
   @property
   def _var_scope_name(self):
     """Returns string. Used for variable_scope. Defaults to self.name."""

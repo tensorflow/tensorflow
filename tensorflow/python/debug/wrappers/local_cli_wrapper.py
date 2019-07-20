@@ -25,6 +25,7 @@ import tempfile
 
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -38,6 +39,7 @@ from tensorflow.python.debug.wrappers import framework
 _DUMP_ROOT_PREFIX = "tfdbg_"
 
 
+# TODO(donglin) Remove use_random_config_path after b/137652456 is fixed.
 class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   """Concrete subclass of BaseDebugWrapperSession implementing a local CLI.
 
@@ -51,7 +53,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                dump_root=None,
                log_usage=True,
                ui_type="curses",
-               thread_name_filter=None):
+               thread_name_filter=None,
+               use_random_config_path=False):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -66,6 +69,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         (curses | readline)
       thread_name_filter: Regular-expression white list for thread name. See
         the doc of `BaseDebugWrapperSession` for details.
+      use_random_config_path: If true, set config file path to a random file in
+        the temporary directory.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -120,8 +125,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._skip_debug = False
     self._run_start_response = None
     self._is_run_start = True
-
     self._ui_type = ui_type
+    self._config = None
+    if use_random_config_path:
+      self._config = cli_config.CLIConfig(
+          config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config"))
 
   def _is_disk_usage_reset_each_run(self):
     # The dumped tensors are all cleaned up after every Session.run
@@ -279,8 +287,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def _prep_cli_for_run_start(self):
     """Prepare (but not launch) the CLI for run-start."""
-
-    self._run_cli = ui_factory.get_ui(self._ui_type)
+    self._run_cli = ui_factory.get_ui(self._ui_type, config=self._config)
 
     help_intro = debugger_cli_common.RichTextLines([])
     if self._run_call_count == 1:
@@ -409,8 +416,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
-        debug_dump, self._tensor_filters, ui_type=self._ui_type,
-        on_ui_exit=self._remove_dump_root)
+        debug_dump,
+        self._tensor_filters,
+        ui_type=self._ui_type,
+        on_ui_exit=self._remove_dump_root,
+        config=self._config)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []

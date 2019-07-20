@@ -233,6 +233,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("nnapi_accelerator_name",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam(
@@ -271,6 +273,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                               "input layer shape"),
       CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
       CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
+      CreateFlag<std::string>(
+          "nnapi_accelerator_name", &params_,
+          "the name of the nnapi accelerator to use (requires Android Q+)"),
       CreateFlag<bool>("use_gpu", &params_, "use gpu"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
@@ -291,6 +296,10 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
+  if (params_.HasParam("nnapi_accelerator_name")) {
+    TFLITE_LOG(INFO) << "nnapi accelerator name: ["
+                     << params_.Get<string>("nnapi_accelerator_name") << "]";
+  }
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
@@ -506,12 +515,24 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     }
   }
   if (params_.Get<bool>("use_nnapi")) {
-    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateNNAPIDelegate();
+    StatefulNnApiDelegate::Options options;
+    std::string accelerator_name;
+    if (params_.HasParam("nnapi_accelerator_name")) {
+      accelerator_name = params_.Get<std::string>("nnapi_accelerator_name");
+      options.accelerator_name = accelerator_name.c_str();
+    }
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
       TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
+  } else if (params_.HasParam("nnapi_accelerator_name")) {
+    TFLITE_LOG(WARN)
+        << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
+        << params_.Get<std::string>("nnapi_accelerator_name")
+        << ") to be used.";
   }
   return delegates;
 }
@@ -521,7 +542,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   tflite::OpResolver* resolver = nullptr;
 #ifdef TFLITE_CUSTOM_OPS_HEADER
   resolver = new tflite::MutableOpResolver();
-  RegisterSelectedOps(resolver);
+  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
 #else
   resolver = new tflite::ops::builtin::BuiltinOpResolver();
 #endif

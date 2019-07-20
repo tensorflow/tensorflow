@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
@@ -716,8 +718,6 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-PyTypeObject* resource_variable_type = nullptr;
-
 tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
 tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
 
@@ -727,6 +727,17 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     const char* op_name, TFE_InputTensorHandles* inputs,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status) {
+  TFE_Py_ExecuteCancelable(ctx, device_name, op_name, inputs, attrs,
+                           /*cancellation_manager=*/nullptr, outputs,
+                           out_status);
+}
+
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
   TFE_OpSetDevice(op, device_name, out_status);
@@ -735,6 +746,9 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
          ++i) {
       TFE_OpAddInput(op, inputs->at(i), out_status);
     }
+  }
+  if (cancellation_manager && TF_GetCode(out_status) == TF_OK) {
+    TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
   }
   if (TF_GetCode(out_status) == TF_OK) {
     SetOpAttrs(ctx, op, attrs, 0, out_status);
@@ -770,23 +784,6 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
 
   Py_INCREF(e);
   exception_class = e;
-  Py_RETURN_NONE;
-}
-
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e) {
-  if (!PyType_Check(e)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        "TFE_Py_RegisterResourceVariableType: Need to register a type.");
-    return nullptr;
-  }
-
-  if (resource_variable_type != nullptr) {
-    Py_DECREF(resource_variable_type);
-  }
-
-  Py_INCREF(e);
-  resource_variable_type = reinterpret_cast<PyTypeObject*>(e);
   Py_RETURN_NONE;
 }
 
@@ -2132,7 +2129,7 @@ PyObject* GetPythonObjectFromString(const char* s) {
 }
 
 bool CheckResourceVariable(PyObject* item) {
-  if (PyObject_TypeCheck(item, resource_variable_type)) {
+  if (tensorflow::swig::IsResourceVariable(item)) {
     tensorflow::Safe_PyObjectPtr handle(
         PyObject_GetAttrString(item, "_handle"));
     return EagerTensor_CheckExact(handle.get());
@@ -2613,35 +2610,6 @@ void MaybeNotifyVariableAccessed(PyObject* input) {
   TFE_Py_TapeVariableAccessed(input);
 }
 
-bool CastTensor(const FastPathOpExecInfo& op_exec_info,
-                const TF_DataType& desired_dtype,
-                tensorflow::Safe_TFE_TensorHandlePtr* handle,
-                TF_Status* status) {
-  TF_DataType input_dtype = TFE_TensorHandleDataType(handle->get());
-  TF_DataType output_dtype = input_dtype;
-
-  if (desired_dtype >= 0 && desired_dtype != input_dtype) {
-    *handle = tensorflow::make_safe(
-        tensorflow::EagerCast(op_exec_info.ctx, handle->get(), input_dtype,
-                              static_cast<TF_DataType>(desired_dtype), status));
-    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-      return false;
-    }
-    output_dtype = desired_dtype;
-  }
-
-  if (output_dtype != TF_INT32) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
-    *handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
-        handle->get(), op_exec_info.ctx, op_exec_info.device_name, status));
-    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
                     PyObject* input, tensorflow::Safe_PyObjectPtr* output,
                     TF_Status* status) {
@@ -2730,38 +2698,19 @@ bool ConvertToTensor(
   // The hint comes from a supposedly similarly typed tensor.
   tensorflow::DataType dtype_hint = dtype_hint_getter();
 
-  tensorflow::Safe_TFE_TensorHandlePtr handle =
-      tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(input, dtype_hint)));
+  tensorflow::Safe_TFE_TensorHandlePtr handle = tensorflow::make_safe(
+      tensorflow::ConvertToEagerTensor(op_exec_info.ctx, input, dtype_hint));
   if (handle == nullptr) {
     return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
-  int desired_dtype = -1;
-  if (dtype_hint != tensorflow::DT_INVALID) {
-    desired_dtype = static_cast<int>(dtype_hint);
-  }
-
-  // Maybe cast to the desired type. This is intended to match python
-  // convert_to_tensor behavior.
-  TF_DataType output_dtype = TFE_TensorHandleDataType(handle.get());
-  if (desired_dtype >= 0 && desired_dtype != output_dtype) {
-    if (tensorflow::IsCompatible(desired_dtype, output_dtype)) {
-      if (!CastTensor(op_exec_info, static_cast<TF_DataType>(desired_dtype),
-                      &handle, status)) {
-        return false;
-      }
-      output_dtype = TFE_TensorHandleDataType(handle.get());
-    } else {
-      tensorflow::Safe_PyObjectPtr input_str(PyObject_Str(input));
-      PyErr_SetString(
-          PyExc_TypeError,
-          tensorflow::strings::StrCat(
-              "Cannot convert provided value to EagerTensor. Provided value: ",
-              TFE_GetPythonString(input_str.get()), " Requested dtype: ",
-              tensorflow::DataTypeString(
-                  static_cast<tensorflow::DataType>(desired_dtype)))
-              .c_str());
+  auto output_dtype = TFE_TensorHandleDataType(handle.get());
+  if (output_dtype != TF_INT32) {
+    // Note that this is a shallow copy and will share the underlying buffer
+    // if copying to the same device.
+    handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
+        handle.get(), op_exec_info.ctx, op_exec_info.device_name, status));
+    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
       return false;
     }
   }

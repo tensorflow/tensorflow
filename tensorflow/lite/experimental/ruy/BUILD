@@ -164,6 +164,7 @@ cc_library(
     hdrs = [
         "detect_dotprod.h",
     ],
+    visibility = ruy_visibility(),
 )
 
 cc_library(

@@ -305,7 +305,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
               keras.layers.Dense(1)]
 
     model = keras.models.Sequential(layers)
-    model.compile(keras.optimizers.SGD(0.1),
+    model.compile(optimizer='sgd',
                   loss=keras.losses.BinaryCrossentropy())
     model.fit(dataset)
 

@@ -362,8 +362,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
   Device* device = tensor_handle->device();
-  EXPECT_NE(device, nullptr);
-  EXPECT_EQ(device->name(), "/job:localhost/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(device, nullptr);
 
   auto actual = t->flat<float>();
   EXPECT_EQ(4, actual.size());

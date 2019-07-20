@@ -67,62 +67,53 @@ class TestSequence(data_utils.Sequence):
     return 10
 
 
-class NumpyDataAdapterTest(DataAdapterTestBase):
+class TensorLikeDataAdapterTest(DataAdapterTestBase):
 
   def setUp(self):
-    super(NumpyDataAdapterTest, self).setUp()
-    self.adapter_cls = data_adapter.NumpyArrayDataAdapter
+    super(TensorLikeDataAdapterTest, self).setUp()
+    self.adapter_cls = data_adapter.TensorLikeDataAdapter
 
-  def test_can_handle(self):
+  def test_can_handle_numpy(self):
     self.assertTrue(self.adapter_cls.can_handle(self.numpy_input))
     self.assertTrue(
         self.adapter_cls.can_handle(self.numpy_input, self.numpy_target))
 
-    self.assertFalse(self.adapter_cls.can_handle(self.tensor_input))
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
-  def test_iterator_expect_batch_size(self):
-    with self.assertRaisesRegexp(ValueError, 'batch size is required'):
+  def test_iterator_expect_batch_size_numpy(self):
+    with self.assertRaisesRegexp(ValueError, r'`batch_size` is required'):
       self.adapter_cls(self.numpy_input, self.numpy_target)
 
-  def test_size(self):
+  def test_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
     self.assertEqual(adapter.get_size(), 10)
     self.assertFalse(adapter.has_partial_batch())
 
-  def test_batch_size(self):
+  def test_batch_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
     self.assertEqual(adapter.batch_size(), 5)
 
-  def test_partial_batch(self):
+  def test_partial_batch_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=4)
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
 
-  def test_training(self):
+  def test_training_numpy(self):
     dataset = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(dataset)
-
-
-class TensorDataAdapterTest(DataAdapterTestBase):
-
-  def setUp(self):
-    super(TensorDataAdapterTest, self).setUp()
-    self.adapter_cls = data_adapter.TensorDataAdapter
 
   def test_can_handle(self):
     self.assertTrue(self.adapter_cls.can_handle(self.tensor_input))
     self.assertTrue(
         self.adapter_cls.can_handle(self.tensor_input, self.tensor_target))
 
-    self.assertFalse(self.adapter_cls.can_handle(self.numpy_input))
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))

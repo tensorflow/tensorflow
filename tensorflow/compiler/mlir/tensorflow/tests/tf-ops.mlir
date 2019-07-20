@@ -65,6 +65,18 @@ func @testTFComplex(tensor<*x!tf.complex64>, tensor<*x!tf.complex128>) -> (!tf.c
 
 // -----
 
+// TODO(hinsu): Move this to MLIR core once the test dialect have a custom type.
+
+// Check that broadcastable trait accepts TF specific element type
+// CHECK-LABEL: func @testAdd
+func @testAdd(%arg0: tensor<4x2x!tf.string>, %arg1: tensor<2x!tf.string>) -> tensor<4x2x!tf.string> {
+  // CHECK: %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x2x!tf.string>, tensor<2x!tf.string>) -> tensor<4x2x!tf.string>
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x2x!tf.string>, tensor<2x!tf.string>) -> tensor<4x2x!tf.string>
+  return %0 : tensor<4x2x!tf.string>
+}
+
+// -----
+
 func @testValidBiasAdd(tensor<1x32x32x16xf32>, tensor<16xf32>) -> tensor<1x32x32x16xf32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<16xf32>):
   // CHECK: %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x32x32x16xf32>, tensor<16xf32>) -> tensor<1x32x32x16xf32>
@@ -176,6 +188,14 @@ func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
+}
+
+// -----
+// tf.Reshape with a first operand that has non-static shape.
+func @testReshape(%arg0: tensor<10x10x?xf32>) -> tensor<10x10xf32> {
+  %shape1 = constant dense<[10, 10]> : tensor<2xi32>
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x?xf32>, tensor<2xi32>) -> (tensor<10x10xf32>)
+  return %r1 : tensor<10x10xf32>
 }
 
 // -----
@@ -480,7 +500,7 @@ func @testIfElse(f32) -> f32
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, f32) -> f32 {
 ^bb0(%arg0: tensor<i1>, %arg1: f32):
-  // expected-error @+1 {{requires operands to have a valid TensorFlow tensor type}}
+  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse
@@ -496,7 +516,7 @@ func @testIfElse(tensor<2xf32>) -> tensor<2xf32>
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
-  // expected-error @+1 {{requires then_branch attribute}}
+  // expected-error @+1 {{requires attribute 'then_branch'}}
   %1 = "tf.If"(%arg0, %arg1) {
     else_branch = @testIfElse
   } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>

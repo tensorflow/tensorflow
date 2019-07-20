@@ -812,7 +812,6 @@ class Network(base_layer.Layer):
     """Computes output tensors for new inputs.
 
     # Note:
-        - Expects `inputs` to be a list (potentially with 1 element).
         - Can be run on non-Keras tensors.
 
     Arguments:
@@ -842,7 +841,7 @@ class Network(base_layer.Layer):
     # Dictionary mapping reference tensors to computed tensors.
     tensor_dict = {}
 
-    for x, y, mask in zip(self.inputs, inputs, masks):
+    for x, y in zip(self.inputs, inputs):
       tensor_dict[str(id(x))] = y
 
     depth_keys = list(self._nodes_by_depth.keys())
@@ -865,15 +864,20 @@ class Network(base_layer.Layer):
               lambda t: tensor_dict[str(id(t))], node.input_tensors)
 
           # Ensure `training` and `mask` arg propagation if applicable.
-          kwargs = node.arguments or {}
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
-          if 'mask' in argspec:
-            computed_masks = nest.map_structure(
-                lambda t: getattr(t, '_keras_mask', None),
-                computed_tensors)
-            kwargs.setdefault('mask', computed_masks)
+          if 'mask' in kwargs:
+
+            def _map_mask_if_from_keras_layer(m):
+              # Replace input mask that originates from a Keras layer with
+              # its computed value.
+              m_id = str(id(m))
+              return tensor_dict[m_id] if m_id in tensor_dict else m
+
+            kwargs['mask'] = nest.map_structure(_map_mask_if_from_keras_layer,
+                                                kwargs['mask'])
 
           # Compute outputs.
           output_tensors = layer(computed_tensors, **kwargs)
@@ -1654,6 +1658,22 @@ class Network(base_layer.Layer):
   def _object_identifier(self):
     return '_tf_keras_network'
 
+  def _graph_network_add_loss(self, symbolic_loss):
+    new_layers = _diff_layers(self.inputs, [symbolic_loss], self._layers)
+    # Losses must be keyed on inputs no matter what in order to be supported in
+    # DistributionStrategy.
+    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer(symbolic_loss)
+    new_layers.append(add_loss_layer)
+    self._insert_layers(new_layers)
+
+  def _graph_network_add_metric(self, value, aggregation, name):
+    new_layers = _diff_layers(self.inputs, [value], self._layers)
+    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer(value)
+    new_layers.append(add_metric_layer)
+    self._insert_layers(new_layers)
+
 
 def _is_hdf5_filepath(filepath):
   return (filepath.endswith('.h5') or filepath.endswith('.keras') or
@@ -1846,3 +1866,20 @@ def _map_graph_network(inputs, outputs):
                        str(all_names.count(name)) + ' times in the model. '
                        'All layer names should be unique.')
   return network_nodes, nodes_by_depth, layers, layers_by_depth
+
+
+def _diff_layers(inputs, outputs, layers):
+  """Returns the layers in the network topology minus those in `layers`.
+
+  Args:
+    inputs: List of input tensors.
+    outputs: List of output tensors.
+    layers: List of layers.
+
+  Returns:
+    List of layers in the network topology not in `layers`.
+  """
+  base_layer_utils.create_keras_history(outputs)
+  # List of all layers in the topology betweeen inputs and outputs.
+  all_layers = _map_graph_network(inputs, outputs)[2]
+  return [layer for layer in all_layers if layer not in layers]

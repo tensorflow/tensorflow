@@ -89,6 +89,19 @@ class BaseFeatureColumnForTests(fc.FeatureColumn):
     raise ValueError('Should not use this method.')
 
 
+class SortableFeatureColumnTest(test.TestCase):
+
+  def test_sort_columns_by_name(self):
+    # These should be sorted lexicographically based on their string
+    # representations. For FeatureColumns, this looks like
+    # '<__main__.FeatureColumn object at ...>'.
+
+    a = fc.numeric_column('first')  # '<__main__.NumericColumn object at 0xa>'
+    b = fc.numeric_column('second')  # '<__main__.NumericColumn object at 0xb>'
+    c = fc_old._numeric_column('third')  # '<__main__._NumericColumn ...>'
+    self.assertAllEqual(sorted(['d', c, b, a]), [a, b, c, 'd'])
+
+
 class LazyColumnTest(test.TestCase):
 
   def test_transformations_called_once(self):

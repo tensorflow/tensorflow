@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -46,6 +47,14 @@ Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
   return Status::OK();
+}
+
+void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
+  entry_computation_ = entry_computation;
+  config_.SetDefaultComputationLayout(
+      entry_computation_->ComputeProgramShape());
+  input_output_alias_config_ = HloInputOutputAliasConfig(
+      entry_computation_->root_instruction()->shape());
 }
 
 HloComputation* HloModule::AddComputationInternal(
@@ -107,10 +116,15 @@ HloComputation* HloModule::AddEntryComputation(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+  if (has_schedule() && !to_remove->IsFusionComputation()) {
+    schedule_->remove_computation(to_remove);
+  }
+
   auto it = absl::c_find_if(
       computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
         return comp.get() == to_remove;
       });
+  TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
   return Status::OK();
@@ -558,6 +572,16 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
   return result;
 }
 
+std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
+    const {
+  auto result = MakeNonfusionComputations();
+  std::sort(result.begin(), result.end(),
+            [](HloComputation* a, HloComputation* b) {
+              return a->name() < b->name();
+            });
+  return result;
+}
+
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   return Clone(config(), suffix);
 }
@@ -588,6 +612,25 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
   return module;
+}
+
+Status HloModule::RemoveUnusedComputations() {
+  std::string suffix = "tmp";
+  auto module = absl::make_unique<HloModule>(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
+  HloCloneContext context(module.get(), suffix);
+  entry_computation_->Clone(suffix, &context);
+  std::vector<HloComputation*> to_remove;
+  for (auto computation : computations()) {
+    auto found_computation = context.FindComputation(computation);
+    if (found_computation == nullptr) {
+      to_remove.push_back(computation);
+    }
+  }
+  for (auto computation : to_remove) {
+    TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
+  }
+  return Status::OK();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,

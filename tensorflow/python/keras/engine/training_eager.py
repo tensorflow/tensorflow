@@ -57,7 +57,6 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
-  # TODO(psv): Consider supporting skip target indices in eager mode?
   # Invoke all(weighted and unweighted) metrics.
   metric_results = []
   if targets:
@@ -66,7 +65,8 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
         targets=targets,
         sample_weights=sample_weights,
         masks=masks,
-        return_weighted_and_unweighted_metrics=True)
+        return_weighted_and_unweighted_metrics=True,
+        skip_target_masks=model._prepare_skip_target_masks())
 
   # Add metric results from the `add_metric` metrics.
   metric_results.extend([
@@ -170,6 +170,7 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+          loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -181,9 +182,7 @@ def _model_loss(model,
 
       # Scale output loss for distribution. For custom losses we assume
       # reduction was mean.
-      if (getattr(loss_fn, 'reduction',
-                  losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
-          losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+      if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
         output_loss = losses_utils.scale_loss_for_distribution(output_loss)
       total_loss += model._loss_weights_list[i] * output_loss
 

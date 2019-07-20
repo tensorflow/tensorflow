@@ -1612,12 +1612,9 @@ bool MightTrace(const NodeItem& item,
   if (event_collector != nullptr) {
     return true;
   }
-  auto* trace_collector = tracing::GetTraceCollector();
-  if (trace_collector) {
-    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
-      return true;
-    }
-  }
+
+  if (using_annotations && tracing::ScopedAnnotation::IsEnabled()) return true;
+
   return profiler::TraceMeRecorder::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }

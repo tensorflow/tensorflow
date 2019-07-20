@@ -326,13 +326,15 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
 @tf_export(v1=["strings.reduce_join", "reduce_join"])
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
-                keep_dims=False,
+                keep_dims=None,
                 separator="",
                 name=None,
                 reduction_indices=None,
                 keepdims=None):
   keep_dims = deprecation.deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
       inputs_t, axis, reduction_indices)

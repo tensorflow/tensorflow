@@ -1171,6 +1171,7 @@ sh_test(
         ":offline_analyzer",
     ],
     tags = [
+        "no_oss",  # TODO(b/137652456): remove when fixed
         "no_windows",
     ],
 )

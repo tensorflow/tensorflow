@@ -23,7 +23,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [  ],
+// CHECK-NEXT:      shape: [ 1, 224, 224, 3 ],
 // CHECK-NEXT:      type: UINT8,
 // CHECK-NEXT:      buffer: 2,
 // CHECK-NEXT:      name: "tfl.quantize",
@@ -50,7 +50,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-NEXT:        zero_point: [ 0 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [  ],
+// CHECK-NEXT:      shape: [ 1, 112, 112, 32 ],
 // CHECK-NEXT:      type: UINT8,
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "tfl.conv_2d",
@@ -59,7 +59,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-NEXT:        zero_point: [ 0 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [  ],
+// CHECK-NEXT:      shape: [ 1, 1001 ],
 // CHECK-NEXT:      type: UINT8,
 // CHECK-NEXT:      buffer: 6,
 // CHECK-NEXT:      name: "tfl.reshape",
@@ -68,7 +68,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-NEXT:        zero_point: [ 0 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [  ],
+// CHECK-NEXT:      shape: [ 1, 1001 ],
 // CHECK-NEXT:      type: UINT8,
 // CHECK-NEXT:      buffer: 7,
 // CHECK-NEXT:      name: "tfl.softmax",
@@ -77,7 +77,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-NEXT:        zero_point: [ 0 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [  ],
+// CHECK-NEXT:      shape: [ 1, 1001 ],
 // CHECK-NEXT:      buffer: 8,
 // CHECK-NEXT:      name: "tfl.dequantize",
 // CHECK-NEXT:      quantization: {

@@ -16,6 +16,14 @@ config_setting(
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
 )
 
+config_setting(
+    name = "tflite_gpu_extra_gles_deps",
+    values = {
+        "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
+        "cpu": "k8",
+    },
+)
+
 cc_library(
     name = "gl_delegate",
     srcs = ["gl_delegate.cc"],

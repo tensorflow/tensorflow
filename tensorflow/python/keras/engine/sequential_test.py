@@ -129,8 +129,6 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_deferred_build_with_dataset_iterators(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_hidden = 5
     input_dim = 3
     num_classes = 2
@@ -155,9 +153,8 @@ class TestSequential(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-    model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
+    model.fit(dataset, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 2 * 2)
     self.assertFalse(model._is_graph_network)

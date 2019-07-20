@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -112,7 +113,10 @@ class LocalCLIDebuggerWrapperSessionForTest(
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
 
-    readline_cli = ui_factory.get_ui("readline")
+    readline_cli = ui_factory.get_ui(
+        "readline",
+        config=cli_config.CLIConfig(
+            config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
     self._register_this_run_info(readline_cli)
 
     while True:

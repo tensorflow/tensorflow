@@ -554,17 +554,17 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     HloInstruction* rhs;
     HloInstruction* lhs;
 
-    std::tie(match, window, dnums, lhs) = MatchBackwardFilter(conv);
-    if (match) {
-      return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
-                             lhs, conv->mutable_operand(1), window, dnums,
-                             conv->feature_group_count(), conv->metadata());
-    }
-
     std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                              conv->mutable_operand(0), rhs, window, dnums,
+                             conv->feature_group_count(), conv->metadata());
+    }
+
+    std::tie(match, window, dnums) = MatchBackwardFilter(conv);
+    if (match) {
+      return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
+                             lhs, conv->mutable_operand(1), window, dnums,
                              conv->feature_group_count(), conv->metadata());
     }
 

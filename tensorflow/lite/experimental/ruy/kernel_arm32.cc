@@ -125,7 +125,7 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
   //  \---------------------/  \--------------------------/
   //                             accumulators 8x4 block
   asm volatile(
-#define RUY_MAKE_ZERO(reg) "mov r0, 0\n vdup.32 " #reg ", r0\n"
+#define RUY_MAKE_ZERO(reg) "mov r0, #0\n vdup.32 " #reg ", r0\n"
 
         // clang-format off
 
