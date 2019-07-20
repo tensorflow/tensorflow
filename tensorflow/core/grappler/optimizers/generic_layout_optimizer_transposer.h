@@ -239,6 +239,14 @@ class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class FusedBatchNormGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit FusedBatchNormGradTransposer() : LayoutSensitiveOpTransposer() {}

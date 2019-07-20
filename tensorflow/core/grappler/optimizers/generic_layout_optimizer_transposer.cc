@@ -648,6 +648,9 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -660,6 +663,9 @@ Status AvgPoolGradTransposer::TransposeNode(TransposeContext* context,
   if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 1, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
@@ -674,6 +680,9 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
   if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   // No need to update output shape, as it is always of shape 1-D with size the
@@ -689,6 +698,9 @@ Status Conv2DBackpropFilterTransposer::TransposeNode(
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 2}, node, kOpTranspose));
@@ -705,10 +717,34 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status FusedBatchNormExTransposer::TransposeNode(TransposeContext* context,
+                                                 utils::MutableNodeView* node) {
+  DCHECK(IsFusedBatchNormEx(*node->node()));
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  if (node->NumRegularFanins() == 6) {
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, {0, 5}, node, kOpTranspose));
+  } else {
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
+  }
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
 }
@@ -729,6 +765,9 @@ Status FusedBatchNormGradTransposer::TransposeNode(
       !IsTraining(*node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1}, node, kOpTranspose));
@@ -748,6 +787,9 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
       !IsFanoutPortRankN(*data_fanin_node, data_fanin.index(), 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
@@ -762,6 +804,9 @@ Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1, 2}, node, kOpTranspose));
@@ -775,6 +820,9 @@ Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1, 2}, node, kOpTranspose));
@@ -1607,8 +1655,8 @@ bool IsLayoutSensitiveOp(const NodeDef& node) {
          IsConv2DBackpropInput(node) ||
          IsDepthwiseConv2dNativeBackpropFilter(node) ||
          IsDepthwiseConv2dNativeBackpropInput(node) ||
-         IsFusedBatchNormGrad(node) || IsMaxPoolV2(node) ||
-         IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
+         IsFusedBatchNormEx(node) || IsFusedBatchNormGrad(node) ||
+         IsMaxPoolV2(node) || IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
          IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node);
 }
 
