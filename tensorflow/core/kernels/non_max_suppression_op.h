@@ -54,7 +54,7 @@ extern const int kNmsBoxesPerTread;
 Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
               const float iou_threshold, int* d_selected_indices,
               int* h_num_boxes_to_keep, OpKernelContext* context,
-              bool flip_boxes = false);
+              bool flip_boxes = false,bool legacy_mode=false);
 #endif
 
 }  // namespace tensorflow
