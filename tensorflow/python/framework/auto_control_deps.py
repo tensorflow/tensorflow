@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 
 # Op types that should not run in program order, e.g. because they need to run
@@ -110,7 +111,7 @@ class AutomaticControlDependencies(object):
   """
 
   def __init__(self):
-    self._returned_tensors = set()
+    self._returned_tensors = object_identity.ObjectIdentitySet()
     self.ops_which_must_run = set()
 
   def mark_as_return(self, tensor):
