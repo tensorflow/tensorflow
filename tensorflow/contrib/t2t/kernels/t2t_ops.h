@@ -7,41 +7,94 @@
 
 namespace tensorflow {
 
-template <typename D, typename T>
+template <typename D, typename T, typename U>
 struct CustomL2NormFunctor {
   void operator()(const D& d, 
     uint64_t N, uint64_t k,
     const T* in, T* temp, T* out,
-    const float* eps, const float* bias, const float* scale
+    const U* eps, const U* bias, const U* scale
     );  
 };
 
-template <typename D, typename T>
+template <typename D, typename T, typename U>
 struct CustomL2NormGradFunctor {
   void operator()(const D& d, 
     uint64_t N, uint64_t k,
     const T* in, const T* outgrad, T* temp, T* out,
-    const float* eps, const float* bias, const float* scale);
+    const U* eps, const U* bias, const U* scale
+    );
+};
+
+template <typename Device, typename T>
+struct CustomDropoutFunctor2 {
+  void operator()(const Device& d, 
+    const T* in,
+    const T* rng,
+    T* out,
+    const T* pthr,
+    int d0, int d1,
+    int s0, int s1,
+    int r0, int r1
+    );
+};
+
+template <typename Device, typename T>
+struct CustomDropoutFunctor3 {
+  void operator()(const Device& d, 
+    const T* in,
+    const T* rng,
+    T* out,
+    const T* pthr,
+    int d0, int d1, int d2,
+    int s0, int s1, int s2,
+    int r0, int r1, int r2
+    );
 };
 
 #if GOOGLE_CUDA
-template <typename T>
-struct CustomL2NormFunctor<Eigen::GpuDevice, T> {
+template <typename T, typename U>
+struct CustomL2NormFunctor<Eigen::GpuDevice, T, U> {
   void operator()(const Eigen::GpuDevice& d, 
     uint64_t N, uint64_t k,
     const T* in, float* temp, T* out,
-    const float* eps,
-    const float* bias, const float* scale);
+    const U* eps, const U* bias, const U* scale
+    );
 };
 
-template <typename T>
-struct CustomL2NormGradFunctor<Eigen::GpuDevice, T> {
+template <typename T, typename U>
+struct CustomL2NormGradFunctor<Eigen::GpuDevice, T, U> {
   void operator()(const Eigen::GpuDevice& d, 
     uint64_t N, uint64_t k,
     const T* in, const T* outgrad, float* temp, T* out,
-    const float* eps, const float* bias, const float* scale);
+    const U* eps, const U* bias, const U* scale
+    );
 };
 
+template <typename T>
+struct CustomDropoutFunctor2<Eigen::GpuDevice, T> {
+  void operator()(const Eigen::GpuDevice& d, 
+    const T* in,
+    const T* rng,
+    T* out,
+    const T* pthr,
+    int d0, int d1,
+    int s0, int s1,
+    int r0, int r1
+    );
+};
+
+template <typename T>
+struct CustomDropoutFunctor3<Eigen::GpuDevice, T> {
+  void operator()(const Eigen::GpuDevice& d, 
+    const T* in,
+    const T* rng,
+    T* out,
+    const T* pthr,
+    int d0, int d1, int d2,
+    int s0, int s1, int s2,
+    int r0, int r1, int r2
+    );
+};
 
 #endif
 
