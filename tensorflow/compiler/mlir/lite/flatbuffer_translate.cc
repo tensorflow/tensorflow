@@ -545,8 +545,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 }
 
 CustomOptionsOffset Translator::CreateIfOpCustomOptions(mlir::TF::IfOp op) {
-  int then_subgraph_index = subgraph_index_map_.at(op.getThen().str());
-  int else_subgraph_index = subgraph_index_map_.at(op.getElse().str());
+  int then_subgraph_index = subgraph_index_map_.at(op.then_branch().str());
+  int else_subgraph_index = subgraph_index_map_.at(op.else_branch().str());
 
   auto flex_builder = absl::make_unique<flexbuffers::Builder>();
   flex_builder->Map([&]() {
@@ -559,8 +559,8 @@ CustomOptionsOffset Translator::CreateIfOpCustomOptions(mlir::TF::IfOp op) {
 
 CustomOptionsOffset Translator::CreateWhileOpCustomOptions(
     mlir::TF::WhileOp op) {
-  int cond_subgraph_index = subgraph_index_map_.at(op.getCond().str());
-  int body_subgraph_index = subgraph_index_map_.at(op.getBody().str());
+  int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
+  int body_subgraph_index = subgraph_index_map_.at(op.body().str());
 
   auto flex_builder = absl::make_unique<flexbuffers::Builder>();
   flex_builder->Map([&]() {

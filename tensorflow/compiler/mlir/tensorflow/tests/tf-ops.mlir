@@ -500,7 +500,7 @@ func @testIfElse(f32) -> f32
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, f32) -> f32 {
 ^bb0(%arg0: tensor<i1>, %arg1: f32):
-  // expected-error @+1 {{requires operands to have a valid TensorFlow tensor type}}
+  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse
@@ -516,7 +516,7 @@ func @testIfElse(tensor<2xf32>) -> tensor<2xf32>
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
-  // expected-error @+1 {{requires then_branch attribute}}
+  // expected-error @+1 {{requires attribute 'then_branch'}}
   %1 = "tf.If"(%arg0, %arg1) {
     else_branch = @testIfElse
   } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>

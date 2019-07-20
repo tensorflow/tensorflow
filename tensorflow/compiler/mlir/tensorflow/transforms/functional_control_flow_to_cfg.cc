@@ -150,12 +150,12 @@ static LogicalResult LowerIfOp(IfOp op) {
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
+  Value* cond_i1 = LowerCondition(loc, op.cond(), &builder);
   if (!cond_i1) return failure();
 
   auto module = op_inst->getParentOfType<ModuleOp>();
-  auto then_fn = module.lookupSymbol<FuncOp>(op.getThen());
-  auto else_fn = module.lookupSymbol<FuncOp>(op.getElse());
+  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
+  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -211,8 +211,8 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   OpBuilder builder(op_inst);
 
   auto module = op_inst->getParentOfType<ModuleOp>();
-  auto cond_fn = module.lookupSymbol<FuncOp>(op.getCond());
-  auto body_fn = module.lookupSymbol<FuncOp>(op.getBody());
+  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
+  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two
