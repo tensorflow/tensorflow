@@ -43,6 +43,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
@@ -473,7 +474,14 @@ class Model(network.Network):
         and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
             self._distribution_strategy)):
-      return training_v2.Loop()
+      try:
+        valid_adapter = data_adapter.select_data_adapter(inputs, None)
+      except ValueError as data_failure_exception:
+        valid_adapter = None
+        logging.warning('Falling back from v2 loop because of error: '
+                        '%s' % data_failure_exception)
+      if valid_adapter:
+        return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:

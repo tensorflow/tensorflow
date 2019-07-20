@@ -339,15 +339,35 @@ ALL_ADAPTER_CLS = [
 
 
 def select_data_adapter(x, y):
+  """Selects a data adapter than can handle a given x and y."""
   adapter_cls = [cls for cls in ALL_ADAPTER_CLS if cls.can_handle(x, y)]
   if not adapter_cls:
-    raise ValueError("Failed to find data adapter that can handle "
-                     "input: {}, {}".format(type(x), type(y)))
+    # TODO(scottzhu): This should be a less implementation-specific error.
+    raise ValueError(
+        "Failed to find data adapter that can handle "
+        "input: {}, {}".format(
+            _type_name(x), _type_name(y)))
   elif len(adapter_cls) > 1:
-    raise RuntimeError("Data adapter should be mutually exclusive for "
-                       "handling inputs. Found multiple adapter {} to handle "
-                       "input: {}, {}".format(adapter_cls, type(x), type(y)))
+    raise RuntimeError(
+        "Data adapters should be mutually exclusive for "
+        "handling inputs. Found multiple adapters {} to handle "
+        "input: {}, {}".format(
+            adapter_cls, _type_name(x), _type_name(y)))
   return adapter_cls[0]
+
+
+def _type_name(x):
+  """Generates a description of the type of an object."""
+  if isinstance(x, dict):
+    key_types = set(_type_name(key) for key in x.keys())
+    val_types = set(_type_name(key) for key in x.values())
+    return "({} containing {} keys and {} values)".format(
+        type(x), key_types, val_types)
+  if isinstance(x, (list, tuple)):
+    types = set(_type_name(val) for val in x)
+    return "({} containing values of types {})".format(
+        type(x), types)
+  return str(type(x))
 
 
 def _process_numpy_inputs(inputs):
