@@ -48,7 +48,7 @@ class NodeDefBuilderTest : public ::testing::Test {
 
   // Calls Finalize() and verifies it returns success and the result matches
   // expectations.
-  void ExpectSuccess(const NodeDefBuilder& builder,
+  void ExpectSuccess(NodeDefBuilder& builder,  // NOLINT
                      DataTypeSlice expected_in_types,
                      DataTypeSlice expected_out_types, StringPiece proto) {
     NodeDef node_def;
@@ -76,7 +76,7 @@ class NodeDefBuilderTest : public ::testing::Test {
 
   // Calls Finalize() and verifies it returns an error.
   // Each message must appear as a substring of the error.
-  void ExpectFailures(const NodeDefBuilder& builder,
+  void ExpectFailures(NodeDefBuilder& builder,  // NOLINT
                       const std::vector<string>& messages) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
@@ -90,13 +90,15 @@ class NodeDefBuilderTest : public ::testing::Test {
 
   // Calls Finalize() and verifies it returns an error.
   // Message must appear as a substring of the error.
-  void ExpectFailure(const NodeDefBuilder& builder, const string& message) {
+  void ExpectFailure(NodeDefBuilder& builder,  // NOLINT
+                     const string& message) {
     ExpectFailures(builder, {message});
   }
 
   // Like ExpectFailure(), except that the error can come from
   // ValidateNodeDef().
-  void ExpectInvalid(const NodeDefBuilder& builder, const string& message) {
+  void ExpectInvalid(NodeDefBuilder& builder,  // NOLINT
+                     const string& message) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
     if (status.ok()) {
