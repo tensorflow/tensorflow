@@ -50,45 +50,6 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return Status::OK();
   }
-
-  // Create a `RangeDataset` dataset as a variant tensor.
-  Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
-                          const Tensor& step,
-                          const DataTypeVector& output_types,
-                          const std::vector<PartialTensorShape>& output_shapes,
-                          Tensor* range_dataset) {
-    GraphConstructorOptions graph_opts;
-    graph_opts.allow_internal_ops = true;
-    graph_opts.expect_device_spec = false;
-    TF_RETURN_IF_ERROR(
-        RunFunction(test::function::MakeRangeDataset(),
-                    /*attrs*/
-                    {{RangeDatasetOp::kOutputTypes, output_types},
-                     {RangeDatasetOp::kOutputShapes, output_shapes}},
-                    /*inputs*/ {start, stop, step}, graph_opts,
-                    /*rets*/ {range_dataset}));
-    return Status::OK();
-  }
-
-  // Create a `TakeDataset` dataset as a variant tensor.
-  Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
-                         const DataTypeVector& output_types,
-                         const std::vector<PartialTensorShape>& output_shapes,
-                         Tensor* take_dataset) {
-    GraphConstructorOptions graph_opts;
-    graph_opts.allow_internal_ops = true;
-    graph_opts.expect_device_spec = false;
-
-    Tensor count_tensor = CreateTensor<int64>(TensorShape({}), {count});
-    TF_RETURN_IF_ERROR(
-        RunFunction(test::function::MakeTakeDataset(),
-                    /*attrs*/
-                    {{TakeDatasetOp::kOutputTypes, output_types},
-                     {TakeDatasetOp::kOutputShapes, output_shapes}},
-                    /*inputs*/ {input_dataset, count_tensor}, graph_opts,
-                    /*rets*/ {take_dataset}));
-    return Status::OK();
-  }
 };
 
 TEST_F(OptimizeDatasetOpTest, NoopElimination) {
