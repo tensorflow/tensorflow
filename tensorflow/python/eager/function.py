@@ -1541,7 +1541,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         expand_composites=True)
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature:\n" %
+                     "input_signature:\n%s" %
                      format_error_message(inputs, input_signature))
 
   need_packing = False
@@ -1555,7 +1555,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
       except ValueError:
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be convertible to "
-                         "tensors:\n" %
+                         "tensors:\n%s" %
                          format_error_message(inputs, input_signature))
 
   if any(not spec.is_compatible_with(other) for spec, other in zip(
