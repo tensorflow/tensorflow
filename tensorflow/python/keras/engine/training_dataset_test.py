@@ -47,100 +47,6 @@ class BatchCounterCallback(callbacks.Callback):
     self.batch_count += 1
 
 
-class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_training_and_eval_methods_on_iterators_single_io(self):
-    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = 'rmsprop'
-    loss = 'mse'
-    metrics = ['mae', metrics_module.CategoricalAccuracy()]
-    model.compile(
-        optimizer,
-        loss,
-        metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
-
-    inputs = np.zeros((10, 3), np.float32)
-    targets = np.zeros((10, 4), np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-
-    model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
-    model.evaluate(iterator, steps=2, verbose=1)
-    model.predict(iterator, steps=2)
-
-    # Test with validation data
-    model.fit(iterator,
-              epochs=1, steps_per_epoch=2, verbose=0,
-              validation_data=iterator, validation_steps=2)
-    # Test with validation split
-    with self.assertRaisesRegexp(
-        ValueError, '`validation_split` argument is not supported when '):
-      model.fit(iterator,
-                epochs=1, steps_per_epoch=2, verbose=0,
-                validation_split=0.5, validation_steps=2)
-
-    # Test with sample weight.
-    sample_weight = np.random.random((10,))
-    with self.assertRaisesRegexp(
-        ValueError, '`sample_weight` argument is not supported '
-        'when input `x` is a dataset or a dataset iterator'):
-      model.fit(
-          iterator,
-          epochs=1,
-          steps_per_epoch=2,
-          verbose=0,
-          sample_weight=sample_weight)
-
-    # Test invalid usage
-    with self.assertRaisesRegexp(ValueError,
-                                 'you should not specify a target'):
-      model.fit(iterator, iterator,
-                epochs=1, steps_per_epoch=2, verbose=0)
-
-    with self.assertRaisesRegexp(
-        ValueError, 'the `steps_per_epoch` argument'):
-      model.fit(iterator, epochs=1, verbose=0)
-    with self.assertRaisesRegexp(ValueError,
-                                 'the `steps` argument'):
-      model.evaluate(iterator, verbose=0)
-    with self.assertRaisesRegexp(ValueError,
-                                 'the `steps` argument'):
-      model.predict(iterator, verbose=0)
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_iterators_running_out_of_data(self):
-    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = 'rmsprop'
-    loss = 'mse'
-    metrics = ['mae']
-    model.compile(
-        optimizer,
-        loss,
-        metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
-
-    inputs = np.zeros((10, 3), np.float32)
-    targets = np.zeros((10, 4), np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(2)
-    dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-
-    with test.mock.patch.object(logging, 'warning') as mock_log:
-      model.fit(iterator, epochs=1, steps_per_epoch=3, verbose=0)
-      self.assertRegexpMatches(
-          str(mock_log.call_args),
-          'dataset iterator ran out of data')
-
-
 class TestTrainingWithDataset(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
@@ -618,11 +524,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.fit(dataset)
 
 
-class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
+class TestMetricsWithDatasets(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
-  def test_metrics_correctness_with_iterator(self):
+  def test_metrics_correctness_with_dataset(self):
     layers = [
         keras.layers.Dense(8, activation='relu', input_dim=4,
                            kernel_initializer='ones'),
@@ -643,8 +549,7 @@ class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
     y = np.random.randint(2, size=(100, 1)).astype(np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    outs = model.evaluate(iterator, steps=10)
+    outs = model.evaluate(dataset, steps=10)
     self.assertEqual(np.around(outs[1], decimals=1), 0.5)
     self.assertEqual(np.around(outs[2], decimals=1), 0.5)
 
@@ -652,8 +557,7 @@ class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    outs = model.evaluate(iterator, steps=10)
+    outs = model.evaluate(dataset, steps=10)
     self.assertEqual(outs[1], 0.)
     self.assertEqual(outs[2], 0.)
 

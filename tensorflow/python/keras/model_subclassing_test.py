@@ -646,7 +646,7 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
-  def test_single_io_workflow_with_dataset_iterators(self):
+  def test_single_io_workflow_with_datasets(self):
     num_classes = 2
     num_samples = 10
     input_dim = 50
@@ -664,10 +664,9 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
-      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-      model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
-      _ = model.evaluate(iterator, steps=10, verbose=0)
+      model.fit(dataset, epochs=2, steps_per_epoch=10, verbose=0)
+      _ = model.evaluate(dataset, steps=10, verbose=0)
 
   def test_attributes(self):
     # layers, weights, trainable_weights, non_trainable_weights, inputs, outputs

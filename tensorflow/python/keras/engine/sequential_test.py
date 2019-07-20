@@ -153,9 +153,8 @@ class TestSequential(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-    model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
+    model.fit(dataset, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 2 * 2)
     self.assertFalse(model._is_graph_network)

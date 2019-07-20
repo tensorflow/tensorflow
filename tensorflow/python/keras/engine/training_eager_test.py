@@ -183,30 +183,20 @@ class TrainingTest(keras_parameterized.TestCase):
     x = array_ops.zeros(shape=(10, 3))
     y = array_ops.zeros(shape=(10, 4))
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
     validation_dataset = dataset_ops.Dataset.from_tensor_slices(
         (x, y)).repeat().batch(5)  # Infinite dataset.
-    validation_iterator = dataset_ops.make_one_shot_iterator(validation_dataset)
 
-    with self.assertRaisesRegexp(
-        ValueError, r'specify .* `steps_per_epoch`'):
-      model.fit(iterator, epochs=1, verbose=0)
-    if not context.executing_eagerly():
-      # In eager execution, `array_ops.zeros` returns value tensors
-      # which can be used for validation without a `validation_steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, r'provide either `batch_size` or `validation_steps`'):
-        model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
-                  validation_data=(x, y))
+    model.fit(dataset, epochs=1, verbose=0)
+
     # Step argument is required for infinite datasets.
     with self.assertRaisesRegexp(ValueError,
                                  'specify the `validation_steps` argument.'):
-      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+      model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
     with self.assertRaisesRegexp(ValueError,
                                  'specify the `validation_steps` argument.'):
-      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
-                validation_data=validation_iterator)
+      model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=validation_dataset)
 
   # TODO(b/120931266): Enable test on subclassed models after bug causing an
   # extra dimension to be added to predict outputs is fixed.
@@ -282,8 +272,7 @@ class CorrectnessTest(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    history = model.fit(iterator, epochs=1, steps_per_epoch=10)
+    history = model.fit(dataset, epochs=1, steps_per_epoch=10)
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
 
   def test_loss_in_call(self):
