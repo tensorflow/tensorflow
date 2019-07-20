@@ -1548,12 +1548,17 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
                          "Inputs (%s), input_signature(%s)." %
                          (str(inputs), str(input_signature)))
 
+  def format_error_message(inputs, input_signature):
+      return ("  inputs: (\n    " +
+      ",\n    ".join([str(i) for i in inputs]) +
+      ")\n  input_signature: (\n    " +
+      ",\n    ".join([str(i) for i in input_signature]) +
+      ")")
   if any(not spec.is_compatible_with(other) for spec, other in zip(
       flat_input_signature,
       flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature: "
-                     "inputs (%s), input_signature (%s)" %
-                     (str(inputs), str(input_signature)))
+    raise ValueError("Python inputs incompatible with input_signature:\n%s" %
+                     format_error_message(inputs, input_signature))
 
   if need_packing:
     inputs = nest.pack_sequence_as(
