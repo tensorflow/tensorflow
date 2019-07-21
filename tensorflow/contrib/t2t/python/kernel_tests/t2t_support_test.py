@@ -70,7 +70,7 @@ v5 = np.random.rand(13,24,18)
 v6 = np.random.rand(218,121)
 v7 = np.random.rand(19,55,600)
 
-
+"""
 class CustomL2Test(tf.test.TestCase):
 	def doTest(self, v):
 		for dev in range(2):
@@ -98,14 +98,15 @@ class CustomL2Test(tf.test.TestCase):
 		self.doTest(v6)
 	def test7(self):
 		self.doTest(v7)
+"""
 
 class CustomDropoutTest(tf.test.TestCase):
 	def test1(self):
 		#config = tf.ConfigProto(allow_soft_placement=False)
 		for dev in [1]:#range(2):
 			with self.session(force_gpu=(dev==1)):
-				for series in range(4):
-					for n in range(4):
+				for series in range(5):
+					for n in range(50):
 						#shape=[np.random.randint(1,2000),np.random.randint(1,100),np.random.randint(1,100)] if toss() else [np.random.randint(1,2000),np.random.randint(1,100)]
 						if series==0: # test Functor3_v2
 							shape=[np.random.randint(1,200),np.random.randint(1,10),np.random.randint(1,10)] 
@@ -115,10 +116,13 @@ class CustomDropoutTest(tf.test.TestCase):
 							np.random.shuffle(shape)
 						elif series==2: # test Functor3->Functor2 fallback
 							shape=[1, np.random.randint(1,200),np.random.randint(1,200)]
-						else: #test Functor3
+						elif series==3: #test Functor3
 							shape=[np.random.randint(1,200),np.random.randint(1,10),np.random.randint(1024,3072)] 
 							if n<2:
 								shape=[70,49,2048]
+						else:
+							shape=[np.random.randint(1,2000),np.random.randint(1,10),np.random.randint(1,10), np.random.randint(1,10)] 
+							np.random.shuffle(shape)
 						ref, test, grad_ref, grad_test=testInnerDropout(shape)
 						self.assertAllCloseAccordingToType(test.eval(), ref.eval(), float_atol=1e-4)
 						self.assertAllCloseAccordingToType(grad_test[0].eval(), grad_ref[0].eval(), float_atol=1e-4)

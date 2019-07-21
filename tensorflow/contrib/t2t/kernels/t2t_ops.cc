@@ -240,6 +240,30 @@ struct CustomDropoutFunctor3<CPUDevice, T> {
   }
 };
 
+
+template <typename T>
+struct CustomDropoutFunctor4<CPUDevice, T> {
+  void operator()(const CPUDevice& d, 
+    const T* in,
+    const T* rng,
+    T* out,
+    const T* pthr,
+    int d0, int d1, int d2, int d3,
+    int s0, int s1, int s2, int s3,
+    int r0, int r1, int r2, int r3
+    )
+  {
+    float threshold = (float)*pthr;
+    float scale = 1./(1-threshold);
+
+    for(int i=0; i<d0; i++)
+      for(int j=0; j<d1; j++)
+        for(int k=0; k<d2; k++)
+          for(int m=0; m<d3; m++)
+            out[i*s0+j*s1+k*s2+m] = in[i*s0+j*s1+k*s2+m] * T(float(rng[i*r0+j*r1+k*r2+m*r3])>=threshold ? scale : 0.0);
+  }
+};
+
 template <typename Device, typename T>
 class CustomDropoutOp : public OpKernel {
  public:
@@ -254,8 +278,8 @@ class CustomDropoutOp : public OpKernel {
     auto NdR = rng.dims();
     OP_REQUIRES(ctx, Nd == NdR, errors::InvalidArgument("input and rng must have the same number of dimensions"));
     OP_REQUIRES(ctx, threshold.dims()==0, errors::InvalidArgument("threshold must be a scalar"));
-    OP_REQUIRES(ctx, Nd > 1, errors::InvalidArgument("must have >1 dim"));
-    OP_REQUIRES(ctx, Nd==2 || Nd==3, errors::InvalidArgument("not implemented except for 2D and 3D"));
+    OP_REQUIRES(ctx, Nd >= 2 && Nd <=4 , errors::InvalidArgument("must have 2..4 dim"));
+    OP_REQUIRES(ctx, input_tensor.dim_size(Nd-1)<=1048576, errors::InvalidArgument("last dimension must be no more than 2^20"));
 
     for(int i=0; i<Nd; i++)
     {
@@ -265,8 +289,8 @@ class CustomDropoutOp : public OpKernel {
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input_tensor.shape(), &output_tensor));
   
-    int strides_in[3]={1,1,1};
-    int strides_rng[3]={1,1,1};
+    int strides_in[4]={1,1,1,1};
+    int strides_rng[4]={1,1,1,1};
     for(int i=Nd-1; i>0; i--)
     {
       strides_in[i-1] = strides_in[i] * input_tensor.dim_size(i);
@@ -286,7 +310,7 @@ class CustomDropoutOp : public OpKernel {
         strides_in[0], strides_in[1], 
         strides_rng[0], strides_rng[1]
         );
-    else
+    else if(Nd==3)
       CustomDropoutFunctor3<Device,T>()(ctx->eigen_device<Device>(), 
         input_tensor.flat<T>().data(),
         rng.flat<T>().data(),
@@ -296,6 +320,17 @@ class CustomDropoutOp : public OpKernel {
         strides_in[0], strides_in[1], strides_in[2],
         strides_rng[0], strides_rng[1], strides_rng[2]
         );
+    else
+        CustomDropoutFunctor4<Device,T>()(ctx->eigen_device<Device>(), 
+        input_tensor.flat<T>().data(),
+        rng.flat<T>().data(),
+        output_tensor->flat<T>().data(),
+        threshold.flat<T>().data(),
+        input_tensor.dim_size(0), input_tensor.dim_size(1), input_tensor.dim_size(2), input_tensor.dim_size(3),
+        strides_in[0], strides_in[1], strides_in[2], strides_in[3],
+        strides_rng[0], strides_rng[1], strides_rng[2], strides_rng[3]
+        );
+
   }
 };
 
