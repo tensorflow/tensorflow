@@ -415,10 +415,10 @@ cc_library(
 cc_library(
     name = "TypeUtilities",
     srcs = [
-        "lib/Support/TypeUtilities.cpp",
+        "lib/IR/TypeUtilities.cpp",
     ],
     hdrs = [
-        "include/mlir/Support/TypeUtilities.h",
+        "include/mlir/IR/TypeUtilities.h",
     ],
     includes = ["include"],
     deps = [
@@ -773,7 +773,7 @@ gentbl(
     name = "SPIRVSerializationIncGen",
     tbl_outs = [
         (
-            "-gen-spirv-serial",
+            "-gen-spirv-serialization",
             "include/mlir/Dialect/SPIRV/SPIRVSerialization.inc",
         ),
     ],
@@ -1103,6 +1103,7 @@ cc_library(
     deps = [
         ":AffineOps",
         ":IR",
+        ":LoopOps",
         ":Pass",
         ":StandardOps",
         ":Support",

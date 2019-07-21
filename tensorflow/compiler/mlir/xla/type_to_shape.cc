@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/base/integral_types.h"
 #include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir

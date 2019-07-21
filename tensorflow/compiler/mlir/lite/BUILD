@@ -372,6 +372,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:TransformUtils",
+        "@local_config_mlir//:TypeUtilities",
     ],
 )
 

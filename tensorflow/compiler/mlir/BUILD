@@ -72,6 +72,7 @@ tf_cc_binary(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Translation",
         "@local_config_mlir//:tools/mlir-translate/mlir-translate",
+        "@local_config_mlir//:TypeUtilities",
     ],
 )
 

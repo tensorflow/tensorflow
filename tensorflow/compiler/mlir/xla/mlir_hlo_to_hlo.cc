@@ -37,16 +37,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
-  llvm::ArrayRef<int64> raw_data = attr.getValues<int64>();
+static std::vector<int64_t> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
+  llvm::ArrayRef<int64_t> raw_data = attr.getValues<int64_t>();
   if (attr.isSplat())
-    return std::vector<int64>(attr.getType().getNumElements(), raw_data[0]);
+    return std::vector<int64_t>(attr.getType().getNumElements(), raw_data[0]);
   return raw_data;
 }
 
 // Converts the broadcast_dimensions attribute into a span of dimension numbers
 // (empty if the attribute is absent).
-static std::vector<int64> Convert_broadcast_dimensions(
+static std::vector<int64_t> Convert_broadcast_dimensions(
     llvm::Optional<mlir::ElementsAttr> broadcast_dimensions) {
   if (!broadcast_dimensions.hasValue()) return {};
 
@@ -55,13 +55,13 @@ static std::vector<int64> Convert_broadcast_dimensions(
 }
 
 // Converts the broadcast_sizes attribute into a span of dimension sizes.
-static std::vector<int64> Convert_broadcast_sizes(
+static std::vector<int64_t> Convert_broadcast_sizes(
     mlir::ElementsAttr broadcast_sizes) {
   return ConvertDenseIntAttr(
       broadcast_sizes.cast<mlir::DenseIntElementsAttr>());
 }
 
-static std::vector<int64> Convert_permutation(mlir::ElementsAttr permutation) {
+static std::vector<int64_t> Convert_permutation(mlir::ElementsAttr permutation) {
   return ConvertDenseIntAttr(permutation.cast<mlir::DenseIntElementsAttr>());
 }
 
