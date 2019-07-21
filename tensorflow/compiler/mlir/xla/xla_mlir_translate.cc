@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 
-#include "google/protobuf/text_format.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
@@ -34,13 +34,13 @@ namespace xla {
 
 namespace {
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public ::proto2::io::ErrorCollector {
+class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
  public:
   void AddError(int line, int column, const string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
-  ::proto2::TextFormat::Parser parser;
+  tensorflow::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||
