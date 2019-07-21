@@ -61,16 +61,8 @@ public:
       size_t inputNo, size;
     };
 
-    /// Return the converted type signature.
-    FunctionType getConvertedType(MLIRContext *ctx) const {
-      return FunctionType::get(argTypes, resultTypes, ctx);
-    }
-
     /// Return the argument types for the new signature.
-    ArrayRef<Type> getConvertedArgTypes() const { return argTypes; }
-
-    /// Return the result types for the new signature.
-    ArrayRef<Type> getConvertedResultTypes() const { return resultTypes; }
+    ArrayRef<Type> getConvertedTypes() const { return argTypes; }
 
     /// Get the input mapping for the given argument.
     llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
@@ -80,9 +72,6 @@ public:
     //===------------------------------------------------------------------===//
     // Conversion Hooks
     //===------------------------------------------------------------------===//
-
-    /// Append new result types to the signature conversion.
-    void addResults(ArrayRef<Type> results);
 
     /// Remap an input of the original signature with a new set of types. The
     /// new types are appended to the new signature conversion.
@@ -101,8 +90,8 @@ public:
     /// The remapping information for each of the original arguments.
     SmallVector<llvm::Optional<InputMapping>, 4> remappedInputs;
 
-    /// The set of argument and results types.
-    SmallVector<Type, 4> argTypes, resultTypes;
+    /// The set of new argument types.
+    SmallVector<Type, 4> argTypes;
   };
 
   /// This hooks allows for converting a type. This function should return
@@ -115,40 +104,25 @@ public:
   /// the type convert to on success, and a null type on failure.
   virtual Type convertType(Type t) { return t; }
 
-  /// Convert the given FunctionType signature. This functions returns a valid
-  /// SignatureConversion on success, None otherwise.
-  llvm::Optional<SignatureConversion> convertSignature(FunctionType type);
+  /// Convert the given set of types, filling 'results' as necessary. This
+  /// returns failure if the conversion of any of the types fails, success
+  /// otherwise.
+  LogicalResult convertTypes(ArrayRef<Type> types,
+                             SmallVectorImpl<Type> &results);
 
-  /// This hook allows for changing a FunctionType signature. This function
-  /// should populate 'result' with the new arguments and results on success,
-  /// otherwise return failure.
-  ///
-  /// The default behavior of this function is to call 'convertType' on
-  /// individual function operands and results.
-  virtual LogicalResult convertSignature(FunctionType type,
-                                         SignatureConversion &result);
+  /// Return true if the given type is legal for this type converter, i.e. the
+  /// type converts to itself.
+  bool isLegal(Type type);
+
+  /// Return true if the inputs and outputs of the given function type are
+  /// legal.
+  bool isSignatureLegal(FunctionType funcType);
 
   /// This hook allows for converting a specific argument of a signature. It
   /// takes as inputs the original argument input number, type.
   /// On success, this function should populate 'result' with any new mappings.
   virtual LogicalResult convertSignatureArg(unsigned inputNo, Type type,
                                             SignatureConversion &result);
-
-  /// This hook allows for converting the signature of a region 'regionIdx',
-  /// i.e. the signature of the entry to the region, on the given operation
-  /// 'op'. This function should return a valid conversion for the signature on
-  /// success, None otherwise. This hook is allowed to modify the attributes on
-  /// the provided operation if necessary.
-  ///
-  /// The default behavior of this function is to invoke 'convertBlockSignature'
-  /// on the entry block, if one is present. This function also provides special
-  /// handling for FuncOp to update the type signature.
-  ///
-  /// TODO(riverriddle) This should be replaced in favor of using patterns, but
-  /// the pattern rewriter needs to know how to properly replace/remap
-  /// arguments.
-  virtual llvm::Optional<SignatureConversion>
-  convertRegionSignature(Operation *op, unsigned regionIdx);
 
   /// This function converts the type signature of the given block, by invoking
   /// 'convertSignatureArg' for each argument. This function should return a
@@ -244,6 +218,12 @@ private:
   using RewritePattern::rewrite;
 };
 
+/// Add a pattern to the given pattern list to convert the signature of a FuncOp
+/// with the given type converter.
+void populateFuncOpTypeConversionPattern(OwningRewritePatternList &patterns,
+                                         MLIRContext *ctx,
+                                         TypeConverter &converter);
+
 //===----------------------------------------------------------------------===//
 // Conversion PatternRewriter
 //===----------------------------------------------------------------------===//
@@ -252,11 +232,23 @@ namespace detail {
 struct ConversionPatternRewriterImpl;
 } // end namespace detail
 
-/// This class implements a pattern rewriter for use with ConversionPatterns.
+/// This class implements a pattern rewriter for use with ConversionPatterns. It
+/// extends the base PatternRewriter and provides special conversion specific
+/// hooks.
 class ConversionPatternRewriter final : public PatternRewriter {
 public:
   ConversionPatternRewriter(MLIRContext *ctx, TypeConverter *converter);
   ~ConversionPatternRewriter() override;
+
+  /// Apply a signature conversion to the entry block of the given region.
+  void applySignatureConversion(Region *region,
+                                TypeConverter::SignatureConversion &conversion);
+
+  /// Clone the given operation without cloning its regions.
+  Operation *cloneWithoutRegions(Operation *op);
+  template <typename OpT> OpT cloneWithoutRegions(OpT op) {
+    return cast<OpT>(cloneWithoutRegions(op.getOperation()));
+  }
 
   //===--------------------------------------------------------------------===//
   // PatternRewriter Hooks

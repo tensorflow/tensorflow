@@ -266,6 +266,44 @@ protected:
   LLVM::LLVMDialect &dialect;
 };
 
+struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
+  using LLVMLegalizationPattern<FuncOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto funcOp = cast<FuncOp>(op);
+    FunctionType type = funcOp.getType();
+
+    // Convert the original function arguments.
+    TypeConverter::SignatureConversion result(type.getNumInputs());
+    for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
+      if (failed(lowering.convertSignatureArg(i, type.getInput(i), result)))
+        return matchFailure();
+
+    // Pack the result types into a struct.
+    Type packedResult;
+    if (type.getNumResults() != 0) {
+      if (!(packedResult = lowering.packFunctionResults(type.getResults())))
+        return matchFailure();
+    }
+
+    // Create a new function with an updated signature.
+    auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
+    rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
+                                newFuncOp.end());
+    newFuncOp.setType(FunctionType::get(
+        result.getConvertedTypes(),
+        packedResult ? ArrayRef<Type>(packedResult) : llvm::None,
+        funcOp.getContext()));
+
+    // Tell the rewriter to convert the region signature.
+    rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
+    rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
+
 // Basic lowering implementation for one-to-one rewriting from Standard Ops to
 // LLVM Dialect Ops.
 template <typename SourceOp, typename TargetOp>
@@ -985,10 +1023,10 @@ void mlir::populateStdToLLVMConversionPatterns(
       BranchOpLowering, CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
       CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
       DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
-      IndexCastOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
-      MulIOpLowering, OrOpLowering, RemISOpLowering, RemIUOpLowering,
-      RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
-      SubFOpLowering, SubIOpLowering,
+      FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
+      MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
+      RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
+      SelectOpLowering, StoreOpLowering, SubFOpLowering, SubIOpLowering,
       XOrOpLowering>::build(patterns, *converter.getDialect(), converter);
 }
 
@@ -1012,27 +1050,6 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
   }
 
   return LLVM::LLVMType::getStructTy(llvmDialect, resultTypes);
-}
-
-// Convert function signatures using the stored LLVM IR module.
-LogicalResult LLVMTypeConverter::convertSignature(FunctionType type,
-                                                  SignatureConversion &result) {
-  // Convert the original function arguments.
-  for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-    if (failed(convertSignatureArg(i, type.getInput(i), result)))
-      return failure();
-
-  // If function does not return anything, return immediately.
-  if (type.getNumResults() == 0)
-    return success();
-
-  // Otherwise pack the result types into a struct.
-  if (auto packedRet = packFunctionResults(type.getResults())) {
-    result.addResults(packedRet);
-    return success();
-  }
-
-  return failure();
 }
 
 /// Create an instance of LLVMTypeConverter in the given context.
@@ -1071,6 +1088,9 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
+    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+      return typeConverter->isSignatureLegal(op.getType());
+    });
     if (failed(applyPartialConversion(m, target, std::move(patterns),
                                       typeConverter.get())))
       signalPassFailure();

@@ -49,13 +49,13 @@ func @remap_multi(%arg0: i64, %unused: i16, %arg1: i64) -> (i64, i64) {
  "test.invalid"(%arg0, %arg1) : (i64, i64) -> ()
 }
 
-// CHECK-LABEL: func @remap_nested
-func @remap_nested() {
+// CHECK-LABEL: func @no_remap_nested
+func @no_remap_nested() {
   // CHECK-NEXT: "foo.region"
   "foo.region"() ({
-    // CHECK-NEXT: ^bb0(%{{.*}}: f64, %{{.*}}: f64):
+    // CHECK-NEXT: ^bb0(%{{.*}}: i64, %{{.*}}: i16, %{{.*}}: i64):
     ^bb0(%i0: i64, %unused: i16, %i1: i64):
-      // CHECK-NEXT: "test.valid"{{.*}} : (f64, f64)
+      // CHECK-NEXT: "test.valid"{{.*}} : (i64, i64)
       "test.invalid"(%i0, %i1) : (i64, i64) -> ()
   }) : () -> ()
   return

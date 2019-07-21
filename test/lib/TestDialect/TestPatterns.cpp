@@ -185,23 +185,26 @@ struct TestTypeConverter : public TypeConverter {
 struct TestLegalizePatternDriver
     : public ModulePass<TestLegalizePatternDriver> {
   void runOnModule() override {
+    TestTypeConverter converter;
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
     RewriteListBuilder<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
                        TestDropOp, TestPassthroughInvalidOp,
                        TestSplitReturnType>::build(patterns, &getContext());
+    mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(),
+                                              converter);
 
     // Define the conversion target used for the test.
     ConversionTarget target(getContext());
-    target.addLegalOp<LegalOpA, TestValidOp>();
+    target.addLegalOp<LegalOpA, TestCastOp, TestValidOp>();
     target.addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
     target.addDynamicallyLegalOp<TestReturnOp>([](TestReturnOp op) {
       // Don't allow F32 operands.
       return llvm::none_of(op.getOperandTypes(),
                            [](Type type) { return type.isF32(); });
     });
-
-    TestTypeConverter converter;
+    target.addDynamicallyLegalOp<FuncOp>(
+        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
     (void)applyPartialConversion(getModule(), target, std::move(patterns),
                                  &converter);
   }

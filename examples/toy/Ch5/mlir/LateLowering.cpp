@@ -355,12 +355,17 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     RewriteListBuilder<AddOpConversion, PrintOpConversion, ConstantOpConversion,
                        TransposeOpConversion,
                        ReturnOpConversion>::build(toyPatterns, &getContext());
+    mlir::populateFuncOpTypeConversionPattern(toyPatterns, &getContext(),
+                                              typeConverter);
 
     // Perform Toy specific lowering.
     ConversionTarget target(getContext());
     target.addLegalDialect<AffineOpsDialect, linalg::LinalgDialect,
                            LLVM::LLVMDialect, StandardOpsDialect>();
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
+    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+      return typeConverter.isSignatureLegal(op.getType());
+    });
     if (failed(applyPartialConversion(
             getModule(), target, std::move(toyPatterns), &typeConverter))) {
       emitError(UnknownLoc::get(getModule().getContext()),
