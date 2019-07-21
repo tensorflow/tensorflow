@@ -503,7 +503,8 @@ class CTCLossTestV2(test.TestCase):
         logits[:, :, -1:],
         logits[:, :, blank_index:-1],
     ], axis=2)
-    shifted_labels = array_ops.where(labels < blank_index, labels, labels + 1)
+    shifted_labels = array_ops.where_v2(labels < blank_index, labels,
+                                        labels + 1)
 
     ctc_loss = ctc_ops.ctc_loss_dense(
         labels=shifted_labels,

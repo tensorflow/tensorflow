@@ -48,6 +48,8 @@ class RemoteDevice : public Device {
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
+  bool IsLocal() const override { return false; }
+
  private:
   const string local_dev_name_;
 

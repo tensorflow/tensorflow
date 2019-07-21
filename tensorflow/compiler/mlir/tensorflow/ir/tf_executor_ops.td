@@ -415,10 +415,6 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [No
     Note: Additional result corresponds to the control output.
   }];
 
-  let arguments = (ins
-    Variadic<TfeControlType>:$controlInputs
-  );
-
   let results = (outs
     AnyType:$output,
     // The NextIteration.Source operation returns an extra token consumed by the sink.
@@ -428,12 +424,11 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [No
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Type result_type, "
-    "ArrayRef<Value *> control_inputs = {}, ArrayRef<NamedAttribute> attributes = {}",
+    "ArrayRef<NamedAttribute> attributes = {}",
     [{
       Type token_type = TokenType::get(builder->getContext());
       Type control_type = ControlType::get(builder->getContext());
       result->types = { result_type, token_type, control_type };
-      result->operands.append(control_inputs.begin(), control_inputs.end());
       result->attributes.append(attributes.begin(), attributes.end());
     }]>
    ];

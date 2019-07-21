@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GENERIC_LAYOUT_OPTIMIZER_TRANSPOSER_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GENERIC_LAYOUT_OPTIMIZER_TRANSPOSER_H_
 
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -37,6 +40,7 @@ namespace grappler {
 constexpr char kAttrSrcFormat[] = "src_format";
 constexpr char kAttrDstFormat[] = "dst_format";
 constexpr char kAttrOutputShape[] = "_output_shapes";
+constexpr char kGPU[] = "GPU";
 
 // TransposeContext owns all data members. Must initialize GraphProperties,
 // FrameView, GraphDef and MutableGraphView with the same graph. NodeDef
@@ -48,10 +52,13 @@ struct TransposeContext {
   // TransposeContext outside constructor.
   static Status InitializeTransposeContext(const GrapplerItem& item,
                                            const Cluster* cluster,
-                                           absl::string_view src_format,
-                                           absl::string_view dst_format,
-                                           absl::string_view target_device,
                                            TransposeContext* context);
+
+  // Sets data formats to convert from and to for specified device type.
+  void AssignDeviceAndDataFormats(absl::string_view target_device,
+                                  absl::string_view src_format,
+                                  absl::string_view dst_format);
+
   FrameView frames;
   GraphDef graph;
   // Number of nodes in the original graph. As new nodes are appended to the end
@@ -158,8 +165,6 @@ class Transposer {
                                 absl::Span<const int> dims) const;
   bool CanProcessNode(const TransposeContext& context,
                       const utils::MutableNodeView& node) const;
-  string GetDeviceName(const VirtualPlacer* virtual_placer,
-                       const NodeDef& node) const;
   // Update all edges between dst_node->fanin[dst_ports] and dst_node.
   // A node with op is created and inserted between all edges.
   // op is one of Transpose, DataFormatVecPermute or DataFormatDimMap.
@@ -189,10 +194,6 @@ class LayoutSensitiveOpTransposer : public Transposer {
   // Updates attrs data_format, ksize, strides of the given node to dst_format.
   // _output_shape is updated during UpdateOutputEdges.
   Status UpdateNode(TransposeContext* context, utils::MutableNodeView* node);
-
- protected:
-  bool ShouldNotProcess(const TransposeContext& context,
-                        const utils::MutableNodeView& node);
 };
 
 // Layout sensitive op transposers.
@@ -233,6 +234,14 @@ class Conv2DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
 class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit Conv2DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -553,6 +562,8 @@ Status PermuteDouble(absl::Span<const int> permutation, T* values) {
   }
   return Status::OK();
 }
+
+string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node);
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node);
 

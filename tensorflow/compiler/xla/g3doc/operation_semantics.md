@@ -2248,6 +2248,9 @@ The arguments of scatter should follow these constraints:
 -   `inserted_window_dims` must be in ascending order, not have any repeating
     dimension numbers, and be in the range `[0, operand.rank)`.
 
+-   `operand.rank` must equal the sum of `update_window_dims.size` and
+    `inserted_window_dims.size`.
+
 -   `scatter_dims_to_operand_dims.size` must be equal to
     `scatter_indices`[`index_vector_dim`], and its values must be in the range
     `[0, operand.rank)`.

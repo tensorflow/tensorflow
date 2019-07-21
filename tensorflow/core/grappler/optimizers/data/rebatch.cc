@@ -46,20 +46,20 @@ constexpr char kIdentityOp[] = "Identity";
 constexpr char kSubOp[] = "Sub";
 constexpr char kTruncateDivOp[] = "TruncateDiv";
 
-constexpr std::array<const char*, 5> kBatchDatasetOps = {
+constexpr std::array<const char*, 6> kBatchDatasetOps = {
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
     "PaddedBatchDataset",
-    "PaddedBatchDatasetV2"
-};
+    "PaddedBatchDatasetV2"};
 
 constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ConcatenateDataset",
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 19> kPassThroughOps = {
+constexpr std::array<const char*, 20> kPassThroughOps = {
     "CacheDataset",
     "ExperimentalScanDataset",
     "ExperimentalParseExampleDataset",
@@ -73,6 +73,7 @@ constexpr std::array<const char*, 19> kPassThroughOps = {
     "PrefetchDataset",
     "ReduceDataset",
     "RepeatDataset",
+    "ScanDataset",
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
@@ -80,9 +81,10 @@ constexpr std::array<const char*, 19> kPassThroughOps = {
     "TakeDataset",
     "WindowDataset"};
 
-constexpr std::array<const char*, 4> kFuncDatasetOps = {
+constexpr std::array<const char*, 5> kFuncDatasetOps = {
     "ExperimentalGroupByWindowDataset",
     "FlatMapDataset",
+    "GroupByWindowDataset",
     "InterleaveDataset",
     "ParallelInterleaveDatasetV2",
 };
@@ -91,6 +93,7 @@ const std::map<string, const char*>* kFuncDatasetOpFuncs =
     new std::map<string, const char*>({
         {"ExperimentalGroupByWindowDataset", "reduce_func"},
         {"FlatMapDataset", "f"},
+        {"GroupByWindowDataset", "reduce_func"},
         {"InterleaveDataset", "f"},
         {"ParallelInterleaveDatasetV2", "f"},
     });
@@ -149,7 +152,8 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
   // For all the batching datasets the batch_size is input number 1 except for
   // MapAndBatchDataset.
   int64 batch_size_arg_index = 1;
-  if (node.op() == "ExperimentalMapAndBatchDataset") {
+  if (node.op() == "ExperimentalMapAndBatchDataset" ||
+      node.op() == "MapAndBatchDataset") {
     // For MapAndBatch we take the 3rd last input.
     batch_size_arg_index = node.input_size() - 3;
   }

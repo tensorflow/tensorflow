@@ -43,6 +43,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
@@ -50,6 +51,7 @@ from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
+from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -144,10 +146,7 @@ class Model(network.Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
-    # In v2, model will use default strategy if user don't specify any. This
-    # flag is a stop gap that helps the existing logic to correctly fallback to
-    # use training loops that doesn't use distribution strategy.
-    self._infer_default_stragtegy = False
+
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
@@ -246,15 +245,12 @@ class Model(network.Network):
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
-        or (weighted_metrics is not None)):
-      # Fallback out of things that aren't supported with dist strat
+        or (weighted_metrics is not None)
+        or not context.executing_eagerly()):
+      # Fallback out of things that aren't supported with v2 loops
       self._run_distributed = False
 
-    if self._run_distributed:
-      self._distribution_strategy = (
-          distribution_strategy_context.get_strategy())
-      self._infer_default_stragtegy = True
-    elif distribute is not None:
+    if distribute is not None:
       if tf2.enabled():
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
@@ -272,12 +268,6 @@ class Model(network.Network):
         if distribution_strategy_context.in_cross_replica_context():
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
-
-    # Check whether the experimental feature of distributing the Model without
-    # cloning is requested.
-    # TODO(b/124517980, b/124377929): Remove this temporary undocumented way
-    # of enabling the feature and graduate it to the main distributed code path.
-    self._cloning = kwargs.pop('cloning', False)
 
     if not self._run_distributed:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
@@ -393,6 +383,11 @@ class Model(network.Network):
                 '  model=_create_model()\n'
                 '  model.compile(...)'% (v, strategy))
 
+  @trackable.no_automatic_dependency_tracking
+  def _init_distributed_function_cache_if_not_compiled(self):
+    if not hasattr(self, '_distributed_function_cache'):
+      self._distributed_function_cache = {}
+
   @property
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
@@ -470,21 +465,33 @@ class Model(network.Network):
 
   def _select_training_loop(self, inputs):
     """Select training loop for fit/eval/predict based on the inputs."""
+    # TODO(kaftan) or TODO(scottzhu): This check should eventually be nicely
+    #  integrated into the data adapters in the v2 loop. We can't do this yet
+    #  because we currently have to fall back for unhandled data types.
+    if isinstance(inputs, (iterator_ops.Iterator,
+                           iterator_ops.IteratorV2)):
+      raise ValueError('For performance reasons Keras `fit`, `evaluate` and'
+                       '`predict` accept tf.data `Datasets` as input but not '
+                       'iterators that have been manually generated from '
+                       'Datasets by users. Please directly pass in the '
+                       'original `Dataset` object instead of passing in '
+                       '`iter(dataset)`.')
+
     # Experiment training loop with default DS path.
     if (context.executing_eagerly()
         and self._run_distributed
-        and tf2.enabled()
-        and not isinstance(inputs, (iterator_ops.Iterator,
-                                    iterator_ops.IteratorV2))
+        # TODO(scottzhu): Finish getting sequences working with the v2 loops.
+        and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)
-        and not getattr(self, '_cloning', False)):
-      return training_v2.Loop()
-
-    # Falling back to use existing v1 loops. Before choosing the loop, the
-    # default inferred distribution strategy need to be removed.
-    if self._infer_default_stragtegy:
-      self._distribution_strategy = None
+            self._distribution_strategy)):
+      try:
+        valid_adapter = data_adapter.select_data_adapter(inputs, None)
+      except ValueError as data_failure_exception:
+        valid_adapter = None
+        logging.warning('Falling back from v2 loop because of error: '
+                        '%s' % data_failure_exception)
+      if valid_adapter:
+        return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -538,7 +545,7 @@ class Model(network.Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset or a dataset iterator. Should return a tuple
+          - A `tf.data` dataset. Should return a tuple
             of either `(inputs, targets)` or
             `(inputs, targets, sample_weights)`.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
@@ -546,14 +553,14 @@ class Model(network.Network):
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset, dataset
-          iterator, generator, or `keras.utils.Sequence` instance, `y` should
+          tensor targets, or inversely). If `x` is a dataset, generator,
+          or `keras.utils.Sequence` instance, `y` should
           not be specified (since targets will be obtained from `x`).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
-            form of symbolic tensors, dataset, dataset iterators,
+            form of symbolic tensors, datasets,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
         epochs: Integer. Number of epochs to train the model.
@@ -580,7 +587,7 @@ class Model(network.Network):
             on this data at the end of each epoch.
             The validation data is selected from the last samples
             in the `x` and `y` data provided, before shuffling. This argument is
-            not supported when `x` is a dataset, dataset iterator, generator or
+            not supported when `x` is a dataset, generator or
            `keras.utils.Sequence` instance.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
@@ -589,7 +596,7 @@ class Model(network.Network):
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
-              - dataset or a dataset iterator
+              - dataset
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` must be provided.
         shuffle: Boolean (whether to shuffle the training data
@@ -614,7 +621,7 @@ class Model(network.Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset, dataset iterator, generator, or
+            supported when `x` is a dataset, generator, or
            `keras.utils.Sequence` instance, instead provide the sample_weights
             as the third element of `x`.
         initial_epoch: Integer.
@@ -627,14 +634,14 @@ class Model(network.Network):
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
             the batch size, or 1 if that cannot be determined. If x is a
-            `tf.data` dataset or a dataset iterator, and 'steps_per_epoch'
+            `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
             This argument is not supported with array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
-            is a dataset or dataset iterator. Total number of steps (batches of
+            is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch. If validation_data is a `tf.data` dataset
-            or a dataset iterator, and 'validation_steps' is None, validation
+            and 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections.Container` instance (e.g. list, tuple, etc.). If an
@@ -725,20 +732,20 @@ class Model(network.Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
           tensor targets, or inversely).
-          If `x` is a dataset, dataset iterator, generator or
+          If `x` is a dataset, generator or
           `keras.utils.Sequence` instance, `y` should not be specified (since
           targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors, dataset, dataset iterators,
+            form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
         verbose: 0 or 1. Verbosity mode.
@@ -754,13 +761,13 @@ class Model(network.Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset or a dataset iterator, instead pass
+            supported when `x` is a dataset, instead pass
             sample weights as the third element of `x`.
         steps: Integer or `None`.
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
             Ignored with the default value of `None`.
-            If x is a `tf.data` dataset or a dataset iterator, and `steps` is
+            If x is a `tf.data` dataset and `steps` is
             None, 'evaluate' will run until the dataset is exhausted.
             This argument is not supported with array inputs.
         callbacks: List of `keras.callbacks.Callback` instances.
@@ -825,20 +832,20 @@ class Model(network.Network):
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
             (in case the model has multiple inputs).
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors, dataset, dataset iterators,
+            form of symbolic tensors, dataset,
             generators, or `keras.utils.Sequence` instances (since they generate
             batches).
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
             Ignored with the default value of `None`. If x is a `tf.data`
-            dataset or a dataset iterator, and `steps` is None, `predict` will
+            dataset and `steps` is None, `predict` will
             run until the input dataset is exhausted.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during prediction.
@@ -907,11 +914,11 @@ class Model(network.Network):
               (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
               if the model has named inputs.
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset.
         y: Target data. Like the input data `x`, it could be either Numpy
           array(s) or TensorFlow tensor(s). It should be consistent with `x`
           (you cannot have Numpy inputs and tensor targets, or inversely). If
-          `x` is a dataset or a dataset iterator, `y` should not be specified
+          `x` is a dataset, `y` should not be specified
           (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
           weights to apply to the model's loss for each sample. In the case of
@@ -919,7 +926,7 @@ class Model(network.Network):
           sequence_length), to apply a different weight to every timestep of
           every sample. In this case you should make sure to specify
           sample_weight_mode="temporal" in compile(). This argument is not
-          supported when `x` is a dataset or a dataset iterator.
+          supported when `x` is a dataset.
         class_weight: Optional dictionary mapping class indices (integers) to a
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
@@ -938,6 +945,11 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    if self._run_distributed:
+      return training_v2_utils.train_on_batch(
+          self, x, y=y, sample_weight=sample_weight,
+          class_weight=class_weight, reset_metrics=reset_metrics)
+
     self._assert_compile_was_called()
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
@@ -991,13 +1003,12 @@ class Model(network.Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset or a
-          dataset iterator, `y` should not be specified
-          (since targets will be obtained from the iterator).
+          tensor targets, or inversely). If `x` is a dataset `y` should
+          not be specified (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
             In the case of temporal data, you can pass a 2D array
@@ -1005,7 +1016,7 @@ class Model(network.Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile(). This argument is not
-            supported when `x` is a dataset or a dataset iterator.
+            supported when `x` is a dataset.
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
@@ -1019,6 +1030,11 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    if self._run_distributed:
+      return training_v2_utils.test_on_batch(
+          self, x, y=y, sample_weight=sample_weight,
+          reset_metrics=reset_metrics)
+
     self._assert_compile_was_called()
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1061,7 +1077,7 @@ class Model(network.Network):
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
             (in case the model has multiple inputs).
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset.
 
     Returns:
         Numpy array(s) of predictions.
@@ -1070,6 +1086,9 @@ class Model(network.Network):
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
+    if self._run_distributed:
+      return training_v2_utils.predict_on_batch(self, x)
+
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError(
@@ -1603,6 +1622,7 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
@@ -1610,9 +1630,7 @@ class Model(network.Network):
 
         # Scale output loss for distribution. For custom losses we assume
         # reduction was mean.
-        if (getattr(loss_fn, 'reduction',
-                    losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
-            losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+        if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
           output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if total_loss is None:
@@ -2212,13 +2230,12 @@ class Model(network.Network):
           (in case the model has multiple inputs).
         - A dict mapping input names to the corresponding array/tensors,
           if the model has named inputs.
-        - A `tf.data` dataset or a dataset iterator.
+        - A `tf.data` dataset.
       y: Target data. Like the input data `x`,
         it could be either Numpy array(s) or TensorFlow tensor(s).
         It should be consistent with `x` (you cannot have Numpy inputs and
-        tensor targets, or inversely). If `x` is a dataset or a
-        dataset iterator, `y` should not be specified
-        (since targets will be obtained from the iterator).
+        tensor targets, or inversely). If `x` is a dataset, `y` should not be
+        specified (since targets will be obtained from the iterator).
       sample_weight: An optional sample-weight array passed by the user to
         weight the importance of each sample in `x`.
       class_weight: An optional class-weight array by the user to
@@ -2408,7 +2425,7 @@ class Model(network.Network):
           loss_weights=self.loss_weights,
           target_tensors=target_tensors,
           run_eagerly=self.run_eagerly,
-          cloning=self._cloning)
+          run_distributed=self._run_distributed)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to

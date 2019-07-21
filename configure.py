@@ -1189,8 +1189,8 @@ def set_other_mpi_vars(environ_cp):
         os.path.join(mpi_home, 'include/mpi_portable_platform.h'),
         'third_party/mpi/mpi_portable_platform.h')
     # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI=False',
-                 'MPI_LIB_IS_OPENMPI=True')
+    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI = False',
+                 'MPI_LIB_IS_OPENMPI = True')
   else:
     # MVAPICH / MPICH
     symlink_force(
@@ -1198,8 +1198,8 @@ def set_other_mpi_vars(environ_cp):
     symlink_force(
         os.path.join(mpi_home, 'include/mpicxx.h'), 'third_party/mpi/mpicxx.h')
     # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI=True',
-                 'MPI_LIB_IS_OPENMPI=False')
+    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI = True',
+                 'MPI_LIB_IS_OPENMPI = False')
 
   if os.path.exists(os.path.join(mpi_home, 'lib/libmpi.so')):
     symlink_force(

@@ -43,6 +43,10 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
     return GetOrCreateIfNotFound<Conv2DBackpropInputTransposer>(
         "Conv2DBackpropInput");
   }
+  if (IsFusedBatchNormEx(node)) {
+    return GetOrCreateIfNotFound<FusedBatchNormExTransposer>(
+        "FusedBatchNormEx");
+  }
   if (IsFusedBatchNormGrad(node)) {
     return GetOrCreateIfNotFound<FusedBatchNormGradTransposer>(
         "FusedBatchNormGrad");

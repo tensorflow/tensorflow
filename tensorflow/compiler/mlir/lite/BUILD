@@ -181,7 +181,6 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -234,7 +233,6 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -403,9 +401,11 @@ cc_library(
 cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
+        "flatbuffer_import.cc",
         "flatbuffer_translate.cc",
     ],
     hdrs = [
+        "flatbuffer_import.h",
         "flatbuffer_translate.h",
     ],
     deps = [

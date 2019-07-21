@@ -139,7 +139,9 @@ py_test(
     srcs = ["auto_shard_dataset_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",

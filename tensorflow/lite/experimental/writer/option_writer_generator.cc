@@ -40,6 +40,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteFakeQuantParams",
                                       "TfLiteFullyConnectedParams",
                                       "TfLiteGatherParams",
+                                      "TfLiteIfParams",
                                       "TfLiteL2NormParams",
                                       "TfLiteLeakyReluParams",
                                       "TfLiteLocalResponseNormParams",
@@ -76,6 +77,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteUniqueParams",
                                       "TfLiteUnpackParams",
                                       "TfLiteReverseSequenceParams",
+                                      "TfLiteWhileParams",
                                       nullptr};
 }  // namespace
 

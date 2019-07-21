@@ -1142,9 +1142,9 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "permute_test",
+    name = "data_format_ops_test",
     size = "small",
-    srcs = ["permute_test.py"],
+    srcs = ["data_format_ops_test.py"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",

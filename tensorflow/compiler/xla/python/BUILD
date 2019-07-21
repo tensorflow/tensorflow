@@ -222,6 +222,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:allocator",
         "//tensorflow/core:bfc_allocator",
         "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",

@@ -859,8 +859,7 @@ class TrainingTest(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
     dataset = dataset.repeat(10)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    model.fit(iterator, epochs=1, steps_per_epoch=2)
+    model.fit(dataset, epochs=1, steps_per_epoch=2)
 
     if context.executing_eagerly():
       # Test with eager execution
@@ -870,7 +869,7 @@ class TrainingTest(keras_parameterized.TestCase):
       model.fit(x_train, y_train, batch_size=5, epochs=1)
 
       # Test with eager execution and iterator
-      model.fit(iterator, epochs=1, steps_per_epoch=2)
+      model.fit(dataset, epochs=1, steps_per_epoch=2)
 
   def test_losses_in_defun(self):
     with context.eager_mode():

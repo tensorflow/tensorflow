@@ -380,8 +380,8 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
     ENTRY entry {
       p0 = f32[6400]{0} parameter(0)
       fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
-      ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
+      fusion.2 = f16[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (f32[6400]{0}, f16[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
                     .ValueOrDie();
   const HloInstruction* fusion_1 =
@@ -633,7 +633,7 @@ TEST_F(GpuFusibleTest,
       p1 = f32[32,32,32]{2,1,0} parameter(1)
       element_wise = f32[32,32,32]{2,1,0} fusion(p0, p1), kind=kLoop,
         calls=fused_element_wise
-      fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(element_wise),
+      fusion = f32[32,32]{1,0} fusion(element_wise),
         kind=kLoop, calls=fused_reduce
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
         tuple(fusion, element_wise)
@@ -794,7 +794,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       p1 = f32[2,2,2]{2,1,0} parameter(1)
       element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
-      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
+      fusion = f32[2,2]{1,0} fusion(element_wise), kind=kLoop, calls=fused_reduce
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
                     .ValueOrDie();

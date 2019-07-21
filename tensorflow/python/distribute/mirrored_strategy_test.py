@@ -1183,7 +1183,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.MirroredStrategy()
       self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                             cross_device_ops_lib.NcclAllReduce)
-    self.skipTest('b/130551176, run the following once fixed.')
+    self.skipTest("b/130551176, run the following once fixed.")
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testInitializeFromTFConfig(self):

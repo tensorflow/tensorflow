@@ -37,6 +37,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -367,6 +368,31 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
     result = lookup_table_func(constant_op.constant([2, -1, 1]))
     self.assertAllEqual([b"surgery", b"n/a", b"salad"], result)
+
+  def testTwoTablesInControlFlow(self):
+    keys = constant_op.constant([1, 2, 3], dtypes.int32)
+    values = constant_op.constant([5, 10, 15], dtypes.int32)
+
+    def table_func1(x):
+      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+          keys, values), -1)
+      return table.lookup(x)
+
+    elems = np.array([2, 4, 1], dtype=np.int32)
+    result1 = map_fn.map_fn(table_func1, elems, dtype=dtypes.int32)
+
+    def table_func2(x):
+      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+          keys, values), -1)
+      return table.lookup(x)
+
+    elems = np.array([2, 4, 1], dtype=np.int32)
+    result2 = map_fn.map_fn(table_func2, elems, dtype=dtypes.int32)
+
+    self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertAllEqual([10, -1, 5], self.evaluate(result1))
+    self.assertAllEqual([10, -1, 5], self.evaluate(result2))
 
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):

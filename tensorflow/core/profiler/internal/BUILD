@@ -370,7 +370,6 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
-        "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
@@ -418,4 +417,23 @@ filegroup(
         "traceme_recorder.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "scoped_annotation_test",
+    size = "small",
+    srcs = ["scoped_annotation_test.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
 )

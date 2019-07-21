@@ -187,7 +187,6 @@ class Importer {
   // "NextIteration" node, there are two operations, "NextIteration.source"
   // and "NextIteration.sink" are added to the MLIR module.
   using BackEdge = BackEdgeHelper::BackEdge;
-  using Backedges = std::vector<const BackEdge*>;
 
   // Removes backedges from the input graph. The removed edges are added back to
   // to OpBuilder after the remaining graph is converted to the Function.
@@ -251,7 +250,7 @@ class Importer {
   BackEdgeHelper back_edge_helper_;
   // A map between node and output index, for each backedge.
   absl::flat_hash_map<const Node*, int> back_edge_node_output_;
-  absl::flat_hash_map<const Node*, Backedges> back_edge_dst_inputs_;
+  absl::flat_hash_map<const Node*, BackEdge> back_edge_dst_inputs_;
   // A map between sink and source operation of NextIteration
   absl::flat_hash_map<mlir::Operation*, mlir::Operation*>
       next_iteration_sink_source_;
@@ -317,7 +316,10 @@ Status Importer::RemoveBackedges(const Graph& graph) {
           "More than one of the src node outputs are backedges!");
     }
     back_edge_node_output_[edge.src] = edge.src_output;
-    back_edge_dst_inputs_[edge.dst].push_back(&edge);
+    // We expect a merge to receive a single backedge (multiple NextIteration
+    // nodes feeding into the same merge is unexpected here).
+    DCHECK(!back_edge_dst_inputs_.contains(edge.dst));
+    back_edge_dst_inputs_[edge.dst] = edge;
   }
 
   // Obtains a RPO ordering, using node names as a tiebreak for stable sorting.
@@ -1097,20 +1099,15 @@ Status Importer::ConvertNode(const Node& node) {
 // TODO(fengliuai): Preserve the order of the results and operands if
 // necessary.
 Status Importer::AddBackedges() {
-  for (auto& it : back_edge_dst_inputs_) {
-    auto& back_edges = it.second;
-    absl::c_stable_sort(back_edges, [](const BackEdge* e1, const BackEdge* e2) {
-      return e1->dst_input < e2->dst_input;
-    });
-    for (const auto* edge : back_edges) {
-      if (!edge->src->IsNextIteration() || !edge->dst->IsMerge()) {
-        return errors::FailedPrecondition(
-            "Invalid backedge; should be from NextIteration to Merge!");
-      }
-      auto* sink = node_values_[edge->src->id()];
-      auto* dst = node_values_[edge->dst->id()];
-      TF_RETURN_IF_ERROR(AddBackedge(sink, dst, edge->dst_input));
+  for (auto it : back_edge_dst_inputs_) {
+    BackEdge& edge = it.second;
+    if (!edge.src->IsNextIteration() || !edge.dst->IsMerge()) {
+      return errors::FailedPrecondition(
+          "Invalid backedge; should be from NextIteration to Merge!");
     }
+    auto* sink = node_values_[edge.src->id()];
+    auto* dst = node_values_[edge.dst->id()];
+    TF_RETURN_IF_ERROR(AddBackedge(sink, dst, edge.dst_input));
   }
   return Status::OK();
 }

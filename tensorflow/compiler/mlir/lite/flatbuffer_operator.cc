@@ -137,5 +137,12 @@ ConvertTFL_FullyConnectedOptionsWeightFormatAttrForOptionWriter(
             tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
 }
 
+static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return llvm::StringSwitch<tflite::LSTMKernelType>(str)
+      .Case("FULL", tflite::LSTMKernelType_FULL)
+      .Case("BASIC", tflite::LSTMKernelType_BASIC);
+}
+
 // Pull in FlatBuffer writers for TFLite generated using TableGen
 #include "tensorflow/compiler/mlir/lite/operator_writers.inc"

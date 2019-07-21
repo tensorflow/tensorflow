@@ -42,3 +42,6 @@ tensorflow/lite/experimental/micro/tools/ci_build/install_arduino_cli.sh
 for f in tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/*/*.zip; do
   tensorflow/lite/experimental/micro/tools/ci_build/test_arduino_library.sh ${f}
 done
+
+# Needed to solve CI build bug triggered by files added to source tree.
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

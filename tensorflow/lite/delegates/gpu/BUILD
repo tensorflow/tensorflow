@@ -1,3 +1,5 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -12,6 +14,14 @@ package(
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
+)
+
+config_setting(
+    name = "tflite_gpu_extra_gles_deps",
+    values = {
+        "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
+        "cpu": "k8",
+    },
 )
 
 cc_library(
@@ -56,7 +66,7 @@ cc_library(
             "//tensorflow/lite/schema:schema_fbs",
         ],
         ":tflite_gpu_binary_release": [],
-    }),
+    }) + tflite_extra_gles_deps(),
 )
 
 objc_library(

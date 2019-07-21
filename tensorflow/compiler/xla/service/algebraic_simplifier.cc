@@ -431,8 +431,8 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
-  auto bitcast = computation_->AddInstruction(HloInstruction::CreateUnary(
-      instruction->shape(), HloOpcode::kBitcast, operand));
+  auto bitcast = computation_->AddInstruction(
+      HloInstruction::CreateBitcast(instruction->shape(), operand));
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -573,8 +573,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
     return ReplaceWithNewInstruction(
-        bitcast,
-        HloInstruction::CreateUnary(bitcast->shape(), HloOpcode::kBitcast, op));
+        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
   }
   // All bitcasts can be eliminated (assuming layout constraints are
   // satisified).
@@ -1705,7 +1704,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
+  if (options_.enable_dot_to_multiply_rewrite() &&
+      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -3806,7 +3806,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     std::vector<int64> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);
     return computation_->AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kBitcast, operand));
+        HloInstruction::CreateBitcast(shape, operand));
   };
 
   // Replace it with a dot, with bitcasts around it to get the right shape.

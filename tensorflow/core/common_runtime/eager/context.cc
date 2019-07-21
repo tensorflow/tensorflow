@@ -505,12 +505,6 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
-bool EagerContext::IsLocal(const Device* d) const {
-  if (d == nullptr || remote_device_mgr() == nullptr) return true;
-  tensorflow::Device* tmp;
-  return local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
-}
-
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
   if (first == nullptr) first = HostCPU();
   if (second == nullptr) second = HostCPU();

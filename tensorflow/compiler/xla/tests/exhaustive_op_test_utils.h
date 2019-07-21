@@ -45,7 +45,13 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   // `ty` is the primitive type being tested.
   explicit ExhaustiveOpTestBase(PrimitiveType ty)
-      : ty_(ty), platform_(client_->platform()->Name()) {}
+      : ty_(ty), platform_(client_->platform()->Name()) {
+    SetFastMathDisabled(true);
+
+    // Run all HLO passes.  In particular, constant folding is disabled by
+    // default for tests, but we need to run it in order to tickle some bugs.
+    mutable_debug_options()->clear_xla_disable_hlo_passes();
+  }
 
   // Builds and runs the computation using the LocalClient API, rather than the
   // plain Client API, which is used by ClientLibraryTestBase.  This is because
@@ -226,6 +232,411 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // XLA:GPU preserves denormal signs, but other backends don't.
   bool relaxed_denormal_signs_ = platform_ != "CUDA";
 };
+
+// Represents a set of 64 bit chunks by representing the starting bit chunk,
+// the last bit chunk, and the spacing between two adjacent bit chunks, without
+// actually storing all the bit chunks being generated. The bit chunk iterator
+// is provided to retrieve all the bit chunks.
+//
+// This data structure is used to generate the bit representation to test
+// operations that requires more than 64 bit input data. In this case,
+// truly exhaustive testing is not possible and we want to test a value every
+// n values, where n == spacing_.
+//
+// Currently, the iterator of BitChunks adds the `spacing_` to a bit chunk to
+// compute the next bit chunk. We can change this to use values generated
+// by a random number generator that can achieve the average spacing
+// statistically, if we will find this is necessary.
+class BitChunks {
+ public:
+  class iterator
+      : public std::iterator<std::input_iterator_tag,  // iterator_category
+                             uint64,                   // value_type
+                             uint64,                   // difference_type
+                             const uint64*,            // pointer
+                             uint64                    // reference
+                             > {
+   public:
+    iterator() {}
+
+    explicit iterator(const BitChunks* bit_chunks)
+        : bit_chunks_(bit_chunks), next_bit_chunk_(bit_chunks->start_) {}
+
+    iterator& operator++() {
+      Next();
+      return *this;
+    }
+
+    iterator operator++(int) {
+      iterator retval = *this;
+      Next();
+      return retval;
+    }
+
+    bool operator==(iterator other) const {
+      return bit_chunks_ == other.bit_chunks_ &&
+             next_bit_chunk_ == other.next_bit_chunk_;
+    }
+
+    bool operator!=(iterator other) const { return !(*this == other); }
+
+    iterator MoveToEnd() {
+      MoveNextBitChunkToOnePassEnd();
+      return *this;
+    }
+
+    reference operator*() const {
+      CHECK(*this != this->bit_chunks_->end());
+      return next_bit_chunk_;
+    }
+
+    const BitChunks* GetBitChunks() const { return bit_chunks_; }
+
+    void Reset() { next_bit_chunk_ = bit_chunks_->start_; }
+
+    void Next() {
+      CHECK(*this != this->bit_chunks_->end());
+      if (next_bit_chunk_ == bit_chunks_->end_) {
+        MoveNextBitChunkToOnePassEnd();
+      } else {
+        next_bit_chunk_ += bit_chunks_->spacing_;
+        if (next_bit_chunk_ > bit_chunks_->end_) {
+          next_bit_chunk_ = bit_chunks_->end_;
+        }
+      }
+    }
+
+    std::string ToString() const {
+      return absl::StrFormat("0x%08x", next_bit_chunk_);
+    }
+
+   private:
+    // Move next_bit_chunk_ to 1 pass the bit_chunks_->end, to mark that the
+    // iterator has reached the end. When spacing_ is not one, or if we will
+    // change to use a random value instead of spacing_ in function Next(),
+    // normalizing the representation of the iterator ending this way can
+    // can simplify the checking for iterator ending.
+    void MoveNextBitChunkToOnePassEnd() {
+      next_bit_chunk_ = bit_chunks_->end_ + 1;
+    }
+
+    const BitChunks* bit_chunks_;
+    uint64 next_bit_chunk_;
+  };
+
+  iterator begin() const { return iterator(this); }
+  iterator end() const {
+    iterator end(this);
+    return end.MoveToEnd();
+  }
+
+  explicit BitChunks(uint64 start = 0, uint64 end = 0, uint64 spacing = 1)
+      : start_(start), end_(end), spacing_(spacing) {
+    CHECK_GE(end_, start_);
+    CHECK_NE(spacing, 0) << ToString();
+  }
+
+  int64 GetTotalBitChunks() const {
+    if (start_ == end_) {
+      return 1;
+    }
+
+    return 1 + (end_ - start_ + spacing_ - 1) / spacing_;
+  }
+
+  std::string ToString() const {
+    return absl::StrFormat("(0x%08x, 0x%08x, 0x%08x)", start_, end_, spacing_);
+  }
+
+  uint64 start_;
+  uint64 end_;
+  uint64 spacing_;
+};
+
+inline string StringifyNum(BitChunks c) { return c.ToString(); }
+
+inline string StringifyNum(BitChunks::iterator c) { return c.ToString(); }
+
+template <typename T>
+void AppendStringifyNum(std::string* s, T x) {
+  absl::StrAppend(s, StringifyNum(x));
+}
+
+// Represents a set of floating point values through the possible values for
+// the three components: mantissa, exponent, and sign. Also implements an
+// iterator for retrieving all the represented floating point values.
+class FpValues {
+ public:
+  static constexpr uint kTotalBitChunks = 3;
+
+  class iterator
+      : public std::iterator<std::input_iterator_tag,  // iterator_category
+                             uint64,                   // value_type
+                             uint64,                   // difference_type
+                             const uint64*,            // pointer
+                             uint64                    // reference
+                             > {
+   public:
+    explicit iterator(const FpValues* fp_values) : fp_values_(fp_values) {
+      for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
+        iters_[i] = BitChunks::iterator(&fp_values->GetBitChunks(i));
+      }
+    }
+
+    iterator& operator++() {
+      Next();
+      return *this;
+    }
+
+    iterator operator++(int) {
+      iterator retval = *this;
+      Next();
+      return retval;
+    }
+
+    bool operator==(iterator other) const {
+      for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
+        if (iters_[i] != other.GetBitChunksIter(i)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    bool operator!=(iterator other) const { return !(*this == other); }
+
+    iterator MoveToEnd() {
+      for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
+        iters_[i].MoveToEnd();
+      }
+      return *this;
+    }
+
+    uint64 operator*() const {
+      uint64 value = 0;
+      for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
+        value = value | (*iters_[i]) << fp_values_->offsets_[i];
+      }
+      return value;
+    }
+
+    const BitChunks::iterator& GetBitChunksIter(int i) { return iters_[i]; }
+
+    std::string ToString() const {
+      return absl::StrJoin(iters_, ",",
+                           AppendStringifyNum<BitChunks::iterator>);
+    }
+
+   private:
+    // Moves the iterator for the ith BitChunks to the next value, and
+    // returns true if the new state is not the end of the iterator.
+    bool Next(int i = 0) {
+      iters_[i].Next();
+      if (iters_[i] == iters_[i].GetBitChunks()->end()) {
+        if (i == FpValues::kTotalBitChunks - 1) {
+          return false;
+        }
+        if (Next(i + 1)) {
+          iters_[i].Reset();
+          return true;
+        }
+        return false;
+      }
+      return true;
+    }
+
+    std::array<BitChunks::iterator, FpValues::kTotalBitChunks> iters_;
+    const FpValues* fp_values_;
+  };
+
+  FpValues(absl::Span<const BitChunks> chunks, absl::Span<const int> offsets) {
+    CHECK_EQ(chunks.size(), offsets.size() - 1);
+    CHECK_EQ(chunks.size(), kTotalBitChunks);
+    std::copy_n(chunks.begin(), kTotalBitChunks, bit_chunks_.begin());
+    std::copy_n(offsets.begin(), kTotalBitChunks, offsets_.begin());
+
+    // The last value in `offsets` is the total number of bits.
+    offsets_[kTotalBitChunks] = offsets[kTotalBitChunks];
+    // Validate the input values.
+    for (int i = 0; i < kTotalBitChunks; ++i) {
+      int total_bits = offsets[i + 1] - offsets[i];
+      if (total_bits < 64) {
+        uint64 bound = 1ull << total_bits;
+        CHECK_LT(chunks[i].start_, bound);
+        CHECK_LT(chunks[i].end_, bound);
+      } else {
+        CHECK_EQ(total_bits, 64);
+      }
+    }
+  }
+
+  iterator begin() const { return iterator(this); }
+
+  iterator end() const {
+    iterator end(this);
+    return end.MoveToEnd();
+  }
+
+  int64 GetTotalNumValues() const {
+    int64 total = 1;
+    absl::c_for_each(bit_chunks_, [&](const BitChunks& chunks) {
+      total *= chunks.GetTotalBitChunks();
+    });
+    return total;
+  }
+
+  const BitChunks& GetBitChunks(int i) const { return bit_chunks_[i]; }
+
+  std::string ToString() const {
+    return absl::StrCat(
+        "[", absl::StrJoin(bit_chunks_, ",", AppendStringifyNum<BitChunks>),
+        "]");
+  }
+
+  std::array<BitChunks, kTotalBitChunks> bit_chunks_;
+  std::array<int, kTotalBitChunks + 1> offsets_;
+};
+
+template <typename T>
+int GetMantissaTotalBits() {
+  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value,
+                "Only supports float and double.");
+  return std::numeric_limits<T>::digits - 1;
+}
+
+template <typename T>
+int GetFpTotalBits() {
+  return sizeof(T) * 8;
+}
+
+template <typename T>
+int GetExponentTotalBits() {
+  return GetFpTotalBits<T>() - GetMantissaTotalBits<T>() - 1;
+}
+
+template <typename T>
+uint64 GetAllOneMantissa() {
+  return (1ull << GetMantissaTotalBits<T>()) - 1ull;
+}
+
+template <typename T>
+uint64 GetAllOneExponent() {
+  return (1ull << GetExponentTotalBits<T>()) - 1ull;
+}
+
+template <typename T>
+FpValues GetFpValues(BitChunks mantissa, BitChunks exponent, BitChunks sign) {
+  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value,
+                "Only supports float and double.");
+  int total_bits = GetFpTotalBits<T>();
+  return FpValues({mantissa, exponent, sign},
+                  {0, GetMantissaTotalBits<T>(), total_bits - 1, total_bits});
+}
+
+template <typename T>
+FpValues GetZeros() {
+  return GetFpValues<T>(BitChunks(0, 0, 1), BitChunks(0, 0, 1),
+                        BitChunks(0, 1, 1));
+}
+
+template <typename T>
+FpValues GetSubnormals(int approx_num_values) {
+  int mantissa = GetMantissaTotalBits<T>();
+  uint64 mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
+  return GetFpValues<T>(
+      BitChunks(0x1, GetAllOneMantissa<T>(), mantissa_spacing),
+      BitChunks(0, 0, 1), BitChunks(0, 1, 1));
+}
+
+template <typename T>
+FpValues GetInfinites() {
+  uint64 all_one_exp = GetAllOneExponent<T>();
+  return GetFpValues<T>(BitChunks(0, 0, 1),
+                        BitChunks(all_one_exp, all_one_exp, 1),
+                        BitChunks(0, 1, 1));
+}
+
+template <typename T>
+FpValues GetNans(int approx_num_values) {
+  int mantissa = GetMantissaTotalBits<T>();
+  uint64 mantissa_spacing = (1ull << mantissa) / (approx_num_values * 2);
+  uint64 all_one_exp = GetAllOneExponent<T>();
+  return GetFpValues<T>(
+      BitChunks(0x1, GetAllOneMantissa<T>(), mantissa_spacing),
+      BitChunks(all_one_exp, all_one_exp, 1), BitChunks(0, 1, 1));
+}
+
+template <typename T>
+FpValues GetNormals(int approx_num_values) {
+  float component_total = std::sqrtf(approx_num_values);
+  return GetFpValues<T>(
+      BitChunks(0x1, GetAllOneMantissa<T>(),
+                (1ull << (GetMantissaTotalBits<T>() + 1)) / component_total),
+      BitChunks(0x1, GetAllOneExponent<T>() - 1,
+                (1ull << (GetExponentTotalBits<T>() + 1)) / component_total),
+      BitChunks(0, 1, 1));
+}
+
+// Returns a vector of FpValues, which together represent about
+// `approx_num_values` floating point values of type `T`, with each FpValues
+// represents about `num_values_per_group` floating point values.
+template <typename T>
+std::vector<FpValues> GetFpValuesWithExponents(uint64 first_exponent,
+                                               uint64 exponent_spacing,
+                                               uint64 num_exponents,
+                                               uint64 approx_num_values,
+                                               uint64 num_values_per_group) {
+  const uint64 num_signs = 2;
+  uint64 approx_num_mantissa = approx_num_values / (num_exponents * num_signs);
+  uint64 num_mantissa_per_group =
+      num_values_per_group / (num_exponents * num_signs);
+  CHECK_GT(approx_num_mantissa, 0);
+  CHECK_GT(num_mantissa_per_group, 0);
+
+  CHECK_LT(first_exponent + num_exponents - 1ull, GetAllOneExponent<T>());
+  int mantissa = GetMantissaTotalBits<T>();
+  uint64 mantissa_spacing = (1ull << mantissa) / approx_num_mantissa;
+
+  std::vector<FpValues> result;
+  for (uint64 group_start = 0; group_start < GetAllOneMantissa<T>();
+       group_start += mantissa_spacing * num_mantissa_per_group) {
+    uint64 group_end =
+        group_start + (num_mantissa_per_group - 1) * mantissa_spacing;
+    if (group_end > GetAllOneMantissa<T>()) {
+      group_end = GetAllOneMantissa<T>();
+    }
+    result.push_back(GetFpValues<T>(
+        BitChunks(group_start, group_end, mantissa_spacing),
+        BitChunks(first_exponent, first_exponent + num_exponents - 1, 1),
+        BitChunks(0, 1, 1)));
+  }
+  return result;
+}
+
+// Returns a vector of FpValues together represent about `approx_num_values`
+// "very large" floating point values and `approx_num_values` "very small"
+// floating point values of type `T`, which each FpValues represent about
+// `num_values_per_group` floating point values. Because we use FpValues as
+// a parameter for parameterized testing, the number of floating values
+// represented by each FpValues affects the input size for each sub-test and
+// the hence the peak memory usage of the test.
+template <typename T>
+std::vector<FpValues> GetFpValuesForMagnitudeExtremeNormals(
+    uint64 approx_num_values = 40000, uint64 num_values_per_group = 4000) {
+  std::vector<FpValues> large =
+      GetFpValuesWithExponents<T>(GetAllOneExponent<T>() - 5, 1, 5,
+                                  approx_num_values / 2, num_values_per_group);
+  std::vector<FpValues> small = GetFpValuesWithExponents<T>(
+      1, 1, 5, approx_num_values / 2, num_values_per_group);
+  large.insert(large.end(), small.begin(), small.end());
+  return large;
+}
+
+template <typename T>
+std::vector<FpValues> CreateFpValuesForBoundaryTest() {
+  return {GetZeros<T>(), GetSubnormals<T>(1000), GetInfinites<T>(),
+          GetNans<T>(1000)};
+}
 
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_

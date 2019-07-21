@@ -1482,7 +1482,7 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   auto param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {42}), "param"));
   auto bitcast = builder.AddInstruction(
-      HloInstruction::CreateUnary(param->shape(), HloOpcode::kBitcast, param));
+      HloInstruction::CreateBitcast(param->shape(), param));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());

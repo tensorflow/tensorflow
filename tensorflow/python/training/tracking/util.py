@@ -89,7 +89,7 @@ class _ObjectGraphProtoPrettyPrinter(object):
     """Lazily creates a mapping from node id to ("path", "to", "root")."""
     if self._node_name_cache is not None:
       return self._node_name_cache
-    path_to_root = object_identity.ObjectIdentityDictionary()
+    path_to_root = {}
     path_to_root[0] = ("(root)",)
     to_visit = collections.deque([0])
     while to_visit:

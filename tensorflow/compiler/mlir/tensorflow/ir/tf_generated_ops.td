@@ -939,6 +939,131 @@ raising an error.
   TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_GatherNdOp : TF_Op<"GatherNd", [NoSideEffect]> {
+  let summary = [{
+Gather slices from `params` into a Tensor with shape specified by `indices`.
+  }];
+
+  let description = [{
+`indices` is an K-dimensional integer tensor, best thought of as a
+(K-1)-dimensional tensor of indices into `params`, where each element defines a
+slice of `params`:
+
+    output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
+
+Whereas in `tf.gather` `indices` defines slices into the first
+dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+The last dimension of `indices` can be at most the rank of
+`params`:
+
+    indices.shape[-1] <= params.rank
+
+The last dimension of `indices` corresponds to elements
+(if `indices.shape[-1] == params.rank`) or slices
+(if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+of `params`.  The output tensor has shape
+
+    indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
+
+Some examples below.
+
+Simple indexing into a matrix:
+
+```python
+    indices = [[0, 0], [1, 1]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = ['a', 'd']
+```
+
+Slice indexing into a matrix:
+
+```python
+    indices = [[1], [0]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['c', 'd'], ['a', 'b']]
+```
+
+Indexing into a 3-tensor:
+
+```python
+    indices = [[1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+    indices = [[0, 1], [1, 0]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+    indices = [[0, 0, 1], [1, 0, 1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = ['b0', 'b1']
+```
+
+Batched indexing into a matrix:
+
+```python
+    indices = [[[0, 0]], [[0, 1]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['a'], ['b']]
+```
+
+Batched slice indexing into a matrix:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [[['c', 'd']], [['a', 'b']]]
+```
+
+Batched indexing into a 3-tensor:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[[['a1', 'b1'], ['c1', 'd1']]],
+              [[['a0', 'b0'], ['c0', 'd0']]]]
+
+    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['c0', 'd0'], ['a1', 'b1']],
+              [['a0', 'b0'], ['c1', 'd1']]]
+
+
+    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['b0', 'b1'], ['d0', 'c1']]
+```
+
+See also `tf.gather` and `tf.batch_gather`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$params,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_GatherV2Op : TF_Op<"GatherV2", [NoSideEffect]> {
   let summary = [{
 Gather slices from `params` axis `axis` according to `indices`.
@@ -1099,10 +1224,10 @@ for dtype in dtype_list:
                                       input_tensor, bitwise_ops.invert(input_tensor)),
                                     bitwise_ops.invert(
                                       tf.constant(0, dtype=dtype))]
-
+  
   expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
   tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
-
+  
   expected = tf.cast([not_0] * 4, tf.float32)
   tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
 
@@ -1125,6 +1250,39 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_LRNOp : TF_Op<"LRN", [NoSideEffect]> {
+  let summary = "Local Response Normalization.";
+
+  let description = [{
+The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last
+dimension), and each vector is normalized independently.  Within a given vector,
+each component is divided by the weighted, squared sum of inputs within
+`depth_radius`.  In detail,
+
+    sqr_sum[a, b, c, d] =
+        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
+    output = input / (bias + alpha * sqr_sum) ** beta
+
+For details, see [Krizhevsky et al., ImageNet classification with deep
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input,
+
+    DefaultValuedAttr<I64Attr, "5">:$depth_radius,
+    DefaultValuedAttr<F32Attr, "1.0f">:$bias,
+    DefaultValuedAttr<F32Attr, "1.0f">:$alpha,
+    DefaultValuedAttr<F32Attr, "0.5f">:$beta
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1573,6 +1731,116 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
+  let summary = "Returns a one-hot tensor.";
+
+  let description = [{
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+```
+output =
+  [5.0 0.0 0.0]  // one_hot(0)
+  [0.0 0.0 5.0]  // one_hot(2)
+  [0.0 0.0 0.0]  // one_hot(-1)
+  [0.0 5.0 0.0]  // one_hot(1)
+```
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+```
+output =
+  [0.0 3.0 3.0 3.0]
+  [3.0 3.0 3.0 0.0]
+  [3.0 3.0 3.0 3.0]
+  [3.0 0.0 3.0 3.0]
+//  ^                one_hot(0)
+//      ^            one_hot(2)
+//          ^        one_hot(-1)
+//              ^    one_hot(1)
+```
+
+Suppose that
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+```
+output =
+  [
+    [1.0, 0.0, 0.0]  // one_hot(0)
+    [0.0, 0.0, 1.0]  // one_hot(2)
+  ][
+    [0.0, 1.0, 0.0]  // one_hot(1)
+    [0.0, 0.0, 0.0]  // one_hot(-1)
+  ]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[I32, I64, I8]>:$indices,
+    I32Tensor:$depth,
+    TF_Tensor:$on_value,
+    TF_Tensor:$off_value,
+
+    DefaultValuedAttr<I64Attr, "-1">:$axis
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
@@ -2131,6 +2399,82 @@ Input images can be of different types but output images are always float.
     F32Tensor:$resized_images
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
+  let summary = "Reverses variable length slices.";
+
+  let description = [{
+This op first slices `input` along the dimension `batch_dim`, and for each
+slice `i`, reverses the first `seq_lengths[i]` elements along
+the dimension `seq_dim`.
+
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
+and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
+
+The output slice `i` along dimension `batch_dim` is then given by input
+slice `i`, with the first `seq_lengths[i]` slices along dimension
+`seq_dim` reversed.
+
+For example:
+
+```
+# Given this:
+batch_dim = 0
+seq_dim = 1
+input.dims = (4, 8, ...)
+seq_lengths = [7, 2, 3, 5]
+
+# then slices of input are reversed on seq_dim, but only up to seq_lengths:
+output[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]
+output[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]
+output[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]
+output[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]
+
+# while entries past seq_lens are copied through:
+output[0, 7:, :, ...] = input[0, 7:, :, ...]
+output[1, 2:, :, ...] = input[1, 2:, :, ...]
+output[2, 3:, :, ...] = input[2, 3:, :, ...]
+output[3, 2:, :, ...] = input[3, 2:, :, ...]
+```
+
+In contrast, if:
+
+```
+# Given this:
+batch_dim = 2
+seq_dim = 0
+input.dims = (8, ?, 4, ...)
+seq_lengths = [7, 2, 3, 5]
+
+# then slices of input are reversed on seq_dim, but only up to seq_lengths:
+output[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]
+output[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]
+output[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]
+output[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]
+
+# while entries past seq_lens are copied through:
+output[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]
+output[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]
+output[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]
+output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$seq_lengths,
+
+    I64Attr:$seq_dim,
+    DefaultValuedAttr<I64Attr, "0">:$batch_dim
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 

@@ -353,6 +353,66 @@ class VariablesToConstantsTest(test.TestCase):
 
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
+  @test_util.run_v2_only
+  def testLoop(self):
+    input_data = {"x": constant_op.constant([1., 2., 3., 4.], shape=[2, 2])}
+
+    weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=dtypes.float32)
+
+    def condition(x):
+      return math_ops.reduce_sum(x) < 100
+
+    def body(x):
+      return math_ops.add(x, weights)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
+    ])
+    def model(x):
+      return control_flow_ops.while_loop(condition, body, [x])
+
+    root = tracking.AutoTrackable()
+    root.f = model
+    input_func = root.f.get_concrete_function()
+    input_func(**input_data)
+
+    output_func = convert_to_constants.convert_variables_to_constants_v2(
+        input_func, lower_control_flow=False)
+    constant_graph_def = output_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
+  @test_util.run_v2_only
+  def testDynamicRnn(self):
+    input_data = {
+        "x":
+            constant_op.constant(
+                np.array(
+                    np.random.random_sample((3, 10, 10)), dtype=np.float32))
+    }
+
+    cell = rnn_cell_impl.LSTMCell(10)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[3, 10, 10], dtype=dtypes.float32)
+    ])
+    def model(x):
+      return rnn.dynamic_rnn(cell, x, dtype=dtypes.float32)
+
+    root = tracking.AutoTrackable()
+    root.f = model
+    input_func = root.f.get_concrete_function()
+
+    output_func = convert_to_constants.convert_variables_to_constants_v2(
+        input_func, lower_control_flow=False)
+    constant_graph_def = output_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
 
 if __name__ == "__main__":
   test.main()

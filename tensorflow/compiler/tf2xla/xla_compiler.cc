@@ -1046,6 +1046,10 @@ Status GetPotentialFunctionName(const Node& node, const string** name) {
 Status ValidateGraph(const Graph* graph,
                      const FunctionLibraryDefinition& flib_def,
                      const DeviceType& device_type, const string& name) {
+  // Make sure the XLA compilation kernels are registered.  This operation is
+  // idempotent so it is fine if someone called it already.
+  XlaOpRegistry::RegisterCompilationKernels();
+
   auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
       return errors::InvalidArgument(absl::StrCat(
