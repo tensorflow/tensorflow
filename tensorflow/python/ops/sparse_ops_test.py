@@ -131,7 +131,7 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         values=['a', 'b'],
         dense_shape=[2, 3])
     dense = sparse_ops.sparse_tensor_to_dense(sp)
-    expected_dense = [['a', '', ''], ['', '', 'b']]
+    expected_dense = [[b'a', b'', b''], [b'', b'', b'b']]
     result_dense = self.evaluate(dense)
     self.assertAllEqual(expected_dense, result_dense)
 
