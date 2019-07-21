@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.contrib.image.python.ops import dense_image_warp
 from tensorflow.contrib.image.python.ops import interpolate_spline
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -29,27 +30,36 @@ from tensorflow.python.ops import math_ops
 def _get_grid_locations(image_height, image_width):
   """Wrapper for array_ops.meshgrid."""
 
-  y_range = math_ops.linspace(0, image_height - 1, image_height)
-  x_range = math_ops.linspace(0, image_width - 1, image_width)
+  y_range = math_ops.linspace(0.0, math_ops.to_float(image_height) - 1, 
+                                                          image_height)
+  x_range = math_ops.linspace(0.0, math_ops.to_float(image_width) - 1,
+                                                          image_width)
   y_grid, x_grid = array_ops.meshgrid(y_range, x_range, indexing='ij')
   return array_ops.stack((y_grid, x_grid), -1)
 
 
 def _expand_to_minibatch(array, batch_size):
   """Tile arbitrarily-sized array to include new batch dimension."""
-  tiles = [batch_size] + [1] * array.ndim
+  batch_size = array_ops.expand_dims(batch_size, 0)
+  array_ones = array_ops.ones((array_ops.rank(array)), dtype=dtypes.int32)
+  tiles = array_ops.concat([batch_size, array_ones], axis=0)
   return array_ops.tile(array_ops.expand_dims(array, 0), tiles)
 
 
 def _get_boundary_locations(image_height, image_width, num_points_per_edge):
   """Compute evenly-spaced indices along edge of image."""
-  y_range = math_ops.linspace(0, image_height - 1, num_points_per_edge + 2)
-  x_range = math_ops.linspace(0, image_width - 1, num_points_per_edge + 2)
+  image_height = math_ops.to_float(image_height)
+  image_width = math_ops.to_float(image_width)
+  y_range = math_ops.linspace(0.0, image_height - 1, num_points_per_edge + 2)
+  x_range = math_ops.linspace(0.0, image_width - 1, num_points_per_edge + 2)
   ys, xs = array_ops.meshgrid(y_range, x_range, indexing='ij')
-  is_boundary = np.logical_or(
-      np.logical_or(xs == 0, xs == image_width - 1),
-      np.logical_or(ys == 0, ys == image_height - 1))
-  return array_ops.stack([ys[is_boundary], xs[is_boundary]], axis=-1)
+  is_boundary = math_ops.logical_or(
+      math_ops.logical_or(math_ops.equal(xs, 0), 
+                          math_ops.equal(xs, image_width - 1)),
+      math_ops.logical_or(math_ops.equal(ys, 0), 
+                          math_ops.equal(ys, image_height - 1)))
+  return array_ops.stack([array_ops.boolean_mask(ys,is_boundary), 
+                          array_ops.boolean_mask(xs,is_boundary)], axis=-1)
 
 
 def _add_zero_flow_controls_at_boundary(control_point_locations,
@@ -80,7 +90,8 @@ def _add_zero_flow_controls_at_boundary(control_point_locations,
   boundary_point_locations = _get_boundary_locations(image_height, image_width,
                                                      boundary_points_per_edge)
 
-  boundary_point_flows = np.zeros([boundary_point_locations.shape[0], 2])
+  boundary_point_flows = array_ops.zeros(
+                            [array_ops.shape(boundary_point_locations)[0], 2])
 
   type_to_use = control_point_locations.dtype
   boundary_point_locations = _expand_to_minibatch(boundary_point_locations,
