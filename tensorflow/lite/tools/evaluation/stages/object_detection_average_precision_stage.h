@@ -42,17 +42,16 @@ class ObjectDetectionAveragePrecisionStage : public EvaluationStage {
   EvaluationStageMetrics LatestMetrics() override;
 
   // Call before Run().
-  // Both protos must outlive the call to Run().
   void SetEvalInputs(const ObjectDetectionResult& predicted_objects,
                      const ObjectDetectionResult& ground_truth_objects) {
-    predicted_objects_ = &predicted_objects;
-    ground_truth_objects_ = &ground_truth_objects;
+    predicted_objects_ = predicted_objects;
+    ground_truth_objects_ = ground_truth_objects;
   }
 
  private:
   int num_classes_ = -1;
-  const ObjectDetectionResult* predicted_objects_;
-  const ObjectDetectionResult* ground_truth_objects_;
+  ObjectDetectionResult predicted_objects_;
+  ObjectDetectionResult ground_truth_objects_;
   int current_image_index_ = 0;
 
   // One inner vector per class for ground truth objects.
