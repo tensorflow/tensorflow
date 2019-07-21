@@ -72,6 +72,7 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
+def SPV_OC_OpName              : I32EnumAttrCase<"OpName", 5>;
 def SPV_OC_OpMemoryModel       : I32EnumAttrCase<"OpMemoryModel", 14>;
 def SPV_OC_OpEntryPoint        : I32EnumAttrCase<"OpEntryPoint", 15>;
 def SPV_OC_OpExecutionMode     : I32EnumAttrCase<"OpExecutionMode", 16>;
@@ -92,11 +93,12 @@ def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
-      SPV_OC_OpTypeVoid, SPV_OC_OpTypeFloat, SPV_OC_OpTypePointer,
-      SPV_OC_OpTypeFunction, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
-      SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
-      SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpName, SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint,
+      SPV_OC_OpExecutionMode, SPV_OC_OpTypeVoid, SPV_OC_OpTypeFloat,
+      SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpFunction,
+      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
+      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
+      SPV_OC_OpFMul, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";

@@ -134,7 +134,7 @@ static void emitSerializationFunction(const Record *record, const Operator &op,
       os << "        emitError(op.getLoc(), \"operand " << operandNum
          << " has a use before def\");\n";
       os << "      }\n";
-      os << "      operands.push_back(arg.getValue());\n";
+      os << "      operands.push_back(arg);\n";
       os << "    }\n";
       operandNum++;
     } else {

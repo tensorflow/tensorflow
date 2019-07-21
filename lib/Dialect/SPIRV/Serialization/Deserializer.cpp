@@ -32,6 +32,15 @@
 
 using namespace mlir;
 
+// Decodes a string literal in `words` starting at `wordIndex`. Update the
+// latter to point to the position in words after the string literal.
+static inline StringRef decodeStringLiteral(ArrayRef<uint32_t> words,
+                                            unsigned &wordIndex) {
+  StringRef str(reinterpret_cast<const char *>(words.data() + wordIndex));
+  wordIndex += str.size() / 4 + 1;
+  return str;
+}
+
 namespace {
 /// A SPIR-V module serializer.
 ///
@@ -68,11 +77,17 @@ private:
   /// Processes the SPIR-V OpMemoryModel with `operands` and updates `module`.
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
 
+  /// Process SPIR-V OpName with `operands`
+  LogicalResult processName(ArrayRef<uint32_t> operands);
+
   /// Processes the SPIR-V function at the current `offset` into `binary`.
   /// The operands to the OpFunction instruction is passed in as ``operands`.
   /// This method processes each instruction inside the function and dispatches
   /// them to their handler method accordingly.
   LogicalResult processFunction(ArrayRef<uint32_t> operands);
+
+  /// Get the FuncOp associated with a result <id> of OpFunction.
+  FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
 
   //===--------------------------------------------------------------------===//
   // Type
@@ -105,8 +120,13 @@ private:
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
+  /// Processing of Some instructions (like OpEntryPoint and OpExecutionMode)
+  /// might need to be defered, since they contain forward references to <id>s
+  /// in the deserialized binary, but module in SPIR-V dialect expects these to
+  /// be ssa-uses.
   LogicalResult processInstruction(spirv::Opcode opcode,
-                                   ArrayRef<uint32_t> operands);
+                                   ArrayRef<uint32_t> operands,
+                                   bool deferInstructions = true);
 
   /// Method to dispatch to the specialized deserialization function for an
   /// operation in SPIR-V dialect that is a mirror of an instruction in the
@@ -146,14 +166,27 @@ private:
 
   OpBuilder opBuilder;
 
-  // result <id> to type mapping
+  // Result <id> to type mapping.
   DenseMap<uint32_t, Type> typeMap;
 
-  // result <id> to function mapping
-  DenseMap<uint32_t, Operation *> funcMap;
+  // Result <id> to function mapping.
+  DenseMap<uint32_t, FuncOp> funcMap;
 
-  // result <id> to value mapping
+  // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
+
+  // Result <id> to name mapping.
+  DenseMap<uint32_t, StringRef> nameMap;
+
+  // List of instructions that are processed in a defered fashion (after an
+  // initial processing of the entire binary). Some operations like
+  // OpEntryPoint, and OpExecutionMode use forward references to function
+  // <id>s. In SPIR-V dialect the corresponding operations (spv.EntryPoint and
+  // spv.ExecutionMode) need these references resolved. So these instructions
+  // are deserialized and stored for processing once the entire binary is
+  // processed.
+  SmallVector<std::pair<spirv::Opcode, ArrayRef<uint32_t>>, 4>
+      deferedInstructions;
 };
 } // namespace
 
@@ -171,6 +204,12 @@ LogicalResult Deserializer::deserialize() {
   while (succeeded(sliceInstruction(opcode, operands))) {
     if (failed(processInstruction(opcode, operands)))
       return failure();
+  }
+
+  for (auto &defered : deferedInstructions) {
+    if (failed(processInstruction(defered.first, defered.second, false))) {
+      return failure();
+    }
   }
 
   return success();
@@ -254,10 +293,14 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return emitError(unknownLoc, "mismatch in function type ")
            << functionType << " and return type " << resultType << " specified";
   }
-  /// TODO : The function name must be obtained from OpName eventually
-  std::string fnName = "spirv_fn_" + std::to_string(operands[2]);
+
+  std::string fnName = nameMap.lookup(operands[1]).str();
+  if (fnName.empty()) {
+    fnName = "spirv_fn_" + std::to_string(operands[2]);
+  }
   auto funcOp = opBuilder.create<FuncOp>(unknownLoc, fnName, functionType,
                                          ArrayRef<NamedAttribute>());
+  funcMap[operands[1]] = funcOp;
   funcOp.addEntryBlock();
 
   // Parse the op argument instructions
@@ -316,6 +359,24 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   if (!instOperands.empty()) {
     return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
   }
+  return success();
+}
+
+LogicalResult Deserializer::processName(ArrayRef<uint32_t> operands) {
+  if (operands.size() < 2) {
+    return emitError(unknownLoc, "OpName needs at least 2 operands");
+  }
+  if (!nameMap.lookup(operands[0]).empty()) {
+    return emitError(unknownLoc, "duplicate name found for result <id> ")
+           << operands[0];
+  }
+  unsigned wordIndex = 1;
+  StringRef name = decodeStringLiteral(operands, wordIndex);
+  if (wordIndex != operands.size()) {
+    return emitError(unknownLoc,
+                     "unexpected trailing words in OpName instruction");
+  }
+  nameMap[operands[0]] = name;
   return success();
 }
 
@@ -437,12 +498,22 @@ LogicalResult Deserializer::sliceInstruction(spirv::Opcode &opcode,
 }
 
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
-                                               ArrayRef<uint32_t> operands) {
+                                               ArrayRef<uint32_t> operands,
+                                               bool deferInstructions) {
   // First dispatch all the instructions whose opcode does not correspond to
   // those that have a direct mirror in the SPIR-V dialect
   switch (opcode) {
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
+  case spirv::Opcode::OpEntryPoint:
+  case spirv::Opcode::OpExecutionMode:
+    if (deferInstructions) {
+      deferedInstructions.emplace_back(opcode, operands);
+      return success();
+    }
+    break;
+  case spirv::Opcode::OpName:
+    return processName(operands);
   case spirv::Opcode::OpTypeFloat:
   case spirv::Opcode::OpTypeFunction:
   case spirv::Opcode::OpTypePointer:
@@ -450,12 +521,85 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processType(opcode, operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
-  default:;
+  default:
+    break;
   }
   return dispatchToAutogenDeserialization(opcode, operands);
 }
 
 namespace {
+template <>
+LogicalResult
+Deserializer::processOp<spirv::EntryPointOp>(ArrayRef<uint32_t> words) {
+  unsigned wordIndex = 0;
+  if (wordIndex >= words.size()) {
+    return emitError(unknownLoc,
+                     "missing Execution Model specification in OpEntryPoint");
+  }
+  auto exec_model = opBuilder.getI32IntegerAttr(words[wordIndex++]);
+  if (wordIndex >= words.size()) {
+    return emitError(unknownLoc, "missing <id> in OpEntryPoint");
+  }
+  // Get the function <id>
+  auto fnID = words[wordIndex++];
+  // Get the function name
+  auto fnName = decodeStringLiteral(words, wordIndex);
+  // Verify that the function <id> matches the fnName
+  auto parsedFunc = getFunction(fnID);
+  if (!parsedFunc) {
+    return emitError(unknownLoc, "no function matching <id> ") << fnID;
+  }
+  if (parsedFunc.getName() != fnName) {
+    return emitError(unknownLoc, "function name mismatch between OpEntryPoint "
+                                 "and OpFunction with <id> ")
+           << fnID << ": " << fnName << " vs. " << parsedFunc.getName();
+  }
+  SmallVector<Value *, 4> interface;
+  while (wordIndex < words.size()) {
+    auto arg = getValue(words[wordIndex]);
+    if (!arg) {
+      return emitError(unknownLoc, "undefined result <id> ")
+             << words[wordIndex] << " while decoding OpEntryPoint";
+    }
+    interface.push_back(arg);
+    wordIndex++;
+  }
+  opBuilder.create<spirv::EntryPointOp>(
+      unknownLoc, exec_model, opBuilder.getSymbolRefAttr(fnName), interface);
+  return success();
+}
+
+template <>
+LogicalResult
+Deserializer::processOp<spirv::ExecutionModeOp>(ArrayRef<uint32_t> words) {
+  unsigned wordIndex = 0;
+  if (wordIndex >= words.size()) {
+    return emitError(unknownLoc,
+                     "missing function result <id> in OpExecutionMode");
+  }
+  // Get the function <id> to get the name of the function
+  auto fnID = words[wordIndex++];
+  auto fn = getFunction(fnID);
+  if (!fn) {
+    return emitError(unknownLoc, "no function matching <id> ") << fnID;
+  }
+  // Get the Execution mode
+  if (wordIndex >= words.size()) {
+    return emitError(unknownLoc, "missing Execution Mode in OpExecutionMode");
+  }
+  auto execMode = opBuilder.getI32IntegerAttr(words[wordIndex++]);
+
+  // Get the values
+  SmallVector<Attribute, 4> attrListElems;
+  while (wordIndex < words.size()) {
+    attrListElems.push_back(opBuilder.getI32IntegerAttr(words[wordIndex++]));
+  }
+  auto values = opBuilder.getArrayAttr(attrListElems);
+  opBuilder.create<spirv::ExecutionModeOp>(
+      unknownLoc, opBuilder.getSymbolRefAttr(fn.getName()), execMode, values);
+  return success();
+}
+
 // Pull in auto-generated Deserializer::dispatchToAutogenDeserialization() and
 // various processOpImpl specializations.
 #define GET_DESERIALIZATION_FNS

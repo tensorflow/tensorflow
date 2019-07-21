@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @spirv_module
 // CHECK:      spv.module "Logical" "VulkanKHR" {
-// CHECK-NEXT:   func @spirv_fn_0() {
+// CHECK-NEXT:   func @foo() {
 // CHECK-NEXT:     spv.Return
 // CHECK-NEXT:   }
 // CHECK-NEXT: } attributes {major_version = 1 : i32, minor_version = 0 : i32}
