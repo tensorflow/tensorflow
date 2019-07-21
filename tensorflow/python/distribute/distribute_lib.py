@@ -63,7 +63,7 @@ the same way with eager and graph execution.
   each replica are aggregated together before updating the model variables. This
   is in contrast to _asynchronous_, or _async_ training, where each replica
   updates the model variables independently. You may also have replicas
-  partitioned into gropus which are in sync within each group but async between
+  partitioned into groups which are in sync within each group but async between
   groups.
 * _Parameter servers_: These are machines that hold a single copy of
   parameters/variables, used by some strategies (right now just
