@@ -30,21 +30,32 @@ namespace {
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
-// making the quantizaton rule for some operations in the quantization-awre
+// making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
-struct PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
+class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
+ public:
+  // Constructor used by the PassRegistration.
+  explicit PrepareQuantizePass() : quantize_sign_(false) {}
+
+  // Constructor used by manually creating the pass.
+  explicit PrepareQuantizePass(bool quantize_sign)
+      : quantize_sign_(quantize_sign) {}
+
   void runOnFunction() override;
+
+ private:
+  bool quantize_sign_;
 };
 
 void PrepareQuantizePass::runOnFunction() {
-  ApplyQuantizationParamsPropagation(getFunction());
+  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign_);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-FunctionPassBase *CreatePrepareQuantizePass() {
-  return new PrepareQuantizePass();
+FunctionPassBase *CreatePrepareQuantizePass(bool quantize_sign) {
+  return new PrepareQuantizePass(quantize_sign);
 }
 
 static PassRegistration<PrepareQuantizePass> pass(

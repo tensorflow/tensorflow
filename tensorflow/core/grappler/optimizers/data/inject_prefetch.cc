@@ -31,8 +31,11 @@ namespace grappler {
 namespace {
 
 constexpr std::array<const char*, 4> kAsyncDatasetOps = {
-    "ParallelMapDataset", "ParallelInterleaveDatasetV2", "MapAndBatchDataset",
-    "ExperimentalMapAndBatchDataset"};
+    "ExperimentalMapAndBatchDataset",
+    "ParallelMapDataset",
+    "ParallelInterleaveDatasetV2",
+    "MapAndBatchDataset",
+};
 
 }  // namespace
 

@@ -161,7 +161,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     inputs, outputs = model_fn()
     model = keras.Model(inputs, outputs)
     model.compile(
-        adam.Adam(0.001), 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     np_inputs = nest.map_structure(lambda x: np.ones((10, 10), 'float32'),
                                    inputs)
@@ -173,7 +176,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     new_model = keras.Model.from_config(
         model.get_config(), custom_objects={'LayerWithLayer': LayerWithLayer})
     new_model.compile(
-        adam.Adam(0.001), 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     new_model.fit(np_inputs, np_outputs, batch_size=2)
     new_model(np_inputs)  # Test calling the new model directly on inputs.
 

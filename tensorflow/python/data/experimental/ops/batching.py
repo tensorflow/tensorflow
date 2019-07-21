@@ -21,9 +21,9 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -243,9 +243,9 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape
-    self._element_spec = structure.SparseTensorStructure(
-        dataset_ops.get_legacy_output_types(input_dataset),
-        tensor_shape.vector(None).concatenate(self._row_shape))
+    self._element_spec = sparse_tensor.SparseTensorSpec(
+        tensor_shape.vector(None).concatenate(self._row_shape),
+        dataset_ops.get_legacy_output_types(input_dataset))
 
     if compat.forward_compatible(2019, 8, 3):
       variant_tensor = ged_ops.dense_to_sparse_batch_dataset(

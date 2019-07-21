@@ -204,7 +204,7 @@ class TensorHandle : public core::RefCounted {
   // done and the handle is "ready".
   Status WaitReady();
 
-  // TODO(b/136608821): device_ == nullptr iff local CPU
+  // TODO(b/136608821): device_ == nullptr iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
   // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are

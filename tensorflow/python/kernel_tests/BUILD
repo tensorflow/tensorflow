@@ -271,6 +271,7 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(
@@ -967,6 +968,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(
@@ -1295,7 +1297,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "topk_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["topk_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1698,11 +1700,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-    ],
-    tags = [
-        # TODO(b/134600611): Re-enable this test.
-        "notap",
-        "no_oss",
     ],
     xla_enable_strict_auto_jit = True,
 )

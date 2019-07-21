@@ -214,7 +214,6 @@ class CollectiveAllReduceStrategyTestBase(
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
-      return error_after < error_before
 
   def _test_complex_model(self,
                           task_type,
@@ -270,7 +269,6 @@ class CollectiveAllReduceStrategyTestBase(
 
       sess.run(variables.global_variables_initializer())
       sess.run(train_op)
-      return True
 
   def _test_variable_initialization(self,
                                     task_type,
@@ -303,7 +301,6 @@ class CollectiveAllReduceStrategyTestBase(
           np.allclose(x_value, reduced_x_value, atol=1e-5),
           msg=('x_value = %r, reduced_x_value = %r' % (x_value,
                                                        reduced_x_value)))
-    return np.allclose(x_value, reduced_x_value, atol=1e-5)
 
   def _test_input_fn_iterator(self,
                               task_type,

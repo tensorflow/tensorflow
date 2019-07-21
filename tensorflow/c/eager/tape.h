@@ -173,6 +173,21 @@ class GradientTape {
   bool persistent_;
 };
 
+// Describes a callback for special-cased and more efficient jvp computation.
+//
+// Could just be a simple typedef in ForwardAccumulator, but MSVC chokes on
+// that.
+template <typename Gradient>
+class ForwardFunction
+    : public std::function<Status(const std::vector<Gradient*>&,
+                                  std::vector<Gradient*>*)> {
+ public:
+  template <typename lambda_type>
+  explicit ForwardFunction(lambda_type lambda)
+      : std::function<Status(const std::vector<Gradient*>&,
+                             std::vector<Gradient*>*)>(lambda) {}
+};
+
 // Computes Jacobian-vector products using forward-mode automatic
 // differentiation.
 //
@@ -222,6 +237,12 @@ class ForwardAccumulator {
   // between calls to ShouldRecord and Accumulator), and its outputs
   // (`output_tensors`).
   //
+  // If provided, a non-null `forward_function` will be used instead of the
+  // backward function (`backward_function_getter` /
+  // `backward_function_deleter`) to compute jvps for this operation. If
+  // `forward_function` is null, a GradientTape is used on the backward function
+  // to compute the jvp, which will waste computation when executing eagerly.
+  //
   // Unlike GradientTape::RecordOperation, Accumulate runs gradient computation
   // immediately. It stores the results, which feed into Accumulate for future
   // operations and may be fetched by calling FetchJVP. ForwardAccumulator
@@ -237,6 +258,7 @@ class ForwardAccumulator {
       const std::vector<TapeTensor>& output_tensors,
       gtl::ArraySlice<int64> input_tensor_id,
       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
+      const ForwardFunction<Gradient>* forward_function,
       const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
@@ -930,6 +952,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     const std::vector<TapeTensor>& output_tensors,
     gtl::ArraySlice<int64> input_tensor_id,
     gtl::ArraySlice<tensorflow::DataType> input_dtypes,
+    const ForwardFunction<Gradient>* forward_function,
     const std::function<BackwardFunction*()>& backward_function_getter,
     const std::function<void(BackwardFunction*)>& backward_function_deleter) {
   if (backward_tape_ != nullptr) {
@@ -981,23 +1004,36 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     }
   }
 
+  // Avoid infinite recursion. Whichever forward function we run, it'll end up
+  // executing ops, and we don't want to watch those with this accumulator.
   accumulating_ = true;
   auto reset_accumulating =
       gtl::MakeCleanup([this] { this->accumulating_ = false; });
 
   std::vector<Gradient*> forward_grads;
-  TF_RETURN_IF_ERROR(
-      ForwardpropFromTape(output_tensors, backward_function_getter,
-                          backward_function_deleter, in_grads, &forward_grads));
-
+  if (forward_function == nullptr) {
+    // We have no special-cased forward gradient. Fall back to running the
+    // backward function under a gradient tape.
+    TF_RETURN_IF_ERROR(ForwardpropFromTape(
+        output_tensors, backward_function_getter, backward_function_deleter,
+        in_grads, &forward_grads));
+  } else {
+    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
+  }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {
       int64 tensor_id = output_tensors[i].GetID();
       auto existing = accumulated_gradients_.find(tensor_id);
       if (existing != accumulated_gradients_.end()) {
-        vspace_.DeleteGradient(existing->second);
+        // This is a somewhat odd case to be in, since it means we have two
+        // operations which supposedly both created the same Tensor. It comes up
+        // in recompute_grad, where the gradients have the same value. However,
+        // only the original gradient is connected to everything else, so we
+        // should still use that.
+        vspace_.DeleteGradient(forward_grads[i]);
+      } else {
+        accumulated_gradients_[output_tensors[i].GetID()] = forward_grads[i];
       }
-      accumulated_gradients_[output_tensors[i].GetID()] = forward_grads[i];
     }
   }
   return Status::OK();

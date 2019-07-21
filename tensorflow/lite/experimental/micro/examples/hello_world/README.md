@@ -32,11 +32,17 @@ Microcontrollers.
 
 ### Build the code
 
-To compile and test this example on a desktop Linux or MacOS machine, download
-[the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
-into the source directory from a terminal, and then run the following command:
+To compile and test this example on a desktop Linux or macOS machine, first
+clone the TensorFlow repository from GitHub to a convenient place:
 
+```bash
+git clone --depth 1 https://github.com/tensorflow/tensorflow.git
 ```
+
+Next, `cd` into the source directory from a terminal, and then run the following
+command:
+
+```bash
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_hello_world_test
 ```
 

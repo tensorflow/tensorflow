@@ -35,6 +35,16 @@ static tflite::ActivationFunctionType ConvertTFL_AFAttrForOptionWriter(
       .Case("SIGN_BIT", tflite::ActivationFunctionType_SIGN_BIT);
 }
 
+static tflite::TensorType ConvertDerivedTFLiteTypeAttrForOptionWriter(
+    tflite::TensorType type, flatbuffers::FlatBufferBuilder* builder) {
+  if (type == tflite::TensorType_INT64) {
+    return tflite::TensorType_INT64;
+  } else if (type == tflite::TensorType_INT32) {
+    return tflite::TensorType_INT32;
+  }
+  llvm_unreachable("invalid type in conversion.");
+}
+
 static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
     llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
   return llvm::StringSwitch<tflite::Padding>(str)
@@ -125,6 +135,13 @@ ConvertTFL_FullyConnectedOptionsWeightFormatAttrForOptionWriter(
       .Case("DEFAULT", tflite::FullyConnectedOptionsWeightsFormat_DEFAULT)
       .Case("SHUFFLED4x16INT8",
             tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
+}
+
+static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return llvm::StringSwitch<tflite::LSTMKernelType>(str)
+      .Case("FULL", tflite::LSTMKernelType_FULL)
+      .Case("BASIC", tflite::LSTMKernelType_BASIC);
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

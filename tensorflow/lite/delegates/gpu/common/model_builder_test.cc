@@ -122,7 +122,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankGT3) {
 
 class InterpreterFp16 {
  public:
-  InterpreterFp16() {
+  explicit InterpreterFp16(TfLiteBuiltinOperator op) {
     void* builtin_data = malloc(sizeof(int));
     EXPECT_EQ(interpreter_.AddTensors(5), kTfLiteOk);
     EXPECT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
@@ -147,7 +147,7 @@ class InterpreterFp16 {
               kTfLiteOk);
 
     // Add a node that GPU delegate can parse.
-    const TfLiteRegistration reg_add0 = {
+    const TfLiteRegistration reg_op0 = {
         [](TfLiteContext* context, const char* buffer, size_t length) {
           return reinterpret_cast<void*>(new int(1));
         },
@@ -157,15 +157,16 @@ class InterpreterFp16 {
         nullptr,
         nullptr,
         nullptr,
-        kTfLiteBuiltinAdd};
+        op};
     EXPECT_EQ(interpreter_.AddNodeWithParameters(
                   /*inputs=*/{1, 3}, /*outputs=*/{4}, /*init_data=*/nullptr,
                   /*init_data_size=*/0,
                   /*builtin_data=*/builtin_data,
-                  /*registration=*/&reg_add0),
+                  /*registration=*/&reg_op0),
               kTfLiteOk);
 
-    // Set inputs to Dequantize node to the specified type.
+    // Set inputs to Dequantize node to the fp16 type, and outputs
+    // to fp32 type.
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
     quantization.type = kTfLiteNoQuantization;
@@ -177,6 +178,15 @@ class InterpreterFp16 {
         interpreter_.SetTensorParametersReadWrite(
             2, TfLiteType::kTfLiteFloat16, "t2", dims, quantization, false),
         kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization, false),
+        kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            3, TfLiteType::kTfLiteFloat32, "t3", dims, quantization, false),
+        kTfLiteOk);
+
     exec_plan_ = TfLiteIntArrayCreate(3);
     exec_plan_->data[0] = 0;
     exec_plan_->data[1] = 1;
@@ -193,7 +203,8 @@ class InterpreterFp16 {
   TfLiteIntArray* exec_plan_;
 };
 
-InterpreterFp16* interpreter_fp16 = new InterpreterFp16();
+InterpreterFp16* interpreter_fp16_add_op =
+    new InterpreterFp16(kTfLiteBuiltinAdd);
 
 TEST(ModelBuilderTest, GetOpsToReplacePrunesFp16DequantizeNodes) {
   // Before pruning, the graph has three nodes:
@@ -206,19 +217,19 @@ TEST(ModelBuilderTest, GetOpsToReplacePrunesFp16DequantizeNodes) {
   //   t0 (FP16) --> Add -> t4
   //   t2 (FP16) --/
   //
-  TfLiteContext* context = interpreter_fp16->GetSubgraph()->context();
+  TfLiteContext* context = interpreter_fp16_add_op->GetSubgraph()->context();
   // These functions are meant to be called inside delegates. Swap out
   // for similar functions to permit direct calling of GetOpsToReplace.
   context->GetExecutionPlan = [](struct TfLiteContext* context,
                                  TfLiteIntArray** execution_plan) {
-    *execution_plan = interpreter_fp16->exec_plan();
+    *execution_plan = interpreter_fp16_add_op->exec_plan();
     return kTfLiteOk;
   };
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_fp16->GetSubgraph()->nodes_and_registration()[node_index];
+    auto& node_and_reg = interpreter_fp16_add_op->GetSubgraph()
+                             ->nodes_and_registration()[node_index];
     *node = &node_and_reg.first;
     *registration = &node_and_reg.second;
     return kTfLiteOk;
@@ -236,6 +247,64 @@ TEST(ModelBuilderTest, GetOpsToReplacePrunesFp16DequantizeNodes) {
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
+// This interpreter instance is created at global scope to test *exactly*
+// the GetOpsToReplace function alone, and not the sequence of function calls
+// that includes GetOpsToReplace when calling ModifyGraphWithDelegate.
+// A TfLiteContext is needed to test GetOpsToReplace, but TfLiteContexts
+// intentionally make it difficult to call certain functions in a
+// non-delegate context (see tensorflow/lite/subgraph/subgraph.cc for details)
+// We create our own GetExecutionPlan and GetNodeAndRegistration lambdas
+// inside each test, but we can't use local captures without changing the
+// function signature. Therefore, this test data lives at global scope
+// in order to be accessible inside the lambda.
+
+InterpreterFp16* interpreter_fp16_gt_op =
+    new InterpreterFp16(kTfLiteBuiltinGreater);
+
+TEST(ModelBuilderTest, GetOpsToReplaceKeepsFp16DequantizeNodes) {
+  // Before pruning, the graph has three nodes:
+  //
+  //   t0 (FP16) -> DequantNode -> t1 (FP32) -> Greater Op -> t4
+  //   t2 (FP16) -> DequantNode -> t3 (FP32) --/
+  //
+  // Because there is no GPU equivalent for the Greater op, we don't prune
+  // the Dequantize nodes.
+
+  TfLiteContext* context = interpreter_fp16_gt_op->GetSubgraph()->context();
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_gt_op->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    auto& node_and_reg = interpreter_fp16_gt_op->GetSubgraph()
+                             ->nodes_and_registration()[node_index];
+    *node = &node_and_reg.first;
+    *registration = &node_and_reg.second;
+    return kTfLiteOk;
+  };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // No nodes were found to replace.
+  EXPECT_EQ(ops_to_replace->size, 0);
+  // Inputs to Greater op are still fp32.
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  const int kGreaterOpIndex = 2;
+  context->GetNodeAndRegistration(context, kGreaterOpIndex, &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
   TfLiteIntArrayFree(ops_to_replace);
 }
 

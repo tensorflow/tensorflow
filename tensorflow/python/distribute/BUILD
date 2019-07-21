@@ -20,7 +20,6 @@ py_library(
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
-        ":test_combinations",
         "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
         "//tensorflow/python/keras/distribute:keras_test_lib",
     ],
@@ -221,9 +220,6 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -594,37 +590,13 @@ py_library(
 )
 
 py_library(
-    name = "test_combinations",
-    srcs = ["test_combinations.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:util",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_library(
     name = "combinations",
-    # TODO(isaprykin): Rename "combinations" to "tf_combinations" and
-    # "test_combinations" to "combinations".
     srcs = ["combinations.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":test_combinations",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/eager:context",
-    ],
-)
-
-py_test(
-    name = "test_combinations_test",
-    srcs = ["test_combinations_test.py"],
-    python_version = "PY2",
-    deps = [
-        ":test_combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
     ],
 )
 
@@ -731,9 +703,6 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    tags = [
-        "no_windows",
-    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -1150,9 +1119,11 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
+    shard_count = 5,
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
         "no_rocm",
+        "notap",  # TODO(b/137972256) Re-enable this test.
     ],
     deps = [
         ":saved_model_test_base",
@@ -1165,6 +1136,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_save_load_test.py"],
     main = "keras_save_load_test.py",
+    shard_count = 3,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

@@ -33,10 +33,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
@@ -664,7 +664,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_dtype=dtypes.int64,
     )
     self._element_spec = tuple(
-        structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
+        tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
     if compat.forward_compatible(2019, 8, 3):
       variant_tensor = gen_experimental_dataset_ops.csv_dataset(
           filenames=self._filenames,
@@ -970,7 +970,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
     self._element_spec = nest.map_structure(
-        lambda dtype: structure.TensorStructure(dtype, []), output_types)
+        lambda dtype: tensor_spec.TensorSpec([], dtype), output_types)
     if compat.forward_compatible(2019, 8, 3):
       variant_tensor = gen_experimental_dataset_ops.sql_dataset(
           self._driver_name, self._data_source_name, self._query,

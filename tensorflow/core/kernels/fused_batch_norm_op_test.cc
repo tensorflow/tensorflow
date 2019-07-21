@@ -286,11 +286,13 @@ BM_FusedBatchNormGradResnetShapes(fp32, true, NHWC, cpu);
 BM_FusedBatchNormGradResnetShapes(fp32, false, NHWC, cpu);
 
 #ifdef GOOGLE_CUDA
-BM_FusedBatchNormGrad(64, 14, 14, 256, fp32, true, NHWC, gpu);
-BM_FusedBatchNormGrad(64, 14, 14, 256, fp16, true, NHWC, gpu);
+BM_FusedBatchNormGradResnetShapes(fp32, true, NHWC, gpu);
+BM_FusedBatchNormGradResnetShapes(fp16, true, NHWC, gpu);
+BM_FusedBatchNormGradResnetShapes(fp32, true, NCHW, gpu);
+BM_FusedBatchNormGradResnetShapes(fp16, true, NCHW, gpu);
 
-BM_FusedBatchNormGrad(64, 14, 14, 256, fp32, true, NCHW, gpu);
-BM_FusedBatchNormGrad(64, 14, 14, 256, fp16, true, NCHW, gpu);
+BM_FusedBatchNormGradResnetShapes(fp32, false, NHWC, gpu);
+BM_FusedBatchNormGradResnetShapes(fp16, false, NHWC, gpu);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

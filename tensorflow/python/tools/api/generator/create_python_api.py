@@ -31,6 +31,7 @@ from tensorflow.python.util import tf_export
 API_ATTRS = tf_export.API_ATTRS
 API_ATTRS_V1 = tf_export.API_ATTRS_V1
 
+_LAZY_LOADING = False
 _API_VERSIONS = [1, 2]
 _COMPAT_MODULE_TEMPLATE = 'compat.v%d'
 _COMPAT_MODULE_PREFIX = 'compat.v'
@@ -57,39 +58,15 @@ from tensorflow.python.util import module_wrapper as _module_wrapper
 
 if not isinstance(_sys.modules[__name__], _module_wrapper.TFModuleWrapper):
   _sys.modules[__name__] = _module_wrapper.TFModuleWrapper(
-      _sys.modules[__name__], "%s", public_apis=_PUBLIC_APIS, deprecation=%s,
+      _sys.modules[__name__], "%s", public_apis=%s, deprecation=%s,
       has_lite=%s)
 """
-_MODULE_TEXT_TEMPLATE = """
+_LAZY_LOADING_MODULE_TEXT_TEMPLATE = """
 # Inform pytype that this module is dynamically populated (b/111239204).
-_LAZY_LOADING = False
-
+_HAS_DYNAMIC_ATTRIBUTES = True
 _PUBLIC_APIS = {
 %s
 }
-
-if _LAZY_LOADING:
-  _HAS_DYNAMIC_ATTRIBUTES = True
-else:
-  import importlib as _importlib
-  for symbol, symbol_loc_info in _PUBLIC_APIS.items():
-    if symbol_loc_info[0]:
-      attr = getattr(_importlib.import_module(symbol_loc_info[0]), symbol_loc_info[1])
-    else:
-      attr = _importlib.import_module(symbol_loc_info[1])
-    setattr(_sys.modules[__name__], symbol, attr)
-  try:
-    del symbol
-  except NameError:
-    pass
-  try:
-    del symbol_loc_info
-  except NameError:
-    pass
-  try:
-    del attr
-  except NameError:
-    pass
 """
 
 
@@ -109,7 +86,21 @@ def format_import(source_module_name, source_name, dest_name):
   Returns:
     An import statement string.
   """
-  return "  '%s': ('%s', '%s')," % (dest_name, source_module_name, source_name)
+  if _LAZY_LOADING:
+    return "  '%s': ('%s', '%s')," % (dest_name, source_module_name,
+                                      source_name)
+  else:
+    if source_module_name:
+      if source_name == dest_name:
+        return 'from %s import %s' % (source_module_name, source_name)
+      else:
+        return 'from %s import %s as %s' % (source_module_name, source_name,
+                                            dest_name)
+    else:
+      if source_name == dest_name:
+        return 'import %s' % source_name
+      else:
+        return 'import %s as %s' % (source_name, dest_name)
 
 
 def get_canonical_import(import_set):
@@ -152,6 +143,7 @@ class _ModuleInitCodeBuilder(object):
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
+    self._underscore_names_in_root = []
     self._api_version = api_version
 
   def _check_already_imported(self, symbol_id, api_name):
@@ -188,6 +180,9 @@ class _ModuleInitCodeBuilder(object):
     symbol_id = -1 if not symbol else id(symbol)
     self._check_already_imported(symbol_id, full_api_name)
 
+    if not dest_module_name and dest_name.startswith('_'):
+      self._underscore_names_in_root.append(dest_name)
+
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
     # one.
@@ -216,13 +211,23 @@ class _ModuleInitCodeBuilder(object):
           submodule = module_split[submodule_index-1]
           parent_module += '.' + submodule if parent_module else submodule
         import_from = self._output_package
-        import_from += '.' + '.'.join(module_split[:submodule_index + 1])
-        self.add_import(
-            symbol=None,
-            source_module_name='',
-            source_name=import_from,
-            dest_module_name=parent_module,
-            dest_name=module_split[submodule_index])
+        if _LAZY_LOADING:
+          import_from += '.' + '.'.join(module_split[:submodule_index + 1])
+          self.add_import(
+              symbol=None,
+              source_module_name='',
+              source_name=import_from,
+              dest_module_name=parent_module,
+              dest_name=module_split[submodule_index])
+        else:
+          if submodule_index > 0:
+            import_from += '.' + '.'.join(module_split[:submodule_index])
+          self.add_import(
+              symbol=None,
+              source_module_name=import_from,
+              source_name=module_split[submodule_index],
+              dest_module_name=parent_module,
+              dest_name=module_split[submodule_index])
 
   def build(self):
     """Get a map from destination module to __init__.py code for that module.
@@ -242,8 +247,26 @@ class _ModuleInitCodeBuilder(object):
           get_canonical_import(imports)
           for _, imports in dest_name_to_imports.items()
       ]
-      module_text_map[dest_module] = _MODULE_TEXT_TEMPLATE % '\n'.join(
-          sorted(imports_list))
+      if _LAZY_LOADING:
+        module_text_map[
+            dest_module] = _LAZY_LOADING_MODULE_TEXT_TEMPLATE % '\n'.join(
+                sorted(imports_list))
+      else:
+        module_text_map[dest_module] = '\n'.join(sorted(imports_list))
+
+    # Expose exported symbols with underscores in root module since we import
+    # from it using * import. Don't need this for lazy_loading because the
+    # underscore symbols are already included in __all__ when passed in and
+    # handled by TFModuleWrapper.
+    if not _LAZY_LOADING:
+      underscore_names_str = ', '.join(
+          '\'%s\'' % name for name in self._underscore_names_in_root)
+
+      module_text_map[''] = module_text_map.get('', '') + '''
+_names_with_underscore = [%s]
+__all__ = [_s for _s in dir() if not _s.startswith('_')]
+__all__.extend([_s for _s in _names_with_underscore])
+''' % underscore_names_str
 
     for dest_module, _ in self._module_imports.items():
       deprecation = 'False'
@@ -252,10 +275,14 @@ class _ModuleInitCodeBuilder(object):
         if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
           deprecation = 'True'
       # Workaround to make sure not load lite from lite/__init__.py
-      if not dest_module and 'lite' in self._module_imports:
+      if not dest_module and 'lite' in self._module_imports and _LAZY_LOADING:
         has_lite = 'True'
+      if _LAZY_LOADING:
+        public_apis_name = '_PUBLIC_APIS'
+      else:
+        public_apis_name = 'None'
       footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-          dest_module, deprecation, has_lite)
+          dest_module, public_apis_name, deprecation, has_lite)
 
     return module_text_map, footer_text_map
 

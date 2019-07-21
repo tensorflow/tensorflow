@@ -104,7 +104,8 @@ tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
 tensorflow/lite/experimental/ruy/context.cc \
 tensorflow/lite/experimental/ruy/detect_dotprod.cc \
-tensorflow/lite/experimental/ruy/kernel.cc \
+tensorflow/lite/experimental/ruy/kernel_arm32.cc \
+tensorflow/lite/experimental/ruy/kernel_arm64.cc \
 tensorflow/lite/experimental/ruy/pack.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
@@ -193,7 +194,7 @@ BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
-    $(BENCHMARK_ALL_SRCS))
+	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic

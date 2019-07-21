@@ -142,22 +142,6 @@ class CallTreeTransformer(converter.Base):
 
     return new_call
 
-  def visit_Print(self, node):
-    node = self.generic_visit(node)
-    args = node.values
-    # Following is the case when calling print(a, b)
-    if len(args) == 1 and isinstance(args[0], gast.Tuple):
-      args = args[0].elts
-
-    template = """
-      ag__.converted_call(func, None, options, args, {})
-    """
-    return templates.replace_as_expression(
-        template,
-        func='print',
-        options=self.ctx.program.options.to_ast(),
-        args=args)
-
 
 def transform(node, ctx):
   """Transform function call to the compiled counterparts.

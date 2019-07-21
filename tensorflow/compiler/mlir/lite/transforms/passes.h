@@ -39,7 +39,10 @@ ModulePassBase *CreateLowerStaticTensorListPass();
 FunctionPassBase *CreateQuantizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-FunctionPassBase *CreatePrepareQuantizePass();
+// When `quantize_sign` is true, constant tensors will use int8 quantization
+// scheme.
+// TODO(fengliuai): make the bit width configurable.
+FunctionPassBase *CreatePrepareQuantizePass(bool quantize_sign);
 
 // Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
 FunctionPassBase *CreatePostQuantizePass(bool emit_quant_adaptor_ops);

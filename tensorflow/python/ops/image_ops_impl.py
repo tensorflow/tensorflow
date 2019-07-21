@@ -1639,6 +1639,13 @@ def adjust_contrast(images, contrast_factor):
 
   Returns:
     The contrast-adjusted image or images.
+    
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.adjust_contrast(x,2)
+    ```
   """
   with ops.name_scope(None, 'adjust_contrast',
                       [images, contrast_factor]) as name:
@@ -2077,6 +2084,16 @@ def adjust_saturation(image, saturation_factor, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_saturation(x, 0.5)
+    ```
+    
+  Raises:
+    InvalidArgumentError: input must have 3 channels
   """
   with ops.name_scope(name, 'adjust_saturation', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')

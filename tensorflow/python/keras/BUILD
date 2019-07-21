@@ -174,6 +174,7 @@ py_library(
         "engine/training_generator.py",
         "engine/training_utils.py",
         "engine/training_v2.py",
+        "engine/training_v2_utils.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",
@@ -569,7 +570,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 12,
+    shard_count = 16,
     tags = ["notsan"],
 )
 
@@ -1052,7 +1053,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1067,7 +1068,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1230,7 +1231,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = ["no_windows"],  # b/135752236
 )
 

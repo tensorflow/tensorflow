@@ -63,6 +63,9 @@ struct GeneratedCode {
   // A list of objects to bind before shader could be executed.
   std::vector<std::pair<std::string, Object>> objects;
 
+  // A list of shared variables in the shader program.
+  std::vector<Variable> shared_variables;
+
   // Compute shader operate on an abstract concept of work groups, each
   // three-dimensional. The number of work groups to be executed is defined by
   // workload tuple. Therefore,

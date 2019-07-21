@@ -55,7 +55,8 @@ enum class TargetDeviceFunctionID {
   kRsqrt,
   kAtan2,
   kFmod,
-  kRound
+  kRound,
+  kHypot
 };
 
 // Emits a call to the specified target intrinsic with the given operands.

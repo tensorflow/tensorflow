@@ -377,8 +377,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testEagerTensorError(self):
     with self.assertRaisesRegexp(
         TypeError,
-        "Cannot convert provided value to EagerTensor. "
-        "Provided value.*Requested dtype.*"):
+        "Cannot convert .* to EagerTensor of dtype .*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
 
   def testEagerLargeConstant(self):

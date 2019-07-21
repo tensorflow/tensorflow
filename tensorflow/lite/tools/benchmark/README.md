@@ -36,12 +36,16 @@ and the following optional parameters:
     mean use no delay.
 *   `use_nnapi`: `bool` (default=false) \
     Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
-    This API is available on recent Android devices.
+    This API is available on recent Android devices. Note that some Android P
+    devices will fail to use NNAPI for models in `/data/local/tmp/` and this
+    benchmark tool will not correctly use NNAPI.
 *   `use_legacy_nnapi`: `bool` (default=false) \
     Whether to use the legacy
     [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
     TFLite path, which requires the graph to be fully compatible with NNAPI.
-    This is available on recent Android devices.
+    This is available on recent Android devices. Note that some Android P
+    devices will fail to use NNAPI for models in `/data/local/tmp/` and this
+    benchmark tool will not correctly use NNAPI.
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
     This option is currently only available on Android devices.

@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
@@ -665,16 +666,16 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   for (int i = 0; i < num_outputs; ++i) {
     TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-        /* d= */ kernel->OutputDevice(i),
+        /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
         /* op_device= */ kernel->device(),
         /* resource_device= */ kernel->OutputResourceDevice(i),
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(
-      new ExecuteNode(ctx, op->Inputs(), std::move(kernel),
-                      maybe_stats.release(), maybe_step_stats, graph_collector,
-                      output_dtypes, {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(new ExecuteNode(
+      ctx, op->Inputs(), std::move(kernel), maybe_stats.release(),
+      maybe_step_stats, graph_collector, output_dtypes,
+      op->GetCancellationManager(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -1027,6 +1028,7 @@ Status EagerKernelExecute(EagerContext* ctx,
                           NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
+                          CancellationManager* cancellation_manager,
                           absl::Span<TensorHandle*> retvals) {
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
@@ -1061,11 +1063,12 @@ Status EagerKernelExecute(EagerContext* ctx,
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
     TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, maybe_stats,
-                                   maybe_step_stats, graph_collector));
+                                   maybe_step_stats, graph_collector,
+                                   cancellation_manager));
   } else {
     TF_RETURN_IF_ERROR(kernel->Run(container, input_vector, &outputs,
                                    maybe_stats, maybe_step_stats,
-                                   graph_collector));
+                                   graph_collector, cancellation_manager));
   }
   if (graph_collector != nullptr) {
     mutex_lock ml(*ctx->MetadataMu());
@@ -1133,7 +1136,8 @@ Status EagerKernelExecute(EagerContext* ctx,
   DCHECK_EQ(retvals.size(), outputs.size());
   for (int i = 0; i < retvals.size(); ++i) {
     DCHECK_EQ(kernel->device(), retvals[i]->op_device());
-    DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
+    DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
+              retvals[i]->device());
 
     TF_RETURN_IF_ERROR(retvals[i]->SetTensor(outputs[i]));
   }
@@ -1147,7 +1151,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
   TF_RETURN_IF_ERROR(ctx->GetStatus());
   Device* resource_device = (h->dtype == DT_RESOURCE) ? dstd : nullptr;
   TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-      dstd, dstd, resource_device, h->dtype, ctx, result));
+      ctx->CanonicalDevice(dstd), dstd, resource_device, h->dtype, ctx,
+      result));
 
   // Note that `h` may not be currently ready. However execution order will
   // make sure that `h` is ready before the copy is actually done.
@@ -1208,7 +1213,7 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
 
   DCHECK(device != nullptr);
 
-  if (ctx->IsLocal(device)) {
+  if (device->IsLocal()) {
     TF_RETURN_IF_ERROR(ctx->GetStatus());
 
     op.AddInput(h);
@@ -1220,7 +1225,7 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
     TF_RETURN_IF_ERROR(h->TensorValue(&input_vector[0]));
 
     TF_RETURN_IF_ERROR(
-        kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr));
+        kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr, nullptr));
   } else {
     eager::EagerClient* eager_client;
     uint64 context_id = ctx->GetContextId();
@@ -1273,7 +1278,7 @@ Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
 
   op.MutableAttrs()->Set("tensor_type", dtype);
 
-  if (ctx->IsLocal(device)) {
+  if (device->IsLocal()) {
     TF_RETURN_IF_ERROR(ctx->GetStatus());
 
     core::RefCountPtr<KernelAndDevice> kernel;
@@ -1281,8 +1286,8 @@ Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
 
     std::vector<Tensor> outputs;
     gtl::InlinedVector<TensorValue, 4> input_vector;
-    TF_RETURN_IF_ERROR(
-        kernel->Run(input_vector, &outputs, nullptr, nullptr, nullptr));
+    TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, nullptr, nullptr,
+                                   nullptr, nullptr));
 
     // TODO(gjn): Add support for async mode
     TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
@@ -1343,9 +1348,9 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* device,
                          bool mirror, TensorHandle** result) {
   Device* send_device = h->DeviceOrHostCPU(ctx);
 
-  bool sender_is_local = ctx->IsLocal(send_device);
+  bool sender_is_local = send_device->IsLocal();
 
-  bool recver_is_local = ctx->IsLocal(device);
+  bool recver_is_local = device->IsLocal();
 
   if (sender_is_local && recver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, device, result);

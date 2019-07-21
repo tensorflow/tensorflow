@@ -225,15 +225,6 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(outputs[0])
 
-    def GetOptimizedGraph():
-      mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
-      config = config_pb2.ConfigProto()
-      config.graph_options.rewrite_options.CopyFrom(
-          rewriter_config_pb2.RewriterConfig(
-              constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-              memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
-      return tf_optimizer.OptimizeGraph(config, mg)
-
     g = GetOptimizedGraph()
     # TODO(b/136034023): while_v2 adds an extra loop_counter which is not pruned
     # away, causing an extra Enter node.
@@ -266,6 +257,30 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testPruningV2(self):
     self._testPruning()
+
+  @parameterized.named_parameters(
+      ("V1", control_flow_ops.while_loop, "StackPushV2"),
+      ("V2", while_loop_v2, "TensorListPushBack"),
+  )
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateInvariants(self, while_loop_fn, push_op):
+    # Tests that loop invariants, i.e., tensors that are "captured" by the
+    # while loop and not passed as loop variables are not accumulated in
+    # gradient computation.
+    v = constant_op.constant(5.0, name="v")
+
+    r = while_loop_fn(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+
+    output = gradients_impl.gradients(r, v)[0]
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(output)
+
+    g = GetOptimizedGraph()
+    # The gradient for v * x requires the value of both v and x. Since v is a
+    # loop invariant it is not accumulated so we have just one accumulator for
+    # x.
+    self.assertLen([n for n in g.node if n.op == push_op], 1)
 
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
@@ -520,6 +535,16 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
+
+
+def GetOptimizedGraph():
+  mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.CopyFrom(
+      rewriter_config_pb2.RewriterConfig(
+          constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+          memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
+  return tf_optimizer.OptimizeGraph(config, mg)
 
 
 if __name__ == "__main__":

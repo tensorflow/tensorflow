@@ -304,6 +304,12 @@ struct QuantizeOptionsT;
 struct MatrixSetDiagOptions;
 struct MatrixSetDiagOptionsT;
 
+struct IfOptions;
+struct IfOptionsT;
+
+struct WhileOptions;
+struct WhileOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -577,11 +583,13 @@ enum BuiltinOperator {
   BuiltinOperator_MATRIX_SET_DIAG = 115,
   BuiltinOperator_ROUND = 116,
   BuiltinOperator_HARD_SWISH = 117,
+  BuiltinOperator_IF = 118,
+  BuiltinOperator_WHILE = 119,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_HARD_SWISH
+  BuiltinOperator_MAX = BuiltinOperator_WHILE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[117] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[119] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -699,7 +707,9 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[117] {
     BuiltinOperator_QUANTIZE,
     BuiltinOperator_MATRIX_SET_DIAG,
     BuiltinOperator_ROUND,
-    BuiltinOperator_HARD_SWISH
+    BuiltinOperator_HARD_SWISH,
+    BuiltinOperator_IF,
+    BuiltinOperator_WHILE
   };
   return values;
 }
@@ -824,13 +834,15 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "MATRIX_SET_DIAG",
     "ROUND",
     "HARD_SWISH",
+    "IF",
+    "WHILE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_HARD_SWISH) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_WHILE) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -928,11 +940,13 @@ enum BuiltinOptions {
   BuiltinOptions_QuantizeOptions = 89,
   BuiltinOptions_MatrixSetDiagOptions = 90,
   BuiltinOptions_HardSwishOptions = 91,
+  BuiltinOptions_IfOptions = 92,
+  BuiltinOptions_WhileOptions = 93,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_HardSwishOptions
+  BuiltinOptions_MAX = BuiltinOptions_WhileOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[92] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[94] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1025,7 +1039,9 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[92] {
     BuiltinOptions_MatrixDiagOptions,
     BuiltinOptions_QuantizeOptions,
     BuiltinOptions_MatrixSetDiagOptions,
-    BuiltinOptions_HardSwishOptions
+    BuiltinOptions_HardSwishOptions,
+    BuiltinOptions_IfOptions,
+    BuiltinOptions_WhileOptions
   };
   return values;
 }
@@ -1124,13 +1140,15 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "QuantizeOptions",
     "MatrixSetDiagOptions",
     "HardSwishOptions",
+    "IfOptions",
+    "WhileOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_HardSwishOptions) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_WhileOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1501,6 +1519,14 @@ template<> struct BuiltinOptionsTraits<MatrixSetDiagOptions> {
 
 template<> struct BuiltinOptionsTraits<HardSwishOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_HardSwishOptions;
+};
+
+template<> struct BuiltinOptionsTraits<IfOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_IfOptions;
+};
+
+template<> struct BuiltinOptionsTraits<WhileOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_WhileOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2262,6 +2288,22 @@ struct BuiltinOptionsUnion {
   const HardSwishOptionsT *AsHardSwishOptions() const {
     return type == BuiltinOptions_HardSwishOptions ?
       reinterpret_cast<const HardSwishOptionsT *>(value) : nullptr;
+  }
+  IfOptionsT *AsIfOptions() {
+    return type == BuiltinOptions_IfOptions ?
+      reinterpret_cast<IfOptionsT *>(value) : nullptr;
+  }
+  const IfOptionsT *AsIfOptions() const {
+    return type == BuiltinOptions_IfOptions ?
+      reinterpret_cast<const IfOptionsT *>(value) : nullptr;
+  }
+  WhileOptionsT *AsWhileOptions() {
+    return type == BuiltinOptions_WhileOptions ?
+      reinterpret_cast<WhileOptionsT *>(value) : nullptr;
+  }
+  const WhileOptionsT *AsWhileOptions() const {
+    return type == BuiltinOptions_WhileOptions ?
+      reinterpret_cast<const WhileOptionsT *>(value) : nullptr;
   }
 };
 
@@ -7856,6 +7898,138 @@ inline flatbuffers::Offset<MatrixSetDiagOptions> CreateMatrixSetDiagOptions(
 
 flatbuffers::Offset<MatrixSetDiagOptions> CreateMatrixSetDiagOptions(flatbuffers::FlatBufferBuilder &_fbb, const MatrixSetDiagOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct IfOptionsT : public flatbuffers::NativeTable {
+  typedef IfOptions TableType;
+  int32_t then_subgraph_index;
+  int32_t else_subgraph_index;
+  IfOptionsT()
+      : then_subgraph_index(0),
+        else_subgraph_index(0) {
+  }
+};
+
+struct IfOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef IfOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_THEN_SUBGRAPH_INDEX = 4,
+    VT_ELSE_SUBGRAPH_INDEX = 6
+  };
+  int32_t then_subgraph_index() const {
+    return GetField<int32_t>(VT_THEN_SUBGRAPH_INDEX, 0);
+  }
+  int32_t else_subgraph_index() const {
+    return GetField<int32_t>(VT_ELSE_SUBGRAPH_INDEX, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_THEN_SUBGRAPH_INDEX) &&
+           VerifyField<int32_t>(verifier, VT_ELSE_SUBGRAPH_INDEX) &&
+           verifier.EndTable();
+  }
+  IfOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(IfOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<IfOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const IfOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct IfOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_then_subgraph_index(int32_t then_subgraph_index) {
+    fbb_.AddElement<int32_t>(IfOptions::VT_THEN_SUBGRAPH_INDEX, then_subgraph_index, 0);
+  }
+  void add_else_subgraph_index(int32_t else_subgraph_index) {
+    fbb_.AddElement<int32_t>(IfOptions::VT_ELSE_SUBGRAPH_INDEX, else_subgraph_index, 0);
+  }
+  explicit IfOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  IfOptionsBuilder &operator=(const IfOptionsBuilder &);
+  flatbuffers::Offset<IfOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<IfOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<IfOptions> CreateIfOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t then_subgraph_index = 0,
+    int32_t else_subgraph_index = 0) {
+  IfOptionsBuilder builder_(_fbb);
+  builder_.add_else_subgraph_index(else_subgraph_index);
+  builder_.add_then_subgraph_index(then_subgraph_index);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<IfOptions> CreateIfOptions(flatbuffers::FlatBufferBuilder &_fbb, const IfOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct WhileOptionsT : public flatbuffers::NativeTable {
+  typedef WhileOptions TableType;
+  int32_t cond_subgraph_index;
+  int32_t body_subgraph_index;
+  WhileOptionsT()
+      : cond_subgraph_index(0),
+        body_subgraph_index(0) {
+  }
+};
+
+struct WhileOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef WhileOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_COND_SUBGRAPH_INDEX = 4,
+    VT_BODY_SUBGRAPH_INDEX = 6
+  };
+  int32_t cond_subgraph_index() const {
+    return GetField<int32_t>(VT_COND_SUBGRAPH_INDEX, 0);
+  }
+  int32_t body_subgraph_index() const {
+    return GetField<int32_t>(VT_BODY_SUBGRAPH_INDEX, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_COND_SUBGRAPH_INDEX) &&
+           VerifyField<int32_t>(verifier, VT_BODY_SUBGRAPH_INDEX) &&
+           verifier.EndTable();
+  }
+  WhileOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(WhileOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<WhileOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const WhileOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct WhileOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_cond_subgraph_index(int32_t cond_subgraph_index) {
+    fbb_.AddElement<int32_t>(WhileOptions::VT_COND_SUBGRAPH_INDEX, cond_subgraph_index, 0);
+  }
+  void add_body_subgraph_index(int32_t body_subgraph_index) {
+    fbb_.AddElement<int32_t>(WhileOptions::VT_BODY_SUBGRAPH_INDEX, body_subgraph_index, 0);
+  }
+  explicit WhileOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  WhileOptionsBuilder &operator=(const WhileOptionsBuilder &);
+  flatbuffers::Offset<WhileOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<WhileOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<WhileOptions> CreateWhileOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t cond_subgraph_index = 0,
+    int32_t body_subgraph_index = 0) {
+  WhileOptionsBuilder builder_(_fbb);
+  builder_.add_body_subgraph_index(body_subgraph_index);
+  builder_.add_cond_subgraph_index(cond_subgraph_index);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<WhileOptions> CreateWhileOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhileOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -8265,6 +8439,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const HardSwishOptions *builtin_options_as_HardSwishOptions() const {
     return builtin_options_type() == BuiltinOptions_HardSwishOptions ? static_cast<const HardSwishOptions *>(builtin_options()) : nullptr;
   }
+  const IfOptions *builtin_options_as_IfOptions() const {
+    return builtin_options_type() == BuiltinOptions_IfOptions ? static_cast<const IfOptions *>(builtin_options()) : nullptr;
+  }
+  const WhileOptions *builtin_options_as_WhileOptions() const {
+    return builtin_options_type() == BuiltinOptions_WhileOptions ? static_cast<const WhileOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8663,6 +8843,14 @@ template<> inline const MatrixSetDiagOptions *Operator::builtin_options_as<Matri
 
 template<> inline const HardSwishOptions *Operator::builtin_options_as<HardSwishOptions>() const {
   return builtin_options_as_HardSwishOptions();
+}
+
+template<> inline const IfOptions *Operator::builtin_options_as<IfOptions>() const {
+  return builtin_options_as_IfOptions();
+}
+
+template<> inline const WhileOptions *Operator::builtin_options_as<WhileOptions>() const {
+  return builtin_options_as_WhileOptions();
 }
 
 struct OperatorBuilder {
@@ -11690,6 +11878,64 @@ inline flatbuffers::Offset<MatrixSetDiagOptions> CreateMatrixSetDiagOptions(flat
       _fbb);
 }
 
+inline IfOptionsT *IfOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new IfOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void IfOptions::UnPackTo(IfOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = then_subgraph_index(); _o->then_subgraph_index = _e; };
+  { auto _e = else_subgraph_index(); _o->else_subgraph_index = _e; };
+}
+
+inline flatbuffers::Offset<IfOptions> IfOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const IfOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateIfOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<IfOptions> CreateIfOptions(flatbuffers::FlatBufferBuilder &_fbb, const IfOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const IfOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _then_subgraph_index = _o->then_subgraph_index;
+  auto _else_subgraph_index = _o->else_subgraph_index;
+  return tflite::CreateIfOptions(
+      _fbb,
+      _then_subgraph_index,
+      _else_subgraph_index);
+}
+
+inline WhileOptionsT *WhileOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new WhileOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void WhileOptions::UnPackTo(WhileOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = cond_subgraph_index(); _o->cond_subgraph_index = _e; };
+  { auto _e = body_subgraph_index(); _o->body_subgraph_index = _e; };
+}
+
+inline flatbuffers::Offset<WhileOptions> WhileOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const WhileOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateWhileOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<WhileOptions> CreateWhileOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhileOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const WhileOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _cond_subgraph_index = _o->cond_subgraph_index;
+  auto _body_subgraph_index = _o->body_subgraph_index;
+  return tflite::CreateWhileOptions(
+      _fbb,
+      _cond_subgraph_index,
+      _body_subgraph_index);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -12347,6 +12593,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const HardSwishOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_IfOptions: {
+      auto ptr = reinterpret_cast<const IfOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_WhileOptions: {
+      auto ptr = reinterpret_cast<const WhileOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -12729,6 +12983,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const HardSwishOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_IfOptions: {
+      auto ptr = reinterpret_cast<const IfOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_WhileOptions: {
+      auto ptr = reinterpret_cast<const WhileOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -13099,6 +13361,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const HardSwishOptionsT *>(value);
       return CreateHardSwishOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_IfOptions: {
+      auto ptr = reinterpret_cast<const IfOptionsT *>(value);
+      return CreateIfOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_WhileOptions: {
+      auto ptr = reinterpret_cast<const WhileOptionsT *>(value);
+      return CreateWhileOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -13467,6 +13737,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_HardSwishOptions: {
       value = new HardSwishOptionsT(*reinterpret_cast<HardSwishOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_IfOptions: {
+      value = new IfOptionsT(*reinterpret_cast<IfOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_WhileOptions: {
+      value = new WhileOptionsT(*reinterpret_cast<WhileOptionsT *>(u.value));
       break;
     }
     default:
@@ -13928,6 +14206,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_HardSwishOptions: {
       auto ptr = reinterpret_cast<HardSwishOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_IfOptions: {
+      auto ptr = reinterpret_cast<IfOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_WhileOptions: {
+      auto ptr = reinterpret_cast<WhileOptionsT *>(value);
       delete ptr;
       break;
     }

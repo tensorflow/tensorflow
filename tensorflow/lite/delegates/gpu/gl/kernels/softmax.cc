@@ -76,6 +76,7 @@ class SoftMax : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),

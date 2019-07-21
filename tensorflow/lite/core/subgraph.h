@@ -457,6 +457,9 @@ class Subgraph {
     }
   }
 
+  // Ensures the memory required is planned and allocated.
+  TfLiteStatus EnsureMemoryAllocations();
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.

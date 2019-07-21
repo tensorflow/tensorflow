@@ -82,7 +82,8 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+
     def get_in_replica_handle(x):
       return x.handle if ds_values.is_distributed_variable(x) else x
 
@@ -94,7 +95,8 @@ class _WrapperFunction(function.ConcreteFunction):
     else:  # cross-replica context
       captured_inputs = list(
           map(get_cross_replica_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
+    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
+                                                    cancellation_manager)
 
 
 class Loader(object):

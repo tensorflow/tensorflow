@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -70,6 +71,11 @@ Status WriteDataToFile(const string& filename, const char* data);
 // Writes the input data into the file with the specified compression.
 Status WriteDataToFile(const string& filename, const char* data,
                        const CompressionParams& params);
+
+// Writes the input data into the TFRecord file with the specified compression.
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
@@ -171,6 +177,19 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CreateTensorSliceDataset(StringPiece node_name,
                                   std::vector<Tensor>* const components,
                                   DatasetBase** tensor_slice_dataset);
+
+  // Creates a `RangeDataset` dataset as a variant tensor.
+  Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
+                          const Tensor& step,
+                          const DataTypeVector& output_types,
+                          const std::vector<PartialTensorShape>& output_shapes,
+                          Tensor* range_dataset);
+
+  // Creates a `TakeDataset` dataset as a variant tensor.
+  Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
+                         const DataTypeVector& output_types,
+                         const std::vector<PartialTensorShape>& output_shapes,
+                         Tensor* take_dataset);
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,

@@ -541,11 +541,25 @@ TEST_F(OperatorTest, VersioningSpareToDense) {
   OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
   EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
 
+  // Expect version 2 for int64 input.
   Model int64_model;
   Array& int64_array = int64_model.GetOrCreateArray(op.inputs[2]);
   int64_array.data_type = ArrayDataType::kInt64;
   OperatorSignature int64_signature = {.op = &op, .model = &int64_model};
   EXPECT_EQ(base_op->GetVersion(int64_signature), 2);
+
+  // Expect version 3 for int8 and uint8 input.
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[2]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 3);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[2]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 3);
 }
 
 TEST_F(OperatorTest, BuiltinPack) {
@@ -958,6 +972,42 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   OperatorSignature int8_signature = {.op = &fully_connected_op,
                                       .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 4);
+}
+
+TEST_F(OperatorTest, VersioningDequantizeTest) {
+  DequantizeOperator dequant_op;
+  dequant_op.inputs = {"input"};
+  dequant_op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(dequant_op.type).get();
+
+  Model int16_model;
+  Array& input_int16_array = int16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int16_array.data_type = ArrayDataType::kInt16;
+  OperatorSignature int16_signature = {.op = &dequant_op,
+                                       .model = &int16_model};
+  EXPECT_EQ(op->GetVersion(int16_signature), 3);
+
+  Model float16_model;
+  Array& input_float16_array =
+      float16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float16_array.data_type = ArrayDataType::kFloat16;
+  OperatorSignature float16_signature = {.op = &dequant_op,
+                                         .model = &float16_model};
+  EXPECT_EQ(op->GetVersion(float16_signature), 3);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &dequant_op, .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+
+  Model float_model;
+  Array& input_float_array = float_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &dequant_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 1);
 }
 
 TEST_F(OperatorTest, VersioningConv2DTest) {

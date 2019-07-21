@@ -504,19 +504,19 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     ConvolutionDimensionNumbers dnums;
     HloInstruction* rhs;
 
+    std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
+    if (match) {
+      return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
+                             conv->mutable_operand(0), rhs, window, dnums,
+                             conv->feature_group_count(), conv->metadata());
+    }
+
     std::tie(match, window, dnums) = MatchBackwardFilter(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
                              conv->mutable_operand(0), conv->mutable_operand(1),
                              window, dnums, conv->feature_group_count(),
                              conv->metadata());
-    }
-
-    std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
-    if (match) {
-      return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
-                             conv->mutable_operand(0), rhs, window, dnums,
-                             conv->feature_group_count(), conv->metadata());
     }
 
     // If all else fails, try a forward convolution.

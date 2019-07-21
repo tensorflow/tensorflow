@@ -84,7 +84,10 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
     return nullptr;
   }
 
-  auto tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  tensorflow::Safe_TF_TensorPtr tensor = nullptr;
+  Py_BEGIN_ALLOW_THREADS;
+  tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
+  Py_END_ALLOW_THREADS;
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
@@ -174,33 +177,26 @@ namespace tensorflow {
 //
 // Type compatibility doesn't consider overflows (i.e. int64 is *always*
 // compatible with int32). This is intended to match graph behavior.
-bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
-  tensorflow::DataType desired =
-      static_cast<tensorflow::DataType>(desired_dtype);
-  tensorflow::DataType returned =
-      static_cast<tensorflow::DataType>(returned_dtype);
-
+bool IsCompatible(DataType desired, DataType returned) {
   if (desired == returned) return true;
 
-  if (tensorflow::DataTypeIsInteger(desired) &&
-      tensorflow::DataTypeIsInteger(returned)) {
+  if (DataTypeIsInteger(desired) && DataTypeIsInteger(returned)) {
     return true;
-  } else if (tensorflow::DataTypeIsFloating(desired) &&
-             (tensorflow::DataTypeIsFloating(returned) ||
-              tensorflow::DataTypeIsInteger(returned))) {
+  } else if (DataTypeIsFloating(desired) &&
+             (DataTypeIsFloating(returned) || DataTypeIsInteger(returned))) {
     return true;
-  } else if (tensorflow::DataTypeIsComplex(desired) &&
-             (tensorflow::DataTypeIsComplex(returned) ||
-              tensorflow::DataTypeIsInteger(returned) ||
-              tensorflow::DataTypeIsFloating(returned))) {
+  } else if (DataTypeIsComplex(desired) &&
+             (DataTypeIsComplex(returned) || DataTypeIsInteger(returned) ||
+              DataTypeIsFloating(returned))) {
     return true;
-  } else if (tensorflow::DataTypeIsQuantized(desired) &&
-             tensorflow::DataTypeIsInteger(returned)) {
+  } else if (DataTypeIsQuantized(desired) && DataTypeIsInteger(returned)) {
     return true;
   }
   return false;
 }
 
+// TODO(nareshmodi): Move EagerCast and ReadVariableOp (which use the C API to
+// execute TFE Ops) to a separate common library.
 // Casts data referred to by `handle` from type `src_type_enum` to type
 // `dst_type_enum`.
 TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
@@ -208,7 +204,7 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
                             TF_DataType dst_type_enum, TF_Status* out_status) {
   if (ctx == nullptr) return nullptr;
   const char* op_name = "Cast";
-  const char* device_name = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const char* device_name = "/device:CPU:0";
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
 #define RETURN_ERROR  \
   {                   \
@@ -238,7 +234,24 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
+TFE_TensorHandle* PySeqToTFE_TensorHandle(PyObject* value, DataType dtype) {
+  tensorflow::TensorHandle* handle = nullptr;
+  tensorflow::Tensor t;
+  // TODO(josh11b): Have PySeqToTensor set python errors instead of
+  // returning Status.
+  auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
+  if (cppstatus.ok()) {
+    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
+  }
+  if (!cppstatus.ok()) {
+    PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
+    return nullptr;
+  }
+  CHECK_NE(handle, nullptr);
+  return new TFE_TensorHandle(handle);
+}
+
+TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
                                        tensorflow::DataType dtype) {
   tensorflow::Safe_PyObjectPtr value_decrefer;
   if (PyArray_IsScalar(value, Generic)) {
@@ -248,6 +261,8 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
     // created in python code, and doesn't need to be DECREF'd.
     value_decrefer.reset(value);
   }
+
+  Safe_TFE_TensorHandlePtr handle;
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
     if (dtype != tensorflow::DT_INVALID) {
@@ -278,23 +293,48 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
       }
       value = safe_value.get();
     }
-    return NumpyToTFE_TensorHandle(value);
+    handle = make_safe(NumpyToTFE_TensorHandle(value));
   } else {
-    tensorflow::TensorHandle* handle;
-    tensorflow::Tensor t;
-    // TODO(josh11b): Have PySeqToTensor set python errors instead of
-    // returning Status.
-    auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
-    if (cppstatus.ok()) {
-      cppstatus = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-    }
-    if (!cppstatus.ok()) {
-      PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
+    handle = make_safe(PySeqToTFE_TensorHandle(value, dtype));
+  }
+
+  if (handle == nullptr) return nullptr;
+
+  TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
+  if (dtype != tensorflow::DT_INVALID &&
+      dtype != static_cast<DataType>(handle_dtype)) {
+    if (tensorflow::IsCompatible(dtype, static_cast<DataType>(handle_dtype))) {
+      Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
+      handle = tensorflow::make_safe(
+          tensorflow::EagerCast(ctx, handle.get(), handle_dtype,
+                                static_cast<TF_DataType>(dtype), status.get()));
+      if (TF_GetCode(status.get()) != TF_OK) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            absl::StrCat(
+                "Error while casting from dtype ",
+                tensorflow::DataTypeString(static_cast<DataType>(handle_dtype)),
+                " to ",
+                tensorflow::DataTypeString(static_cast<DataType>(dtype)), ". ",
+                TF_Message(status.get()))
+                .c_str());
+        return nullptr;
+      }
+    } else {
+      tensorflow::Safe_PyObjectPtr value_str(PyObject_Repr(value));
+      PyErr_SetString(
+          PyExc_TypeError,
+          absl::StrCat("Cannot convert ", TFE_GetPythonString(value_str.get()),
+                       " to EagerTensor of dtype ",
+                       tensorflow::DataTypeString(dtype))
+              .c_str());
       return nullptr;
     }
-    return new TFE_TensorHandle(handle);
   }
+
+  return handle.release();
 }
+
 }  // namespace tensorflow
 
 extern "C" {
@@ -434,47 +474,9 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   }
   PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
-      tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(value, desired_dtype)));
+      tensorflow::make_safe(tensorflow::ConvertToEagerTensor(
+          GetContext(context), value, desired_dtype));
   if (handle == nullptr) return -1;
-  TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
-  if (desired_dtype != tensorflow::DT_INVALID &&
-      static_cast<TF_DataType>(desired_dtype) != handle_dtype) {
-    // Check type compatibility.
-    if (tensorflow::IsCompatible(desired_dtype, handle_dtype)) {
-      handle = tensorflow::make_safe(tensorflow::EagerCast(
-          GetContext(context), handle.get(), handle_dtype,
-          static_cast<TF_DataType>(desired_dtype), self->status));
-      if (TF_GetCode(self->status) != TF_OK) {
-        PyErr_SetString(
-            PyExc_TypeError,
-            tensorflow::strings::StrCat(
-                "Error while casting from DataType ",
-                tensorflow::DataTypeString(
-                    static_cast<tensorflow::DataType>(handle_dtype)),
-                " to ",
-                tensorflow::DataTypeString(
-                    static_cast<tensorflow::DataType>(desired_dtype)),
-                ". ", TF_Message(self->status))
-                .c_str());
-        // Cleanup self->status before returning.
-        TF_SetStatus(self->status, TF_OK, "");
-        return -1;
-      }
-      handle_dtype = TFE_TensorHandleDataType(handle.get());
-    } else {
-      tensorflow::Safe_PyObjectPtr value_str(PyObject_Str(value));
-      PyErr_SetString(
-          PyExc_TypeError,
-          tensorflow::strings::StrCat(
-              "Cannot convert provided value to EagerTensor. Provided value: ",
-              TFE_GetPythonString(value_str.get()), " Requested dtype: ",
-              tensorflow::DataTypeString(
-                  static_cast<tensorflow::DataType>(desired_dtype)))
-              .c_str());
-      return -1;
-    }
-  }
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
   // memory. We approximate the same behavior for eager execution - keeping
@@ -502,7 +504,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   // host memory for int32 tensors. This will lead to a discrepancy between
   // eager and graph execution.
   // TODO(ashankar): Fix this.
-  if (handle_dtype != TF_INT32) {
+  if (TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
     // Note that this is a shallow copy and will share the underlying buffer
     // if copying to the same device.
     handle = tensorflow::make_safe(CopyToDevice(handle.get(), context, device));
