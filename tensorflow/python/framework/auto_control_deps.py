@@ -30,6 +30,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 
+# LINT.IfChange
 # Op types that should not run in program order, e.g. because they need to run
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
@@ -85,6 +86,7 @@ LEGACY_RANDOM_OPS = [
     "RandomPoisson",
     "RandomPoissonV2",
 ]
+# LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
 _ALL_BLACKLISTED_OPS = set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
 
