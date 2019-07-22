@@ -4,10 +4,9 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("//tensorflow:tensorflow.bzl", "nccl_config")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -22,23 +21,26 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "nccl_lib",
-    srcs = if_nccl([
+    srcs = if_cuda_or_rocm([
         "nccl_manager.cc",
         "nccl_rewrite.cc",
     ]),
-    hdrs = if_nccl([
+    hdrs = if_cuda_or_rocm([
         "nccl_manager.h",
     ]),
     copts = tf_copts(),
-    deps = if_nccl([
+    deps = if_cuda([
+        "@local_config_nccl//:nccl"
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rccl"
+    ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
-        ] + nccl_config()
-    ),
+    ]),
     alwayslink = 1,
 )
 
@@ -53,12 +55,13 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ] + if_nccl([
+    ] + if_cuda_or_rocm([
         ":nccl_lib",
-        ] + nccl_config()
-    ) + if_cuda_is_configured([
+    ]) + if_cuda([
+        "@local_config_nccl//:nccl",
         "//tensorflow/core:cuda",
-    ]) + if_rocm_is_configured([
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:rocm",
     ]),
 )
