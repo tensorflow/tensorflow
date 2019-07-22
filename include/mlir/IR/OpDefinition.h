@@ -819,11 +819,14 @@ template <typename TerminatorOpType> struct SingleBlockImplicitTerminator {
         Block &block = region.front();
         if (block.empty())
           return failure();
-        if (isa<TerminatorOpType>(block.back()))
+        Operation &terminator = block.back();
+        if (isa<TerminatorOpType>(terminator))
           continue;
 
         return op->emitOpError("expects regions to end with '" +
-                               TerminatorOpType::getOperationName() + "'")
+                               TerminatorOpType::getOperationName() +
+                               "', found '" +
+                               terminator.getName().getStringRef() + "'")
                    .attachNote()
                << "in custom textual format, the absence of terminator implies "
                   "'"
