@@ -431,7 +431,7 @@ void CustomDropoutFunctor3<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevi
     int r0, int r1, int r2
     )
 {
-  if(r0==d0 && r1==d1 && r2==d2)
+  if(r0==s0 && r1==s1 && r2==s2)
   {
     int dim = d0*d1*d2;
     CustomDropoutFunctor1_kernel<<<(dim+1023)/1024,min(dim,1024),0, d.stream()>>> (in, rng, out, pthr, dim);
@@ -473,7 +473,7 @@ void CustomDropoutFunctor4<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevi
     int r0, int r1, int r2, int r3
     )
 {
-  if(r0==d0 && r1==d1 && r2==d2 && r3==d3)
+  if(r0==s0 && r1==s1 && r2==s2 && r3==s3)
   {
     int dim = d0*d1*d2*d3;
     CustomDropoutFunctor1_kernel<<<(dim+1023)/1024,min(dim,1024),0, d.stream()>>> (in, rng, out, pthr, dim);
