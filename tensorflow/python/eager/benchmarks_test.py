@@ -193,32 +193,35 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_create_constant(self, value, dtype):
     def func():
-      return constant_op.constant(value, dtype=dtype)
+      constant_op.constant(value, dtype=dtype)
 
-    for _ in range(1000):
-      func()  # Warmup.
-
-    self._run(func, 30000)
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 3000)
 
   def benchmark_create_float_constant(self):
     self._benchmark_create_constant(42.0, dtype=None)
 
   def benchmark_create_int32_constant(self):
+    if context.num_gpus():
+      return  # int32 constants are always allocated on CPU.
+
     self._benchmark_create_constant(42, dtype=dtypes.int32)
 
   def _benchmark_add_scalars(self, a, b):
     def func():
-      return math_ops.add(a, b)
+      return memoryview(math_ops.add(a, b))
 
-    for _ in range(1000):
-      func()  # Warmup.
-
-    self._run(func, 30000)
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 30000)
 
   def benchmark_add_float_scalars(self):
     self._benchmark_add_scalars(42.0, 24.0)
 
-  def benchmark_add_int_scalars(self):
+  def benchmark_add_int32_scalars(self):
     self._benchmark_add_scalars(42, 24)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
