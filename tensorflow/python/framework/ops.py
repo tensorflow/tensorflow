@@ -81,6 +81,7 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 # pylint: disable=protected-access
 _TensorLike = tensor_like._TensorLike
+_DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access
 
 
@@ -2313,6 +2314,25 @@ class Operation(object):
       return dtypes.as_dtype(x.type)
     assert oneof_value in fields, "Unsupported field type in " + str(x)
     return getattr(x, oneof_value)
+
+  def _get_attr_type(self, name):
+    """Returns the value of the attr of this op with the given `name`.
+
+    Args:
+      name: The name of the attr to fetch.
+
+    Returns:
+      The value of the attr, as a Python object.
+
+    Raises:
+      ValueError: If this op does not have an attr with the given `name`.
+    """
+    try:
+      dtype_enum = c_api.TF_OperationGetAttrType(self._c_op, name)
+      return _DTYPES_INTERN_TABLE[dtype_enum]
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
