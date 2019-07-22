@@ -759,6 +759,60 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
+  # __int__, __float__ and __index__ may copy the tensor to CPU and
+  # only work for scalars; values are cast as per numpy.
+  def __int__(self):
+    return int(self._numpy())
+
+  def __long__(self):
+    return long(self._numpy())
+
+  def __float__(self):
+    return float(self._numpy())
+
+  def __index__(self):
+    maybe_arr = self._numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
+
+  def __bool__(self):
+    return bool(self._numpy())
+
+  __nonzero__ = __bool__
+
+  def __format__(self, format_spec):
+    return self._numpy().__format__(format_spec)
+
+  def __reduce__(self):
+    return convert_to_tensor, (self._numpy(),)
+
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
+
+  def __str__(self):
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
+                                                  self.dtype.name)
+
+  def __repr__(self):
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
+        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+
+  def __len__(self):
+    """Returns the length of the first dimension in the Tensor."""
+    if not self.shape.ndims:
+      raise TypeError("Scalar tensor has no `len()`")
+    return self._shape_tuple()[0]
+
+  def _numpy(self):
+    raise NotImplementedError()
+
   @property
   def dtype(self):
     # Note: using the intern table directly here as this is
@@ -783,32 +837,6 @@ class _EagerTensorBase(Tensor):
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
-  # __int__, __float__ and __index__ may copy the tensor to CPU and
-  # only work for scalars; values are cast as per numpy.
-  def __int__(self):
-    return int(self._numpy())
-
-  def __long__(self):
-    return long(self._numpy())
-
-  def __float__(self):
-    return float(self._numpy())
-
-  def __index__(self):
-    maybe_arr = self._numpy()
-    if isinstance(maybe_arr, np.ndarray):
-      return maybe_arr.__index__()
-    return int(maybe_arr)  # Must be a NumPy scalar.
-
-  def __format__(self, format_spec):
-    return self._numpy().__format__(format_spec)
-
-  def __reduce__(self):
-    return (convert_to_tensor, (self._numpy(),))
-
-  def _numpy(self):
-    raise NotImplementedError()
-
   @property
   def backing_device(self):
     """Returns the name of the device holding this tensor's memory.
@@ -820,15 +848,6 @@ class _EagerTensorBase(Tensor):
     in host memory).
     """
     raise NotImplementedError()
-
-  def __copy__(self):
-    # Eager Tensors are immutable so it's safe to return themselves as a copy.
-    return self
-
-  def __deepcopy__(self, memo):
-    # Eager Tensors are immutable so it's safe to return themselves as a copy.
-    del memo
-    return self
 
   def _datatype_enum(self):
     raise NotImplementedError()
@@ -875,14 +894,6 @@ class _EagerTensorBase(Tensor):
 
   def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
-
-  def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
-                                                  self.dtype.name)
-
-  def __repr__(self):
-    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
 
   @staticmethod
   def _override_operator(name, func):
@@ -942,12 +953,6 @@ class _EagerTensorBase(Tensor):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
 
-  def __len__(self):
-    """Returns the length of the first dimension in the Tensor."""
-    if not self.shape.ndims:
-      raise TypeError("Scalar tensor has no `len()`")
-    return self._shape_tuple()[0]
-
   @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
@@ -966,12 +971,6 @@ class _EagerTensorBase(Tensor):
       as this Tensor.
     """
     return self._copy(context.context(), "GPU:" + str(gpu_index))
-
-  def __bool__(self):
-    return bool(self._numpy())
-
-  def __nonzero__(self):
-    return self.__bool__()
 
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
