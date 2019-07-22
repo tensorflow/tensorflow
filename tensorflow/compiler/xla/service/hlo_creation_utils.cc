@@ -224,6 +224,22 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
   return hlo;
 }
 
+HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
+                                        PrimitiveType type) {
+  CHECK_NE(hlo->shape().element_type(), type);
+  Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  hlo = hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcastConvert(shape, hlo));
+  CHECK_EQ(hlo->shape().element_type(), type);
+  return hlo;
+}
+
+HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
+                            int64 iota_dimension) {
+  return computation->AddInstruction(
+      HloInstruction::CreateIota(shape, iota_dimension));
+}
+
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
                                      const DotDimensionNumbers& dim_numbers,
                                      const PrecisionConfig& precision_config) {
