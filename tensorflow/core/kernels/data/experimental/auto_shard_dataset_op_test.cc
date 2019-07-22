@@ -49,14 +49,29 @@ class AutoShardDatasetOpTest : public DatasetOpsTestBase {
   }
 };
 
-struct RangeDatasetParams {
-  int64 start;
-  int64 stop;
-  int64 step;
-};
-
 struct TestCase {
-  RangeDatasetParams range_dataset_param;
+  TestCase(int64 start, int64 stop, int64 step, int64 num_workers, int64 index,
+           std::vector<Tensor> expected_outputs,
+           DataTypeVector expected_output_dtypes,
+           std::vector<PartialTensorShape> expected_output_shapes,
+           int64 expected_cardinality, std::vector<int> breakpoints)
+      : start(
+            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {start})),
+        stop(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {stop})),
+        step(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {step})),
+        num_workers(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
+                                                            {num_workers})),
+        index(
+            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {index})),
+        expected_outputs(std::move(expected_outputs)),
+        expected_output_dtypes(std::move(expected_output_dtypes)),
+        expected_output_shapes(std::move(expected_output_shapes)),
+        expected_cardinality(expected_cardinality),
+        breakpoints(std::move(breakpoints)) {}
+
+  Tensor start;
+  Tensor stop;
+  Tensor step;
   Tensor num_workers;
   Tensor index;
   std::vector<Tensor> expected_outputs;
@@ -67,105 +82,105 @@ struct TestCase {
 };
 
 // Test Case 1: simple case.
-TestCase TestCase1() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*expected_outputs*/
+TestCase SimpleCase() {
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/5,
+          /*index=*/2,
+          /*expected_outputs=*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 2,
-          /*breakpoints*/ {0, 1, 5}};
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/2,
+          /*breakpoints=*/{0, 1, 5}};
 }
 
 // Test Case 2: the index is larger than the available elements.
-TestCase TestCase2() {
-  return {/*range_data_param*/ {0, 1, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 1}};
+TestCase IndexLargerThanAvailableElementsCase() {
+  return {/*start=*/0,
+          /*stop=*/1,
+          /*step=*/1,
+          /*num_workers=*/5,
+          /*index=*/2,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/2,
+          /*breakpoints=*/{0, 1}};
 }
 
 // Test Case 3: the number of outputs could not be evenly divided by
 // num_workers.
-TestCase TestCase3() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-          /*expected_outputs*/
+TestCase ElementsUnequallyDividedCase() {
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/4,
+          /*index=*/3,
+          /*expected_outputs=*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 2,
-          /*breakpoints*/ {0, 1, 5}};
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/2,
+          /*breakpoints=*/{0, 1, 5}};
 }
 
 // TODO(feihugis): add more test cases that have ReaderDatasets (e.g. a
 // CSVDataset or a TFRecordDataset) in the pipeline.
 
 TestCase IndexGreaterNumWorkersCase() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7}),
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/5,
+          /*index=*/7,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/0,
+          /*breakpoints=*/{}};
 }
 
 TestCase NegativeIndexTestCase() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-3}),
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/5,
+          /*index=*/-3,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/0,
+          /*breakpoints=*/{}};
 }
 
 TestCase NegativeNumWorkersTestCase() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-3}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/-3,
+          /*index=*/1,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/0,
+          /*breakpoints=*/{}};
 }
 
 TestCase ZeroNumWorkersTestCase() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*num_workers*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-          /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/1,
+          /*num_workers=*/0,
+          /*index=*/1,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/0,
+          /*breakpoints=*/{}};
 }
 
 class ParameterizedAutoShardDatasetOpTest
@@ -183,21 +198,13 @@ TEST_P(ParameterizedAutoShardDatasetOpTest, GetNext) {
                                               test_case.expected_output_shapes,
                                               &auto_shard_dataset_kernel));
 
-  Tensor start = CreateTensor<int64>(TensorShape({}),
-                                     {test_case.range_dataset_param.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}),
-                                    {test_case.range_dataset_param.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}),
-                                    {test_case.range_dataset_param.step});
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(MakeRangeDataset(start, stop, step, {DT_INT64},
-                                {TensorShape({})}, &range_dataset_tensor));
-
-  Tensor num_workers = test_case.num_workers;
-  Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
-                                             TensorValue(&num_workers),
-                                             TensorValue(&index)});
+  TF_ASSERT_OK(MakeRangeDataset(test_case.start, test_case.stop, test_case.step,
+                                {DT_INT64}, {TensorShape({})},
+                                &range_dataset_tensor));
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_dataset_tensor), TensorValue(&test_case.num_workers),
+       TensorValue(&test_case.index)});
   std::unique_ptr<OpKernelContext> auto_shard_dataset_context;
   TF_ASSERT_OK(CreateAutoShardDatasetContext(
       auto_shard_dataset_kernel.get(), &inputs, &auto_shard_dataset_context));
@@ -233,7 +240,9 @@ TEST_P(ParameterizedAutoShardDatasetOpTest, GetNext) {
 INSTANTIATE_TEST_SUITE_P(AutoShardDatasetOpTest,
                          ParameterizedAutoShardDatasetOpTest,
                          ::testing::ValuesIn(std::vector<TestCase>(
-                             {TestCase1(), TestCase2(), TestCase3()})));
+                             {SimpleCase(),
+                              IndexLargerThanAvailableElementsCase(),
+                              ElementsUnequallyDividedCase()})));
 
 TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
   int thread_num = 2, cpu_num = 2;
@@ -243,27 +252,19 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
   std::vector<TestCase> test_cases = {
       IndexGreaterNumWorkersCase(), NegativeIndexTestCase(),
       NegativeNumWorkersTestCase(), ZeroNumWorkersTestCase()};
-  for (const auto& test_case : test_cases) {
+  for (auto& test_case : test_cases) {
     std::unique_ptr<OpKernel> auto_shard_dataset_kernel;
     TF_ASSERT_OK(CreateAutoShardDatasetOpKernel(
         test_case.expected_output_dtypes, test_case.expected_output_shapes,
         &auto_shard_dataset_kernel));
 
-    Tensor start = CreateTensor<int64>(TensorShape({}),
-                                       {test_case.range_dataset_param.start});
-    Tensor stop = CreateTensor<int64>(TensorShape({}),
-                                      {test_case.range_dataset_param.stop});
-    Tensor step = CreateTensor<int64>(TensorShape({}),
-                                      {test_case.range_dataset_param.step});
     Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-    TF_ASSERT_OK(MakeRangeDataset(start, stop, step, {DT_INT64},
-                                  {TensorShape({})}, &range_dataset_tensor));
-
-    Tensor num_workers = test_case.num_workers;
-    Tensor index = test_case.index;
+    TF_ASSERT_OK(MakeRangeDataset(test_case.start, test_case.stop,
+                                  test_case.step, {DT_INT64}, {TensorShape({})},
+                                  &range_dataset_tensor));
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {TensorValue(&range_dataset_tensor), TensorValue(&num_workers),
-         TensorValue(&index)});
+        {TensorValue(&range_dataset_tensor),
+         TensorValue(&test_case.num_workers), TensorValue(&test_case.index)});
     std::unique_ptr<OpKernelContext> auto_shard_dataset_context;
     TF_ASSERT_OK(CreateAutoShardDatasetContext(
         auto_shard_dataset_kernel.get(), &inputs, &auto_shard_dataset_context));
