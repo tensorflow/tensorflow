@@ -155,8 +155,8 @@ MatchBackwardFilter(HloInstruction* conv) {
   }
   auto rhs_in =
       conv->mutable_operand(1)->shape().dimensions(kernel_input_feature_dim);
-  if ((conv->feature_group_count() > 1) && (rhs_in == 1) &&
-      (input_batch_dim == output_batch_dim)) {
+  if (conv->feature_group_count() > 1 && rhs_in == 1 &&
+      input_batch_dim == output_batch_dim) {
     VLOG(1) << conv->ToString()
             << " is a depthwise forward convolution. No need to fold to "
                "backward filter.";
@@ -270,8 +270,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   // Reshape batch_dim G*N -> [G,N]
   std::vector<int64> reshape_dims = lhs->shape().dimensions();
   auto num_groups = conv->feature_group_count();
-  // Ensure that input_batch is exact multiple of conv->feature_group_count()
-  CHECK_EQ(input_batch % conv->feature_group_count(), 0)
+  CHECK_EQ(input_batch % num_groups, 0)
       << "Input batch should be an exact multiple of feature group count";
   reshape_dims[input_batch_dimension] =
       reshape_dims[input_batch_dimension] / num_groups;
