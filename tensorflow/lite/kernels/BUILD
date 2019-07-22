@@ -227,6 +227,7 @@ cc_library(
         # gemmlowp_context_ and ruy_context_ members.
         "//tensorflow/lite/experimental/ruy:context",
         "@gemmlowp",
+        "//tensorflow/lite:external_cpu_backend_context",
     ],
 )
 
@@ -319,8 +320,8 @@ cc_library(
     deps = [
         ":cpu_backend_context",
         ":op_macros",
+        "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/c:c_api_internal",
-        "@gemmlowp",
     ],
 )
 

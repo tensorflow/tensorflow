@@ -20,6 +20,7 @@ limitations under the License.
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -460,7 +462,9 @@ class Interpreter {
     return op_reg.profiling_string(context_, node);
   }
 
-  /// Set the value of an external context.
+  // Set the value of an external context. TFLite interpreter doesn't take the
+  // memory ownership of this external context 'ctx', and the context should
+  // outlive the TFLite interpreter.
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
@@ -525,6 +529,13 @@ class Interpreter {
 
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
+
+  // The default external cpu backend context. After an TFLite interpreter is
+  // initialized, 'external_contexts_[kTfLiteCpuBackendContext]' is set to point
+  // to this object. However, if this element value is overwritten via calling
+  // 'SetExternalContext(kTfLiteCpuBackendContext, ...)', we will reset this to
+  // nullptr if necessary.
+  std::unique_ptr<ExternalCpuBackendContext> own_external_cpu_backend_context_;
 
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;

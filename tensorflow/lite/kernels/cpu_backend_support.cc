@@ -17,74 +17,43 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace cpu_backend_support {
 
-namespace {
-
-// TODO(b/130950871) we probably shouldn't be using any reference-counting
-// but this is an existing idiom.
-struct RefCountedCpuBackendContext : public TfLiteExternalContext {
-  std::unique_ptr<CpuBackendContext> cpu_backend_context;
-  int num_references = 0;
-};
-
-RefCountedCpuBackendContext* GetCpuBackendContext(TfLiteContext* context) {
-  return static_cast<RefCountedCpuBackendContext*>(
-      context->GetExternalContext(context, kTfLiteCpuBackendContext));
-}
-
-TfLiteStatus Refresh(TfLiteContext* context) {
-  auto* refcounted = GetCpuBackendContext(context);
-  if (refcounted != nullptr) {
-    refcounted->cpu_backend_context->set_max_num_threads(
-        context->recommended_num_threads);
-  }
-  return kTfLiteOk;
-}
-
-}  // namespace
-
-void IncrementUsageCounter(TfLiteContext* context) {
-  RefCountedCpuBackendContext* refcounted = GetCpuBackendContext(context);
-  if (refcounted == nullptr) {
-    refcounted = new RefCountedCpuBackendContext;
-    refcounted->type = kTfLiteCpuBackendContext;
-    refcounted->Refresh = Refresh;
-    refcounted->cpu_backend_context.reset(new CpuBackendContext);
-    if (context->recommended_num_threads != -1) {
-      refcounted->cpu_backend_context->set_max_num_threads(
-          context->recommended_num_threads);
-    }
-    refcounted->num_references = 0;
-    context->SetExternalContext(context, kTfLiteCpuBackendContext, refcounted);
-  }
-  refcounted->num_references++;
-}
-
-void DecrementUsageCounter(TfLiteContext* context) {
-  RefCountedCpuBackendContext* refcounted = GetCpuBackendContext(context);
-  if (refcounted == nullptr) {
-    TF_LITE_FATAL(
-        "Call to DecrementUsageCounter() not preceded by "
-        "IncrementUsageCounter()");
-  }
-  if (--refcounted->num_references == 0) {
-    delete refcounted;
-    context->SetExternalContext(context, kTfLiteCpuBackendContext, nullptr);
-  }
-}
+// TODO(b/130950871): Remove all refrences to the following two no-op functions
+// once the new ExternalCpuBackendContext class is checked in.
+void IncrementUsageCounter(TfLiteContext* context) {}
+void DecrementUsageCounter(TfLiteContext* context) {}
 
 CpuBackendContext* GetFromContext(TfLiteContext* context) {
-  RefCountedCpuBackendContext* refcounted = GetCpuBackendContext(context);
-  if (refcounted == nullptr) {
+  auto* external_context = static_cast<ExternalCpuBackendContext*>(
+      context->GetExternalContext(context, kTfLiteCpuBackendContext));
+
+  if (external_context == nullptr) {
     TF_LITE_FATAL(
-        "Call to GetFromContext() not preceded by IncrementUsageCounter()");
+        "ExternalCpuBackendContext isn't properly initialized during TFLite "
+        "interpreter initialization.");
   }
-  return refcounted->cpu_backend_context.get();
+
+  auto* cpu_backend_context = static_cast<CpuBackendContext*>(
+      external_context->internal_backend_context());
+  if (cpu_backend_context == nullptr) {
+    // We do the lazy initialization here for the TfLiteInternalBackendContext
+    // that's wrapped inside ExternalCpuBackendContext.
+    cpu_backend_context = new CpuBackendContext();
+    if (context->recommended_num_threads != -1) {
+      cpu_backend_context->set_max_num_threads(
+          context->recommended_num_threads);
+    }
+    external_context->set_internal_backend_context(
+        std::unique_ptr<TfLiteInternalBackendContext>(cpu_backend_context));
+  }
+
+  return cpu_backend_context;
 }
 
 }  // namespace cpu_backend_support
