@@ -32,6 +32,33 @@ func @spirv_module() -> () {
     %9 = spv.constant -32768 : i16 // -2^15
     // CHECK: spv.constant 32767 : i16
     %10 = spv.constant 32767 : i16 //  2^15 - 1
+
+    // float
+    // CHECK: spv.constant 0.000000e+00 : f32
+    %11 = spv.constant 0. : f32
+    // CHECK: spv.constant 1.000000e+00 : f32
+    %12 = spv.constant 1. : f32
+    // CHECK: spv.constant -0.000000e+00 : f32
+    %13 = spv.constant -0. : f32
+    // CHECK: spv.constant -1.000000e+00 : f32
+    %14 = spv.constant -1. : f32
+    // CHECK: spv.constant 7.500000e-01 : f32
+    %15 = spv.constant 0.75 : f32
+    // CHECK: spv.constant -2.500000e-01 : f32
+    %16 = spv.constant -0.25 : f32
+
+    // double
+    // TODO(antiagainst): test range boundary values
+    // CHECK: spv.constant 1.024000e+03 : f64
+    %17 = spv.constant 1024. : f64
+    // CHECK: spv.constant -1.024000e+03 : f64
+    %18 = spv.constant -1024. : f64
+
+    // half
+    // CHECK: spv.constant 5.120000e+02 : f16
+    %19 = spv.constant 512. : f16
+    // CHECK: spv.constant -5.120000e+02 : f16
+    %20 = spv.constant -512. : f16
   }
   return
 }

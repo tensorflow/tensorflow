@@ -173,6 +173,8 @@ private:
 
   uint32_t prepareConstantInt(Location loc, IntegerAttr intAttr);
 
+  uint32_t prepareConstantFp(Location loc, FloatAttr floatAttr);
+
   //===--------------------------------------------------------------------===//
   // Operations
   //===--------------------------------------------------------------------===//
@@ -488,6 +490,9 @@ Serializer::prepareFunctionType(Location loc, FunctionType type,
 
 uint32_t Serializer::prepareConstant(Location loc, Type constType,
                                      Attribute valueAttr) {
+  if (auto floatAttr = valueAttr.dyn_cast<FloatAttr>()) {
+    return prepareConstantFp(loc, floatAttr);
+  }
   if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
     return prepareConstantInt(loc, intAttr);
   }
@@ -573,6 +578,50 @@ uint32_t Serializer::prepareConstantInt(Location loc, IntegerAttr intAttr) {
   }
 
   return constIDMap[intAttr] = resultID;
+}
+
+uint32_t Serializer::prepareConstantFp(Location loc, FloatAttr floatAttr) {
+  if (auto id = findConstantID(floatAttr)) {
+    return id;
+  }
+
+  // Process the type for this float literal
+  uint32_t typeID = 0;
+  if (failed(processType(loc, floatAttr.getType(), typeID))) {
+    return 0;
+  }
+
+  auto resultID = getNextID();
+  APFloat value = floatAttr.getValue();
+  APInt intValue = value.bitcastToAPInt();
+
+  if (&value.getSemantics() == &APFloat::IEEEsingle()) {
+    uint32_t word = llvm::bit_cast<uint32_t>(value.convertToFloat());
+    encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpConstant,
+                          {typeID, resultID, word});
+  } else if (&value.getSemantics() == &APFloat::IEEEdouble()) {
+    struct DoubleWord {
+      uint32_t word1;
+      uint32_t word2;
+    } words = llvm::bit_cast<DoubleWord>(value.convertToDouble());
+    encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpConstant,
+                          {typeID, resultID, words.word1, words.word2});
+  } else if (&value.getSemantics() == &APFloat::IEEEhalf()) {
+    uint32_t word =
+        static_cast<uint32_t>(value.bitcastToAPInt().getZExtValue());
+    encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpConstant,
+                          {typeID, resultID, word});
+  } else {
+    std::string valueStr;
+    llvm::raw_string_ostream rss(valueStr);
+    value.print(rss);
+
+    emitError(loc, "cannot serialize ")
+        << floatAttr.getType() << "-typed float literal: " << rss.str();
+    return 0;
+  }
+
+  return constIDMap[floatAttr] = resultID;
 }
 
 //===----------------------------------------------------------------------===//

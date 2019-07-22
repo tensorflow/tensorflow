@@ -443,8 +443,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       floatTy = opBuilder.getF64Type();
       break;
     default:
-      return emitError(unknownLoc, "unsupported bitwdith ")
-             << operands[1] << " with OpTypeFloat";
+      return emitError(unknownLoc, "unsupported OpTypeFloat bitwdith: ")
+             << operands[1];
     }
     typeMap[operands[0]] = floatTy;
   } break;
@@ -556,6 +556,31 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
 
     auto attr = opBuilder.getIntegerAttr(intType, value);
     op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr);
+  } else if (auto floatType = resultType.dyn_cast<FloatType>()) {
+    auto bitwidth = floatType.getWidth();
+    if (failed(checkOperandSizeForBitwidth(bitwidth))) {
+      return failure();
+    }
+
+    APFloat value(0.f);
+    if (floatType.isF64()) {
+      // Double values are represented with two SPIR-V words. According to
+      // SPIR-V spec: "When the type’s bit width is larger than one word, the
+      // literal’s low-order words appear first."
+      struct DoubleWord {
+        uint32_t word1;
+        uint32_t word2;
+      } words = {operands[2], operands[3]};
+      value = APFloat(llvm::bit_cast<double>(words));
+    } else if (floatType.isF32()) {
+      value = APFloat(llvm::bit_cast<float>(operands[2]));
+    } else if (floatType.isF16()) {
+      APInt data(16, operands[2]);
+      value = APFloat(APFloat::IEEEhalf(), data);
+    }
+
+    auto attr = opBuilder.getFloatAttr(floatType, value);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr);
   } else {
     return emitError(unknownLoc, "OpConstant can only generate values of "
                                  "scalar integer or floating-point type");
@@ -564,6 +589,7 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
   valueMap[operands[1]] = op.getResult();
   return success();
 }
+
 LogicalResult Deserializer::processConstantBool(bool isTrue,
                                                 ArrayRef<uint32_t> operands) {
   if (operands.size() != 2) {
