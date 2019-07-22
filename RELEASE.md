@@ -43,6 +43,7 @@
 *   Transitive dependencies on :pooling_ops were removed. Some users may need to
     add explicit dependencies on :pooling_ops if they reference the operators
     from that library.
+*   tf.keras.optimizers.Adadelta default learning rate changed from 1.0 to .001
 
 ## Bug Fixes and Other Changes
 
