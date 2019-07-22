@@ -146,9 +146,9 @@ static void emitSerializationFunction(const Record *record, const Operator &op,
     os << "  }\n";
   }
 
-  os << formatv(
-      "  buildInstruction(spirv::getOpcode<{0}>(), operands, functions);\n",
-      op.getQualCppClassName());
+  os << formatv("  encodeInstructionInto("
+                "functions, spirv::getOpcode<{0}>(), operands);\n",
+                op.getQualCppClassName());
   os << "  return success();\n";
   os << "}\n\n";
 }
