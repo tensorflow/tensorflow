@@ -13145,6 +13145,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "ExperimentalScanDataset"
@@ -31083,6 +31090,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
 }
 op {
