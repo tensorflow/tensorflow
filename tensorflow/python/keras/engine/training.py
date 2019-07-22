@@ -251,7 +251,7 @@ class Model(network.Network):
       self._run_distributed = False
 
     if distribute is not None:
-      if tf2.enabled():
+      if tf2.enabled() or self._run_distributed:
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
             'create the model under the distribution strategy scope.')
