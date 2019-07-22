@@ -328,7 +328,7 @@ MatchBackwardInput(HloInstruction* conv) {
   if (conv->feature_group_count() > 1) {
     return no_match_result;
   }
-  
+
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
