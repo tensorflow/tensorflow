@@ -3191,20 +3191,9 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     }
   };
 
-  const BlockPrologueGenerator& block_prologue_generator =
-      kernel_generator.GetBlockPrologueGenerator();
-  if (block_prologue_generator) {
-    block_prologue_generator(unnested_hlo, kernel_info);
-  }
-
+  kernel_generator.GetBlockPrologueGenerator()(unnested_hlo, kernel_info);
   EmitBlock(std::move(emit_one_tile), kernel_info, &ksl, index_ty);
-
-  const BlockEpilogueGenerator& block_epilogue_generator =
-      kernel_generator.GetBlockEpilogueGenerator();
-  if (block_epilogue_generator) {
-    block_epilogue_generator(unnested_hlo, kernel_info);
-  }
-
+  kernel_generator.GetBlockEpilogueGenerator()(unnested_hlo, kernel_info);
   return launch_dimensions;
 }
 

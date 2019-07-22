@@ -121,8 +121,10 @@ class IrEmitterUnnested : public IrEmitter {
    public:
     explicit KernelCodeGenerator(
         TileElementGenerator tile_element_generator,
-        BlockPrologueGenerator block_prologue_generator = {},
-        BlockEpilogueGenerator block_epilogue_generator = {})
+        BlockPrologueGenerator block_prologue_generator =
+            [](HloInstruction*, KernelCodegenInfo*) {},
+        BlockEpilogueGenerator block_epilogue_generator =
+            [](HloInstruction*, KernelCodegenInfo*) {})
         : tile_element_generator_(std::move(tile_element_generator)),
           block_prologue_generator_(std::move(block_prologue_generator)),
           block_epilogue_generator_(std::move(block_epilogue_generator)) {}
