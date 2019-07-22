@@ -715,6 +715,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "temporal_sample_weights_correctness_test",
+    size = "medium",
+    srcs = ["temporal_sample_weights_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 12,
+)
+
+tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications/applications_test.py"],
