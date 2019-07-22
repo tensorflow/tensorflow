@@ -197,8 +197,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
                                  r"Cannot convert a symbolic.+test_ones"):
       np.array(x)
 
-    with self.assertRaisesRegexp(AttributeError,
-                                 "len is not well defined.+test_ones"):
+    with self.assertRaisesRegexp(TypeError, "not well defined.+test_ones"):
       len(x)
 
     with context.eager_mode():
