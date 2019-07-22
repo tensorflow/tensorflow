@@ -37,8 +37,7 @@ public:
 #include "TokenKinds.def"
   };
 
-  Token(Kind kind, StringRef spelling)
-    : kind(kind), spelling(spelling) {}
+  Token(Kind kind, StringRef spelling) : kind(kind), spelling(spelling) {}
 
   // Return the bytes that make up this token.
   StringRef getSpelling() const { return spelling; }
@@ -47,12 +46,10 @@ public:
   Kind getKind() const { return kind; }
   bool is(Kind K) const { return kind == K; }
 
-  bool isAny(Kind k1, Kind k2) const {
-    return is(k1) || is(k2);
-  }
+  bool isAny(Kind k1, Kind k2) const { return is(k1) || is(k2); }
 
   /// Return true if this token is one of the specified kinds.
-  template <typename ...T>
+  template <typename... T>
   bool isAny(Kind k1, Kind k2, Kind k3, T... others) const {
     if (is(k1))
       return true;
@@ -62,8 +59,7 @@ public:
   bool isNot(Kind k) const { return kind != k; }
 
   /// Return true if this token isn't one of the specified kinds.
-  template <typename ...T>
-  bool isNot(Kind k1, Kind k2, T... others) const {
+  template <typename... T> bool isNot(Kind k1, Kind k2, T... others) const {
     return !isAny(k1, k2, others...);
   }
 
@@ -101,7 +97,6 @@ public:
   llvm::SMLoc getEndLoc() const;
   llvm::SMRange getLocRange() const;
 
-
   /// Given a punctuation or keyword token kind, return the spelling of the
   /// token as a string.  Warning: This will abort on markers, identifiers and
   /// literal tokens since they have no fixed spelling.
@@ -118,4 +113,4 @@ private:
 
 } // end namespace mlir
 
-#endif  // MLIR_LIB_PARSER_TOKEN_H
+#endif // MLIR_LIB_PARSER_TOKEN_H

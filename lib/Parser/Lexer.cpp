@@ -98,26 +98,37 @@ Token Lexer::lexToken() {
   case 0:
     // This may either be a nul character in the source file or may be the EOF
     // marker that llvm::MemoryBuffer guarantees will be there.
-    if (curPtr-1 == curBuffer.end())
+    if (curPtr - 1 == curBuffer.end())
       return formToken(Token::eof, tokStart);
 
     LLVM_FALLTHROUGH;
-  case ':': return formToken(Token::colon, tokStart);
-  case ',': return formToken(Token::comma, tokStart);
-  case '(': return formToken(Token::l_paren, tokStart);
-  case ')': return formToken(Token::r_paren, tokStart);
-  case '{': return formToken(Token::l_brace, tokStart);
-  case '}': return formToken(Token::r_brace, tokStart);
+  case ':':
+    return formToken(Token::colon, tokStart);
+  case ',':
+    return formToken(Token::comma, tokStart);
+  case '(':
+    return formToken(Token::l_paren, tokStart);
+  case ')':
+    return formToken(Token::r_paren, tokStart);
+  case '{':
+    return formToken(Token::l_brace, tokStart);
+  case '}':
+    return formToken(Token::r_brace, tokStart);
   case '[':
     return formToken(Token::l_square, tokStart);
   case ']':
     return formToken(Token::r_square, tokStart);
-  case '<': return formToken(Token::less, tokStart);
-  case '>': return formToken(Token::greater, tokStart);
-  case '=': return formToken(Token::equal, tokStart);
+  case '<':
+    return formToken(Token::less, tokStart);
+  case '>':
+    return formToken(Token::greater, tokStart);
+  case '=':
+    return formToken(Token::equal, tokStart);
 
-  case '+': return formToken(Token::plus, tokStart);
-  case '*': return formToken(Token::star, tokStart);
+  case '+':
+    return formToken(Token::plus, tokStart);
+  case '*':
+    return formToken(Token::star, tokStart);
   case '-':
     if (*curPtr == '>') {
       ++curPtr;
@@ -144,10 +155,19 @@ Token Lexer::lexToken() {
     LLVM_FALLTHROUGH;
   case '%':
     return lexPrefixedIdentifier(tokStart);
-  case '"': return lexString(tokStart);
+  case '"':
+    return lexString(tokStart);
 
-  case '0': case '1': case '2': case '3': case '4':
-  case '5': case '6': case '7': case '8': case '9':
+  case '0':
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+  case '8':
+  case '9':
     return lexNumber(tokStart);
   }
 }
@@ -169,7 +189,7 @@ Token Lexer::lexComment() {
       return lexToken();
     case 0:
       // If this is the end of the buffer, end the comment.
-      if (curPtr-1 == curBuffer.end()) {
+      if (curPtr - 1 == curBuffer.end()) {
         --curPtr;
         return lexToken();
       }
@@ -193,7 +213,7 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
     ++curPtr;
 
   // Check to see if this identifier is a keyword.
-  StringRef spelling(tokStart, curPtr-tokStart);
+  StringRef spelling(tokStart, curPtr - tokStart);
 
   // Check for i123.
   if (tokStart[0] == 'i') {
@@ -205,10 +225,9 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
   }
 
   Token::Kind kind = llvm::StringSwitch<Token::Kind>(spelling)
-#define TOK_KEYWORD(SPELLING) \
-    .Case(#SPELLING, Token::kw_##SPELLING)
+#define TOK_KEYWORD(SPELLING) .Case(#SPELLING, Token::kw_##SPELLING)
 #include "TokenKinds.def"
-    .Default(Token::bare_identifier);
+                         .Default(Token::bare_identifier);
 
   return Token(kind, spelling);
 }
@@ -269,7 +288,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
       ++curPtr;
     }
   } else if (isalpha(*curPtr) || isPunct(*curPtr)) {
-    do  {
+    do {
       ++curPtr;
     } while (isalpha(*curPtr) || isdigit(*curPtr) || isPunct(*curPtr));
   } else {
@@ -310,14 +329,16 @@ Token Lexer::lexNumber(const char *tokStart) {
   ++curPtr;
 
   // Skip over [0-9]*([eE][-+]?[0-9]+)?
-  while (isdigit(*curPtr)) ++curPtr;
+  while (isdigit(*curPtr))
+    ++curPtr;
 
   if (*curPtr == 'e' || *curPtr == 'E') {
     if (isdigit(static_cast<unsigned char>(curPtr[1])) ||
         ((curPtr[1] == '-' || curPtr[1] == '+') &&
          isdigit(static_cast<unsigned char>(curPtr[2])))) {
       curPtr += 2;
-      while (isdigit(*curPtr)) ++curPtr;
+      while (isdigit(*curPtr))
+        ++curPtr;
     }
   }
   return formToken(Token::floatliteral, tokStart);
@@ -338,13 +359,13 @@ Token Lexer::lexString(const char *tokStart) {
     case 0:
       // If this is a random nul character in the middle of a string, just
       // include it.  If it is the end of file, then it is an error.
-      if (curPtr-1 != curBuffer.end())
+      if (curPtr - 1 != curBuffer.end())
         continue;
       LLVM_FALLTHROUGH;
     case '\n':
     case '\v':
     case '\f':
-      return emitError(curPtr-1, "expected '\"' in string literal");
+      return emitError(curPtr - 1, "expected '\"' in string literal");
     case '\\':
       // Handle explicitly a few escapes.
       if (*curPtr == '"' || *curPtr == '\\' || *curPtr == 'n' || *curPtr == 't')

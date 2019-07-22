@@ -88,7 +88,6 @@ static void populatePassManagers(llvm::legacy::PassManager &modulePM,
 std::function<llvm::Error(llvm::Module *)>
 mlir::makeOptimizingTransformer(unsigned optLevel, unsigned sizeLevel) {
   return [optLevel, sizeLevel](llvm::Module *m) -> llvm::Error {
-
     llvm::legacy::PassManager modulePM;
     llvm::legacy::FunctionPassManager funcPM(m);
     populatePassManagers(modulePM, funcPM, optLevel, sizeLevel);

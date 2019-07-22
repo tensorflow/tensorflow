@@ -25,17 +25,13 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SMRange;
 
-SMLoc Token::getLoc() const {
-  return SMLoc::getFromPointer(spelling.data());
-}
+SMLoc Token::getLoc() const { return SMLoc::getFromPointer(spelling.data()); }
 
 SMLoc Token::getEndLoc() const {
   return SMLoc::getFromPointer(spelling.data() + spelling.size());
 }
 
-SMRange Token::getLocRange() const {
-  return SMRange(getLoc(), getEndLoc());
-}
+SMRange Token::getLocRange() const { return SMRange(getLoc(), getEndLoc()); }
 
 /// For an integer token, return its value as an unsigned.  If it doesn't fit,
 /// return None.
@@ -71,8 +67,8 @@ Optional<double> Token::getFloatingPointValue() const {
 /// For an inttype token, return its bitwidth.
 Optional<unsigned> Token::getIntTypeBitwidth() const {
   unsigned result = 0;
-  if (spelling[1] == '0' ||
-      spelling.drop_front().getAsInteger(10, result) || result == 0)
+  if (spelling[1] == '0' || spelling.drop_front().getAsInteger(10, result) ||
+      result == 0)
     return None;
   return result;
 }
@@ -137,10 +133,17 @@ Optional<unsigned> Token::getHashIdentifierNumber() const {
 /// literal tokens since they have no fixed spelling.
 StringRef Token::getTokenSpelling(Kind kind) {
   switch (kind) {
-  default: llvm_unreachable("This token kind has no fixed spelling");
-#define TOK_PUNCTUATION(NAME, SPELLING) case NAME: return SPELLING;
-#define TOK_OPERATOR(NAME, SPELLING) case NAME: return SPELLING;
-#define TOK_KEYWORD(SPELLING) case kw_##SPELLING: return #SPELLING;
+  default:
+    llvm_unreachable("This token kind has no fixed spelling");
+#define TOK_PUNCTUATION(NAME, SPELLING)                                        \
+  case NAME:                                                                   \
+    return SPELLING;
+#define TOK_OPERATOR(NAME, SPELLING)                                           \
+  case NAME:                                                                   \
+    return SPELLING;
+#define TOK_KEYWORD(SPELLING)                                                  \
+  case kw_##SPELLING:                                                          \
+    return #SPELLING;
 #include "TokenKinds.def"
   }
 }
@@ -148,8 +151,11 @@ StringRef Token::getTokenSpelling(Kind kind) {
 /// Return true if this is one of the keyword token kinds (e.g. kw_if).
 bool Token::isKeyword() const {
   switch (kind) {
-  default: return false;
-#define TOK_KEYWORD(SPELLING) case kw_##SPELLING: return true;
+  default:
+    return false;
+#define TOK_KEYWORD(SPELLING)                                                  \
+  case kw_##SPELLING:                                                          \
+    return true;
 #include "TokenKinds.def"
   }
 }

@@ -36,14 +36,15 @@ namespace quantizer {
 /// methods:
 ///   - addValueIdentityOp
 class FxpMathTargetConfig : public TargetConfiguration {
- public:
+public:
   /// Creates an FxpMathTargetConfig instance which can be further customized.
   static std::unique_ptr<FxpMathTargetConfig> create(SolverContext &context);
- protected:
+
+protected:
   FxpMathTargetConfig(SolverContext &context) : TargetConfiguration(context) {}
 };
 
-}  // namespace quantizer
-}  // namespace mlir
+} // namespace quantizer
+} // namespace mlir
 
-#endif  // MLIR_QUANTIZER_CONFIGURATIONS_FXPMATHCONFIG_H
+#endif // MLIR_QUANTIZER_CONFIGURATIONS_FXPMATHCONFIG_H

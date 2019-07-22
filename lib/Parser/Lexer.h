@@ -22,8 +22,8 @@
 #ifndef MLIR_LIB_PARSER_LEXER_H
 #define MLIR_LIB_PARSER_LEXER_H
 
-#include "mlir/Parser.h"
 #include "Token.h"
+#include "mlir/Parser.h"
 
 namespace mlir {
 class Location;
@@ -48,7 +48,7 @@ public:
 private:
   // Helpers.
   Token formToken(Token::Kind kind, const char *tokStart) {
-    return Token(kind, StringRef(tokStart, curPtr-tokStart));
+    return Token(kind, StringRef(tokStart, curPtr - tokStart));
   }
 
   Token emitError(const char *loc, const Twine &message);
@@ -73,4 +73,4 @@ private:
 
 } // end namespace mlir
 
-#endif  // MLIR_LIB_PARSER_LEXER_H
+#endif // MLIR_LIB_PARSER_LEXER_H

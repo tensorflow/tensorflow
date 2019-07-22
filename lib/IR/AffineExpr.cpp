@@ -637,12 +637,12 @@ void SimpleAffineExprFlattener::visitAddExpr(AffineBinaryOpExpr expr) {
   operandExprStack.pop_back();
 }
 
-  //
-  // t = expr mod c   <=>  t = expr - c*q and c*q <= expr <= c*q + c - 1
-  //
-  // A mod expression "expr mod c" is thus flattened by introducing a new local
-  // variable q (= expr floordiv c), such that expr mod c is replaced with
-  // 'expr - c * q' and c * q <= expr <= c * q + c - 1 are added to localVarCst.
+//
+// t = expr mod c   <=>  t = expr - c*q and c*q <= expr <= c*q + c - 1
+//
+// A mod expression "expr mod c" is thus flattened by introducing a new local
+// variable q (= expr floordiv c), such that expr mod c is replaced with
+// 'expr - c * q' and c * q <= expr <= c * q + c - 1 are added to localVarCst.
 void SimpleAffineExprFlattener::visitModExpr(AffineBinaryOpExpr expr) {
   assert(operandExprStack.size() >= 2);
   // This is a pure affine expr; the RHS will be a constant.
@@ -723,14 +723,14 @@ void SimpleAffineExprFlattener::visitConstantExpr(AffineConstantExpr expr) {
   eq[getConstantIndex()] = expr.getValue();
 }
 
-  // t = expr floordiv c   <=> t = q, c * q <= expr <= c * q + c - 1
-  // A floordiv is thus flattened by introducing a new local variable q, and
-  // replacing that expression with 'q' while adding the constraints
-  // c * q <= expr <= c * q + c - 1 to localVarCst (done by
-  // FlatAffineConstraints::addLocalFloorDiv).
-  //
-  // A ceildiv is similarly flattened:
-  // t = expr ceildiv c   <=> t =  (expr + c - 1) floordiv c
+// t = expr floordiv c   <=> t = q, c * q <= expr <= c * q + c - 1
+// A floordiv is thus flattened by introducing a new local variable q, and
+// replacing that expression with 'q' while adding the constraints
+// c * q <= expr <= c * q + c - 1 to localVarCst (done by
+// FlatAffineConstraints::addLocalFloorDiv).
+//
+// A ceildiv is similarly flattened:
+// t = expr ceildiv c   <=> t =  (expr + c - 1) floordiv c
 void SimpleAffineExprFlattener::visitDivExpr(AffineBinaryOpExpr expr,
                                              bool isCeil) {
   assert(operandExprStack.size() >= 2);
@@ -790,11 +790,11 @@ void SimpleAffineExprFlattener::visitDivExpr(AffineBinaryOpExpr expr,
     lhs[getLocalVarStartIndex() + loc] = 1;
 }
 
-  // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
-  // The local identifier added is always a floordiv of a pure add/mul affine
-  // function of other identifiers, coefficients of which are specified in
-  // dividend and with respect to a positive constant divisor. localExpr is the
-  // simplified tree expression (AffineExpr) corresponding to the quantifier.
+// Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
+// The local identifier added is always a floordiv of a pure add/mul affine
+// function of other identifiers, coefficients of which are specified in
+// dividend and with respect to a positive constant divisor. localExpr is the
+// simplified tree expression (AffineExpr) corresponding to the quantifier.
 void SimpleAffineExprFlattener::addLocalFloorDivId(ArrayRef<int64_t> dividend,
                                                    int64_t divisor,
                                                    AffineExpr localExpr) {

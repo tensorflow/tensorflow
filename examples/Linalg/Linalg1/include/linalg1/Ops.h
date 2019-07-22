@@ -18,9 +18,9 @@
 #ifndef LINALG1_OPS_H_
 #define LINALG1_OPS_H_
 
-#include "linalg1/Types.h"
 #include "linalg1/RangeOp.h"
 #include "linalg1/SliceOp.h"
+#include "linalg1/Types.h"
 #include "linalg1/ViewOp.h"
 
 #endif // LINALG1_OPS_H_
