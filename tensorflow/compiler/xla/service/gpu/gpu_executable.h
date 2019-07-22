@@ -94,9 +94,6 @@ class GpuExecutable : public Executable {
     return assignment_;
   }
 
-  Status CheckCompatibilityWithServiceExecutableRunOptions(
-      const ServiceExecutableRunOptions* run_options);
-
  private:
   StatusOr<ScopedShapedBuffer> Execute(
       const ServiceExecutableRunOptions* run_options,

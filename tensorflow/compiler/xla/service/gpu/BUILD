@@ -1123,7 +1123,11 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = ["nvptx_compiler_registration.cc"],
+    srcs = if_cuda_is_configured([
+        "nvptx_compiler_registration.cc",
+    ]) + if_rocm_is_configured([
+        "amdgpu_compiler_registration.cc",
+    ]),
     deps = [":gpu_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
