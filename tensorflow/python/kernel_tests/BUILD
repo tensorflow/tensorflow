@@ -316,6 +316,22 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "cumulative_logsumexp_test",
+    size = "medium",
+    srcs = ["cumulative_logsumexp_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:array_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
 tf_py_test(
     name = "decode_csv_op_test",
     size = "small",
