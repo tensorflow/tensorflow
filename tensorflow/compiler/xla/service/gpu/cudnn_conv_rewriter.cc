@@ -561,7 +561,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
                              conv->feature_group_count(), conv->metadata());
     }
 
-    std::tie(match, window, dnums) = MatchBackwardFilter(conv);
+    std::tie(match, window, dnums, lhs) = MatchBackwardFilter(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
                              lhs, conv->mutable_operand(1), window, dnums,
