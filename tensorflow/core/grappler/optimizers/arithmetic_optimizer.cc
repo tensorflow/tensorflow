@@ -2759,7 +2759,6 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
         // input data type is not supported by expm1. Skip.
         return Status::OK();
       }
-      LOG(INFO) << "Got element = " << element;
       if (element != complex128(1)) {
         // current element is not 1. Skip.
         return Status::OK();
