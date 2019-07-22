@@ -278,26 +278,40 @@ MatchBackwardFilter(HloInstruction* conv) {
   reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
 
   HloComputation* c = conv->parent();
-  lhs = c->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims), lhs));
+  HloInstruction* lhs_reshape_1 =
+      c->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims),
+          lhs));
 
   // Transpose G to the axis before C/G, For eg: [G, N, C/G, H, W] -> [N, G,
   // C/G, H, W]
-  std::vector<int64> transpose_dims(lhs->shape().dimensions_size());
+  std::vector<int64> transpose_dims(lhs_reshape_1->shape().dimensions_size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);
-  lhs = c->AddInstruction(
-      HloInstruction::CreateTranspose(lhs->shape(), lhs, transpose_dims));
+  std::vector<int64> transpose_reshape_dims =
+      lhs_reshape_1->shape().dimensions();
+  transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
+                               input_batch_dimension);
+  transpose_reshape_dims.insert(
+      transpose_reshape_dims.begin() + input_feature_dimension, num_groups);
+
+  HloInstruction* lhs_transpose =
+      c->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(lhs_reshape_1->shape().element_type(),
+                               transpose_reshape_dims),
+          lhs_reshape_1, transpose_dims));
 
   // Merge [G,C/G] -> [C]
-  Shape new_shape = lhs->shape();
+  Shape new_shape = lhs_transpose->shape();
   new_shape.DeleteDimension(input_feature_dimension);
   new_shape.set_dimensions(input_feature_dimension,
                            input_feature * conv->feature_group_count());
-  lhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, lhs));
-  return std::make_tuple(true, backward_conv_window, backward_conv_dnums, lhs);
+  HloInstruction* lhs_reshape_2 = c->AddInstruction(
+      HloInstruction::CreateReshape(new_shape, lhs_transpose));
+  return std::make_tuple(true, backward_conv_window, backward_conv_dnums,
+                         lhs_reshape_2);
 }
 
 // Try to match a backward input pattern that contains "conv".
