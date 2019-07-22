@@ -166,195 +166,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   return ".";
 }
 
-<<<<<<< HEAD
 }  // namespace
-=======
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
-  }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  return absl::nullopt;
-}
-
-// Prints a warning if the ptx->sass JIT in the driver has known bugs.
-//
-// Using such a driver only a problem if we fail to use ptxas to compile our ptx
-// and have to use the driver instead, so you should only call this function if
-// we're going to use the driver JIT.
-//
-// Only prints a warning the first time it's called.
-void WarnIfBadDriverJITVersion() {
-  static std::once_flag run_once;
-  std::call_once(run_once, [] {
-    auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
-    if (!version_or_status.ok()) {
-      LOG(WARNING) << "Couldn't read CUDA driver version.";
-      return;
-    }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
-
-    // The following versions of the driver JIT miscompile some address
-    // calculations with large offsets (e.g. "load ptr + large_constant"),
-    // b/70245379:
-    //
-    //  - 384.x before 384.108
-    //  - 387.x before 387.40
-    //  - 390.x before 390.10.
-    //
-    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
-    // fix for the "large multioutput fusions" miscompile, b/111107644.
-    if (version < std::make_tuple(396, 20, 0)) {
-      LOG(WARNING)
-          << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
-          << se::cuda::DriverVersionToString(version)
-          << ", which is older than 396.20.0. These versions are known to "
-             "miscompile XLA code, leading to incorrect results or "
-             "invalid-address errors.\nXLA only uses the driver JIT if it "
-             "cannot find ptxas; you don't need to update your driver if "
-             "you can point XLA to ptxas 9.2.88 or newer.";
-    }
-  });
-}
-
-}  // namespace
-
-// Runs optimization passes on the given HLO module.
-Status impl::OptimizeHloModule(HloModule* hlo_module,
-                               se::StreamExecutor* stream_exec,
-                               se::DeviceMemoryAllocator* device_allocator) {
-  {
-    HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                              /*allow_mixed_precision=*/false);
-
-    // Expand random number generation.
-    pipeline.AddPass<RngExpander>();
-
-    // Remove zero-sized HLO from the input so that other passes don't have to
-    // handle it.
-    pipeline.AddPass<ZeroSizedHloElimination>();
-
-    pipeline.AddPass<GpuScatterExpander>();
-
-    pipeline.AddPass<DynamicIndexSplitter>();
-    pipeline.AddPass<GpuHloSupportChecker>();
-    ReducePrecisionInsertion::AddPasses(
-        &pipeline, hlo_module->config().debug_options(),
-        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
-
-    // TODO(b/64094172): make Call work on GPU instead of inlining.
-    pipeline.AddPass<CallInliner>();
-    auto cost_model = [](HloInstruction* conv) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
-    };
-    pipeline.AddPass<DotDecomposer>();
-    pipeline.AddPass<ConvolutionGroupConverter>(
-        cost_model,
-        /*convert_batch_groups_only=*/true);
-    // Expand the sort op to support stable sorting if required.
-    pipeline.AddPass<StableSortExpander>();
-    // Convert BF16 operations to F32 operations so that the GPU backend can
-    // support BF16 operations without directly implementing a BF16 lowering for
-    // most ops.
-    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
-
-    {
-      auto& pass =
-          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
-
-      // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
-      // where possible.  Not every batchnorm op can be implemented as a call to
-      // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
-        pass.AddPass<CudnnBatchNormRewriter>();
-      }
-      pass.AddPass<BatchNormExpander>(
-          /*rewrite_training_op=*/true,
-          /*rewrite_inference_op=*/true,
-          /*rewrite_grad_op=*/true);
-
-      pipeline.AddPass<HloGetDimensionSizeRewriter>();
-
-      // BatchNormExpander can create zero-sized ops, so zero-sized HLO
-      // elimination has to come after that pass.
-      pipeline.AddPass<ZeroSizedHloElimination>();
-
-      AlgebraicSimplifierOptions options;
-      pass.AddPass<AlgebraicSimplifier>(options);
-      pass.AddPass<SortSimplifier>();
-      pass.AddPass<TupleSimplifier>();
-      pass.AddPass<WhileLoopConstantSinking>();
-      pass.AddPass<WhileLoopSimplifier>();
-
-      // TODO(b/134075051): Re-enable after b/134075051 is fixed.
-      // pass.AddPass<SliceSinker>();
-
-      pass.AddPass<HloDCE>();
-      pass.AddPass<ReshapeMover>();
-      pass.AddPass<HloConstantFolding>();
-      pass.AddPass<ConditionalSimplifier>();
-    }
-
-    pipeline.AddPass<TransposeFolding>(
-        [](const HloInstruction& dot,
-           const TransposeFolding::OperandIndices& candidate_operands) {
-          return IsMatrixMultiplication(dot)
-                     ? candidate_operands
-                     : TransposeFolding::OperandIndices{};
-        },
-        TransposeFolding::NeverFoldTranspose);
-    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
-    pipeline.AddPass<HloDCE>();
-
-    // Run WhileLoopTripCountAnnotator at the end of the simplification
-    // pipeline, before layout assignment and fusion.  This pass does some
-    // pattern-matching on while bodies/conditions, and this is where the HLO is
-    // "nicest".
-    //
-    // It's important that we don't make semantic changes (e.g. unrolling) to
-    // any `while` loops after this point, because otherwise the trip-count
-    // annotations added by this pass may not be correct after the
-    // modifications.
-    pipeline.AddPass<WhileLoopTripCountAnnotator>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
-    // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-    // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
-    HloPassPipeline pipeline("conv_canonicalization");
-    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                              /*allow_mixed_precision=*/false);
-    pipeline.AddPass<CusolverRewriter>();
-    pipeline.AddPass<CudnnConvRewriter>();
-    pipeline.AddPass<CudnnFusedConvRewriter>();
-    pipeline.AddPass<CudnnConvPaddingLegalization>();
-    if (IsVoltaOrLater(*stream_exec)) {
-      pipeline.AddPass<CudnnConvPadForTensorCores>();
-      // CudnnConvPadForTensorCores leaves behind unnecessary
-      // tuple/get-tuple-element pairs that TupleSimplifier fixes.
-      pipeline.AddPass<TupleSimplifier>();
-    }
-    // CudnnConvRewriter, CudnnConvPaddingLegalization and
-    // CudnnConvPadForTensorCores may add instructions which can be simplified
-    // by constant folding.
-    pipeline.AddPass<HloConstantFolding>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
->>>>>>> upstream/master
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -442,7 +254,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   return Status::OK();
 }
 
-<<<<<<< HEAD
 namespace {
 absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                         const HloInstruction* operand,
@@ -505,57 +316,6 @@ void WarnIfBadDriverJITVersion() {
 
 NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
     : GpuCompiler(platform_id, nvptx::kTargetTriple, nvptx::kDataLayout) {}
-=======
-// Modifies the given HLO module so that it will be accepted by IrEmitter.
-// Unlike optimization passes, the passes are necessary for correctness.
-Status impl::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
-  // In some cases, we have to place the result of an instruction in a temporary
-  // buffer. For instance, the buffer that holds an external parameter is
-  // assumed immutable at this point, and should not be reused for output
-  // (b/27180329). Therefore, in that case, we set the output to be a copy of
-  // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-   * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  // Copy insertion should be performed immediately before IR emission to avoid
-  // inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes an
-  // instruction which materializes a value). DCE must be run immediately before
-  // (and sometime after) copy insertion, to avoid dead code from interfering
-  // with the rewrites.
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
-  // The following pass LOGs memory waste. Add it when VLOGing is enabled only.
-  if (VLOG_IS_ON(2)) {
-    pipeline.AddPass<MemWastedOnPassthroughParams>();
-  }
-  pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
-  pipeline.AddPass<GpuSanitizeConstantNames>();
-  return pipeline.Run(hlo_module).status();
-}
-
-NVPTXCompiler::NVPTXCompiler()
-    : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
-                        .getPointerSize(0 /* default address space */)) {}
-
-StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
-  tensorflow::profiler::TraceMe activity(
-      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(
-      impl::OptimizeHloModule(module.get(), stream_exec, device_allocator));
-
-  TF_RETURN_IF_ERROR(impl::PrepareHloModuleForIrEmitting(module.get()));
->>>>>>> upstream/master
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
@@ -618,46 +378,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
       stream_exec, ptx, compute_capability.first, compute_capability.second,
       module->config());
 
-<<<<<<< HEAD
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));
-=======
-  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
-                            thunk_schedule->ToString());
-  }
-
-  std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> profile_printer;
-
-  if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
-    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
-    cost_analysis.set_bytes_per_second(
-        stream_exec->GetDeviceDescription().memory_bandwidth());
-    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    VLOG(1) << "HLO memory read+written: "
-            << tensorflow::strings::HumanReadableNumBytes(
-                   cost_analysis.bytes_accessed());
-    if (module->config().hlo_profiling_enabled()) {
-      profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-      profile_printer = CreateHloProfilePrinterData(
-          *profile_index_map, cost_analysis, entry_computation->name());
-    }
-  }
-
-  auto* gpu_executable = new GpuExecutable(
-      ptx, cubin, std::make_pair(cc_major, cc_minor), std::move(thunk_schedule),
-      std::move(module), std::move(buffer_assignment),
-      std::move(profile_printer), std::move(profile_index_map));
-  if (embed_ir_in_executable) {
-    DCHECK_NE("", ir_module_string_before_opt);
-    gpu_executable->set_ir_module_string(ir_module_string_before_opt);
-  }
-  return std::unique_ptr<Executable>(gpu_executable);
->>>>>>> upstream/master
 }
 
 std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
@@ -741,14 +463,3 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
 
 }  // namespace gpu
 }  // namespace xla
-<<<<<<< HEAD
-
-static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(stream_executor::cuda::kCudaPlatformId); });
-  return true;
-}
-static bool module_initialized = InitModule();
-=======
->>>>>>> upstream/master

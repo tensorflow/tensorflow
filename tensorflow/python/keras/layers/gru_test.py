@@ -143,20 +143,11 @@ class GRULayerTest(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-<<<<<<< HEAD
-    # ROCm does not yet support eager
-    if test.is_built_with_rocm():
-        model.compile(optimizer='sgd', loss='mse')
-    else:
-        model.compile(optimizer='sgd', loss='mse',
-                      run_eagerly=testing_utils.should_run_eagerly())
-=======
     model.compile(
         optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
         run_distributed=testing_utils.should_run_distributed())
->>>>>>> upstream/master
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

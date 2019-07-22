@@ -1264,17 +1264,9 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-<<<<<<< HEAD
-
     # explicilty use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-
-=======
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
->>>>>>> upstream/master
     x = np.ones([3, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
@@ -1295,17 +1287,9 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-<<<<<<< HEAD
-
     # explicilty use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-
-=======
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
->>>>>>> upstream/master
     x = np.ones([3, 6, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
@@ -1354,17 +1338,9 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-<<<<<<< HEAD
-
     # explicilty use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-
-=======
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
->>>>>>> upstream/master
     x = np.ones([3, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
@@ -1385,17 +1361,9 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-<<<<<<< HEAD
-
     # explicilty use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-
-=======
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
->>>>>>> upstream/master
     x = np.ones([3, 6, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
@@ -1446,17 +1414,9 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
-<<<<<<< HEAD
-
     # explicilty use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
-
-=======
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
->>>>>>> upstream/master
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
     k = np.ones([3, 6, 6, 5], dtype=dtype)
 

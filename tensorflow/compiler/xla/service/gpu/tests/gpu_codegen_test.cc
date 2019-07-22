@@ -47,14 +47,11 @@ void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
   std::unique_ptr<Executable> executable =
       std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
   string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
-<<<<<<< HEAD
-  //
+
   // On the ROCM platform the "ptx" string is not populated for the compiled
   // executable, and hence the "ptx_str" will be empty. So disabling the
   // pattern check on the ROCm platform
 #if !defined(TENSORFLOW_USE_ROCM)
-=======
->>>>>>> upstream/master
   StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());

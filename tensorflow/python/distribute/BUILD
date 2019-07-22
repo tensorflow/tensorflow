@@ -1121,11 +1121,8 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
-<<<<<<< HEAD
-=======
         "no_rocm",
         "notap",  # TODO(b/137972256) Re-enable this test.
->>>>>>> upstream/master
     ],
     deps = [
         ":saved_model_test_base",

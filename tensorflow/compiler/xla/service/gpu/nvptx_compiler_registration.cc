@@ -17,8 +17,10 @@ limitations under the License.
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
+      stream_executor::cuda::kCudaPlatformId, []() {
+        return absl::make_unique<xla::gpu::NVPTXCompiler>(
+            stream_executor::cuda::kCudaPlatformId);
+      });
   return true;
 }
 static bool module_initialized = InitModule();

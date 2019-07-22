@@ -126,12 +126,8 @@ Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
-<<<<<<< HEAD
-  CheckCompatibilityWithServiceExecutableRunOptions(run_options);
-=======
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
->>>>>>> upstream/master
   GpuDebugInfoManager::Get()->OnModuleStart(module().name());
   auto cleanup = MakeCleanup(
       [&]() { GpuDebugInfoManager::Get()->OnModuleStop(module().name()); });

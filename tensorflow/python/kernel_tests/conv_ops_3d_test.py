@@ -60,11 +60,7 @@ class Conv3DTest(test.TestCase):
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-<<<<<<< HEAD
-        return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
-=======
         return optional_float64 + [dtypes.float32, dtypes.float16]
->>>>>>> upstream/master
     else:
       return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
 

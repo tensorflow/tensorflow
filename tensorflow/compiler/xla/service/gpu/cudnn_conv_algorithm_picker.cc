@@ -160,41 +160,20 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
 }
 }  // anonymous namespace
 
-<<<<<<< HEAD
 StatusOr<tensorflow::AutotuneResult>
 CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
   const auto device_ordinal = stream_exec_->device_ordinal();
-=======
-using ConvCacheKey =
-    std::tuple<se::StreamExecutor*,
-               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
->>>>>>> upstream/master
 
   std::vector<se::DeviceMemoryBase> operand_buffers;
   se::DeviceMemoryBase result_buffer;
 
-<<<<<<< HEAD
   const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
   se::cuda::RedzoneAllocator input_output_allocator(
       device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
   AllocateInitializeBuffers(instr, &input_output_allocator, stream,
                             &operand_buffers, &result_buffer);
-=======
-  void LogStats() {
-    VLOG(2) << "Cache hits: " << cache_hits;
-    VLOG(2) << "Cache misses: " << cache_misses;
-  }
-};
-
-ConvCacheKey AutotuneCacheKeyfromInstruction(
-    const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
-  auto options = HloPrintOptions::Canonical();
-  options.set_print_backend_config(true);
-  return std::make_tuple(se, conv->ToString(options));
-}
->>>>>>> upstream/master
 
   std::vector<AutotuneResult> profile_results;
   se::cuda::RedzoneAllocator scratch_allocator(
@@ -205,38 +184,11 @@ ConvCacheKey AutotuneCacheKeyfromInstruction(
                         &result_buffer, &profile_results,
                         &crash_on_checking_failure);
 
-<<<<<<< HEAD
   // Crash on miscompares and redzone violations if desired.  Do this after
   // logging the autotuning results, otherwise we won't get any data!
   for (const auto& result : profile_results) {
     if (result.has_failure()) {
       CHECK(!crash_on_checking_failure);
-=======
-StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
-    const HloCustomCallInstruction* instr) {
-  // Don't run this function concurrently on the same GPU.
-  //
-  // This is a bit of a hack and doesn't protect us against arbitrary concurrent
-  // use of a GPU, but it's sufficient to let us compile two HLO modules
-  // concurrently and then run them sequentially.
-  //
-  // Putting the lock in here rather than in PickBestAlgorithmNoCache lets us
-  // avoid ever doing duplicate work.  If we have a cache miss, only one thread
-  // will run PickBestAlgorithmImpl for a particular device.
-  tensorflow::mutex_lock lock = LockGpu(stream_exec_);
-
-  // We cache the autotuning results to avoid doing the duplicate work,
-  // which can greatly improve both stability (deterministic numeric results
-  // within a process for a given input) and performance (2x speedup on some
-  // models).
-  ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
-  {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      autotune_cache_stats.cache_hits++;
-      return it->second;
->>>>>>> upstream/master
     }
   }
 

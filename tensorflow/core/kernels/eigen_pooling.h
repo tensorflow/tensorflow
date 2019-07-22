@@ -274,12 +274,8 @@ namespace internal {
 
 template <typename T>
 struct AvgPoolMeanReducer {
-<<<<<<< HEAD
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && !defined(__HIPCC__)
-=======
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && \
     !defined(__HIPCC__)
->>>>>>> upstream/master
   // We only support packet access for floats.
   static const bool PacketAccess = internal::is_same<T, float>::value;
 #else
@@ -308,12 +304,8 @@ struct AvgPoolMeanReducer {
     return accum / T(scalarCount_);
   }
 
-<<<<<<< HEAD
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && !defined(__HIPCC__)
-=======
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && \
     !defined(__HIPCC__)
->>>>>>> upstream/master
 #ifdef EIGEN_VECTORIZE_AVX512
 #define pequal(a, b)   \
   _mm512_castsi512_ps( \
@@ -380,12 +372,8 @@ template <typename Device>
 struct reducer_traits<AvgPoolMeanReducer<float>, Device> {
   enum {
     Cost = 1,
-<<<<<<< HEAD
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && !defined(__HIPCC__)
-=======
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && \
     !defined(__HIPCC__)
->>>>>>> upstream/master
     // We only support packet access for floats.
     PacketAccess = true,
 #else

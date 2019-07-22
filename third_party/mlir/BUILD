@@ -1073,11 +1073,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-<<<<<<< HEAD
-        ":ControlFlowToCFG",
-=======
         ":CFGTransforms",
->>>>>>> upstream/master
         ":IR",
         ":LLVMDialect",
         ":Pass",

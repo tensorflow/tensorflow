@@ -1011,8 +1011,7 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "gpu_compiler",
+    name = "gpu_compiler_impl",
     srcs = [
         "gpu_compiler.cc",
     ] + if_cuda_is_configured([
@@ -1027,11 +1026,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "amdgpu_compiler.h",
     ]),
-=======
-    name = "nvptx_compiler_impl",
-    srcs = ["nvptx_compiler.cc"],
-    hdrs = ["nvptx_compiler.h"],
->>>>>>> upstream/master
     deps = [
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_padding_legalization",
@@ -1112,7 +1106,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
-<<<<<<< HEAD
     ] + if_cuda_is_configured([
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_fused_conv_rewriter",
@@ -1126,15 +1119,12 @@ cc_library(
     + if_rocm_is_configured([
         "//tensorflow/core:rocm_rocdl_path",
     ]),
-=======
-    ],
 )
 
 cc_library(
-    name = "nvptx_compiler",
+    name = "gpu_compiler",
     srcs = ["nvptx_compiler_registration.cc"],
-    deps = [":nvptx_compiler_impl"],
->>>>>>> upstream/master
+    deps = [":gpu_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
 
