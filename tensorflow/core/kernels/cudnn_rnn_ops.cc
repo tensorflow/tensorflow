@@ -1468,15 +1468,8 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                   context, model_types(), time_major, &input,
                                   &input_h, &input_c, &params,
                                   &sequence_lengths, num_proj, &model_shapes));
-      auto seq_array = sequence_lengths->template flat<int>().data();
-      bool all_max_seq_length = true;
-      for (int i = 0; i < model_shapes.batch_size; i++) {
-        if (seq_array[i] != model_shapes.max_seq_length) {
-          all_max_seq_length = false;
-          break;
-        }
-      }
-      use_padded_io = !(time_major && all_max_seq_length);
+      use_padded_io = ShouldUsePaddedIO(sequence_lengths, model_shapes,
+                                        time_major);
     } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
