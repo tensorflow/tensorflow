@@ -58,19 +58,19 @@ ExhaustiveOpTestBase::CreateExhaustiveF32Ranges() {
 
 namespace {
 ExhaustiveOpTestBase::ErrorSpec DefaultF64SpecGenerator(float) {
-  return ExhaustiveOpTestBase::ErrorSpec{0.0001, 0.0001};
+  return ExhaustiveOpTestBase::ErrorSpec(0.0001, 0.0001);
 }
 
 ExhaustiveOpTestBase::ErrorSpec DefaultF32SpecGenerator(float) {
-  return ExhaustiveOpTestBase::ErrorSpec{0.0001, 0.0001};
+  return ExhaustiveOpTestBase::ErrorSpec(0.0001, 0.0001);
 }
 
 ExhaustiveOpTestBase::ErrorSpec DefaultF16SpecGenerator(float) {
-  return ExhaustiveOpTestBase::ErrorSpec{0.001, 0.001};
+  return ExhaustiveOpTestBase::ErrorSpec(0.001, 0.001);
 }
 
 ExhaustiveOpTestBase::ErrorSpec DefaultBF16SpecGenerator(float) {
-  return ExhaustiveOpTestBase::ErrorSpec{0.002, 0.02};
+  return ExhaustiveOpTestBase::ErrorSpec(0.002, 0.02);
 }
 }  // namespace
 
