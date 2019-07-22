@@ -666,6 +666,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_diag_ops_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["matrix_diag_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
