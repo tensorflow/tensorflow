@@ -1549,9 +1549,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level_ != OptimizerOptions::OFF);
 
-  if (!should_compile &&
-      registration->autoclustering_policy ==
-          XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+  if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
     static std::once_flag once;
     std::call_once(once, [] {

@@ -178,6 +178,9 @@ class EagerContext : public core::RefCounted {
   Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
+  Device* CanonicalDevice(Device* d) const {
+    return HostCPU() == d ? nullptr : d;
+  }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
@@ -325,7 +328,6 @@ class EagerContext : public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  bool IsLocal(const Device* d) const;
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
@@ -363,9 +365,7 @@ class EagerContext : public core::RefCounted {
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
 
-  mutex functions_mu_;
-  FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
-      OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 

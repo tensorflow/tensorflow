@@ -163,12 +163,23 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
+    # double datatype is currently not supported for convolution ops
+    # on the ROCm platform
+    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
     if use_gpu and not test_util.GpuSupportsHalfMatMulAndConv():
+<<<<<<< HEAD
       return [dtypes.float32] + ([dtypes.float64] if not test.is_built_with_rocm else [])
     else:
       # It is important that float32 comes before float16 here,
       # as we will be using its gradients as reference for fp16 gradients.
       return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
+=======
+      return [dtypes.float32] + optional_float64
+    else:
+      # It is important that float32 comes before float16 here,
+      # as we will be using its gradients as reference for fp16 gradients.
+      return [dtypes.float32, dtypes.float16] + optional_float64
+>>>>>>> upstream/master
 
   def _CreateNumpyTensor(self, shape):
     total_size = 1

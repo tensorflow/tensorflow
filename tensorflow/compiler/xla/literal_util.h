@@ -226,8 +226,7 @@ class LiteralUtil {
   // in invocation between the above signature and this one.
   static Literal MakeTupleOwned(std::vector<Literal> elements);
 
-  // This overload lets you pass a braced list of Literals to
-  // MakeTupleOwned:
+  // This overload lets you pass a list of Literals to MakeTupleOwned:
   //
   //   LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1(...), ...).
   //

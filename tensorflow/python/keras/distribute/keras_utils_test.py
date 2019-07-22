@@ -73,12 +73,15 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(keras_test_lib.all_strategy_combinations(),
-                         combinations.combine(cloning=[True, False])))
-  def test_callbacks_in_fit(self, distribution, cloning):
+                         combinations.combine(run_distributed=[True, False])))
+  def test_callbacks_in_fit(self, distribution, run_distributed):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
-          optimizer='sgd', loss='mse', metrics=['mae'], cloning=cloning)
+          optimizer='sgd',
+          loss='mse',
+          metrics=['mae'],
+          run_distributed=run_distributed)
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -125,12 +128,15 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(keras_test_lib.all_strategy_combinations(),
-                         combinations.combine(cloning=[True, False])))
-  def test_callbacks_in_eval(self, distribution, cloning):
+                         combinations.combine(run_distributed=[True, False])))
+  def test_callbacks_in_eval(self, distribution, run_distributed):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
-          optimizer='sgd', loss='mse', metrics=['mae'], cloning=cloning)
+          optimizer='sgd',
+          loss='mse',
+          metrics=['mae'],
+          run_distributed=run_distributed)
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -147,12 +153,15 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(keras_test_lib.all_strategy_combinations(),
-                         combinations.combine(cloning=[True, False])))
-  def test_callbacks_in_predict(self, distribution, cloning):
+                         combinations.combine(run_distributed=[True, False])))
+  def test_callbacks_in_predict(self, distribution, run_distributed):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
-          optimizer='sgd', loss='mse', metrics=['mae'], cloning=cloning)
+          optimizer='sgd',
+          loss='mse',
+          metrics=['mae'],
+          run_distributed=run_distributed)
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -229,23 +238,30 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager'],
-          cloning=[True, False]))
-  def test_unsupported_features(self, distribution, cloning):
+          run_distributed=[True, False]))
+  def test_unsupported_features(self, distribution, run_distributed, mode):
     with self.cached_session():
       with distribution.scope():
         model = keras_test_lib.get_model()
         optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae']
-        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
+        model.compile(
+            optimizer, loss, metrics=metrics, run_distributed=run_distributed)
 
       dataset = keras_test_lib.get_dataset(distribution)
 
+      if run_distributed and mode == 'eager':
+        exception_error_message = (
+            '`validation_split` argument is not supported when data adapter'
+            ' is.+')
+      else:
+        exception_error_message = (
+            '`validation_split` argument is not supported when input `x`'
+            ' is a dataset or a dataset iterator.+')
+
       # Test with validation split
-      with self.assertRaisesRegexp(
-          ValueError, '`validation_split` argument is not '
-          'supported when input `x` is a dataset or a '
-          'dataset iterator.+'):
+      with self.assertRaisesRegexp(ValueError, exception_error_message):
         model.fit(
             dataset,
             epochs=1,
@@ -292,16 +308,17 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager'],
-          cloning=[True, False]))
+          run_distributed=[True, False]))
   def test_calling_with_unsupported_predefined_callbacks(
-      self, distribution, cloning):
+      self, distribution, run_distributed):
     with self.cached_session():
       with distribution.scope():
         model = keras_test_lib.get_model()
         optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae']
-        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
+        model.compile(
+            optimizer, loss, metrics=metrics, run_distributed=run_distributed)
 
       dataset = keras_test_lib.get_dataset(distribution)
 
@@ -332,20 +349,23 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       combinations.combine(
           distribution=[strategy_combinations.one_device_strategy],
           mode=['eager'],
-          cloning=[True, False]))
-  def test_distribution_strategy_with_run_eagerly(self, distribution, cloning):
+          run_distributed=[True, False]))
+  def test_distribution_strategy_with_run_eagerly(self, distribution,
+                                                  run_distributed):
     with distribution.scope():
       x = keras.layers.Input(shape=(1,))
       y = keras.layers.Dense(1, kernel_initializer='ones')(x)
       model = keras.models.Model(x, y)
 
-      err_msg = ('We currently do not support enabling `run_eagerly` with '
-                 'distribution strategy.')
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.compile('sgd', run_eagerly=True, cloning=cloning)
+      if run_distributed:
+        model.compile('sgd', run_eagerly=True, run_distributed=run_distributed)
+      else:
+        err_msg = ('We currently do not support enabling `run_eagerly` with '
+                   'distribution strategy.')
+        with self.assertRaisesRegex(ValueError, err_msg):
+          model.compile(
+              'sgd', run_eagerly=True, run_distributed=run_distributed)
 
-  # TODO(b/124377929): Remove error assertions once subclassed models
-  # are supported in DistributedStrategy.
   @combinations.generate(
       combinations.combine(
           distribution=[
@@ -353,9 +373,9 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.one_device_strategy,
           ],
           mode=['graph', 'eager'],
-          cloning=[True, False]))
+          run_distributed=[True, False]))
   def test_distribution_strategy_on_subclassed_model(self, distribution,
-                                                     cloning):
+                                                     run_distributed):
     with distribution.scope():
 
       class _SimpleMLP(keras.Model):
@@ -369,15 +389,15 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       model = _SimpleMLP(3)
 
-      if cloning or not context.executing_eagerly():
+      if not context.executing_eagerly():
         with self.assertRaisesRegexp(
             ValueError,
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without `input_shape`/'
             '`input_dim` set in its first layer or a subclassed model.'):
-          model.compile('sgd', cloning=cloning)
+          model.compile('sgd', run_distributed=run_distributed)
       else:
-        model.compile('sgd', cloning=cloning)
+        model.compile('sgd', run_distributed=run_distributed)
 
   @combinations.generate(
       combinations.combine(
@@ -386,16 +406,16 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.one_device_strategy,
           ],
           mode=['graph', 'eager'],
-          cloning=[True, False]))
+          run_distributed=[True, False]))
   def test_distribution_strategy_on_deferred_sequential_model(
-      self, distribution, cloning):
+      self, distribution, run_distributed):
     with distribution.scope():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(16, activation='relu'))
       model.add(keras.layers.Dense(3, activation='softmax'))
 
-      if not cloning and context.executing_eagerly():
-        model.compile('sgd', cloning=cloning)
+      if context.executing_eagerly():
+        model.compile('sgd', run_distributed=run_distributed)
       else:
         with self.assertRaisesRegexp(
             ValueError,
@@ -403,7 +423,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             '`Sequential` model that is created without '
             '`input_shape`/`input_dim` set in its first layer or '
             'a subclassed model.'):
-          model.compile('sgd', cloning=cloning)
+          model.compile('sgd', run_distributed=run_distributed)
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
@@ -424,20 +444,15 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
   # TODO(priyag): Enable all strategies for this test. Currently it does not
   # work for TPU due to some invalid datatype.
   @combinations.generate(
-      combinations.times(
-          combinations.combine(
-              distribution=[
-                  strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              ],
-              mode=['graph', 'eager']),
-          combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.gradient_descent_optimizer_v1_fn)
-          + combinations.combine(
-              cloning=False,
-              optimizer=strategy_combinations
-              .gradient_descent_optimizer_keras_v2_fn)))
-  def test_masking(self, distribution, cloning, optimizer):
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager'],
+          run_distributed=[True, False],
+          optimizer=strategy_combinations.gradient_descent_optimizer_keras_v2_fn
+      ))
+  def test_masking(self, distribution, run_distributed, optimizer):
     with self.cached_session():
       np.random.seed(1337)
       x = np.array([[[1], [1]], [[0], [0]]])
@@ -447,7 +462,8 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
         model.add(
             keras.layers.TimeDistributed(
                 keras.layers.Dense(1, kernel_initializer='one')))
-        model.compile(loss='mse', optimizer=optimizer(), cloning=cloning)
+        model.compile(
+            loss='mse', optimizer=optimizer(), run_distributed=run_distributed)
       y = np.array([[[1], [1]], [[1], [1]]])
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
@@ -462,15 +478,13 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
   @combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations(),
-          combinations.combine(fused=[True, False]),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.gradient_descent_optimizer_v1_fn)
-          + combinations.combine(
-              cloning=False,
+              fused=[True, False],
+              run_distributed=[True, False],
               optimizer=strategy_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
-  def test_batchnorm_correctness(self, distribution, fused, optimizer, cloning):
+  def test_batchnorm_correctness(self, distribution, fused, optimizer,
+                                 run_distributed):
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()
@@ -481,7 +495,8 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
                 30,
             ), momentum=0.8, fused=fused)
         model.add(norm)
-        model.compile(loss='mse', optimizer=optimizer(), cloning=cloning)
+        model.compile(
+            loss='mse', optimizer=optimizer(), run_distributed=run_distributed)
 
       # centered on 5.0, variance 10.0
       x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 10, 20, 30))
@@ -510,24 +525,21 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.rmsprop_optimizer_v1_fn) +
-          combinations.combine(
-              cloning=False,
+              run_distributed=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
-  def test_save_load_h5(self, distribution, optimizer, cloning):
+  def test_save_load_h5(self, distribution, optimizer, run_distributed):
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
         model = keras_test_lib.get_model()
-        model.compile(optimizer(), 'mse', cloning=cloning)
+        model.compile(optimizer(), 'mse', run_distributed=run_distributed)
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp('.h5')
         model.save_weights(weights_file)
 
         model_2 = keras_test_lib.get_model()
-        model_2.compile(optimizer(), 'mse', cloning=cloning)
+        model_2.compile(optimizer(), 'mse', run_distributed=run_distributed)
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)
@@ -537,29 +549,26 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              cloning=True,
-              optimizer=strategy_combinations.rmsprop_optimizer_v1_fn) +
-          combinations.combine(
-              cloning=False,
+              run_distributed=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
-  def test_save_load_trackable(self, distribution, optimizer, cloning):
+  def test_save_load_trackable(self, distribution, optimizer, run_distributed):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
-    if (isinstance(distribution, (tpu_strategy.TPUStrategy,
-                                  tpu_strategy.TPUStrategyV1)) and
+    if (isinstance(distribution,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       self.skipTest('MultiStep TPU Strategy deadlocks with optimizer restore.')
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
         model = keras_test_lib.get_model()
-        model.compile(optimizer(), 'mse', cloning=cloning)
+        model.compile(optimizer(), 'mse', run_distributed=run_distributed)
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp()
         model.save_weights(weights_file)
 
         model_2 = keras_test_lib.get_model()
-        model_2.compile(optimizer(), 'mse', cloning=cloning)
+        model_2.compile(optimizer(), 'mse', run_distributed=run_distributed)
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)
@@ -571,8 +580,8 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
-          combinations.combine(cloning=[True, False])))
-  def test_layer_outside_scope(self, distribution, cloning):
+          combinations.combine(run_distributed=[True, False])))
+  def test_layer_outside_scope(self, distribution, run_distributed):
     with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, 'was not created in the distribution strategy'):
@@ -583,13 +592,14 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           optimizer = gradient_descent.GradientDescentOptimizer(0.001)
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-          model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
+          model.compile(
+              optimizer, loss, metrics=metrics, run_distributed=run_distributed)
 
   @combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
-          combinations.combine(cloning=[True, False])))
-  def test_model_outside_scope(self, distribution, cloning):
+          combinations.combine(run_distributed=[True, False])))
+  def test_model_outside_scope(self, distribution, run_distributed):
     with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, 'was not created in the distribution strategy'):
@@ -600,7 +610,8 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           optimizer = gradient_descent.GradientDescentOptimizer(0.001)
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-          model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
+          model.compile(
+              optimizer, loss, metrics=metrics, run_distributed=run_distributed)
 
 
 class TestDistributionStrategyWithStaticShapes(test.TestCase,

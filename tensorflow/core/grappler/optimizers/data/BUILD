@@ -682,6 +682,7 @@ cc_library(
     srcs = ["rebatch.cc"],
     hdrs = ["rebatch.h"],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_map",

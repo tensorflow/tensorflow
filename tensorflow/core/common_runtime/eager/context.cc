@@ -274,18 +274,15 @@ EagerContext::~EagerContext() {
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.Find(name) != nullptr;
 }
 
 Status EagerContext::FindFunctionOpData(
     const string& name, const tensorflow::OpRegistrationData** op_data) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.LookUp(name, op_data);
 }
 
 const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.Find(name);
 }
 
@@ -406,9 +403,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
     is_first_ref = registered_function->RefCountIsOne();
   }
   if (is_first_ref) {
-    mutex_lock l(functions_mu_);
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
-    // TODO(fishx): Avoid holding lock when sending RPCs.
     return MaybeRegisterFunctionRemotely(fdef);
   }
   return Status::OK();
@@ -433,7 +428,6 @@ Status EagerContext::RemoveFunction(const string& func) {
     registered_function->Unref();
   }
   if (is_last_ref) {
-    mutex_lock l(functions_mu_);
     // TODO(fishx): Remove remote function as well.
     return func_lib_def_.RemoveFunction(func);
   }
@@ -509,12 +503,6 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   }
 
   return status;
-}
-
-bool EagerContext::IsLocal(const Device* d) const {
-  if (d == nullptr || remote_device_mgr() == nullptr) return true;
-  tensorflow::Device* tmp;
-  return local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

@@ -98,11 +98,12 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
     if (col_params_.instance.shape.num_elements() == 0) {
       col_params_.instance.shape = output_shape;
     } else {
-      OP_REQUIRES(
+      OP_REQUIRES_ASYNC(
           c, col_params_.instance.shape == output_shape,
           errors::Internal("Inconsistent output shapes, got ",
                            output_shape.DebugString(), ", but expected is ",
-                           col_params_.instance.shape.DebugString(), "."));
+                           col_params_.instance.shape.DebugString(), "."),
+          done);
     }
 
     // Allocate output on the first pass through this function.  This must be

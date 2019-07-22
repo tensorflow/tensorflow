@@ -34,6 +34,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
@@ -1551,6 +1552,12 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
     ValueError: In case of invalid argument values.
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
+  if (multi_worker_util.in_multi_worker_mode() and
+      dataset.options().experimental_distribute.auto_shard):
+    # If the dataset would be auto-sharded, we should not infer a local
+    # steps_per_epoch due to the possible inbalanced sharding between workers.
+    return None
+
   size = K.get_value(cardinality.cardinality(dataset))
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '

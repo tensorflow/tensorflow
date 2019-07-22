@@ -296,5 +296,40 @@ REGISTER_XLA_OP(Name("TruncatedNormal")
                     .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
                 TruncatedNormalOp);
 
+class ParameterizedTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const DataType dtype = output_type(0);
+
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    xla::Shape xla_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
+
+    xla::XlaBuilder* b = ctx->builder();
+
+    xla::XlaOp one = xla::One(b, xla_shape.element_type());
+    xla::XlaOp min_positive =
+        xla::MinPositiveNormalValue(b, xla_shape.element_type());
+    xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
+
+    xla::XlaOp means = ctx->Input(1);
+    xla::XlaOp stddevs = ctx->Input(2);
+    xla::XlaOp minvals = ctx->Input(3);
+    xla::XlaOp maxvals = ctx->Input(4);
+
+    ctx->SetOutput(0, ParameterizedTruncatedNormal(uniform, means, stddevs,
+                                                   minvals, maxvals));
+  }
+};
+
+REGISTER_XLA_OP(Name("ParameterizedTruncatedNormal")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
+                ParameterizedTruncatedNormalOp);
+
 }  // namespace
 }  // namespace tensorflow

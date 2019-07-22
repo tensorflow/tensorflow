@@ -72,12 +72,20 @@ class HloModule {
   HloComputation* AddEntryComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Replaces the current entry computation with another computation.
+  // The new entry computation must be a computation that is already in the
+  // module.
+  void ReplaceEntryComputation(HloComputation* entry_computation);
+
   // Adds an embedded computation to the module.
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
 
   // Removes an embedded computation.
   Status RemoveEmbeddedComputation(HloComputation* to_remove);
+
+  // Removes unused computations.
+  Status RemoveUnusedComputations();
 
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
@@ -193,6 +201,9 @@ class HloModule {
   // remove computations from a module while iterating over
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
+
+  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
   void set_config(HloModuleConfig& config) { config_ = config; }

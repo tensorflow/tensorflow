@@ -69,7 +69,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       context_(),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
-                 error_reporter_) {
+                 error_reporter_),
+      tensors_allocated_(false) {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -92,13 +93,22 @@ TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  return allocator_.AllocateTensors();
+  TfLiteStatus status = allocator_.AllocateTensors();
+  TF_LITE_ENSURE_OK(&context_, status);
+  tensors_allocated_ = true;
+  return kTfLiteOk;
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {
   if (initialization_status_ != kTfLiteOk) {
     error_reporter_->Report("Invoke() called after initialization failed\n");
     return kTfLiteError;
+  }
+
+  // Ensure tensors are allocated before the interpreter is invoked to avoid
+  // difficult to debug segfaults.
+  if (!tensors_allocated_) {
+    AllocateTensors();
   }
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();

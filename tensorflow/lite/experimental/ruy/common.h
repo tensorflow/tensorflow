@@ -26,8 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
-#if ((defined RUY_NEON_64) || (defined RUY_NEON_32))
+#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32))
 #include <arm_neon.h>
 #endif
 

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -81,7 +82,11 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   int zero = 0;
 #if GOOGLE_CUDA
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
+<<<<<<< HEAD
 #else // TENSORFLOW_USE_ROCM#
+=======
+#else  // TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
   hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));
 #endif
   TF_CHECK_OK(GpuLaunchKernel(
@@ -97,8 +102,13 @@ __global__ void SkipKernel(int64 delta, StateElementType* state_data) {
 
 void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
                                            Tensor* state_tensor) {
+<<<<<<< HEAD
   TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(),
       delta, state_tensor->flat<StateElementType>().data()));
+=======
+  TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), delta,
+                              state_tensor->flat<StateElementType>().data()));
+>>>>>>> upstream/master
 }
 
 // Explicit instantiation of the GPU distributions functors.

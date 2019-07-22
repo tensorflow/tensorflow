@@ -182,6 +182,7 @@ filegroup(
         "@keras_applications_archive//:LICENSE",
         "@kissfft//:COPYING",
         "@lmdb//:LICENSE",
+        "@local_config_mlir//:LICENSE.TXT",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",

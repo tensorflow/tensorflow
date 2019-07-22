@@ -359,6 +359,14 @@ TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
 TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
     TFE_CancellationManager*);
 
+// Associates the given `cancellation_manager` with `op`, so that invoking
+// `TFE_CancellationManagerStartCancel(cancellation_manager)` will cancel the
+// execution of `op`.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern void TFE_OpSetCancellationManager(
+    TFE_Op* op, TFE_CancellationManager* cancellation_manager,
+    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

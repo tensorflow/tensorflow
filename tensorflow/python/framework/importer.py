@@ -156,7 +156,10 @@ def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
   producer_op_dict = {op.name: op for op in producer_op_list.op}
   for node in graph_def.node:
     # Remove any default attr values that aren't in op_def.
-    if node.op in producer_op_dict:
+    if (node.op in producer_op_dict
+        # Some custom op registrations won't show up here. That's OK, attribute
+        # stripping just won't be available.
+        and node.op in op_dict):
       op_def = op_dict[node.op]
       producer_op_def = producer_op_dict[node.op]
       # We make a copy of node.attr to iterate through since we may modify

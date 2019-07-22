@@ -16,7 +16,7 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }, {
-  // CHECK-NEXT:       shape: [ ],
+  // CHECK-NEXT:       shape: [ 1, 1, 1, 16 ],
   // CHECK-NEXT:       buffer: 2,
   // CHECK-NEXT:       name: "avgpool",
   // CHECK-NEXT:       quantization: {

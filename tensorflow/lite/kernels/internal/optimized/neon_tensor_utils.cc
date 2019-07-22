@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/experimental/ruy/detect_dotprod.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -66,51 +67,9 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 #endif
 }
 
-// Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
-#ifdef __MINGW32__
-  return false;
-#else
-  // TODO(strohman): Replace this with a proper API call once we are running
-  // on kernels that can tell us about this instruction: (b/119112014)
-  // Note that the C++ spec ensures that this variable will be initialized
-  // exactly once.
-  static bool has_sdot = []() -> bool {
-    char text[1024];
-    int fd = open("/proc/cpuinfo", O_RDONLY);
-    if (fd < 0) {
-      return false;
-    }
-
-    bool found = false;
-    int buffer = 0;
-    const char kSM8150[] = "Qualcomm Technologies, Inc SM8150";
-    while (true) {
-      int count = read(fd, text + buffer, sizeof(text) - buffer);
-      if (count <= 0) {
-        break;
-      }
-      int text_end = buffer + count;
-
-      if (memmem(text, text_end, kSM8150, sizeof(kSM8150) - 1) != nullptr) {
-        found = true;
-        break;
-      }
-
-      // Keep up to some bytes of the previous buffer state so that we
-      // can find a string match even if it occurs on a buffer boundary.
-      buffer = text_end;
-      if (text_end > sizeof(kSM8150)) {
-        buffer = sizeof(kSM8150);
-      }
-
-      memmove(text, text + text_end - buffer, buffer);
-    }
-    close(fd);
-    return found;
-  }();
-  return has_sdot;
-#endif  // MINGW32
+  static const bool has_dotprod = ruy::DetectDotprod();
+  return has_dotprod;
 }
 
 }  // namespace

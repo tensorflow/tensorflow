@@ -283,8 +283,6 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          # TODO(b/134179782):  Simplify this condition when cloning never
-          # happens.
           if not callable(ins) or (
               model._distribution_strategy and
               not distributed_training_utils.is_distributing_by_cloning(model)):

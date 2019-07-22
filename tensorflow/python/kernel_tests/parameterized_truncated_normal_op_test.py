@@ -188,10 +188,12 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     self.validateMoments([10**5], 0.0, 1.0, -6.0, -3.0)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("Low probability region")
   def testTwoSidedLeftTailShifted(self):
     self.validateKolmogorovSmirnov([10**5], 6.0, 1.0, -1.0, 1.0)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("Low probability region")
   def testRightTailShifted(self):
     self.validateMoments([10**5], -5.0, 1.0, 2.0, np.infty)
 

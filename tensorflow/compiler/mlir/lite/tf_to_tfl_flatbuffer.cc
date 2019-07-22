@@ -127,7 +127,8 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     if (run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass());
+      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
+          /*quantize_sign=*/false));
       pass_manager->addPass(mlir::TFL::CreateQuantizePass());
       pass_manager->addPass(
           mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));

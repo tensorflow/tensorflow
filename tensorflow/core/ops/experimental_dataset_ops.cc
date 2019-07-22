@@ -662,6 +662,7 @@ REGISTER_OP("ExperimentalRebatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDataset")
@@ -670,6 +671,7 @@ REGISTER_OP("RebatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")
@@ -808,6 +810,10 @@ REGISTER_OP("SnapshotDataset")
     .Attr("writer_path_prefix: string = ''")
     .Attr("shard_size_bytes: int = 10737418240")           // 10 GiB default
     .Attr("pending_snapshot_expiry_seconds: int = 86400")  // 1 day default
+    .Attr("num_reader_threads: int = 1")
+    .Attr("reader_buffer_size: int = 1")
+    .Attr("num_writer_threads: int = 1")
+    .Attr("writer_buffer_size: int = 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

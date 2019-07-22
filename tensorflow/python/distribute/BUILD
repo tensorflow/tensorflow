@@ -221,9 +221,6 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -707,9 +704,6 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    tags = [
-        "no_windows",
-    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -1124,8 +1118,14 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
+    shard_count = 5,
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
+<<<<<<< HEAD
+=======
+        "no_rocm",
+        "notap",  # TODO(b/137972256) Re-enable this test.
+>>>>>>> upstream/master
     ],
     deps = [
         ":saved_model_test_base",
@@ -1138,6 +1138,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_save_load_test.py"],
     main = "keras_save_load_test.py",
+    shard_count = 3,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

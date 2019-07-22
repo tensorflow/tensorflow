@@ -24,7 +24,7 @@ EagerOpRewriteRegistry* EagerOpRewriteRegistry::Global() {
 
 void EagerOpRewriteRegistry::Register(Phase phase,
                                       std::unique_ptr<EagerOpRewrite> pass) {
-  if (rewrites_.find(phase) == rewrites_.end()) {
+  if (!rewrites_[phase]) {
     rewrites_[phase] = std::move(pass);
   } else {
     TF_CHECK_OK(errors::AlreadyExists(pass->GetDebugInfo().name,
@@ -38,10 +38,9 @@ void EagerOpRewriteRegistry::Register(Phase phase,
 Status EagerOpRewriteRegistry::RunRewrite(
     Phase phase, EagerOperation* orig_op,
     std::unique_ptr<tensorflow::EagerOperation>* out_op) {
-  auto rewrite = rewrites_.find(phase);
-  if (rewrite != rewrites_.end()) {
-    Status s = rewrite->second->Run(orig_op, out_op);
-    if (!s.ok()) return s;
+  auto& rewrite = rewrites_[phase];
+  if (rewrite) {
+    TF_RETURN_IF_ERROR(rewrite->Run(orig_op, out_op));
   }
   return Status::OK();
 }

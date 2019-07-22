@@ -168,7 +168,9 @@ void DoHelpCommand() {
     <height> is specified, the new computation contains nodes up to <height>
     nodes above the root.
   help
-    Prints this usage information.)"
+    Prints this usage information.
+  quit
+    Exit the application.)"
             << std::endl;
 }
 

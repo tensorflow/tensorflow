@@ -132,7 +132,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   WarningUnusedFlags(model_flags, toco_flags);
 
   bool emit_quant_adaptor_ops = false;
-  bool lower_tensor_list_ops = false;
+  bool lower_tensor_list_ops = true;
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
   return ConvertTFControlFlowToTFLOrFlatbuffer(

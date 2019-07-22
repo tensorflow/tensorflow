@@ -815,11 +815,9 @@ class TestWholeModelSaving(test.TestCase):
     def _make_model():
       inputs = keras.Input(shape=(4,))
       x = keras.layers.Dense(8, activation='relu')(inputs)
-      y = keras.layers.Dense(3, activation='softmax')(x)
-      custom_loss = keras.layers.Lambda(lambda x: keras.backend.sum(x * x))(x)
-      # Connect the loss to the network.
-      outputs = keras.layers.Lambda(lambda x: x[0])((y, custom_loss))
+      outputs = keras.layers.Dense(3, activation='softmax')(x)
       model = keras.Model(inputs=inputs, outputs=outputs)
+      custom_loss = keras.layers.Lambda(lambda x: keras.backend.sum(x * x))(x)
       model.add_loss(custom_loss)
       model.add_metric(custom_loss, aggregation='mean', name='custom_loss')
       return model
