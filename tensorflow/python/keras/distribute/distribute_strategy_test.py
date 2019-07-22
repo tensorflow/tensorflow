@@ -1055,28 +1055,23 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           ],
           mode=['graph', 'eager'],
           run_distributed=[True, False]))
-  def test_dataset_no_batch_input_validation(self, distribution,
-                                             run_distributed, mode):
-    if mode == 'graph':
-      self.skipTest(
-          'TODO(b/120943676, b/120957836): Re-enable for graph once the '
-          'validation code is restored.'
-      )
+  def test_dataset_external_batch_input_validation(self, distribution,
+                                                   run_distributed):
     with self.cached_session():
       with distribution.scope():
+        optimizer_fn = gradient_descent_keras.SGD
+        optimizer = optimizer_fn(learning_rate=0.001)
         model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
         loss = 'mse'
         model.compile(optimizer, loss, run_distributed=run_distributed)
 
-      # User forgets to batch the dataset
-      inputs = np.zeros((10, 6), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      # Batching is done outside tf.data's `batch`
+      inputs = np.zeros((100, 10, 3), dtype=np.float32)
+      targets = np.zeros((100, 10, 4), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(ValueError, 'Call.*batch.*on.*Dataset'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
   @combinations.generate(
       combinations.combine(

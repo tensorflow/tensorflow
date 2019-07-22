@@ -662,6 +662,7 @@ REGISTER_OP("ExperimentalRebatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDataset")
@@ -670,6 +671,7 @@ REGISTER_OP("RebatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")

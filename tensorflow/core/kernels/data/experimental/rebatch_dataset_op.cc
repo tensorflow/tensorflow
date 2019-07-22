@@ -21,11 +21,16 @@ namespace data {
 namespace {
 
 constexpr char kOptimizerName[] = "tf_data_rebatcher";
+constexpr char kUseFallbackAttr[] = "use_fallback";
 
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit RebatchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr(kUseFallbackAttr)) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseFallbackAttr, &use_fallback_));
+    }
+  }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -36,7 +41,9 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, num_workers > 0,
         errors::InvalidArgument("num_workers must be greater than zero."));
 
-    auto config_factory = [num_workers]() { return CreateConfig(num_workers); };
+    auto config_factory = [num_workers, this]() {
+      return CreateConfig(num_workers, this->use_fallback_);
+    };
 
     // We only want to optimize functions for some particular datasets like
     // FlatMapDataset, InterleaveDataset etc. So we disable generalized
@@ -48,7 +55,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  static RewriterConfig CreateConfig(int64 num_workers) {
+  static RewriterConfig CreateConfig(int64 num_workers, bool use_fallback) {
     RewriterConfig rewriter_config;
     rewriter_config.set_fail_on_optimizer_errors(true);
     rewriter_config.add_optimizers(kOptimizerName);
@@ -59,8 +66,14 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     num_workers_attr.set_i(num_workers);
     (*custom_optimizer->mutable_parameter_map())["num_workers"] =
         num_workers_attr;
+    AttrValue use_fallback_attr;
+    use_fallback_attr.set_b(use_fallback);
+    (*custom_optimizer->mutable_parameter_map())["use_fallback"] =
+        use_fallback_attr;
     return rewriter_config;
   }
+
+  bool use_fallback_ = true;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RebatchDataset").Device(DEVICE_CPU),

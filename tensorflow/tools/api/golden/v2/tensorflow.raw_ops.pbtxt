@@ -1254,7 +1254,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalRebatchDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ExperimentalScanDataset"
@@ -2978,7 +2978,7 @@ tf_module {
   }
   member_method {
     name: "RebatchDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "Reciprocal"
