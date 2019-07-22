@@ -94,7 +94,7 @@ class TPUClusterResolver(ClusterResolver):
 
     This works around an issue where the underlying HTTP connection sometimes
     times out when the script has been running for too long. Other methods in
-    this object calls this method to get a new API object whenever they need
+    this object call this method to get a new API object whenever they need
     to communicate with the Cloud API.
 
     Returns:
@@ -206,7 +206,7 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: A string corresponding to the TPU to use. If the string is the empty
+      tpu: A string corresponding to the TPU to use. If the string is an empty
         string, the string 'local', or a string that begins with 'grpc://' or
           '/bns', then it is assumed to not correspond with a Cloud TPU and will
           instead be passed as the session master and no ClusterSpec propagation
