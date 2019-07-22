@@ -99,7 +99,7 @@ class SortableFeatureColumnTest(test.TestCase):
     a = fc.numeric_column('first')  # '<__main__.NumericColumn object at 0xa>'
     b = fc.numeric_column('second')  # '<__main__.NumericColumn object at 0xb>'
     c = fc_old._numeric_column('third')  # '<__main__._NumericColumn ...>'
-    self.assertAllEqual(sorted(['d', c, b, a]), [a, b, c, 'd'])
+    self.assertAllEqual(sorted(['d', c, b, a, '0']), ['0', a, b, c, 'd'])
 
 
 class LazyColumnTest(test.TestCase):

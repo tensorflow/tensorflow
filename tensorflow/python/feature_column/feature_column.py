@@ -1758,12 +1758,15 @@ class _FeatureColumn(object):
     pass
 
   def __lt__(self, other):
-    """Allows feature columns to be sortable in Python 3 as they are in 2.
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
 
     Feature columns need to occasionally be sortable, for example when used as
     keys in a features dictionary passed to a layer.
 
-    `__lt__` is the only method needed for sorting in CPython:
+    In CPython, `__lt__` must be defined for all objects in the
+    sequence being sorted. If any objects do not have an `__lt__` compatible
+    with feature column objects (such as strings), then CPython will fall back
+    to using the `__gt__` method below.
     https://docs.python.org/3/library/stdtypes.html#list.sort
 
     Args:
@@ -1772,9 +1775,29 @@ class _FeatureColumn(object):
     Returns:
       True if the string representation of this object is lexicographically less
       than the string representation of `other`. For FeatureColumn objects,
-      this looks like "<__main__.FeatureColumn object at 0x7fa1fc02bba8>".
+      this looks like "<__main__.FeatureColumn object at 0xa>".
     """
     return str(self) < str(other)
+
+  def __gt__(self, other):
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    `__gt__` is called when the "other" object being compared during the sort
+    does not have `__lt__` defined.
+    Example: http://gpaste/4803354716798976
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically
+      greater than the string representation of `other`. For FeatureColumn
+      objects, this looks like "<__main__.FeatureColumn object at 0xa>".
+    """
+    return str(self) > str(other)
 
   @property
   def _var_scope_name(self):
