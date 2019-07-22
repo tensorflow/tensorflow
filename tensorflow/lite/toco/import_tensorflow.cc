@@ -818,9 +818,6 @@ tensorflow::Status ConvertConvOperator(
     reorder->output_axes_order = AxesOrder::kOHWI;
     model->operators.emplace_back(reorder);
   }
-  auto* conv = new ConvOperator;
-  conv->inputs = {input_name, reordered_weights_name};
-  conv->outputs = {node.name()};
   if (!HasAttr(node, "strides")) {
     return tensorflow::errors::InvalidArgument("Missing attribute 'strides'");
   }
@@ -828,8 +825,8 @@ tensorflow::Status ConvertConvOperator(
   TF_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
   TF_RETURN_IF_ERROR(ExpectValue(strides.i(0), 1, "strides(0)"));
   TF_RETURN_IF_ERROR(ExpectValue(strides.i(3), 1, "strides(3)"));
-  conv->stride_height = strides.i(1);
-  conv->stride_width = strides.i(2);
+  int dilation_height_factor;
+  int dilation_width_factor;
   if (HasAttr(node, "dilations")) {
     const auto& dilations = GetListAttr(node, "dilations");
     TF_RETURN_IF_ERROR(
@@ -841,21 +838,30 @@ tensorflow::Status ConvertConvOperator(
           node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
           dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
     }
-    conv->dilation_height_factor = dilations.i(1);
-    conv->dilation_width_factor = dilations.i(2);
+    dilation_height_factor = dilations.i(1);
+    dilation_width_factor = dilations.i(2);
   } else {
-    conv->dilation_height_factor = 1;
-    conv->dilation_width_factor = 1;
+    dilation_height_factor = 1;
+    dilation_width_factor = 1;
   }
   const auto& padding = GetStringAttr(node, "padding");
+  PaddingType padding_type;
   if (padding == "SAME") {
-    conv->padding.type = PaddingType::kSame;
+    padding_type = PaddingType::kSame;
   } else if (padding == "VALID") {
-    conv->padding.type = PaddingType::kValid;
+    padding_type = PaddingType::kValid;
   } else {
     return tensorflow::errors::InvalidArgument(
         "Bad padding (only SAME and VALID are supported)");
   }
+  auto* conv = new ConvOperator;
+  conv->inputs = {input_name, reordered_weights_name};
+  conv->outputs = {node.name()};
+  conv->stride_height = strides.i(1);
+  conv->stride_width = strides.i(2);
+  conv->dilation_height_factor = dilation_height_factor;
+  conv->dilation_width_factor = dilation_width_factor;
+  conv->padding.type = padding_type;
   model->operators.emplace_back(conv);
 
   return tensorflow::Status::OK();
@@ -894,15 +900,12 @@ tensorflow::Status ConvertDepthwiseConvOperator(
     reorder->output_axes_order = AxesOrder::k1HWO;
     model->operators.emplace_back(reorder);
   }
-  auto* conv = new DepthwiseConvOperator;
-  conv->inputs = {input_name, reordered_weights_name};
-  conv->outputs = {node.name()};
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
-  conv->stride_height = strides.i(1);
-  conv->stride_width = strides.i(2);
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(0), 1, "strides(0)"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(3), 1, "strides(3)"));
+  int dilation_height_factor;
+  int dilation_width_factor;
   if (HasAttr(node, "dilations")) {
     const auto& dilations = GetListAttr(node, "dilations");
     TF_RETURN_IF_ERROR(
@@ -914,20 +917,30 @@ tensorflow::Status ConvertDepthwiseConvOperator(
           node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
           dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
     }
-    conv->dilation_height_factor = dilations.i(1);
-    conv->dilation_width_factor = dilations.i(2);
+    dilation_height_factor = dilations.i(1);
+    dilation_width_factor = dilations.i(2);
   } else {
-    conv->dilation_height_factor = 1;
-    conv->dilation_width_factor = 1;
+    dilation_height_factor = 1;
+    dilation_width_factor = 1;
   }
   const auto& padding = GetStringAttr(node, "padding");
+  PaddingType padding_type;
   if (padding == "SAME") {
-    conv->padding.type = PaddingType::kSame;
+    padding_type = PaddingType::kSame;
   } else if (padding == "VALID") {
-    conv->padding.type = PaddingType::kValid;
+    padding_type = PaddingType::kValid;
   } else {
-    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+    return tensorflow::errors::InvalidArgument(
+        "Bad padding (only SAME and VALID are supported)");
   }
+  auto* conv = new DepthwiseConvOperator;
+  conv->inputs = {input_name, reordered_weights_name};
+  conv->outputs = {node.name()};
+  conv->stride_height = strides.i(1);
+  conv->stride_width = strides.i(2);
+  conv->dilation_height_factor = dilation_height_factor;
+  conv->dilation_width_factor = dilation_width_factor;
+  conv->padding.type = padding_type;
   model->operators.emplace_back(conv);
   return tensorflow::Status::OK();
 }
@@ -2369,11 +2382,12 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
     const ModelFlags& model_flags, Model* model) {
   DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
 
-  auto* op = new UnidirectionalSequenceLstmOperator();
   const auto& indices = GetListAttr(node, "_tflite_input_indices");
   if (indices.i_size() != node.input().size()) {
     return tensorflow::errors::InvalidArgument("Input size does not match.");
   }
+
+  auto* op = new UnidirectionalSequenceLstmOperator();
 
   // The input size needs to be the same as the TfLite UniDirectionalSequence
   // Lstm implementation.
@@ -2424,12 +2438,12 @@ tensorflow::Status ConvertUnidirectionalSequenceRnn(
     const ModelFlags& model_flags, Model* model) {
   DCHECK_EQ(node.op(), "UnidirectionalSequenceRnn");
 
-  auto* op = new UnidirectionalSequenceRnnOperator();
   const auto& indices = GetListAttr(node, "_tflite_input_indices");
   if (indices.i_size() != node.input().size()) {
     return tensorflow::errors::InvalidArgument("Input size does not match.");
   }
 
+  auto* op = new UnidirectionalSequenceRnnOperator();
   for (const string& input : node.input()) {
     op->inputs.push_back(input);
   }
