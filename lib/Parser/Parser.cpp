@@ -2329,7 +2329,7 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
 
 /// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
 ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
-  if (!consumeIf(Token::l_square))
+  if (parseToken(Token::l_square, "expected '['"))
     return failure();
 
   SmallVector<AffineExpr, 4> exprs;

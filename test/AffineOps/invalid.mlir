@@ -142,3 +142,12 @@ func @affine_if_invalid_dimop_dim(%arg0: index, %arg1: index, %arg2: index, %arg
   }
   return
 }
+
+// -----
+
+func @affine_store_missing_l_square(%C: memref<4096x4096xf32>) {
+  %9 = constant 0.0 : f32
+  // expected-error@+1 {{expected '['}}
+  affine.store %9, %C : memref<4096x4096xf32>
+  return
+}
