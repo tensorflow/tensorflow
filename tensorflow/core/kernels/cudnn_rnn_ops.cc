@@ -944,7 +944,9 @@ void RestoreParams(const OpInputList params_input,
   }
 }
 
-bool ShouldUsePaddedIO(const Tensor* sequence_lengths, bool time_major) {
+bool ShouldUsePaddedIO(const Tensor* sequence_lengths,
+                       const CudnnRnnModelShapes& model_shapes,
+                       bool time_major) {
   auto seq_array = sequence_lengths->template flat<int>().data();
   bool all_max_seq_length = true;
   for (int i = 0; i < model_shapes.batch_size; i++) {
@@ -1874,7 +1876,8 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                   context, model_types(), time_major, &input,
                                   &input_h, &input_c, &params,
                                   &sequence_lengths, num_proj, &model_shapes));
-      use_padded_io = ShouldUsePaddedIO(sequence_lengths, time_major);
+      use_padded_io = ShouldUsePaddedIO(sequence_lengths, model_shapes,
+                                        time_major);
     } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
