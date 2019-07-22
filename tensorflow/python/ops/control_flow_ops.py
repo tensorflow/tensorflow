@@ -2664,6 +2664,7 @@ def while_loop(cond,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
           maximum_iterations, name="maximum_iterations")
@@ -2679,7 +2680,7 @@ def while_loop(cond,
             0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
-      if len(loop_vars) == 1:
+      if try_to_pack:
         loop_vars = (counter, loop_vars[0])
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
@@ -2689,9 +2690,9 @@ def while_loop(cond,
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
+      try_to_pack = False
 
     if executing_eagerly:
-      try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
       loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,
