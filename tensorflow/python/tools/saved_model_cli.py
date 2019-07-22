@@ -193,7 +193,7 @@ def _show_defined_functions(saved_model_dir, indent=0):
       in_print('  Callable with:')
       _print_args(args, indent=3)
       if kwargs:
-        _print_args(args, "Named Argument", indent=3)
+        _print_args(kwargs, "Named Argument", indent=3)
 
 
 def _print_args(arguments, argument_type="Argument", indent=0):
