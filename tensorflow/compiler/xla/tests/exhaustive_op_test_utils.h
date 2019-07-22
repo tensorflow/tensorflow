@@ -114,8 +114,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     static_assert(
         std::is_same<T, float>::value || std::is_same<T, double>::value,
         "Only supports float and double.");
-    T abs_err = std::abs(expected - actual);
-    T rel_err = abs_err / std::abs(expected);
+    // Replace Inf with Max when calculating absolute or relative errors. This
+    // allows the test to pass when another value are close to Inf and the
+    // specified absolute or relative errors are not zero.
+    T abs_err =
+        std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
+    T rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
     if (spec.strict_signed_zeros && actual == T{0} && expected == T{0}) {
       // Check sign of zero.
       return std::signbit(actual) == std::signbit(expected);
@@ -210,6 +214,16 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
       PrimitiveType ty);
 
   static std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges();
+
+ private:
+  template <typename T>
+  T ReplaceInfWithMax(T value) {
+    if (std::isinf(value)) {
+      return std::copysign(std::numeric_limits<T>::max(), value);
+    }
+
+    return value;
+  }
 
  protected:
   // The primitive type under test.
