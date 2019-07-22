@@ -529,33 +529,37 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   let printer = [{ return ::print(*this, p); }];
   let verifier = [{ return ::verify(*this); }];
 
-  // Specifies if the SPIR-V op has a direct representation of an instruction in
-  // SPIR-V spec. When set to 1, the ODS generates the dispatch to the
-  // (de)serialization methods for the op, and also generates the implementation
-  // of these processing methods (if autogenSerialization is also set to 1).
+  // Specifies whether this op has a direct corresponding SPIR-V binary
+  // instruction opcode. The (de)serializer use this field to determine whether
+  // to auto-generate an entry in the (de)serialization dispatch table for this
+  // op. If set, this field also futher enables `autogenSerialization` (see
+  // below for details).
   bit hasOpcode = 1;
 
   // Name of the corresponding SPIR-V op. Only valid to use when hasOpcode is 1
   string spirvOpName = "Op" # mnemonic;
 
-  // Controls whether the (de)serialization method is generated automatically or
-  // not. This results in generation of the following methods:
+  // Controls whether to auto-generate this op's (de)serialization method.
+  // If set, it results in generation of the following methods:
   //
-  // template<typename OpTy> Serializer::processOp(OpTy op)
-  // template<typename OpTy> Deserializer::processOp(ArrayRef<uint32_t>)
+  // ```c++
+  // template<typename OpTy> Serializer::processOp(OpTy op);
+  // template<typename OpTy> Deserializer::processOp(ArrayRef<uint32_t>);
+  // ```
   //
-  // If the auto generation is disabled (set to 0), then manual implementation
-  // of a specialization of these methods is required.
+  // If this field is not set, then manual implementation of a specialization of
+  // these methods is required.
   //
-  // Note :
+  // Note:
   //
-  // 1) If hasOpcode is 1 and autogenSerialization is 0, the ODS generated
-  // dispatch function call the above method for the (de)serialization of the
-  // operation
+  // 1) If hasOpcode is set but autogenSerialization is not set, the
+  //    (de)serializer dispatch method still calls the above method for
+  //    (de)serializing this op.
   //
-  // 2) If hasOpcode is 0, then ODS doesn't generate the (de)serialization
-  // methods, neither does it handle the dispatch. Those need to be handled
-  // manually.
+  // 2) If hasOpcode is not set, then this field is not interpreted; this op's
+  //    (de)serialization method will not be auto-generated regardless. Neither
+  //    does the handling in the (de)serialization dispatch table. Both
+  //    (de)serializing this op and its dispatch should be handled manually.
   bit autogenSerialization = 1;
 }
 

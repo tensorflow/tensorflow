@@ -151,10 +151,6 @@ private:
   /// an instruction in the SPIR-V spec. This is auto generated if hasOpcode ==
   /// 1 and autogenSerialization == 1 in ODS.
   template <typename OpTy> LogicalResult processOp(OpTy op) {
-    return processOpImpl(op);
-  }
-
-  template <typename OpTy> LogicalResult processOpImpl(OpTy op) {
     return op.emitError("unsupported op serialization");
   }
 
@@ -490,7 +486,7 @@ Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
 }
 
 // Pull in auto-generated Serializer::dispatchToAutogenSerialization() and
-// various processOpImpl specializations.
+// various Serializer::processOp<...>() specializations.
 #define GET_SERIALIZATION_FNS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 } // namespace

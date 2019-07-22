@@ -96,7 +96,7 @@ static void emitSerializationFunction(const Record *record, const Operator &op,
   if (!record->getValueAsBit("autogenSerialization")) {
     return;
   }
-  os << formatv("template <> LogicalResult\nSerializer::processOpImpl<{0}>(\n"
+  os << formatv("template <> LogicalResult\nSerializer::processOp<{0}>(\n"
                 "  {0} op)",
                 op.getQualCppClassName())
      << " {\n";
@@ -205,7 +205,7 @@ static void emitDeserializationFunction(const Record *record,
     return;
   }
   os << formatv("template <> "
-                "LogicalResult\nDeserializer::processOpImpl<{0}>(ArrayRef<"
+                "LogicalResult\nDeserializer::processOp<{0}>(ArrayRef<"
                 "uint32_t> words)",
                 op.getQualCppClassName());
   os << " {\n";

@@ -139,11 +139,6 @@ private:
   /// of an instruction in the SPIR-V spec. This is auto generated if hasOpcode
   /// == 1 and autogenSerialization == 1 in ODS.
   template <typename OpTy> LogicalResult processOp(ArrayRef<uint32_t> words) {
-    return processOpImpl<OpTy>(words);
-  }
-
-  template <typename OpTy>
-  LogicalResult processOpImpl(ArrayRef<uint32_t> words) {
     return emitError(unknownLoc, "unsupported deserialization for ")
            << OpTy::getOperationName() << " op";
   }
@@ -601,7 +596,7 @@ Deserializer::processOp<spirv::ExecutionModeOp>(ArrayRef<uint32_t> words) {
 }
 
 // Pull in auto-generated Deserializer::dispatchToAutogenDeserialization() and
-// various processOpImpl specializations.
+// various Deserializer::processOp<...>() specializations.
 #define GET_DESERIALIZATION_FNS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
 } // namespace
