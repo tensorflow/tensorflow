@@ -472,6 +472,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 
