@@ -431,6 +431,12 @@ def make_csv_dataset_v2(
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
 
   # Clean arguments; figure out column names and defaults
+  def gzip_file_io_open(filename, mode):
+    # By default, gzip will open in byte mode which will
+    # not work with csv.reader so we create a wrapper to
+    # append `t`.
+    mode = mode + "t" if "t" not in mode else mode
+    return gzip.open(filename, mode)
   if column_names is None or column_defaults is None:
     # Find out which io function to open the file
     file_io_fn = file_io.FileIO
@@ -439,7 +445,7 @@ def make_csv_dataset_v2(
       if compression_type_value is None:
         raise ValueError("Received unkown compression_type")
       if compression_type_value == "GZIP":
-        file_io_fn = gzip.GzipFile
+        file_io_fn = gzip_file_io_open
       elif compression_type_value == "ZLIB":
         raise ValueError(
             "compression_type (%s) is not supported for probing columns" %
