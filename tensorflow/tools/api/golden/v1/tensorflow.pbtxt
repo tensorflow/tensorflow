@@ -1857,6 +1857,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "reciprocal_no_nan"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "recompute_grad"
     argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
   }
