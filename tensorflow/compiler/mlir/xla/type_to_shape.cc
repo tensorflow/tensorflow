@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/base/integral_types.h"
 #include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
@@ -25,11 +24,13 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 using mlir::IntegerType;
 using mlir::MemRefType;
 using mlir::RankedTensorType;
 using mlir::VectorType;
+using tensorflow::int64;
 using xla::PrimitiveType;
 using xla::ShapeUtil;
 
