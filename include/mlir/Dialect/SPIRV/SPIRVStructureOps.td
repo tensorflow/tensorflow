@@ -153,6 +153,8 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     %1 = spv.constant dense<vector<2xf32>, [2, 3]>
     %2 = spv.constant [dense<vector<2xf32>, 3.0>] : !spv.array<1xvector<2xf32>>
     ```
+
+    TODO(antiagainst): support constant structs
   }];
 
   let arguments = (ins

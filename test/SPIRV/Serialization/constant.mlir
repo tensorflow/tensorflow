@@ -59,6 +59,34 @@ func @spirv_module() -> () {
     %19 = spv.constant 512. : f16
     // CHECK: spv.constant -5.120000e+02 : f16
     %20 = spv.constant -512. : f16
+
+    // Bool vector
+    // CHECK: spv.constant dense<false> : vector<2xi1>
+    %21 = spv.constant dense<false> : vector<2xi1>
+    // CHECK: spv.constant dense<[true, true, true]> : vector<3xi1>
+    %22 = spv.constant dense<true> : vector<3xi1>
+    // CHECK: spv.constant dense<[false, true]> : vector<2xi1>
+    %23 = spv.constant dense<[false, true]> : vector<2xi1>
+
+    // Integer vector
+    // CHECK: spv.constant dense<0> : vector<2xi32>
+    %24 = spv.constant dense<0> : vector<2xi32>
+    // CHECK: spv.constant dense<1> : vector<3xi32>
+    %25 = spv.constant dense<1> : vector<3xi32>
+    // CHECK: spv.constant dense<[2, -3, 4]> : vector<3xi32>
+    %26 = spv.constant dense<[2, -3, 4]> : vector<3xi32>
+
+    // Fp vector
+    // CHECK: spv.constant dense<0.000000e+00> : vector<4xf32>
+    %27 = spv.constant dense<0.> : vector<4xf32>
+    // CHECK: spv.constant dense<-1.500000e+01> : vector<4xf32>
+    %28 = spv.constant dense<-15.> : vector<4xf32>
+    // CHECK: spv.constant dense<[7.500000e-01, -2.500000e-01, 1.000000e+01, 4.200000e+01]> : vector<4xf32>
+    %29 = spv.constant dense<[0.75, -0.25, 10., 42.]> : vector<4xf32>
+
+    // Array
+    // CHECK: spv.constant [dense<3.000000e+00> : vector<2xf32>, dense<[4.000000e+00, 5.000000e+00]> : vector<2xf32>] : !spv.array<2 x vector<2xf32>>
+    %30 = spv.constant [dense<3.0> : vector<2xf32>, dense<[4., 5.]> : vector<2xf32>] : !spv.array<2 x vector<2xf32>>
   }
   return
 }

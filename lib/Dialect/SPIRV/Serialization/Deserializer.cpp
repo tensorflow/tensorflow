@@ -103,6 +103,8 @@ private:
   /// registers the type into `module`.
   LogicalResult processType(spirv::Opcode opcode, ArrayRef<uint32_t> operands);
 
+  LogicalResult processArrayType(ArrayRef<uint32_t> operands);
+
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
@@ -115,6 +117,13 @@ private:
   /// Processes a SPIR-V OpConstant{True|False} instruction with the given
   /// `operands`.
   LogicalResult processConstantBool(bool isTrue, ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpConstantComposite instruction with the given
+  /// `operands`.
+  LogicalResult processConstantComposite(ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpConstantNull instruction with the given `operands`.
+  LogicalResult processConstantNull(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
   // Instruction
@@ -234,7 +243,7 @@ spirv::ModuleOp Deserializer::createModuleOp() {
   state.addAttribute("major_version", builder.getI32IntegerAttr(1));
   state.addAttribute("minor_version", builder.getI32IntegerAttr(0));
   spirv::ModuleOp::build(&builder, &state);
-  return llvm::cast<spirv::ModuleOp>(Operation::create(state));
+  return cast<spirv::ModuleOp>(Operation::create(state));
 }
 
 LogicalResult Deserializer::processHeader() {
@@ -448,6 +457,19 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     }
     typeMap[operands[0]] = floatTy;
   } break;
+  case spirv::Opcode::OpTypeVector: {
+    if (operands.size() != 3) {
+      return emitError(
+          unknownLoc,
+          "OpTypeVector must have element type and count parameters");
+    }
+    Type elementTy = getType(operands[1]);
+    if (!elementTy) {
+      return emitError(unknownLoc, "OpTypeVector references undefined <id> ")
+             << operands[1];
+    }
+    typeMap[operands[0]] = opBuilder.getVectorType({operands[2]}, elementTy);
+  } break;
   case spirv::Opcode::OpTypePointer: {
     if (operands.size() != 3) {
       return emitError(unknownLoc, "OpTypePointer must have two parameters");
@@ -460,11 +482,50 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     auto storageClass = static_cast<spirv::StorageClass>(operands[1]);
     typeMap[operands[0]] = spirv::PointerType::get(pointeeType, storageClass);
   } break;
+  case spirv::Opcode::OpTypeArray:
+    return processArrayType(operands);
   case spirv::Opcode::OpTypeFunction:
     return processFunctionType(operands);
   default:
     return emitError(unknownLoc, "unhandled type instruction");
   }
+  return success();
+}
+
+LogicalResult Deserializer::processArrayType(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 3) {
+    return emitError(unknownLoc,
+                     "OpTypeArray must have element type and count parameters");
+  }
+
+  Type elementTy = getType(operands[1]);
+  if (!elementTy) {
+    return emitError(unknownLoc, "OpTypeArray references undefined <id> ")
+           << operands[1];
+  }
+
+  unsigned count = 0;
+  auto *countValue = getValue(operands[2]);
+  if (!countValue) {
+    return emitError(unknownLoc, "OpTypeArray references undefined <id> ")
+           << operands[2];
+  }
+
+  auto *defOp = countValue->getDefiningOp();
+  if (auto constOp = dyn_cast<spirv::ConstantOp>(defOp)) {
+    if (auto intVal = constOp.value().dyn_cast<IntegerAttr>()) {
+      count = intVal.getInt();
+    } else {
+      return emitError(unknownLoc, "OpTypeArray count must come from a "
+                                   "scalar integer constant instruction");
+    }
+  } else {
+    return emitError(unknownLoc,
+                     "unsupported OpTypeArray count generated from ")
+           << defOp->getName();
+  }
+
+  typeMap[operands[0]] = spirv::ArrayType::get(elementTy, count);
   return success();
 }
 
@@ -606,6 +667,85 @@ LogicalResult Deserializer::processConstantBool(bool isTrue,
   return success();
 }
 
+LogicalResult
+Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
+  if (operands.size() < 2) {
+    return emitError(unknownLoc,
+                     "OpConstantComposite must have type <id> and result <id>");
+  }
+  if (operands.size() < 3) {
+    return emitError(unknownLoc,
+                     "OpConstantComposite must have at least 1 parameter");
+  }
+
+  Type resultType = getType(operands[0]);
+  if (!resultType) {
+    return emitError(unknownLoc, "undefined result type from <id> ")
+           << operands[0];
+  }
+
+  SmallVector<Attribute, 4> elements;
+  elements.reserve(operands.size() - 2);
+  for (unsigned i = 2, e = operands.size(); i < e; ++i) {
+    Value *value = getValue(operands[i]);
+    if (!value) {
+      return emitError(unknownLoc,
+                       "OpConstantComposite references undefined <id> ")
+             << operands[i];
+    }
+    auto *defOp = value->getDefiningOp();
+    if (auto elementOp = dyn_cast<spirv::ConstantOp>(defOp)) {
+      elements.push_back(elementOp.value());
+    } else {
+      return emitError(
+                 unknownLoc,
+                 "unsupported OpConstantComposite component generated from ")
+             << defOp->getName();
+    }
+  }
+
+  spirv::ConstantOp op;
+  if (auto vectorType = resultType.dyn_cast<VectorType>()) {
+    auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+  } else if (auto arrayType = resultType.dyn_cast<spirv::ArrayType>()) {
+    auto attr = opBuilder.getArrayAttr(elements);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+  } else {
+    return emitError(unknownLoc, "unsupported OpConstantComposite type: ")
+           << resultType;
+  }
+
+  valueMap[operands[1]] = op.getResult();
+  return success();
+}
+
+LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc,
+                     "OpConstantNull must have type <id> and result <id>");
+  }
+
+  Type resultType = getType(operands[0]);
+  if (!resultType) {
+    return emitError(unknownLoc, "undefined result type from <id> ")
+           << operands[0];
+  }
+
+  spirv::ConstantOp op;
+  if (resultType.isa<IntegerType>() || resultType.isa<FloatType>() ||
+      resultType.isa<VectorType>()) {
+    auto attr = opBuilder.getZeroAttr(resultType);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+  } else {
+    return emitError(unknownLoc, "unsupported OpConstantNull type: ")
+           << resultType;
+  }
+
+  valueMap[operands[1]] = op.getResult();
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//
@@ -655,15 +795,21 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypeBool:
   case spirv::Opcode::OpTypeInt:
   case spirv::Opcode::OpTypeFloat:
+  case spirv::Opcode::OpTypeVector:
+  case spirv::Opcode::OpTypeArray:
   case spirv::Opcode::OpTypeFunction:
   case spirv::Opcode::OpTypePointer:
     return processType(opcode, operands);
   case spirv::Opcode::OpConstant:
     return processConstant(operands);
+  case spirv::Opcode::OpConstantComposite:
+    return processConstantComposite(operands);
   case spirv::Opcode::OpConstantTrue:
     return processConstantBool(true, operands);
   case spirv::Opcode::OpConstantFalse:
     return processConstantBool(false, operands);
+  case spirv::Opcode::OpConstantNull:
+    return processConstantNull(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
   default:

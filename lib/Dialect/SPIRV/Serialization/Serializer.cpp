@@ -169,6 +169,30 @@ private:
   /// constants.
   uint32_t prepareConstant(Location loc, Type constType, Attribute valueAttr);
 
+  /// Prepares bool ElementsAttr serialization. This method updates `opcode`
+  /// with a proper OpConstant* instruction and pushes literal values for the
+  /// constant to `operands`.
+  LogicalResult prepareBoolVectorConstant(Location loc,
+                                          DenseIntElementsAttr elementsAttr,
+                                          spirv::Opcode &opcode,
+                                          SmallVectorImpl<uint32_t> &operands);
+
+  /// Prepares int ElementsAttr serialization. This method updates `opcode` with
+  /// a proper OpConstant* instruction and pushes literal values for the
+  /// constant to `operands`.
+  LogicalResult prepareIntVectorConstant(Location loc,
+                                         DenseIntElementsAttr elementsAttr,
+                                         spirv::Opcode &opcode,
+                                         SmallVectorImpl<uint32_t> &operands);
+
+  /// Prepares float ElementsAttr serialization. This method updates `opcode`
+  /// with a proper OpConstant* instruction and pushes literal values for the
+  /// constant to `operands`.
+  LogicalResult prepareFloatVectorConstant(Location loc,
+                                           DenseFPElementsAttr elementsAttr,
+                                           spirv::Opcode &opcode,
+                                           SmallVectorImpl<uint32_t> &operands);
+
   uint32_t prepareConstantBool(Location loc, BoolAttr boolAttr);
 
   uint32_t prepareConstantInt(Location loc, IntegerAttr intAttr);
@@ -444,8 +468,33 @@ Serializer::prepareBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
     return success();
   }
 
-  if (type.isa<spirv::PointerType>()) {
-    auto ptrType = type.cast<spirv::PointerType>();
+  if (auto vectorType = type.dyn_cast<VectorType>()) {
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, vectorType.getElementType(), elementTypeID))) {
+      return failure();
+    }
+    typeEnum = spirv::Opcode::OpTypeVector;
+    operands.push_back(elementTypeID);
+    operands.push_back(vectorType.getNumElements());
+    return success();
+  }
+
+  if (auto arrayType = type.dyn_cast<spirv::ArrayType>()) {
+    typeEnum = spirv::Opcode::OpTypeArray;
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, arrayType.getElementType(), elementTypeID))) {
+      return failure();
+    }
+    operands.push_back(elementTypeID);
+    if (auto elementCountID = prepareConstantInt(
+            loc, mlirBuilder.getI32IntegerAttr(arrayType.getNumElements()))) {
+      operands.push_back(elementCountID);
+      return success();
+    }
+    return failure();
+  }
+
+  if (auto ptrType = type.dyn_cast<spirv::PointerType>()) {
     uint32_t pointeeTypeID = 0;
     if (failed(processType(loc, ptrType.getPointeeType(), pointeeTypeID))) {
       return failure();
@@ -500,8 +549,190 @@ uint32_t Serializer::prepareConstant(Location loc, Type constType,
     return prepareConstantBool(loc, boolAttr);
   }
 
-  emitError(loc, "cannot serialize attribute: ") << valueAttr;
-  return 0;
+  // This is a composite literal. We need to handle each component separately
+  // and then emit an OpConstantComposite for the whole.
+
+  if (auto id = findConstantID(valueAttr)) {
+    return id;
+  }
+
+  uint32_t typeID = 0;
+  if (failed(processType(loc, constType, typeID))) {
+    return 0;
+  }
+  auto resultID = getNextID();
+
+  spirv::Opcode opcode = spirv::Opcode::OpNop;
+  SmallVector<uint32_t, 4> operands;
+  operands.push_back(typeID);
+  operands.push_back(resultID);
+
+  if (auto vectorAttr = valueAttr.dyn_cast<DenseIntElementsAttr>()) {
+    if (vectorAttr.getType().getElementType().isInteger(1)) {
+      if (failed(prepareBoolVectorConstant(loc, vectorAttr, opcode, operands)))
+        return 0;
+    } else if (failed(
+                   prepareIntVectorConstant(loc, vectorAttr, opcode, operands)))
+      return 0;
+  } else if (auto vectorAttr = valueAttr.dyn_cast<DenseFPElementsAttr>()) {
+    if (failed(prepareFloatVectorConstant(loc, vectorAttr, opcode, operands)))
+      return 0;
+  } else if (auto arrayAttr = valueAttr.dyn_cast<ArrayAttr>()) {
+    opcode = spirv::Opcode::OpConstantComposite;
+    operands.reserve(arrayAttr.size() + 2);
+
+    auto elementType = constType.cast<spirv::ArrayType>().getElementType();
+    for (Attribute elementAttr : arrayAttr)
+      if (auto elementID = prepareConstant(loc, elementType, elementAttr)) {
+        operands.push_back(elementID);
+      } else {
+        return 0;
+      }
+  } else {
+    emitError(loc, "cannot serialize attribute: ") << valueAttr;
+    return 0;
+  }
+
+  encodeInstructionInto(typesGlobalValues, opcode, operands);
+  constIDMap[valueAttr] = resultID;
+  return resultID;
+}
+
+LogicalResult Serializer::prepareBoolVectorConstant(
+    Location loc, DenseIntElementsAttr elementsAttr, spirv::Opcode &opcode,
+    SmallVectorImpl<uint32_t> &operands) {
+  auto type = elementsAttr.getType();
+  assert(type.hasRank() && type.getRank() == 1 &&
+         "spv.constant should have verified only vector literal uses "
+         "ElementsAttr");
+  assert(type.getElementType().isInteger(1) && "must be bool ElementsAttr");
+  auto count = type.getNumElements();
+
+  // Operands for constructing the SPIR-V OpConstant* instruction
+  operands.reserve(count + 2);
+
+  // For splat cases, we don't need to loop over all elements, especially when
+  // the splat value is zero.
+  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
+    // We can use OpConstantNull if this bool ElementsAttr is splatting false.
+    if (!splatAttr.cast<BoolAttr>().getValue()) {
+      opcode = spirv::Opcode::OpConstantNull;
+      return success();
+    }
+
+    if (auto id = prepareConstantBool(loc, splatAttr.cast<BoolAttr>())) {
+      opcode = spirv::Opcode::OpConstantComposite;
+      operands.append(count, id);
+      return success();
+    }
+
+    return failure();
+  }
+
+  // Otherwise, we need to process each element and compose them with
+  // OpConstantComposite.
+  opcode = spirv::Opcode::OpConstantComposite;
+  for (APInt intValue : elementsAttr) {
+    // We are constructing an BoolAttr for each APInt here. But given that
+    // we only use ElementsAttr for vectors with no more than 4 elements, it
+    // should be fine here.
+    auto boolAttr = mlirBuilder.getBoolAttr(intValue.isOneValue());
+    if (auto elementID = prepareConstantBool(loc, boolAttr)) {
+      operands.push_back(elementID);
+    } else {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult Serializer::prepareIntVectorConstant(
+    Location loc, DenseIntElementsAttr elementsAttr, spirv::Opcode &opcode,
+    SmallVectorImpl<uint32_t> &operands) {
+  auto type = elementsAttr.getType();
+  assert(type.hasRank() && type.getRank() == 1 &&
+         "spv.constant should have verified only vector literal uses "
+         "ElementsAttr");
+  auto elementType = type.getElementType();
+  assert(!elementType.isInteger(1) && "must be non-bool ElementsAttr");
+  auto count = type.getNumElements();
+
+  // Operands for constructing the SPIR-V OpConstant* instruction
+  operands.reserve(count + 2);
+
+  // For splat cases, we don't need to loop over all elements, especially when
+  // the splat value is zero.
+  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
+    // We can use OpConstantNull if this int ElementsAttr is splatting 0.
+    if (splatAttr.cast<IntegerAttr>().getValue().isNullValue()) {
+      opcode = spirv::Opcode::OpConstantNull;
+      return success();
+    }
+
+    if (auto id = prepareConstantInt(loc, splatAttr.cast<IntegerAttr>())) {
+      opcode = spirv::Opcode::OpConstantComposite;
+      operands.append(count, id);
+      return success();
+    }
+    return failure();
+  }
+
+  // Otherwise, we need to process each element and compose them with
+  // OpConstantComposite.
+  opcode = spirv::Opcode::OpConstantComposite;
+  for (APInt intValue : elementsAttr) {
+    // We are constructing an IntegerAttr for each APInt here. But given that
+    // we only use ElementsAttr for vectors with no more than 4 elements, it
+    // should be fine here.
+    // TODO(antiagainst): revisit this if special extensions enabling large
+    // vectors are supported.
+    auto intAttr = mlirBuilder.getIntegerAttr(elementType, intValue);
+    if (auto elementID = prepareConstantInt(loc, intAttr)) {
+      operands.push_back(elementID);
+    } else {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult Serializer::prepareFloatVectorConstant(
+    Location loc, DenseFPElementsAttr elementsAttr, spirv::Opcode &opcode,
+    SmallVectorImpl<uint32_t> &operands) {
+  auto type = elementsAttr.getType();
+  assert(type.hasRank() && type.getRank() == 1 &&
+         "spv.constant should have verified only vector literal uses "
+         "ElementsAttr");
+  auto count = type.getNumElements();
+  auto elementType = type.getElementType();
+
+  operands.reserve(count + 2);
+
+  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
+    if (splatAttr.cast<FloatAttr>().getValue().isZero()) {
+      opcode = spirv::Opcode::OpConstantNull;
+      return success();
+    }
+
+    if (auto id = prepareConstantFp(loc, splatAttr.cast<FloatAttr>())) {
+      opcode = spirv::Opcode::OpConstantComposite;
+      operands.append(count, id);
+      return success();
+    }
+
+    return failure();
+  }
+
+  opcode = spirv::Opcode::OpConstantComposite;
+  for (APFloat floatValue : elementsAttr) {
+    auto fpAttr = mlirBuilder.getFloatAttr(elementType, floatValue);
+    if (auto elementID = prepareConstantFp(loc, fpAttr)) {
+      operands.push_back(elementID);
+    } else {
+      return failure();
+    }
+  }
+  return success();
 }
 
 uint32_t Serializer::prepareConstantBool(Location loc, BoolAttr boolAttr) {

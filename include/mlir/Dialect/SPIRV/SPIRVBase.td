@@ -72,6 +72,7 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
+def SPV_OC_OpNop               : I32EnumAttrCase<"OpNop", 0>;
 def SPV_OC_OpName              : I32EnumAttrCase<"OpName", 5>;
 def SPV_OC_OpMemoryModel       : I32EnumAttrCase<"OpMemoryModel", 14>;
 def SPV_OC_OpEntryPoint        : I32EnumAttrCase<"OpEntryPoint", 15>;
@@ -80,11 +81,15 @@ def SPV_OC_OpTypeVoid          : I32EnumAttrCase<"OpTypeVoid", 19>;
 def SPV_OC_OpTypeBool          : I32EnumAttrCase<"OpTypeBool", 20>;
 def SPV_OC_OpTypeInt           : I32EnumAttrCase<"OpTypeInt", 21>;
 def SPV_OC_OpTypeFloat         : I32EnumAttrCase<"OpTypeFloat", 22>;
+def SPV_OC_OpTypeVector        : I32EnumAttrCase<"OpTypeVector", 23>;
+def SPV_OC_OpTypeArray         : I32EnumAttrCase<"OpTypeArray", 28>;
 def SPV_OC_OpTypePointer       : I32EnumAttrCase<"OpTypePointer", 32>;
 def SPV_OC_OpTypeFunction      : I32EnumAttrCase<"OpTypeFunction", 33>;
 def SPV_OC_OpConstantTrue      : I32EnumAttrCase<"OpConstantTrue", 41>;
 def SPV_OC_OpConstantFalse     : I32EnumAttrCase<"OpConstantFalse", 42>;
 def SPV_OC_OpConstant          : I32EnumAttrCase<"OpConstant", 43>;
+def SPV_OC_OpConstantComposite : I32EnumAttrCase<"OpConstantComposite", 44>;
+def SPV_OC_OpConstantNull      : I32EnumAttrCase<"OpConstantNull", 46>;
 def SPV_OC_OpFunction          : I32EnumAttrCase<"OpFunction", 54>;
 def SPV_OC_OpFunctionParameter : I32EnumAttrCase<"OpFunctionParameter", 55>;
 def SPV_OC_OpFunctionEnd       : I32EnumAttrCase<"OpFunctionEnd", 56>;
@@ -98,13 +103,14 @@ def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpName, SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint,
+      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint,
       SPV_OC_OpExecutionMode, SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt,
-      SPV_OC_OpTypeFloat, SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction,
-      SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse, SPV_OC_OpConstant,
-      SPV_OC_OpFunction, SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd,
-      SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpDecorate,
-      SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector, SPV_OC_OpTypeArray,
+      SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue,
+      SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
+      SPV_OC_OpConstantNull, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
+      SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
+      SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
