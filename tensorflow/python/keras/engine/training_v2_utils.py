@@ -70,17 +70,20 @@ def _make_execution_function(model, mode):
         strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
     return all_outputs
 
-  if model.run_eagerly:
-    execution_function = distributed_function
-  else:
+  if not model.run_eagerly:
     distributed_function = def_function.function(
         distributed_function, autograph=False)
 
-    def execution_function(input_fn):
-      # `numpy` translates Tensors to values in Eager mode.
-      return [out.numpy() for out in distributed_function(input_fn)]
+  def execution_function(input_fn):
+    # `numpy` translates Tensors to values in Eager mode.
+    return [out.numpy() for out in distributed_function(input_fn)]
 
   return execution_function
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v
 
 
 def _prepare_feed_values(model, inputs, mode):
@@ -232,8 +235,6 @@ def train_on_batch(
   if reset_metrics:
     model.reset_metrics()
 
-  if len(outputs) == 1:
-    return outputs[0]
   return outputs
 
 
@@ -295,8 +296,6 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   if reset_metrics:
     model.reset_metrics()
 
-  if len(outputs) == 1:
-    return outputs[0]
   return outputs
 
 

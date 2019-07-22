@@ -307,12 +307,7 @@ def train_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [_non_none_constant_value(v) for v in results]
-
-
-def _non_none_constant_value(v):
-  constant_value = tensor_util.constant_value(v)
-  return constant_value if constant_value is not None else v
+  return results
 
 
 def test_on_batch(model,
@@ -365,4 +360,4 @@ def test_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [_non_none_constant_value(v) for v in results]
+  return results

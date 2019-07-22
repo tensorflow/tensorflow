@@ -946,9 +946,14 @@ class Model(network.Network):
       ValueError: In case of invalid user-provided arguments.
     """
     if self._run_distributed:
-      return training_v2_utils.train_on_batch(
+      outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           class_weight=class_weight, reset_metrics=reset_metrics)
+      outputs = [
+          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      if len(outputs) == 1:
+        outputs = outputs[0]
+      return outputs
 
     self._assert_compile_was_called()
     # If at this point we are in the replica context, then it is okay to execute
@@ -974,6 +979,8 @@ class Model(network.Network):
           y,
           sample_weights=sample_weights,
           output_loss_metrics=self._output_loss_metrics)
+      outputs = [
+          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       ins = x + (y or []) + (sample_weights or [])
@@ -1031,9 +1038,14 @@ class Model(network.Network):
         ValueError: In case of invalid user-provided arguments.
     """
     if self._run_distributed:
-      return training_v2_utils.test_on_batch(
+      outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           reset_metrics=reset_metrics)
+      outputs = [
+          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      if len(outputs) == 1:
+        outputs = outputs[0]
+      return outputs
 
     self._assert_compile_was_called()
     if (self._distribution_strategy and
@@ -1053,6 +1065,8 @@ class Model(network.Network):
           y,
           sample_weights=sample_weights,
           output_loss_metrics=self._output_loss_metrics)
+      outputs = [
+          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       inputs = x + (y or []) + (sample_weights or [])
