@@ -2,6 +2,7 @@ add_llvm_library(MLIRTestTransforms
   TestConstantFold.cpp
   TestLoopFusion.cpp
   TestLoopMapping.cpp
+  TestLoopParametricTiling.cpp
   TestVectorizationUtils.cpp
 
   ADDITIONAL_HEADER_DIRS

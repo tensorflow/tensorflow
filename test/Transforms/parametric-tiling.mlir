@@ -1,5 +1,5 @@
-// RUN: mlir-opt -extract-fixed-outer-loops -outer-loop-sizes=7 %s | FileCheck %s --check-prefixes=COMMON,TILE_7
-// RUN: mlir-opt -extract-fixed-outer-loops -outer-loop-sizes=7,4 %s | FileCheck %s --check-prefixes=COMMON,TILE_74
+// RUN: mlir-opt -test-extract-fixed-outer-loops -test-outer-loop-sizes=7 %s | FileCheck %s --check-prefixes=COMMON,TILE_7
+// RUN: mlir-opt -test-extract-fixed-outer-loops -test-outer-loop-sizes=7,4 %s | FileCheck %s --check-prefixes=COMMON,TILE_74
 
 // COMMON-LABEL: @rectangular
 func @rectangular(%arg0: memref<?x?xf32>) {

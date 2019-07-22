@@ -25,25 +25,26 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
-
-#include "mlir/IR/Module.h"
 
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
+using llvm::SetVector;
 
 /// Computes the cleanup loop lower bound of the loop being unrolled with
 /// the specified unroll factor; this bound will also be upper bound of the main
@@ -872,6 +873,70 @@ static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
   return builder.create<DivISOp>(loc, sum, divisor);
 }
 
+// Hoist the ops within `outer` that appear before `inner`.
+// Such ops include the ops that have been introduced by parametric tiling.
+// Ops that come from triangular loops (i.e. that belong to the program slice
+// rooted at `outer`) and ops that have side effects cannot be hoisted.
+// Return failure when any op fails to hoist.
+static LogicalResult hoistOpsBetween(loop::ForOp outer, loop::ForOp inner) {
+  SetVector<Operation *> forwardSlice;
+  getForwardSlice(outer.getOperation(), &forwardSlice, [&inner](Operation *op) {
+    return op != inner.getOperation();
+  });
+  LogicalResult status = success();
+  SmallVector<Operation *, 8> toHoist;
+  for (auto &op : outer.getBody()->getOperations()) {
+    // Stop when encountering the inner loop.
+    if (&op == inner.getOperation())
+      break;
+    // Skip over non-hoistable ops.
+    if (forwardSlice.count(&op) > 0) {
+      status = failure();
+      continue;
+    }
+    // Skip loop::ForOp, these are not considered a failure.
+    if (op.getNumRegions() > 0)
+      continue;
+    // Skip other ops with regions.
+    if (op.getNumRegions() > 0) {
+      status = failure();
+      continue;
+    }
+    // Skip if op has side effects.
+    // TODO(ntv): loads to immutable memory regions are ok.
+    if (!op.hasNoSideEffect()) {
+      status = failure();
+      continue;
+    }
+    toHoist.push_back(&op);
+  }
+  auto *outerForOp = outer.getOperation();
+  for (auto *op : toHoist)
+    op->moveBefore(outerForOp);
+  return status;
+}
+
+// Traverse the interTile and intraTile loops and try to hoist ops such that
+// bands of perfectly nested loops are isolated.
+// Return failure if either perfect interTile or perfect intraTile bands cannot
+// be formed.
+static LogicalResult tryIsolateBands(const TileLoops &tileLoops) {
+  LogicalResult status = success();
+  auto &interTile = tileLoops.first;
+  auto &intraTile = tileLoops.second;
+  auto size = interTile.size();
+  assert(size == intraTile.size());
+  if (size <= 1)
+    return success();
+  for (unsigned s = 1; s < size; ++s)
+    status = succeeded(status) ? hoistOpsBetween(intraTile[0], intraTile[s])
+                               : failure();
+  for (unsigned s = 1; s < size; ++s)
+    status = succeeded(status) ? hoistOpsBetween(interTile[0], interTile[s])
+                               : failure();
+  return status;
+}
+
 TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
                                        ArrayRef<int64_t> sizes) {
   // Collect prefectly nested loops.  If more size values provided than nested
@@ -904,7 +969,14 @@ TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
 
   // Call parametric tiling with the given sizes.
   auto intraTile = tile(forOps, tileSizes, forOps.back());
-  return std::make_pair(forOps, intraTile);
+  TileLoops tileLoops = std::make_pair(forOps, intraTile);
+
+  // TODO(ntv, zinenko) for now we just ignore the result of band isolation.
+  // In the future, mapping decisions may be impacted by the ability to
+  // isolate perfectly nested bands.
+  tryIsolateBands(tileLoops);
+
+  return tileLoops;
 }
 
 // Replaces all uses of `orig` with `replacement` except if the user is listed
