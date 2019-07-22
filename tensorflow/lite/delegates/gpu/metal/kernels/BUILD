@@ -219,6 +219,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "max_unpooling_test_lib",
+    testonly = 1,
+    srcs = ["max_unpooling_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":max_unpooling",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "max_unpooling_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":max_unpooling_test_lib"],
+)
+
 cc_library(
     name = "mul",
     srcs = ["mul.cc"],
