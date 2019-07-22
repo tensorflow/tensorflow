@@ -85,6 +85,7 @@ std::string GetName(Operation* inst) {
 
   // If the location is none of the expected types, then simply use name
   // generated using the op type.
+  // TODO(jpienaar): update to not use the name attribute
   return inst->getAttrOfType<mlir::StringAttr>("name").getValue().str();
 }
 
