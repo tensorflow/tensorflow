@@ -968,6 +968,15 @@ class NativeOpTrait<string prop> : OpTrait {
   string trait = prop;
 }
 
+// ParamNativeOpTrait corresponds to the template-parameterized traits in the
+// C++ implementation.  MLIR uses nested class templates to implement such
+// traits leading to constructs of the form "TraitName<Parameters>::Impl". Use
+// the value in `prop` as the trait name and the value in `params` as
+// parameters to construct the native trait class name.
+class ParamNativeOpTrait<string prop, string params>
+    : NativeOpTrait<prop # "<" # params # ">::Impl"> {
+}
+
 // GenInternalOpTrait is an op trait that does not have direct C++ mapping but
 // affects op definition generator internals, like how op builders and
 // operand/attribute/result getters are generated.
@@ -1000,6 +1009,10 @@ def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
+
+// Op's regions have a single block with the specified terminator.
+class SingleBlockImplicitTerminator<string op>
+    : ParamNativeOpTrait<"SingleBlockImplicitTerminator", op>;
 
 // Op result type is derived from the first attribute. If the attribute is an
 // subclass of `TypeAttrBase`, its value is used, otherwise, the type of the
