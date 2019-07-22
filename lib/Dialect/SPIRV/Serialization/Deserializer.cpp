@@ -106,6 +106,17 @@ private:
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
+  // Constant
+  //===--------------------------------------------------------------------===//
+
+  /// Processes a SPIR-V OpConstant instruction with the given `operands`.
+  LogicalResult processConstant(ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpConstant{True|False} instruction with the given
+  /// `operands`.
+  LogicalResult processConstantBool(bool isTrue, ArrayRef<uint32_t> operands);
+
+  //===--------------------------------------------------------------------===//
   // Instruction
   //===--------------------------------------------------------------------===//
 
@@ -260,7 +271,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   }
   Type resultType = getType(operands[0]);
   if (!resultType) {
-    return emitError(unknownLoc, "unknown result type from <id> ")
+    return emitError(unknownLoc, "undefined result type from <id> ")
            << operands[0];
   }
   if (funcMap.count(operands[1])) {
@@ -268,11 +279,11 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   }
   auto functionControl = spirv::symbolizeFunctionControl(operands[2]);
   if (!functionControl) {
-    return emitError(unknownLoc, "unknown Function Control : ") << operands[2];
+    return emitError(unknownLoc, "unknown Function Control: ") << operands[2];
   }
   if (functionControl.getValue() != spirv::FunctionControl::None) {
     /// TODO : Handle different function controls
-    return emitError(unknownLoc, "unhandled Function Control : '")
+    return emitError(unknownLoc, "unhandled Function Control: '")
            << spirv::stringifyFunctionControl(functionControl.getValue())
            << "'";
   }
@@ -385,18 +396,36 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     return emitError(unknownLoc, "type instruction with opcode ")
            << spirv::stringifyOpcode(opcode) << " needs at least one <id>";
   }
+
   /// TODO: Types might be forward declared in some instructions and need to be
   /// handled appropriately.
   if (typeMap.count(operands[0])) {
     return emitError(unknownLoc, "duplicate definition for result <id> ")
            << operands[0];
   }
+
   switch (opcode) {
   case spirv::Opcode::OpTypeVoid:
     if (operands.size() != 1) {
       return emitError(unknownLoc, "OpTypeVoid must have no parameters");
     }
-    typeMap[operands[0]] = NoneType::get(context);
+    typeMap[operands[0]] = opBuilder.getNoneType();
+    break;
+  case spirv::Opcode::OpTypeBool:
+    if (operands.size() != 1) {
+      return emitError(unknownLoc, "OpTypeBool must have no parameters");
+    }
+    typeMap[operands[0]] = opBuilder.getI1Type();
+    break;
+  case spirv::Opcode::OpTypeInt:
+    if (operands.size() != 3) {
+      return emitError(
+          unknownLoc, "OpTypeInt must have bitwidth and signedness parameters");
+    }
+    if (operands[2] == 0) {
+      return emitError(unknownLoc, "unhandled unsigned OpTypeInt");
+    }
+    typeMap[operands[0]] = opBuilder.getIntegerType(operands[1]);
     break;
   case spirv::Opcode::OpTypeFloat: {
     if (operands.size() != 2) {
@@ -425,7 +454,7 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     }
     auto pointeeType = getType(operands[2]);
     if (!pointeeType) {
-      return emitError(unknownLoc, "unknown OpTypePointer pointee type <id> : ")
+      return emitError(unknownLoc, "unknown OpTypePointer pointee type <id> ")
              << operands[2];
     }
     auto storageClass = static_cast<spirv::StorageClass>(operands[1]);
@@ -461,6 +490,93 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
     returnTypes = llvm::makeArrayRef(returnType);
   }
   typeMap[operands[0]] = FunctionType::get(argTypes, returnTypes, context);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Constant
+//===----------------------------------------------------------------------===//
+
+LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
+  if (operands.size() < 2) {
+    return emitError(unknownLoc,
+                     "OpConstant must have type <id> and result <id>");
+  }
+  if (operands.size() < 3) {
+    return emitError(unknownLoc,
+                     "OpConstant must have at least 1 more parameter");
+  }
+
+  Type resultType = getType(operands[0]);
+  if (!resultType) {
+    return emitError(unknownLoc, "undefined result type from <id> ")
+           << operands[0];
+  }
+
+  auto checkOperandSizeForBitwidth = [&](unsigned bitwidth) -> LogicalResult {
+    if (bitwidth == 64) {
+      if (operands.size() == 4) {
+        return success();
+      }
+      return emitError(unknownLoc,
+                       "OpConstant should have 2 parameters for 64-bit values");
+    }
+    if (bitwidth <= 32) {
+      if (operands.size() == 3) {
+        return success();
+      }
+
+      return emitError(unknownLoc, "OpConstant should have 1 parameter for "
+                                   "values with no more than 32 bits");
+    }
+    return emitError(unknownLoc, "unsupported OpConstant bitwidth: ")
+           << bitwidth;
+  };
+
+  spirv::ConstantOp op;
+  if (auto intType = resultType.dyn_cast<IntegerType>()) {
+    auto bitwidth = intType.getWidth();
+    if (failed(checkOperandSizeForBitwidth(bitwidth))) {
+      return failure();
+    }
+
+    APInt value;
+    if (bitwidth == 64) {
+      // 64-bit integers are represented with two SPIR-V words. According to
+      // SPIR-V spec: "When the type’s bit width is larger than one word, the
+      // literal’s low-order words appear first."
+      struct DoubleWord {
+        uint32_t word1;
+        uint32_t word2;
+      } words = {operands[2], operands[3]};
+      value = APInt(64, llvm::bit_cast<uint64_t>(words), /*isSigned=*/true);
+    } else if (bitwidth <= 32) {
+      value = APInt(bitwidth, operands[2], /*isSigned=*/true);
+    }
+
+    auto attr = opBuilder.getIntegerAttr(intType, value);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr);
+  } else {
+    return emitError(unknownLoc, "OpConstant can only generate values of "
+                                 "scalar integer or floating-point type");
+  }
+
+  valueMap[operands[1]] = op.getResult();
+  return success();
+}
+LogicalResult Deserializer::processConstantBool(bool isTrue,
+                                                ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpConstant")
+           << (isTrue ? "True" : "False")
+           << " must have type <id> and result <id>";
+  }
+
+  auto attr = opBuilder.getBoolAttr(isTrue);
+  auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc,
+                                                opBuilder.getI1Type(), attr);
+
+  valueMap[operands[1]] = op.getResult();
   return success();
 }
 
@@ -509,11 +625,19 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     break;
   case spirv::Opcode::OpName:
     return processName(operands);
+  case spirv::Opcode::OpTypeVoid:
+  case spirv::Opcode::OpTypeBool:
+  case spirv::Opcode::OpTypeInt:
   case spirv::Opcode::OpTypeFloat:
   case spirv::Opcode::OpTypeFunction:
   case spirv::Opcode::OpTypePointer:
-  case spirv::Opcode::OpTypeVoid:
     return processType(opcode, operands);
+  case spirv::Opcode::OpConstant:
+    return processConstant(operands);
+  case spirv::Opcode::OpConstantTrue:
+    return processConstantBool(true, operands);
+  case spirv::Opcode::OpConstantFalse:
+    return processConstantBool(false, operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
   default:

@@ -25,8 +25,11 @@
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -79,7 +82,7 @@ namespace {
 class Serializer {
 public:
   /// Creates a serializer for the given SPIR-V `module`.
-  explicit Serializer(spirv::ModuleOp module) : module(module) {}
+  explicit Serializer(spirv::ModuleOp module);
 
   /// Serializes the remembered SPIR-V module.
   LogicalResult serialize();
@@ -88,6 +91,25 @@ public:
   void collect(SmallVectorImpl<uint32_t> &binary);
 
 private:
+  // Note that there are two main categories of methods in this class:
+  // * process*() methods are meant to fully serialize a SPIR-V module entity
+  //   (header, type, op, etc.). They update internal vectors containing
+  //   different binary sections. They are not meant to be called except the
+  //   top-level serialization loop.
+  // * prepare*() methods are meant to be helpers that prepare for serializing
+  //   certain entity. They may or may not update internal vectors containing
+  //   different binary sections. They are meant to be called among themselves
+  //   or by other process*() methods for subtasks.
+
+  //===--------------------------------------------------------------------===//
+  // <id>
+  //===--------------------------------------------------------------------===//
+
+  // Note that it is illegal to use id <0> in SPIR-V binary module. Various
+  // methods in this class, if using SPIR-V word (uint32_t) as interface,
+  // check or return id <0> to indicate error in processing.
+
+  /// Consumes the next unused <id>. This method will never return 0.
   uint32_t getNextID() { return nextID++; }
 
   //===--------------------------------------------------------------------===//
@@ -99,9 +121,8 @@ private:
 
   LogicalResult processMemoryModel();
 
-  // It is illegal to use <id> 0 for SSA value in SPIR-V serialization. The
-  // method uses that to check if the function is defined in the serialized
-  // binary or not.
+  LogicalResult processConstantOp(spirv::ConstantOp op);
+
   uint32_t findFunctionID(StringRef fnName) const {
     return funcIDMap.lookup(fnName);
   }
@@ -113,12 +134,9 @@ private:
   // Types
   //===--------------------------------------------------------------------===//
 
-  // It is illegal to use <id> 0 for SSA value in SPIR-V serialization. The
-  // method uses that to check if the type is defined in the serialized binary
-  // or not.
   uint32_t findTypeID(Type type) const { return typeIDMap.lookup(type); }
 
-  Type voidType() { return mlir::NoneType::get(module.getContext()); }
+  Type getVoidType() { return mlirBuilder.getNoneType(); }
 
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
@@ -128,20 +146,37 @@ private:
 
   /// Method for preparing basic SPIR-V type serialization. Returns the type's
   /// opcode and operands for the instruction via `typeEnum` and `operands`.
-  LogicalResult processBasicType(Location loc, Type type,
+  LogicalResult prepareBasicType(Location loc, Type type,
                                  spirv::Opcode &typeEnum,
                                  SmallVectorImpl<uint32_t> &operands);
 
-  LogicalResult processFunctionType(Location loc, FunctionType type,
+  LogicalResult prepareFunctionType(Location loc, FunctionType type,
                                     spirv::Opcode &typeEnum,
                                     SmallVectorImpl<uint32_t> &operands);
+
+  //===--------------------------------------------------------------------===//
+  // Constant
+  //===--------------------------------------------------------------------===//
+
+  uint32_t findConstantID(Attribute value) const {
+    return constIDMap.lookup(value);
+  }
+
+  /// Main dispatch method for processing a constant with the given `constType`
+  /// and `valueAttr`. `constType` is needed here because we can interpret the
+  /// `valueAttr` as a different type than the type of `valueAttr` itself; for
+  /// example, ArrayAttr, whose type is NoneType, is used for spirv::ArrayType
+  /// constants.
+  uint32_t prepareConstant(Location loc, Type constType, Attribute valueAttr);
+
+  uint32_t prepareConstantBool(Location loc, BoolAttr boolAttr);
+
+  uint32_t prepareConstantInt(Location loc, IntegerAttr intAttr);
 
   //===--------------------------------------------------------------------===//
   // Operations
   //===--------------------------------------------------------------------===//
 
-  // It is illegal to use <id> 0 for SSA value in SPIR-V serialization. The
-  // method uses that to check if `val` has a corresponding <id>
   uint32_t findValueID(Value *val) const { return valueIDMap.lookup(val); }
 
   /// Main dispatch method for serializing an operation.
@@ -164,6 +199,9 @@ private:
   /// The SPIR-V module to be serialized.
   spirv::ModuleOp module;
 
+  /// An MLIR builder for getting MLIR constructs.
+  mlir::Builder mlirBuilder;
+
   /// The next available result <id>.
   uint32_t nextID = 1;
 
@@ -183,16 +221,22 @@ private:
   SmallVector<uint32_t, 0> typesGlobalValues;
   SmallVector<uint32_t, 0> functions;
 
-  // Map from type used in SPIR-V module to their <id>s
+  /// Map from type used in SPIR-V module to their <id>s
   DenseMap<Type, uint32_t> typeIDMap;
 
-  // Map from FuncOps name to <id>s.
+  /// Map from constant values to their <id>s
+  DenseMap<Attribute, uint32_t> constIDMap;
+
+  /// Map from FuncOps name to <id>s.
   llvm::StringMap<uint32_t> funcIDMap;
 
-  // Map from Value to Ids.
+  /// Map from results of normal operations to their <id>s
   DenseMap<Value *, uint32_t> valueIDMap;
 };
 } // namespace
+
+Serializer::Serializer(spirv::ModuleOp module)
+    : module(module), mlirBuilder(module.getContext()) {}
 
 LogicalResult Serializer::serialize() {
   if (failed(module.verify()))
@@ -277,6 +321,14 @@ LogicalResult Serializer::processMemoryModel() {
                                {am, mm});
 }
 
+LogicalResult Serializer::processConstantOp(spirv::ConstantOp op) {
+  if (auto resultID = prepareConstant(op.getLoc(), op.getType(), op.value())) {
+    valueIDMap[op.getResult()] = resultID;
+    return success();
+  }
+  return failure();
+}
+
 LogicalResult Serializer::processFuncOp(FuncOp op) {
   uint32_t fnTypeID = 0;
   // Generate type of the function.
@@ -291,7 +343,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
                      "cannot serialize function with multiple return types");
   }
   if (failed(processType(op.getLoc(),
-                         (resultTypes.empty() ? voidType() : resultTypes[0]),
+                         (resultTypes.empty() ? getVoidType() : resultTypes[0]),
                          resTypeID))) {
     return failure();
   }
@@ -354,9 +406,9 @@ LogicalResult Serializer::processType(Location loc, Type type,
   operands.push_back(typeID);
   auto typeEnum = spirv::Opcode::OpTypeVoid;
   if ((type.isa<FunctionType>() &&
-       succeeded(processFunctionType(loc, type.cast<FunctionType>(), typeEnum,
+       succeeded(prepareFunctionType(loc, type.cast<FunctionType>(), typeEnum,
                                      operands))) ||
-      succeeded(processBasicType(loc, type, typeEnum, operands))) {
+      succeeded(prepareBasicType(loc, type, typeEnum, operands))) {
     typeIDMap[type] = typeID;
     return encodeInstructionInto(typesGlobalValues, typeEnum, operands);
   }
@@ -364,16 +416,33 @@ LogicalResult Serializer::processType(Location loc, Type type,
 }
 
 LogicalResult
-Serializer::processBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
+Serializer::prepareBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
                              SmallVectorImpl<uint32_t> &operands) {
   if (isVoidType(type)) {
     typeEnum = spirv::Opcode::OpTypeVoid;
     return success();
-  } else if (type.isa<FloatType>()) {
-    typeEnum = spirv::Opcode::OpTypeFloat;
-    operands.push_back(type.cast<FloatType>().getWidth());
+  }
+
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    if (intType.getWidth() == 1) {
+      typeEnum = spirv::Opcode::OpTypeBool;
+      return success();
+    }
+
+    typeEnum = spirv::Opcode::OpTypeInt;
+    operands.push_back(intType.getWidth());
+    // TODO(antiagainst): support unsigned integers
+    operands.push_back(1);
     return success();
-  } else if (type.isa<spirv::PointerType>()) {
+  }
+
+  if (auto floatType = type.dyn_cast<FloatType>()) {
+    typeEnum = spirv::Opcode::OpTypeFloat;
+    operands.push_back(floatType.getWidth());
+    return success();
+  }
+
+  if (type.isa<spirv::PointerType>()) {
     auto ptrType = type.cast<spirv::PointerType>();
     uint32_t pointeeTypeID = 0;
     if (failed(processType(loc, ptrType.getPointeeType(), pointeeTypeID))) {
@@ -384,12 +453,13 @@ Serializer::processBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
     operands.push_back(pointeeTypeID);
     return success();
   }
+
   // TODO(ravishankarm) : Handle other types.
-  return emitError(loc, "unhandled type in serialization : ") << type;
+  return emitError(loc, "unhandled type in serialization: ") << type;
 }
 
 LogicalResult
-Serializer::processFunctionType(Location loc, FunctionType type,
+Serializer::prepareFunctionType(Location loc, FunctionType type,
                                 spirv::Opcode &typeEnum,
                                 SmallVectorImpl<uint32_t> &operands) {
   typeEnum = spirv::Opcode::OpTypeFunction;
@@ -397,7 +467,7 @@ Serializer::processFunctionType(Location loc, FunctionType type,
          "Serialization supports only a single return value");
   uint32_t resultID = 0;
   if (failed(processType(
-          loc, type.getNumResults() == 1 ? type.getResult(0) : voidType(),
+          loc, type.getNumResults() == 1 ? type.getResult(0) : getVoidType(),
           resultID))) {
     return failure();
   }
@@ -413,15 +483,112 @@ Serializer::processFunctionType(Location loc, FunctionType type,
 }
 
 //===----------------------------------------------------------------------===//
+// Constant
+//===----------------------------------------------------------------------===//
+
+uint32_t Serializer::prepareConstant(Location loc, Type constType,
+                                     Attribute valueAttr) {
+  if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
+    return prepareConstantInt(loc, intAttr);
+  }
+  if (auto boolAttr = valueAttr.dyn_cast<BoolAttr>()) {
+    return prepareConstantBool(loc, boolAttr);
+  }
+
+  emitError(loc, "cannot serialize attribute: ") << valueAttr;
+  return 0;
+}
+
+uint32_t Serializer::prepareConstantBool(Location loc, BoolAttr boolAttr) {
+  if (auto id = findConstantID(boolAttr)) {
+    return id;
+  }
+
+  // Process the type for this bool literal
+  uint32_t typeID = 0;
+  if (failed(processType(loc, boolAttr.getType(), typeID))) {
+    return 0;
+  }
+
+  auto resultID = getNextID();
+  auto opcode = boolAttr.getValue() ? spirv::Opcode::OpConstantTrue
+                                    : spirv::Opcode::OpConstantFalse;
+  encodeInstructionInto(typesGlobalValues, opcode, {typeID, resultID});
+
+  return constIDMap[boolAttr] = resultID;
+}
+
+uint32_t Serializer::prepareConstantInt(Location loc, IntegerAttr intAttr) {
+  if (auto id = findConstantID(intAttr)) {
+    return id;
+  }
+
+  // Process the type for this integer literal
+  uint32_t typeID = 0;
+  if (failed(processType(loc, intAttr.getType(), typeID))) {
+    return 0;
+  }
+
+  auto resultID = getNextID();
+  APInt value = intAttr.getValue();
+  unsigned bitwidth = value.getBitWidth();
+  bool isSigned = value.isSignedIntN(bitwidth);
+
+  // According to SPIR-V spec, "When the type's bit width is less than 32-bits,
+  // the literal's value appears in the low-order bits of the word, and the
+  // high-order bits must be 0 for a floating-point type, or 0 for an integer
+  // type with Signedness of 0, or sign extended when Signedness is 1."
+  if (bitwidth == 32 || bitwidth == 16) {
+    uint32_t word = 0;
+    if (isSigned) {
+      word = static_cast<int32_t>(value.getSExtValue());
+    } else {
+      word = static_cast<uint32_t>(value.getZExtValue());
+    }
+    encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpConstant,
+                          {typeID, resultID, word});
+  }
+  // According to SPIR-V spec: "When the type's bit width is larger than one
+  // word, the literal’s low-order words appear first."
+  else if (bitwidth == 64) {
+    struct DoubleWord {
+      uint32_t word1;
+      uint32_t word2;
+    } words;
+    if (isSigned) {
+      words = llvm::bit_cast<DoubleWord>(value.getSExtValue());
+    } else {
+      words = llvm::bit_cast<DoubleWord>(value.getZExtValue());
+    }
+    encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpConstant,
+                          {typeID, resultID, words.word1, words.word2});
+  } else {
+    std::string valueStr;
+    llvm::raw_string_ostream rss(valueStr);
+    value.print(rss, /*isSigned*/ false);
+
+    emitError(loc, "cannot serialize ")
+        << bitwidth << "-bit integer literal: " << rss.str();
+    return 0;
+  }
+
+  return constIDMap[intAttr] = resultID;
+}
+
+//===----------------------------------------------------------------------===//
 // Operation
 //===----------------------------------------------------------------------===//
 
 LogicalResult Serializer::processOperation(Operation *op) {
   // First dispatch the methods that do not directly mirror an operation from
   // the SPIR-V spec
-  if (isa<FuncOp>(op)) {
-    return processFuncOp(cast<FuncOp>(op));
-  } else if (isa<spirv::ModuleEndOp>(op)) {
+  if (auto constOp = dyn_cast<spirv::ConstantOp>(op)) {
+    return processConstantOp(constOp);
+  }
+  if (auto fnOp = dyn_cast<FuncOp>(op)) {
+    return processFuncOp(fnOp);
+  }
+  if (isa<spirv::ModuleEndOp>(op)) {
     return success();
   }
   return dispatchToAutogenSerialization(op);

@@ -477,8 +477,12 @@ DenseElementsAttr::AttributeElementIterator::AttributeElementIterator(
 Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
   auto owner = getFromOpaquePointer(object).cast<DenseElementsAttr>();
   Type eltTy = owner.getType().getElementType();
-  if (eltTy.isa<IntegerType>())
+  if (auto intEltTy = eltTy.dyn_cast<IntegerType>()) {
+    if (intEltTy.getWidth() == 1)
+      return BoolAttr::get((*IntElementIterator(owner, index)).isOneValue(),
+                           owner.getContext());
     return IntegerAttr::get(eltTy, *IntElementIterator(owner, index));
+  }
   if (auto floatEltTy = eltTy.dyn_cast<FloatType>()) {
     IntElementIterator intIt(owner, index);
     FloatElementIterator floatIt(floatEltTy.getFloatSemantics(), intIt);
