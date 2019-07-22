@@ -56,6 +56,7 @@ def run_one_epoch(model,
                   iterator,
                   execution_function,
                   dataset_size=None,
+                  batch_size=None,
                   strategy=None,
                   steps_per_epoch=None,
                   mode=ModeKeys.TRAIN,
@@ -72,6 +73,7 @@ def run_one_epoch(model,
     iterator: the dataset iterator to fetch the data.
     execution_function: a tf.function that can be called with data.
     dataset_size: the size of iterator, None when unknown.
+    batch_size: The size of the current batch.
     strategy: the distribution strategy instance from the model.
     steps_per_epoch: the number of steps to run for the epoch.
     mode: the mode for the current epoch.
@@ -84,10 +86,10 @@ def run_one_epoch(model,
   """
   if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(
-        use_steps=True, num_samples_or_steps=steps_per_epoch)
+        use_steps=True, steps=steps_per_epoch, batch_size=batch_size)
   else:
     aggregator = training_utils.MetricsAggregator(
-        use_steps=True, num_samples_or_steps=steps_per_epoch)
+        use_steps=True, steps=steps_per_epoch)
   callbacks = training_context.callbacks
   progbar = training_context.progbar
 
@@ -118,7 +120,7 @@ def run_one_epoch(model,
         # The input passed by the user ran out of batches.
         # Now we know the cardinality of the input(dataset or generator).
         steps_per_epoch = step
-        aggregator.num_samples_or_steps = steps_per_epoch
+        aggregator.steps = steps_per_epoch
         progbar.params['steps'] = steps_per_epoch
         progbar.progbar.target = steps_per_epoch
       else:
@@ -281,6 +283,7 @@ class Loop(training_utils.TrainingLoop):
                 training_data_iter,
                 training_function,
                 dataset_size=training_data_adapter.get_size(),
+                batch_size=training_data_adapter.batch_size(),
                 strategy=strategy,
                 steps_per_epoch=steps_per_epoch,
                 mode=ModeKeys.TRAIN,
@@ -310,6 +313,7 @@ class Loop(training_utils.TrainingLoop):
                       eval_data_iter,
                       eval_function,
                       dataset_size=validation_adapter.get_size(),
+                      batch_size=validation_adapter.batch_size(),
                       strategy=strategy,
                       steps_per_epoch=validation_steps,
                       mode=ModeKeys.TEST,
@@ -384,6 +388,7 @@ class Loop(training_utils.TrainingLoop):
               data_iterator,
               execution_function,
               dataset_size=adapter.get_size(),
+              batch_size=adapter.batch_size(),
               strategy=strategy,
               steps_per_epoch=steps,
               mode=mode,

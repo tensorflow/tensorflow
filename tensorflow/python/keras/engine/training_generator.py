@@ -182,9 +182,9 @@ def model_iteration(model,
   progbar.params['verbose'] = verbose
 
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.MetricsAggregator(True, steps=steps_per_epoch)
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
@@ -236,7 +236,7 @@ def model_iteration(model,
                 % (steps_name, steps_per_epoch * epochs))
           elif step > 0:
             steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
+            aggregator.steps = steps_per_epoch
             if mode == ModeKeys.TRAIN:
               progbar.params['steps'] = steps_per_epoch
               progbar.progbar.target = steps_per_epoch
