@@ -115,14 +115,18 @@ class Stack : public ResourceBase {
     value->swapped_to_cpu = false;
   }
 
-  bool GetTensorToSwapOut(std::function<bool(const TensorAndAllocation&)> cond,
-                          TensorAndAllocation** value) {
+  bool GetTensorToSwapOut(int kCopyThreshold, TensorAndAllocation** value) {
     mutex_lock l(mu_);
     while (!unswapped_lru_.empty()) {
       size_t index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
       stack_[index].unswap_iter.reset();
-      if (!cond(stack_[index].value)) {
+      // We don't swap the first tensor on the stack and any subsequent tensors
+      // that share the buffer with the first tensor.
+      const Tensor& tensor = stack_[index].value.tensor;
+      const Tensor& first = stack_.front().value.tensor;
+      if (tensor.TotalBytes() <= kCopyThreshold ||
+          tensor.SharesBufferWith(first)) {
         continue;
       }
       swapped_mru_.push_back(index);
@@ -150,16 +154,6 @@ class Stack : public ResourceBase {
     mutex_lock l(mu_);
     is_swapping_ins_[index] = false;
     cond_swapping_ins_[index].notify_one();
-  }
-
-  // We don't swap the first tensor on the stack and any subsequent tensors
-  // that share the buffer with the first tensor.
-  bool IsUsefulToSwap(const Tensor& tensor) const {
-    if (stack_.empty()) {
-      return false;
-    }
-    const Tensor& first = stack_.front().value.tensor;
-    return !tensor.SharesBufferWith(first);
   }
 
   void Close() {
@@ -342,12 +336,7 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
   // Obtain the oldest unswapped TensorAndAllocation.
   Stack::TensorAndAllocation* to_swap_out = nullptr;
-  if (!stack->GetTensorToSwapOut(
-          [stack](const Stack::TensorAndAllocation& value) -> bool {
-            return value.tensor.TotalBytes() > kCopyThreshold &&
-                   stack->IsUsefulToSwap(value.tensor);
-          },
-          &to_swap_out)) {
+  if (!stack->GetTensorToSwapOut(kCopyThreshold, &to_swap_out)) {
     done();
     return;
   }
