@@ -57,9 +57,9 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
 Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
-                                 Graph* sgraph);
+                                 Graph* segment_graph);
 
-Status RegisterModifiedGraphToFunctionLibrary(Graph* sgraph, Graph* graph,
+Status RegisterModifiedGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
                                               FunctionDefLibrary fdeflib,
                                               const string& engine_name);
 }  // namespace convert

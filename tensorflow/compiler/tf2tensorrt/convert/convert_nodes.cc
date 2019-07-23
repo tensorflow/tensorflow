@@ -80,10 +80,10 @@ namespace tensorrt {
 namespace convert {
 
 bool IsEngineInput(absl::string_view name) {
-  return absl::StartsWith(name, prefixes.kInputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
-  return absl::StartsWith(name, prefixes.kOutputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
 }
 
 using absl::StrAppend;
@@ -5019,7 +5019,7 @@ Status ConvertGraphDefToEngine(
       string type_key;
       if (node_def.op() == "Placeholder") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(prefixes.kInputPHName), &slot_number)) {
+                node_name.c_str() + strlen(IONamePrefixes::kInputPHName), &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
@@ -5061,7 +5061,7 @@ Status ConvertGraphDefToEngine(
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(prefixes.kOutputPHName), &slot_number)) {
+                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName), &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
@@ -5069,7 +5069,7 @@ Status ConvertGraphDefToEngine(
         slot_number = node_def.attr().at("index").i();
       } else {
         return errors::InvalidArgument("Node with name ", node_name,
-                                       " starting with prefixes.kOutputPHName is "
+                                       " starting with IONamePrefixes::kOutputPHName is "
                                        "neither Identity nor Retval, instead ",
                                        node_def.op());
       }
@@ -5140,7 +5140,7 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(prefixes.kInputPHName, connection.port_number);
+      const string node_name = StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5159,7 +5159,7 @@ Status ConvertSegmentToGraphDef(
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(prefixes.kOutputPHName, connection.port_number);
+      const string node_name = StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5198,7 +5198,7 @@ Status ConvertSegmentToGraphDef(
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
     const string placeholder_name =
-        StrCat(prefixes.kInputPHName, connection.port_number);
+        StrCat(IONamePrefixes::kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
             << placeholder_name;

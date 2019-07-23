@@ -63,10 +63,10 @@ class TRTEngineOpTestBase : public OpsTestBase {
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
     const string func_name = "myop_native_segment";
     Graph* graph = s.graph();
-    Graph sgraph(graph->flib_def());
+    Graph segment_graph(graph->flib_def());
     TF_ASSERT_OK(convert::ModifyGraphForFunctionDef(
-        graph, graph_def, &sgraph));
-    TF_ASSERT_OK(convert::RegisterModifiedGraphToFunctionLibrary(&sgraph, graph,
+        graph, graph_def, &segment_graph));
+    TF_ASSERT_OK(convert::RegisterModifiedGraphToFunctionLibrary(&segment_graph, graph,
         flib_def_->ToProto(), "myop"));
     
     PartialTensorShape shape({-1, -1});

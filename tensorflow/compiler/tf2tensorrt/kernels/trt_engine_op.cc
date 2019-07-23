@@ -56,8 +56,6 @@ using ::stream_executor::port::StatusOr;
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
 
-auto prefixes = IONamePrefixes();
-
 class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
@@ -326,7 +324,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
         calib_res->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(
-        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]),
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]),
         data_address);
   }
   VLOG(2) << "Filled map for sending";
@@ -469,7 +467,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name =
-        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]);
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
       const string msg =
@@ -511,7 +509,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
-    const string output_name = StrCat(prefixes.kOutputPHName,
+    const string output_name = StrCat(IONamePrefixes::kOutputPHName,
                                       static_engine_ ? i : output_node_ids_[i]);
     const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
@@ -741,7 +739,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
-        StrCat(prefixes.kInputPHName, static_engine_ ? i : input_node_ids_[i]),
+        StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
   }
   cres->calibrator_.reset(

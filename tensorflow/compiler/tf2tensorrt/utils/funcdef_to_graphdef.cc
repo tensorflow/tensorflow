@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -23,23 +21,24 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/logging.h"
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+
 namespace tensorflow {
 namespace tensorrt {
 
-auto prefixes = IONamePrefixes();
-
 string AppendIdToNodeName(const Node* n) {
-  if (absl::StartsWith(n->name(), prefixes.kInputPHNameLower)) {
-    return strings::StrCat(prefixes.kInputPHName, n->id());
-  } else if (absl::StartsWith(n->name(), prefixes.kOutputPHNameLower)) {
-    return strings::StrCat(prefixes.kOutputPHName, n->id());
+  if (absl::StartsWith(n->name(), IONamePrefixes::kInputPHNameLower)) {
+    return strings::StrCat(IONamePrefixes::kInputPHName, n->id());
+  } else if (absl::StartsWith(n->name(), IONamePrefixes::kOutputPHNameLower)) {
+    return strings::StrCat(IONamePrefixes::kOutputPHName, n->id());
   }
   return strings::StrCat("n", n->id());
 }
 
 void ToGraphDefWithIOPrefix(const Graph* g, GraphDef* gdef) {
   // This is the same function as in function.cc. However, it uses the
-  // name mapping above, which retains IO prefixes (prefixes.kInputPHName etc)
+  // name mapping above, which retains IO prefixes (IONamePrefixes::kInputPHName etc)
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
   *gdef->mutable_versions() = g->versions();
