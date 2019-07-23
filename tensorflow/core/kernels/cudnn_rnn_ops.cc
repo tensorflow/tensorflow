@@ -1041,7 +1041,7 @@ class CudnnRNNKernelCommon : public OpKernel {
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
         ToDataType<T>::value, algo_config, dropout(), seed(),
-        /* state_allocator=*/nullptr, /*use_padded_io=*/true);
+        /* state_allocator=*/nullptr, /*use_padded_io=*/false);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
