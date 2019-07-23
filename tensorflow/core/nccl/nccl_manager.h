@@ -70,6 +70,7 @@ class NcclManager {
           event_mgr(event_mgr),
           gpu_device_id(gpu_device_id),
           input(input),
+          input_event(nullptr),
           output(output),
           global_rank(global_rank),
           done_callback(std::move(done_callback)),
@@ -78,6 +79,17 @@ class NcclManager {
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
       DCHECK(nccl_stream != nullptr);
+      if (input != nullptr) {
+        input_event = new se::Event(executor);
+        input_event->Init();
+        tensor_stream->ThenRecordEvent(input_event);
+      }
+    }
+
+    ~Participant() {
+      if (input_event != nullptr) {
+        delete input_event;
+      }
     }
 
     // StreamExecutor for the device. Expected to be live for process lifetime.
@@ -104,6 +116,10 @@ class NcclManager {
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only receive data.
     const Tensor* input;
+
+    // Wait on this event rather than synchronizing on the entire stream.
+    // This allows greater concurrency between compute and nccl streams.
+    se::Event* input_event;
 
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only send data.
