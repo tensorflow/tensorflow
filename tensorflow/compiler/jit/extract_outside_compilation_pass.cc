@@ -525,14 +525,11 @@ xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
 void AddEdgesFromOutsideCompilationNodes(
     const int original_arg_count, const int arg_to_input_edge_offset,
     const std::vector<DataType>& data_types,
-    const std::vector<std::pair<Node*, Node*>>&
-        lifted_arg_nodes_and_outside_compilation_nodes,
-    Graph* g, Node* n) {
+    const std::vector<Node*>& outside_compilation_nodes, Graph* g, Node* n) {
   // Add edges from outside compilation nodes to While node.
   for (int i = original_arg_count; i < data_types.size(); i++) {
     Node* outside_compilation_node =
-        lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
-            .second;
+        outside_compilation_nodes[i - original_arg_count];
     g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
   }
 }
@@ -574,14 +571,15 @@ Status AddMatchingRetvalNode(const FunctionBody& function_body,
 
 void ReplaceLiftedArgNodePlaceholderWithArg(
     const FunctionBody& function_body, const int original_arg_count,
-    const int arg_idx,
-    const std::vector<std::pair<Node*, Node*>>&
-        lifted_arg_nodes_and_outside_compilation_nodes,
+    const int arg_idx, const std::vector<Node*>& lifted_arg_nodes,
     Node* arg_node) {
-  Node* lifted_arg_node =
-      lifted_arg_nodes_and_outside_compilation_nodes[arg_idx -
-                                                     original_arg_count]
-          .first;
+  Node* lifted_arg_node = lifted_arg_nodes[arg_idx - original_arg_count];
+  // This might happen because lifted_arg_node only exists in one branch of an
+  // If node, and we are handling the other branch.
+  if (!lifted_arg_node) {
+    return;
+  }
+
   for (const Edge* e : lifted_arg_node->out_edges()) {
     if (e->IsControlEdge()) {
       function_body.graph->AddControlEdge(arg_node, e->dst());
@@ -589,7 +587,6 @@ void ReplaceLiftedArgNodePlaceholderWithArg(
       function_body.graph->AddEdge(arg_node, 0, e->dst(), e->dst_input());
     }
   }
-
   function_body.graph->RemoveNode(lifted_arg_node);
 }
 
@@ -630,13 +627,25 @@ Status PostprocessLiftedArgsForWhile(
                            n));
 
   // Add edges from outside compilation nodes to While node.
-  AddEdgesFromOutsideCompilationNodes(
-      original_arg_count,
-      /*arg_to_input_edge_offset=*/0, data_types,
-      lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
 
   // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
   // nodes with the new _Arg nodes.
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
   for (int i = original_arg_count; i < data_types.size(); i++) {
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
@@ -646,8 +655,7 @@ Status PostprocessLiftedArgsForWhile(
         AddMatchingRetvalNode(*body_function_body, i, data_types[i], arg_node));
 
     ReplaceLiftedArgNodePlaceholderWithArg(
-        *body_function_body, original_arg_count, i,
-        lifted_arg_nodes_and_outside_compilation_nodes, arg_node);
+        *body_function_body, original_arg_count, i, lifted_arg_nodes, arg_node);
   }
 
   FunctionDef rewritten_body_function_def;
@@ -730,20 +738,53 @@ Status PostprocessLiftedArgsForIf(
       LiftedArgsAndOutsideCompilationNodesInFunctionBody(
           *else_branch_function_body, outside_compilation_attr_to_node));
 
+  // Merge lifted args from then and else branches.
+  std::vector<Node*> outside_compilation_nodes;
+  std::vector<Node*> then_branch_lifted_arg_nodes;
+  for (const auto& pair :
+       then_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    outside_compilation_nodes.push_back(pair.second);
+    then_branch_lifted_arg_nodes.push_back(pair.first);
+  }
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    if (std::find(outside_compilation_nodes.begin(),
+                  outside_compilation_nodes.end(),
+                  pair.second) == outside_compilation_nodes.end()) {
+      outside_compilation_nodes.push_back(pair.second);
+      // Then branch does not contain this lifted arg. Add an empty item to
+      // then_branch_lifted_arg_nodes.
+      then_branch_lifted_arg_nodes.push_back(nullptr);
+    }
+  }
+  // Reorder else_branch_lifted_arg_nodes_and_outside_compilation_nodes.
+  std::vector<Node*> else_branch_lifted_arg_nodes(
+      outside_compilation_nodes.size());
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    auto iter = std::find(outside_compilation_nodes.begin(),
+                          outside_compilation_nodes.end(), pair.second);
+    TF_RET_CHECK(iter != outside_compilation_nodes.end());
+    int index = iter - outside_compilation_nodes.begin();
+    else_branch_lifted_arg_nodes[index] = pair.first;
+  }
+
   // Append lifted args' types to If node's Tin attribute.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DataType> data_types,
-      UpdateTypesAttribute(
-          then_branch_lifted_arg_nodes_and_outside_compilation_nodes, "Tin",
-          n));
+  std::vector<DataType> data_types;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
+  for (Node* n : outside_compilation_nodes) {
+    data_types.push_back(n->output_type(0));
+  }
+  n->ClearAttr("Tin");
+  n->AddAttr("Tin", data_types);
 
   // Add edges from outside compilation nodes to If node. If node's input #0
   // is predicate input, input #1 maps to _Arg #0 of branch functions, thus
   // arg_to_input_edge_offset is set to 1.
-  AddEdgesFromOutsideCompilationNodes(
-      original_arg_count,
-      /*arg_to_input_edge_offset=*/1, data_types,
-      then_branch_lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/1,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
 
   for (int i = original_arg_count; i < data_types.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
@@ -752,8 +793,7 @@ Status PostprocessLiftedArgsForIf(
 
     ReplaceLiftedArgNodePlaceholderWithArg(
         *then_branch_function_body, original_arg_count, i,
-        then_branch_lifted_arg_nodes_and_outside_compilation_nodes,
-        then_branch_arg_node);
+        then_branch_lifted_arg_nodes, then_branch_arg_node);
 
     TF_ASSIGN_OR_RETURN(Node * else_branch_arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
@@ -761,8 +801,7 @@ Status PostprocessLiftedArgsForIf(
 
     ReplaceLiftedArgNodePlaceholderWithArg(
         *else_branch_function_body, original_arg_count, i,
-        else_branch_lifted_arg_nodes_and_outside_compilation_nodes,
-        else_branch_arg_node);
+        else_branch_lifted_arg_nodes, else_branch_arg_node);
   }
 
   FunctionDef rewritten_then_branch_function_def;
@@ -819,14 +858,19 @@ Status PostprocessLiftedArgsForCall(
     data_types.push_back(data_type);
   }
 
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
   for (int i = original_arg_count; i < data_types.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         Node * arg_node,
         AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
 
-    ReplaceLiftedArgNodePlaceholderWithArg(
-        *fbody, original_arg_count, i,
-        lifted_arg_nodes_and_outside_compilation_nodes, arg_node);
+    ReplaceLiftedArgNodePlaceholderWithArg(*fbody, original_arg_count, i,
+                                           lifted_arg_nodes, arg_node);
   }
 
   FunctionDef rewritten_fdef;
@@ -847,10 +891,16 @@ Status PostprocessLiftedArgsForCall(
   TF_ASSIGN_OR_RETURN(n, ReplaceNode(g, n, node_def));
 
   // Add edges from outside compilation nodes to call node.
-  AddEdgesFromOutsideCompilationNodes(
-      original_arg_count,
-      /*arg_to_input_edge_offset=*/0, data_types,
-      lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
 
   return Status::OK();
 }
