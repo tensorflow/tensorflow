@@ -1318,7 +1318,7 @@ class TensorArraySpec(type_spec.TypeSpec):
         flow=tensor_list[0],
         dynamic_size=self._dynamic_size,
         infer_shape=self._infer_shape)
-    ret._element_shape = [self._element_shape]  # pylint: disable=protected-access
+    ret._implementation._element_shape = [self._element_shape]  # pylint: disable=protected-access
     return ret
 
   @staticmethod

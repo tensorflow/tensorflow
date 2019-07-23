@@ -373,6 +373,23 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertEqual(st_after.dense_shape.shape.as_list(),
                      st.dense_shape.shape.as_list())
 
+  def testPreserveTensorArrayShape(self):
+    ta = tensor_array_ops.TensorArray(
+        dtype=dtypes.int32, size=1, element_shape=(3,))
+    ta_s = structure.type_spec_from_value(ta)
+    ta_after = structure.from_tensor_list(ta_s,
+                                          structure.to_tensor_list(ta_s, ta))
+    self.assertEqual(ta_after.element_shape.as_list(), [3])
+
+  def testPreserveInferredTensorArrayShape(self):
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=1)
+    # Shape is inferred from the write.
+    ta = ta.write(0, [1, 2, 3])
+    ta_s = structure.type_spec_from_value(ta)
+    ta_after = structure.from_tensor_list(ta_s,
+                                          structure.to_tensor_list(ta_s, ta))
+    self.assertEqual(ta_after.element_shape.as_list(), [3])
+
   def testIncompatibleStructure(self):
     # Define three mutually incompatible values/structures, and assert that:
     # 1. Using one structure to flatten a value with an incompatible structure
