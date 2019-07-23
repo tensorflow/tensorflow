@@ -781,6 +781,80 @@ Status PostprocessLiftedArgsForIf(
   return Status::OK();
 }
 
+Status PostprocessLiftedArgsForCall(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  const FunctionDef* fdef = fld->Find(n->type_string());
+  TF_RET_CHECK(fdef);
+
+  // Nothing to do if the function does not contain any lifted arguments.
+  if (!HasLiftedArgs(*fdef)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, n->attrs(), fld, &fbody));
+
+  int original_arg_count = fbody->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(auto lifted_arg_nodes_and_outside_compilation_nodes,
+                      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+                          *fbody, outside_compilation_attr_to_node));
+
+  // Append lifted args' types to call node's input data types.
+  std::vector<DataType> data_types(n->input_types().begin(),
+                                   n->input_types().end());
+  for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
+    Node* outside_compilation_node = pair.second;
+    DataType data_type;
+    TF_RET_CHECK(outside_compilation_node->IsIdentity() ||
+                 outside_compilation_node->type_string() == "Placeholder");
+    if (outside_compilation_node->IsIdentity()) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+    } else {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+    }
+    data_types.push_back(data_type);
+  }
+
+  for (int i = original_arg_count; i < data_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        Node * arg_node,
+        AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *fbody, original_arg_count, i,
+        lifted_arg_nodes_and_outside_compilation_nodes, arg_node);
+  }
+
+  FunctionDef rewritten_fdef;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, n->type_string(),
+                                        HostGraphControlRetMapping,
+                                        &rewritten_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(n->type_string(), rewritten_fdef));
+
+  // We need to recreate the node. Otherwise TF will not know n->num_inputs()
+  // has increased.
+  NodeDef node_def = n->def();
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    Node* outside_compilation_node =
+        lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
+            .second;
+    node_def.add_input(absl::StrCat(outside_compilation_node->name(), ":", 0));
+  }
+  TF_ASSIGN_OR_RETURN(n, ReplaceNode(g, n, node_def));
+
+  // Add edges from outside compilation nodes to call node.
+  AddEdgesFromOutsideCompilationNodes(
+      original_arg_count,
+      /*arg_to_input_edge_offset=*/0, data_types,
+      lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+
+  return Status::OK();
+}
+
 // Creates a mapping from outside compilation cluster name to lifted argument
 // placeholder.
 xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
@@ -806,6 +880,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
   TF_ASSIGN_OR_RETURN(auto outside_compilation_attr_to_node,
                       OutsideCompilationAttrToNode(*g));
 
+  std::vector<Node*> call_nodes;
   for (Node* n : g->op_nodes()) {
     if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
       continue;
@@ -820,6 +895,19 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
+
+    // Outside compilation host side function call will always be direct
+    // function call nodes.
+    // Function call nodes need to be handled separately because we rewrite
+    // nodes in `PostprocessLiftedArgsForCall`.
+    if (fld->Contains(n->type_string())) {
+      call_nodes.push_back(n);
+    }
+  }
+
+  for (Node* n : call_nodes) {
+    TF_RETURN_IF_ERROR(PostprocessLiftedArgsForCall(
+        outside_compilation_attr_to_node, g, n, fld));
   }
 
   return Status::OK();
@@ -1646,17 +1734,8 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
       if_nodes.push_back(n);
     } else if (n->type_string() == "While") {
       while_nodes.push_back(n);
-    } else if (fld->Contains(n->type_string())) {
+    } else if (IsFunctionCall(*fld, *n)) {
       func_call_nodes.push_back(n);
-    } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
-      // Only gradient for user-defined function should be considered as
-      // function call node.
-      NameAttrList original_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(
-          n->def(), FunctionLibraryDefinition::kFuncAttr, &original_func));
-      if (fld->Contains(original_func.name())) {
-        func_call_nodes.push_back(n);
-      }
     }
   }
 
@@ -1664,9 +1743,17 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     // Extract outside compilation for the function call.
     bool func_has_outside_compilation = false;
     NameAttrList func;
-    func.set_name(n->type_string());
-    typedef protobuf::Map<string, AttrValue> AttrMap;
-    *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    if (fld->Contains(n->type_string())) {
+      func.set_name(n->type_string());
+      typedef protobuf::Map<string, AttrValue> AttrMap;
+      *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    } else if (n->IsPartitionedCall()) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
+    } else {
+      TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
+      func.set_name(FunctionLibraryDefinition::kGradientOp);
+      *func.mutable_attr() = n->def().attr();
+    }
     string new_func_name = absl::StrCat(n->name(), "_oc");
     string host_func_name = absl::StrCat("oc_func_call_host_", n->name());
     TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
