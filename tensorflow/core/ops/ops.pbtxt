@@ -44319,6 +44319,13 @@ op {
       s: "STEP_MARK_AT_ENTRY"
     }
   }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TPUReplicatedInput"
