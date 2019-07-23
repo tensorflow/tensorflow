@@ -346,14 +346,15 @@ def test_on_batch(model,
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
         if val is not None else None for val in sample_weights
     ]
-  outs, total_loss, output_losses, masks = (
-      _model_loss(
-          model,
-          inputs,
-          targets,
-          sample_weights=sample_weights,
-          training=False,
-          output_loss_metrics=output_loss_metrics))
+  with backend.eager_learning_phase_scope(0):
+    outs, total_loss, output_losses, masks = (
+        _model_loss(
+            model,
+            inputs,
+            targets,
+            sample_weights=sample_weights,
+            training=False,
+            output_loss_metrics=output_loss_metrics))
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(

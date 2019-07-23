@@ -257,9 +257,127 @@ class TrainingTest(keras_parameterized.TestCase):
           return inputs + array_ops.constant([0], 'float32')
 
     model = keras.Sequential([ReturnTraining()])
-    model.compile('sgd', 'mse')
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
     self.assertAllClose(hist.history['loss'][0], 10000)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_fit_and_validate_learning_phase(self):
+
+    class ReturnTraining(keras.layers.Layer):
+
+      def call(self, inputs):
+        return keras.backend.in_train_phase(
+            lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs))
+
+    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model.compile(
+        'sgd',
+        loss='mae',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+
+    inputs = np.ones((40, 2), dtype=np.float32)
+    targets = np.ones((40, 1), dtype=np.float32)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(
+        train_dataset, epochs=2, verbose=1, validation_data=val_dataset)
+
+    # The training loss should be 0.0
+    self.assertAllClose(history.history['loss'][0], 0.0)
+    # The validation loss should be 1.0.
+    self.assertAllClose(history.history['val_loss'][0], 1.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_fit_and_validate_training_arg(self):
+
+    class ReturnTraining(keras.layers.Layer):
+
+      def call(self, inputs, training=None):
+        return keras.backend.in_train_phase(
+            lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs),
+            training=training)
+
+    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model.compile(
+        'sgd',
+        loss='mae',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+
+    inputs = np.ones((40, 2), dtype=np.float32)
+    targets = np.ones((40, 1), dtype=np.float32)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(
+        train_dataset, epochs=2, verbose=1, validation_data=val_dataset)
+
+    # The training loss should be 0.0
+    self.assertAllClose(history.history['loss'][0], 0.0)
+    # The validation loss should be 1.0.
+    self.assertAllClose(history.history['val_loss'][0], 1.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_fit_and_validate_nested_training_arg(self):
+
+    class NestedReturnTraining(keras.layers.Layer):
+
+      def call(self, inputs, training=None):
+        return keras.backend.in_train_phase(
+            lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs),
+            training=training)
+
+    class ReturnTraining(keras.layers.Layer):
+
+      def __init__(self, input_shape=None, **kwargs):
+        super(ReturnTraining, self).__init__(input_shape=input_shape, **kwargs)
+        self._nested_layer = None
+
+      def build(self, input_shape):
+        self._nested_layer = NestedReturnTraining()
+        self.built = True
+
+      def call(self, inputs):
+        return self._nested_layer(inputs)
+
+    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model.compile(
+        'sgd',
+        loss='mae',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+
+    inputs = np.ones((40, 2), dtype=np.float32)
+    targets = np.ones((40, 1), dtype=np.float32)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(
+        train_dataset, epochs=2, verbose=1, validation_data=val_dataset)
+
+    # The training loss should be 0.0
+    self.assertAllClose(history.history['loss'][0], 0.0)
+    # The validation loss should be 1.0.
+    self.assertAllClose(history.history['val_loss'][0], 1.0)
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
@@ -1259,9 +1377,6 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_subclassed_model_with_training_arg(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
-
     class LayerWithTrainingArg(keras.layers.Layer):
 
       def call(self, inputs, training=None):
@@ -1288,7 +1403,8 @@ class TrainingTest(keras_parameterized.TestCase):
         run_distributed=testing_utils.should_run_distributed())
     model.fit(x, x, epochs=1)
 
-    if testing_utils.should_run_eagerly():
+    if (testing_utils.should_run_eagerly() or
+        testing_utils.should_run_distributed()):
       expected_training_arg = True
     else:
       expected_training_arg = keras.backend.symbolic_learning_phase()
