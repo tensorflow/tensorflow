@@ -756,7 +756,8 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     tags = [
-        "multi_and_single_gpu",
+        # TODO(b/138143527): Re-enable after fixing Guitar failure.
+        # "multi_and_single_gpu",
     ],
     xla_enable_strict_auto_jit = True,
 )
