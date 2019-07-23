@@ -163,8 +163,6 @@ def TFL_IntTensor : TypeAlias<I32Tensor, "tensor of any integer type">;
 
 // This is used to represent the type of "ref tensors" or tensors that are
 // used as variables to track state.
-// TODO(ashwinm): This is a placeholder until we have first class support
-// for variables.
 def TFL_StatefulTensor : TypeAlias<AnyTensor, "stateful tensor">;
 
 // Tensor or None type.
@@ -283,6 +281,14 @@ class TFL_AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
 // Specify this trait if the op doesn't have quantizable ouput. We shouldn't
 // apply quantization on this op.
 def TFL_NoQuantizableResult : NativeOpTrait<"TFL::NoQuantizableResult">;
+
+
+//===----------------------------------------------------------------------===//
+// TFL native op trait for stateful operands.
+
+class StatefulOperands<list<int> operands>
+    : ParamNativeOpTrait<"TFL::StatefulOperands", StrJoinInt<operands>.result>;
+
 
 //===----------------------------------------------------------------------===//
 // TFL op base class.
@@ -2327,7 +2333,8 @@ def TFL_LSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
-           LstmResultConstraint]> {
+           LstmResultConstraint,
+           StatefulOperands<[18, 19]>]> {
   let summary = "The full lstm operator";
 
   let description = [{
@@ -2405,6 +2412,8 @@ Ba et al. “Layer Normalization”
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 // UnidirectionalSequenceLstm op .
@@ -2415,7 +2424,8 @@ def TFL_UnidirectionalSequenceLSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
-           LstmResultConstraint]> {
+           LstmResultConstraint,
+           StatefulOperands<[18, 19]>]> {
   let summary = "Unidirectional sequence lstm operator";
 
   let description = [{
@@ -2482,6 +2492,8 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 #endif // TFL_OPS
