@@ -48,6 +48,8 @@ void TestParallelismDetection::runOnFunction() {
   f.walk<AffineForOp>([&](AffineForOp forOp) {
     if (isLoopParallel(forOp))
       forOp.emitRemark("parallel loop");
+    else
+      forOp.emitRemark("sequential loop");
   });
 }
 

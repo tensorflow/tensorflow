@@ -969,10 +969,18 @@ void mlir::getSequentialLoops(
 bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
+  bool hasSideEffectingOps = false;
   forOp.getOperation()->walk([&](Operation *opInst) {
     if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
-      loadAndStoreOpInsts.push_back(opInst);
+      return loadAndStoreOpInsts.push_back(opInst);
+    if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
+        !isa<AffineIfOp>(opInst) && !opInst->hasNoSideEffect()) {
+      hasSideEffectingOps = true;
+    }
   });
+  // Stop early if the loop has unknown ops with side effects.
+  if (hasSideEffectingOps)
+    return false;
 
   // Dep check depth would be number of enclosing loops + 1.
   unsigned depth = getNestingDepth(*forOp.getOperation()) + 1;

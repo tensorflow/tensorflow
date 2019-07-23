@@ -1983,7 +1983,7 @@ func @fuse_across_dim_mismatch(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9x
 #map10 = (d0, d1) -> (d0 * 16 + d1)
 #map11 = (d0, d1) -> (d0 * 16 + d1)
 #map12 = (d0, d1) -> (d0 * 16 - d1 + 15)
-func @fuse_across_varying_dims_complex() {
+func @fuse_across_varying_dims_complex(%arg0: f32) {
   %c0 = constant 0 : index
   %0 = alloc() : memref<2x2x3x3x16x1xf32>
   %1 = alloc() : memref<64x9xf32>
@@ -2006,9 +2006,8 @@ func @fuse_across_varying_dims_complex() {
         %11 = affine.load %1[%10, %i2] : memref<64x9xf32>
       }
       affine.for %i5 = 0 to 16 {
-        %13 = "bar"() : () -> f32
         %14 = affine.apply #map11(%i2, %i5)
-        affine.store %13, %2[%14, %i3] : memref<144x4xf32>
+        affine.store %arg0, %2[%14, %i3] : memref<144x4xf32>
       }
     }
   }
@@ -2055,7 +2054,6 @@ func @fuse_across_varying_dims_complex() {
 // MAXIMAL-NEXT:              %{{.*}} = affine.load %{{.*}}[%{{.*}} * 16 + %{{.*}}, 0] : memref<64x1xf32>
 // MAXIMAL-NEXT:            }
 // MAXIMAL-NEXT:            affine.for %{{.*}} = 0 to 16 {
-// MAXIMAL-NEXT:              %{{.*}} = "bar"() : () -> f32
 // MAXIMAL-NEXT:              %{{.*}} = affine.apply [[MAP7]](%{{.*}}, %{{.*}})
 // MAXIMAL-NEXT:              affine.store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<144x4xf32>
 // MAXIMAL-NEXT:            }
