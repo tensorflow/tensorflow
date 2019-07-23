@@ -27,6 +27,7 @@ limitations under the License.
 #endif
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #endif
@@ -80,15 +81,9 @@ class NcclManager {
       DCHECK(tensor_stream != nullptr);
       DCHECK(nccl_stream != nullptr);
       if (input != nullptr) {
-        input_event = new se::Event(executor);
+        input_event = absl::make_unique<se::Event>(executor);
         input_event->Init();
-        tensor_stream->ThenRecordEvent(input_event);
-      }
-    }
-
-    ~Participant() {
-      if (input_event != nullptr) {
-        delete input_event;
+        tensor_stream->ThenRecordEvent(input_event.get());
       }
     }
 
@@ -119,7 +114,7 @@ class NcclManager {
 
     // Wait on this event rather than synchronizing on the entire stream.
     // This allows greater concurrency between compute and nccl streams.
-    se::Event* input_event;
+    std::unique_ptr<se::Event> input_event;
 
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only send data.
