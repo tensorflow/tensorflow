@@ -61,6 +61,11 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(model.get_layer(name='dp').name, 'dp')
 
   @keras_parameterized.run_all_keras_modes
+  def test_single_layer_in_init(self):
+    model = keras.models.Sequential(keras.layers.Dense(1))
+    self.assertLen(model.layers, 1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3
