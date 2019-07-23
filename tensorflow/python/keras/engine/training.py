@@ -366,7 +366,7 @@ class Model(network.Network):
       self.predict_function = None
 
       # Collected trainable weights, sorted in topological order.
-      self._collected_trainable_weights = self.trainable_weights
+      self._collected_trainable_weights = self._unique_trainable_weights
 
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
@@ -1477,7 +1477,7 @@ class Model(network.Network):
     # Set metric attributes on model.
     self._set_metric_attributes()
 
-    self._collected_trainable_weights = self.trainable_weights
+    self._collected_trainable_weights = self._unique_trainable_weights
 
   def _update_sample_weight_modes(self, sample_weights=None):
     """Updates sample weight modes based on training/eval inputs.
@@ -1985,7 +1985,8 @@ class Model(network.Network):
     if not hasattr(self, '_collected_trainable_weights'):
       return
 
-    if len(self.trainable_weights) != len(self._collected_trainable_weights):
+    if (len(self._unique_trainable_weights) !=
+        len(self._collected_trainable_weights)):
       logging.log_first_n(
           logging.WARN, 'Discrepancy between trainable weights and collected'
           ' trainable weights, did you set `model.trainable`'

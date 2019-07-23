@@ -2347,6 +2347,17 @@ class Layer(module.Module):
         serialization_cache))
     return fns
 
+  @property
+  def _unique_trainable_weights(self):
+    """Dedupe trainable weights while maintaining order as much as possible."""
+    trainable_weights = self.trainable_weights
+    output, seen_weights = [], set()
+    for w in trainable_weights:
+      if w not in seen_weights:
+        output.append(w)
+        seen_weights.add(w)
+    return output
+
 
 class TensorFlowOpLayer(Layer):
   """Wraps a TensorFlow Operation in a Layer.

@@ -243,7 +243,7 @@ def _process_single_batch(model,
       else:
         scaled_total_loss = total_loss
     if training:
-      trainable_weights = model.trainable_weights
+      trainable_weights = model._unique_trainable_weights
       if trainable_weights:
         grads = tape.gradient(scaled_total_loss, trainable_weights)
         if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):

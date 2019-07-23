@@ -41,6 +41,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -893,6 +894,42 @@ class TrainingTest(keras_parameterized.TestCase):
     model.train_on_batch(val_a, val_out)
     x2 = model.predict(val_a)
     self.assertAllClose(x1, x2, atol=1e-7)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_weight_deduplication(self):
+    class WatchingLayer(keras.layers.Layer):
+
+      def __init__(self, dense_to_track):
+        # This will cause the kernel and bias to be double counted, effectively
+        # doubling the learning rate if weights are not deduped.
+        self._kernel = dense_to_track.kernel
+        self._bias = dense_to_track.bias
+        super(WatchingLayer, self).__init__()
+
+    inp = keras.layers.Input(shape=(1,))
+    dense_layer = keras.layers.Dense(1)
+    dense_output = dense_layer(inp)  # This will build the dense kernel
+
+    # Deterministically set weights to make the test repeatable.
+    dense_layer.set_weights([np.ones((1, 1)), np.zeros((1,))])
+    output = WatchingLayer(dense_layer)(dense_output)
+
+    model = keras.models.Model(inp, output)
+
+    # 0.25 is the edge of the radius of convergence for the double apply case.
+    # At lr=0.24, the double apply case will very slowly descend while the
+    # correct case will drop very quickly.
+    model.compile(loss='mse', optimizer=gradient_descent.SGD(0.24),
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.ones((64 * 2,))
+    y = 4.5 * x - 3.
+
+    history = model.fit(x, y, batch_size=64, epochs=2, verbose=2)
+
+    # If the gradient apply is duplicated then the loss after 2 epochs will
+    # be ~0.15, compared to the correct answer of O(1e-7).
+    self.assertLess(history.history['loss'][-1], 1e-6)
 
   def test_logs_passed_to_callbacks(self):
     with self.cached_session():
