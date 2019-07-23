@@ -260,6 +260,7 @@ cc_library(
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
         ":partition_assignment",
+        ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
