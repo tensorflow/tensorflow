@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -994,4 +996,143 @@ TFE_TensorHandle* TFE_ConsumeInputConcreteTensorFromTraceContext(
   VLOG(1) << "Returning a new tensor handle " << ret << ": "
           << handle->DebugString();
   return ret;
+}
+
+TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
+  TF_ShapeAndTypeList* result = new TF_ShapeAndTypeList;
+  result->num_items = num_items;
+  result->items = (num_items == 0) ? nullptr : new TF_ShapeAndType[num_items]();
+  return result;
+}
+
+void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
+                                 const int64_t* dims, int num_dims) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape = shape_list->items[index];
+  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  DCHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
+  shape.num_dims = num_dims;
+  shape.dims = new int64_t[num_dims];
+  memcpy(shape.dims, dims, sizeof(int64_t) * num_dims);
+}
+
+void TF_ShapeAndTypeListSetUnknownShape(TF_ShapeAndTypeList* shape_list,
+                                        int index) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape = shape_list->items[index];
+  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  shape.num_dims = -1;
+  shape.dims = nullptr;
+}
+
+void TF_ShapeAndTypeListSetDtype(TF_ShapeAndTypeList* shape_list, int index,
+                                 TF_DataType dtype) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape_and_type = shape_list->items[index];
+  shape_and_type.dtype = dtype;
+}
+
+void TF_DeleteShapeAndTypeList(TF_ShapeAndTypeList* shape_list) {
+  if (shape_list == nullptr) return;
+  for (size_t i = 0; i < shape_list->num_items; ++i) {
+    delete[] shape_list->items[i].dims;
+  }
+  delete[] shape_list->items;
+  delete shape_list;
+}
+
+void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
+                                    int num_items) {
+  if (shape_list_array == nullptr) return;
+  for (int i = 0; i < num_items; ++i) {
+    TF_DeleteShapeAndTypeList(shape_list_array[i]);
+  }
+  delete[] shape_list_array;
+}
+
+void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
+                     TF_Tensor** input_tensors, int num_input_tensors,
+                     TF_ShapeAndTypeList* input_tensors_as_shapes,
+                     TF_ShapeAndTypeList** input_resource_shapes_and_types,
+                     TF_ShapeAndTypeList** output_shapes,
+                     TF_ShapeAndTypeList*** output_resource_shapes_and_types,
+                     TF_Status* status) {
+  using tensorflow::NodeDef;
+  using tensorflow::OpRegistrationData;
+  using tensorflow::Tensor;
+  using tensorflow::shape_inference::DimensionHandle;
+  using tensorflow::shape_inference::InferenceContext;
+  using tensorflow::shape_inference::ShapeAndType;
+  using tensorflow::shape_inference::ShapeHandle;
+
+  const int num_inputs = input_shapes->num_items;
+  NodeDef node_def;
+  node_def.set_name(tfe_op->operation.Name());
+  node_def.set_op(tfe_op->operation.Name());
+  for (int i = 0; i < num_inputs; ++i) {
+    node_def.add_input("dummy_input");
+  }
+  tfe_op->operation.Attrs().FillAttrValueMap(node_def.mutable_attr());
+
+  const tensorflow::OpRegistrationData* op_reg_data;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUp(node_def.op(), &op_reg_data);
+  if (!status->status.ok()) return;
+
+  // Create an inference context with dummy values, which will be updated later.
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &node_def, op_reg_data->op_def,
+                     std::vector<ShapeHandle>(num_inputs),
+                     std::vector<const Tensor*>(num_inputs, nullptr), {},
+                     std::vector<std::unique_ptr<std::vector<ShapeAndType>>>());
+
+  // Set input_shapes.
+  for (int i = 0; i < num_inputs; ++i) {
+    std::vector<DimensionHandle> dims;
+    const TF_ShapeAndType& input_shape = input_shapes->items[i];
+    if (input_shape.num_dims == InferenceContext::kUnknownRank) {
+      c.SetInput(i, c.UnknownShape());
+      continue;
+    }
+    for (int j = 0; j < input_shape.num_dims; ++j) {
+      dims.push_back(c.MakeDim(input_shape.dims[j]));
+    }
+    c.SetInput(i, c.MakeShape(dims));
+  }
+
+  // TODO(bgogul): Handle input_tensors.
+  // TODO(bgogul): Handle input_tensors_as_shapes.
+  // TODO(bgogul): Handle input_resource_shapes_and_types.
+
+  status->status = c.construction_status();
+  if (!status->status.ok()) return;
+
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    status->status =
+        InvalidArgument("No shape inference function exists for op '",
+                        node_def.op(), "', did you forget to define it?");
+    return;
+  }
+
+  status->status = c.Run(op_reg_data->shape_inference_fn);
+  if (!status->status.ok()) return;
+
+  // Set output_shapes.
+  TF_ShapeAndTypeList* output_shapes_result =
+      TF_NewShapeAndTypeList(c.num_outputs());
+  for (int i = 0; i < c.num_outputs(); ++i) {
+    ShapeHandle shape_handle = c.output(i);
+    TF_ShapeAndType& shape = output_shapes_result->items[i];
+    shape.num_dims = c.Rank(shape_handle);
+    if (shape.num_dims == InferenceContext::kUnknownRank) {
+      shape.dims = nullptr;
+      continue;
+    }
+    shape.dims = new int64_t[shape.num_dims];
+    for (size_t j = 0; j < shape.num_dims; ++j) {
+      shape.dims[j] = c.Value(c.Dim(shape_handle, j));
+    }
+  }
+  if (output_shapes != nullptr) *output_shapes = output_shapes_result;
+
+  // TODO(bgogul): Set output_resource_shapes_and_types.
 }
