@@ -5671,28 +5671,29 @@ def enable_eager_execution_internal(config=None,
           "tf.enable_eager_execution must be called at program startup.")
   context.default_execution_mode = context.EAGER_MODE
   # pylint: disable=protected-access
-  if context._context is None:
-    context._context = context.Context(
-        config=config,
-        device_policy=device_policy,
-        execution_mode=execution_mode,
-        server_def=server_def)
-  elif ((config is not None and config is not context._context._config) or
-        (device_policy is not None and
-         device_policy is not context._context._device_policy) or
-        (execution_mode is not None and
-         execution_mode is not context._context._execution_mode)):
-    raise ValueError(
-        "Trying to change the options of an active eager"
-        " execution. Context config: %s, specified config:"
-        " %s. Context device policy: %s, specified device"
-        " policy: %s. Context execution mode: %s, "
-        " specified execution mode %s." %
-        (context._context._config, config, context._context._device_policy,
-         device_policy, context._context._execution_mode, execution_mode))
-  else:
-    # We already created everything, so update the thread local data.
-    context._context._thread_local_data.is_eager = True
+  with context._context_lock:
+    if context._context is None:
+      context._set_context_locked(context.Context(
+          config=config,
+          device_policy=device_policy,
+          execution_mode=execution_mode,
+          server_def=server_def))
+    elif ((config is not None and config is not context._context._config) or
+          (device_policy is not None and
+           device_policy is not context._context._device_policy) or
+          (execution_mode is not None and
+           execution_mode is not context._context._execution_mode)):
+      raise ValueError(
+          "Trying to change the options of an active eager"
+          " execution. Context config: %s, specified config:"
+          " %s. Context device policy: %s, specified device"
+          " policy: %s. Context execution mode: %s, "
+          " specified execution mode %s." %
+          (context._context._config, config, context._context._device_policy,
+           device_policy, context._context._execution_mode, execution_mode))
+    else:
+      # We already created everything, so update the thread local data.
+      context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.

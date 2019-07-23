@@ -46,7 +46,8 @@ TFE_Context* GetContext(PyObject* ctx) {
   if (context == nullptr) {
     PyErr_SetString(PyExc_TypeError,
                     tensorflow::strings::StrCat(
-                        "Expecting a PyCapsule encoded context handle. Got ",
+                        "Expected context._handle to contain a PyCapsule "
+                        "encoded pointer to TFE_Context. Got ",
                         Py_TYPE(ctx)->tp_name)
                         .c_str());
   }
@@ -369,6 +370,10 @@ typedef struct EagerTensor {
   // thread-safe.
   TF_Status* status;
 
+  // The eager Context (from eager/context.py) used by this Tensor.
+  // This is currently used only to make sure context outlives TensorHandles.
+  PyObject* context;
+
   PyObject* weakreflist; /* List of weak references */
 
   // Per-instance attribute dictionary, to support monkey patching
@@ -426,6 +431,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->status = TF_NewStatus();
   self->dict = nullptr;
   self->weakreflist = nullptr;
+  self->context = nullptr;
   PyObject* value;
   PyObject* context = nullptr;
   PyObject* device = nullptr;
@@ -438,6 +444,21 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
                                    &device, &dtype, &other_value)) {
     return -1;
   }
+
+  tensorflow::Safe_PyObjectPtr context_handle(
+      PyObject_GetAttrString(context, "_handle"));
+  if (context_handle == nullptr) {
+    // Current Python code makes sure this never happens. If it does, or
+    // becomes hard to maintain, we can call the ensure_initialized() method
+    // here.
+    PyErr_SetString(
+        PyExc_TypeError,
+        "Expected `context` argument in EagerTensor constructor to have a "
+        "`_handle` field but it did not. Was eager Context initialized?");
+    return -1;
+  }
+  self->context = context;
+  Py_INCREF(self->context);
 
   if (other_value != nullptr) {
     if (!EagerTensor_CheckExact(other_value)) {
@@ -475,7 +496,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(tensorflow::ConvertToEagerTensor(
-          GetContext(context), value, desired_dtype));
+          GetContext(context_handle.get()), value, desired_dtype));
   if (handle == nullptr) return -1;
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -507,7 +528,8 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   if (TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
     // Note that this is a shallow copy and will share the underlying buffer
     // if copying to the same device.
-    handle = tensorflow::make_safe(CopyToDevice(handle.get(), context, device));
+    handle = tensorflow::make_safe(
+        CopyToDevice(handle.get(), context_handle.get(), device));
     if (handle == nullptr) return -1;
   }
   self->handle = handle.release();
@@ -540,6 +562,10 @@ void EagerTensor_dealloc(EagerTensor* self) {
     TFE_DeleteTensorHandle(self->handle);
     self->handle = nullptr;
   }
+
+  // Decref context after deleting the tensor handle.
+  Py_XDECREF(self->context);
+
   // We have the global interpreter lock, so use this chance to perform delayed
   // refcount decrements.
   tensorflow::ClearDecrefCache();
@@ -874,6 +900,13 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->handle = handle;
     t->status = TF_NewStatus();
     t->weakreflist = nullptr;
+    PyObject* context = GetPyEagerContext();
+    if (context == nullptr) {
+      LOG(ERROR) << "Cannot create an eager tensor before eager context has "
+                    "been set or after it has been deleted";
+      return nullptr;
+    }
+    t->context = context;
 
     if (!MaybeInvokeCreatedOnEagerTensorProfiler(t)) {
       return nullptr;

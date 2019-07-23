@@ -96,7 +96,6 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
   ctx.ensure_initialized()
   device = ctx.device_name
-  handle = ctx._handle  # pylint: disable=protected-access
   if isinstance(value, (float,) + six.integer_types):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
@@ -106,12 +105,12 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return ops.EagerTensor(
-          value, handle, device, dtype, tensor)
-    t = ops.EagerTensor(value, handle, device, dtype)
+          value, ctx, device, dtype, tensor)
+    t = ops.EagerTensor(value, ctx, device, dtype)
     scalar_cache[cache_key] = t
     return t
   else:
-    return ops.EagerTensor(value, handle, device, dtype)
+    return ops.EagerTensor(value, ctx, device, dtype)
 
 
 @tf_export(v1=["constant"])

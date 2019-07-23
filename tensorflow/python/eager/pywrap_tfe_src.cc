@@ -3499,3 +3499,31 @@ void TFE_Py_EnableInteractivePythonLogging() {
     TF_RegisterLogListener(PrintToPythonStdout);
   }
 }
+
+namespace {
+// weak reference to Python Context object currently active
+PyObject* weak_eager_context = nullptr;
+}  // namespace
+
+PyObject* TFE_Py_SetEagerContext(PyObject* python_context) {
+  Py_XDECREF(weak_eager_context);
+  weak_eager_context = PyWeakref_NewRef(python_context, nullptr);
+  if (weak_eager_context == nullptr) {
+    return nullptr;
+  }
+  Py_RETURN_NONE;
+}
+
+PyObject* GetPyEagerContext() {
+  if (weak_eager_context == nullptr) {
+    PyErr_SetString(PyExc_ValueError, "Python eager context is not set");
+    return nullptr;
+  }
+  PyObject* context = PyWeakref_GET_OBJECT(weak_eager_context);
+  if (context == Py_None) {
+    LOG(ERROR) << "Eager context has been destroyed";
+    return nullptr;
+  }
+  Py_INCREF(context);
+  return context;
+}

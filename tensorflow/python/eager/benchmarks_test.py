@@ -181,13 +181,12 @@ class MicroBenchmarks(test.Benchmark):
   def _benchmark_create_tensor(self, value, dtype, device):
     """Benchmark overheads of creating a Tensor object."""
     ctx = context.context()
-    handle = ctx._handle
     if device == GPU:
       # Warmup the GPU
-      ops.EagerTensor(value, context=handle, device=device)
+      ops.EagerTensor(value, context=ctx, device=device)
 
     def func():
-      ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+      ops.EagerTensor(value, context=ctx, device=device, dtype=dtype)
 
     self._run(func, 30000)
 
