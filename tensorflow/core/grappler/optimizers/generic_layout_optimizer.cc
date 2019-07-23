@@ -156,11 +156,13 @@ inline bool IsCancellableConstPermTransposeNodePair(
     const utils::MutableNodeView& fanout_transpose,
     const utils::MutableNodeView& fanin_transpose) {
   Tensor fanout_tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(fanout_transpose, &fanout_tensor)) {
+  if (!GetValueAttrFromConstInputNode(fanout_transpose, IsTranspose, 1,
+                                      &fanout_tensor)) {
     return false;
   }
   Tensor fanin_tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(fanin_transpose, &fanin_tensor)) {
+  if (!GetValueAttrFromConstInputNode(fanin_transpose, IsTranspose, 1,
+                                      &fanin_tensor)) {
     return false;
   }
   if (fanout_tensor.NumElements() != fanin_tensor.NumElements()) {
@@ -255,6 +257,87 @@ Status EraseCancellableNodes(TransposeContext* context) {
   return mutation->Apply();
 }
 
+// TODO(ezhulenev): This is a temporary workaround for a graph pattern
+// in Resnet models. We should be able to push down transpose nodes across Pad
+// and many other ops, and then rely on cancellation to remove them.
+//
+// From: Transpose[NHWC->NCHW] -> Pad[paddings] -> Transpose[NCHW->NHWC]
+// To:   Pad[Permute(paddings)]
+Status EraseCancellableNodesAroundPad(TransposeContext* context) {
+  utils::MutableGraphView* graph_view = context->graph_view.get();
+  utils::Mutation* mutation = graph_view->GetMutationBuilder();
+
+  const int num_nodes = graph_view->NumNodes();
+  for (int i = 0; i < num_nodes; ++i) {
+    // Transpose node after Pad.
+    auto* transpose_after = graph_view->GetNode(i);
+    if (!IsTranspose(*transpose_after->node())) continue;
+
+    // Pad node.
+    const auto& transpose_after_fanin = transpose_after->GetRegularFanin(0);
+    auto* pad = transpose_after_fanin.node_view();
+    if (!IsPad(*pad->node())) continue;
+
+    // Transpose node before Pad.
+    const auto& pad_fanin_0 = pad->GetRegularFanin(0);
+    auto* transpose_before = pad_fanin_0.node_view();
+    if (!IsTranspose(*transpose_before->node())) continue;
+
+    // Transpose before output used once by the Pad node.
+    if (transpose_before->NumRegularFanouts() != 1) continue;
+
+    // Transposes are cancellable.
+    if (!IsCancellableConstPermTransposeNodePair(*transpose_after,
+                                                 *transpose_before))
+      continue;
+
+    // Paddings are known constant values.
+    Tensor paddings_t;
+    if (!GetValueAttrFromConstInputNode(*pad, IsPad, 1, &paddings_t)) continue;
+
+    // Paddings value used once by the pad node only.
+    const auto& pad_fanin_1 = pad->GetRegularFanin(1);
+    auto* paddings = pad_fanin_1.node_view();
+    if (paddings->NumRegularFanouts() != 1) continue;
+
+    // Get permutation after the padding.
+    Tensor permute_t;
+    if (!GetValueAttrFromConstInputNode(*transpose_after, IsTranspose, 1,
+                                        &permute_t))
+      continue;
+
+    VLOG(0) << "Cancel transpose node pair around pad node:"
+            << " transpose_before=" << transpose_before->node()->name()
+            << " pad=" << pad->node()->name()
+            << " transpose_after=" << transpose_after->node()->name();
+
+    // Permute paddings in place according to permutation in second transpose.
+    auto permutation_s = absl::Span<int32>(permute_t.flat<int32>().data(),
+                                           permute_t.NumElements());
+    auto paddings_s = absl::Span<int32>(paddings_t.flat<int32>().data(),
+                                        paddings_t.NumElements());
+    TF_RETURN_IF_ERROR(PermuteDouble(permutation_s, &paddings_s));
+
+    // Update paddings constant value with a permuted tensor.
+    AttrValue permuted_paddings_tensor;
+    paddings_t.AsProtoTensorContent(permuted_paddings_tensor.mutable_tensor());
+    mutation->AddOrUpdateNodeAttr(paddings, "value", permuted_paddings_tensor);
+
+    // Transform Transpose nodes into Identity nodes.
+    const auto transpose_to_identity =
+        [&mutation](utils::MutableNodeView* transpose) -> void {
+      mutation->UpdateNodeOp(transpose, "Identity");
+      mutation->RemoveNodeAttr(transpose, "Tperm");
+      mutation->RemoveRegularFanin(transpose, 1);
+    };
+
+    transpose_to_identity(transpose_before);
+    transpose_to_identity(transpose_after);
+  }
+
+  return mutation->Apply();
+}
+
 Status EraseOutputShapeAttrs(TransposeContext* context) {
   utils::MutableGraphView* graph_view = context->graph_view.get();
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
@@ -284,6 +367,8 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
         "GPU.");
   }
 
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
+
   TransposeContext context;
   TF_RETURN_IF_ERROR(
       TransposeContext::InitializeTransposeContext(item, cluster, &context));
@@ -295,9 +380,10 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
 
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
-  if (context.graph.node_size() > context.num_nodes) {
+  if (context.graph.node_size() > context.num_nodes || is_aggressive) {
     TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
     TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+    TF_RETURN_IF_ERROR(EraseCancellableNodesAroundPad(&context));
     // TODO(lyandy): Remove sorting once other optimizers are migrated to using
     // `utils::GraphView`.
     TF_RETURN_IF_ERROR(
