@@ -4004,7 +4004,7 @@ def polyval(coeffs, x, name=None):
       p = c + p * x
     return p
 
-@tf_export("math.reciprocal_no_nan", "reciprocal_no_nan")
+@tf_export("math.reciprocal_no_nan")
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
   If a particular element is zero, the reciprocal for that element is
