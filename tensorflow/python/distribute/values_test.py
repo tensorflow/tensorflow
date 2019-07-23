@@ -29,6 +29,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -41,9 +42,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model.model_utils import mode_keys
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -662,6 +665,28 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
         variable_scope.get_variable(
             name="testVar", initializer=1., use_resource=True)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]))
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
+    v = [None]
+    @def_function.function
+    def step():
+      def f():
+        if v[0] is None:
+          v[0] = variables_lib.Variable(random_ops.random_normal([]))
+      distribution.experimental_run_v2(f)
+
+    context.set_global_seed(None)
+    step()
+    vals = self.evaluate(v[0].values)
+    self.assertAllEqual(vals[0], vals[1])
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -1031,6 +1056,9 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
+      if isinstance(distribution, _TPU_STRATEGIES):
+        resolver = tpu_cluster_resolver.TPUClusterResolver('')
+        tpu_strategy_util.initialize_tpu_system(resolver)
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1064,6 +1092,24 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "Could not convert from .* VariableAggregation\\.NONE"):
       self.evaluate(v.read_value())
+
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
+    if not context.executing_eagerly(): self.skipTest("eager only")
+
+    v = [None]
+    @def_function.function
+    def step():
+      def f():
+        if v[0] is None:
+          v[0] = variables_lib.Variable(
+              random_ops.random_normal([]),
+              synchronization=variables_lib.VariableSynchronization.ON_READ)
+      distribution.experimental_run_v2(f)
+
+    context.set_global_seed(None)
+    step()
+    vals = self.evaluate(v[0].values)
+    self.assertAllEqual(vals[0], vals[1])
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):
