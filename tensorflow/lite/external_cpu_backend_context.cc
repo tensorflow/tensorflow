@@ -22,7 +22,7 @@ TfLiteStatus RefreshExternalCpuBackendContext(TfLiteContext* context) {
       context->GetExternalContext(context, kTfLiteCpuBackendContext));
   if (external_context && external_context->internal_backend_context() &&
       context->recommended_num_threads != -1) {
-    external_context->internal_backend_context()->set_max_num_threads(
+    external_context->internal_backend_context()->SetMaxNumThreads(
         context->recommended_num_threads);
   }
   return kTfLiteOk;

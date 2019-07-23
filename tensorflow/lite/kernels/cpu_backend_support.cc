@@ -46,8 +46,7 @@ CpuBackendContext* GetFromContext(TfLiteContext* context) {
     // that's wrapped inside ExternalCpuBackendContext.
     cpu_backend_context = new CpuBackendContext();
     if (context->recommended_num_threads != -1) {
-      cpu_backend_context->set_max_num_threads(
-          context->recommended_num_threads);
+      cpu_backend_context->SetMaxNumThreads(context->recommended_num_threads);
     }
     external_context->set_internal_backend_context(
         std::unique_ptr<TfLiteInternalBackendContext>(cpu_backend_context));
