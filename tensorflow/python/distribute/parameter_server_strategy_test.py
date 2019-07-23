@@ -21,17 +21,19 @@ from __future__ import print_function
 import copy
 import threading
 from absl.testing import parameterized
-from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
@@ -70,20 +72,23 @@ def create_test_objects(cluster_spec=None,
   sess_config = sess_config or config_pb2.ConfigProto()
   if num_gpus is None:
     num_gpus = context.num_gpus()
-
-  distribution = parameter_server_strategy.ParameterServerStrategy(
-      num_gpus_per_worker=num_gpus)
-
-  if task_type:
-    sess_config = copy.deepcopy(sess_config)
-    distribution.configure(
-        session_config=sess_config,
-        cluster_spec=cluster_spec,
+  if cluster_spec and task_type and task_id is not None:
+    cluster_resolver = SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type=task_type,
-        task_id=task_id)
+        task_id=task_id,
+        num_accelerators={'GPU': num_gpus})
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        cluster_resolver)
     target = 'grpc://' + cluster_spec[WORKER][task_id]
   else:
+    distribution = (
+        central_storage_strategy.CentralStorageStrategy._from_num_gpus(num_gpus)
+    )
     target = ''
+
+  sess_config = copy.deepcopy(sess_config)
+  sess_config = distribution.update_config_proto(sess_config)
 
   return distribution, target, sess_config
 
@@ -729,46 +734,6 @@ class ParameterServerStrategyTest(
 
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceSum(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_sum(distribution)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceSumGradients(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_sum_gradients(distribution)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceSumGradientTape(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_sum_gradient_tape(distribution)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceMean(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_mean(distribution)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceMeanGradients(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_mean_gradients(distribution)
-
-  @combinations.generate(combinations.combine(required_gpus=[2]))
-  def testAllReduceMeanGradientTape(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_all_reduce_mean_gradient_tape(distribution)
-
-  def testTrainableVariables(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy()
-    self._test_trainable_variable(distribution)
 
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
