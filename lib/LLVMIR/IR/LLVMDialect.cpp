@@ -703,6 +703,69 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
 }
 
 //===----------------------------------------------------------------------===//
+// Builder and verifier for LLVM::LLVMFuncOp.
+//===----------------------------------------------------------------------===//
+
+void LLVMFuncOp::build(Builder *builder, OperationState *result, StringRef name,
+                       LLVMType type, ArrayRef<NamedAttribute> attrs,
+                       ArrayRef<NamedAttributeList> argAttrs) {
+  result->addRegion();
+  result->addAttribute(SymbolTable::getSymbolAttrName(),
+                       builder->getStringAttr(name));
+  result->addAttribute("type", builder->getTypeAttr(type));
+  result->attributes.append(attrs.begin(), attrs.end());
+  if (argAttrs.empty())
+    return;
+
+  unsigned numInputs = type.getUnderlyingType()->getFunctionNumParams();
+  assert(numInputs == argAttrs.size() &&
+         "expected as many argument attribute lists as arguments");
+  SmallString<8> argAttrName;
+  for (unsigned i = 0; i < numInputs; ++i)
+    if (auto argDict = argAttrs[i].getDictionary())
+      result->addAttribute(getArgAttrName(i, argAttrName), argDict);
+}
+
+// Hook for OpTrait::FunctionLike, called after verifying that the 'type'
+// attribute is present.  This can check for preconditions of the
+// getNumArguments hook not failing.
+LogicalResult LLVMFuncOp::verifyType() {
+  auto llvmType = getTypeAttr().getValue().dyn_cast_or_null<LLVMType>();
+  if (!llvmType || !llvmType.getUnderlyingType()->isFunctionTy())
+    return emitOpError("requires '" + getTypeAttrName() +
+                       "' attribute of wrapped LLVM function type");
+
+  return success();
+}
+
+// Hook for OpTrait::FunctionLike, returns the number of function arguments.
+// Depends on the type attribute being correct as checked by verifyType
+unsigned LLVMFuncOp::getNumFuncArguments() {
+  return getType().getUnderlyingType()->getFunctionNumParams();
+}
+
+static LogicalResult verify(LLVMFuncOp op) {
+  if (op.isExternal())
+    return success();
+
+  auto *funcType = cast<llvm::FunctionType>(op.getType().getUnderlyingType());
+  unsigned numArguments = funcType->getNumParams();
+  Block &entryBlock = op.front();
+  for (unsigned i = 0; i < numArguments; ++i) {
+    Type argType = entryBlock.getArgument(i)->getType();
+    auto argLLVMType = argType.dyn_cast<LLVMType>();
+    if (!argLLVMType)
+      return op.emitOpError("entry block argument #")
+             << i << " is not of LLVM type";
+    if (funcType->getParamType(i) != argLLVMType.getUnderlyingType())
+      return op.emitOpError("the type of entry block argument #")
+             << i << " does not match the function signature";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 

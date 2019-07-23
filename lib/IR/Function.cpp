@@ -57,7 +57,7 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs) {
   result->addAttribute(SymbolTable::getSymbolAttrName(),
                        builder->getStringAttr(name));
-  result->addAttribute("type", builder->getTypeAttr(type));
+  result->addAttribute(getTypeAttrName(), builder->getTypeAttr(type));
   result->attributes.append(attrs.begin(), attrs.end());
   result->addRegion();
 }
@@ -165,7 +165,7 @@ ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the function signature.
   if (parseFunctionSignature(parser, type, entryArgs, argAttrs))
     return failure();
-  result->addAttribute("type", builder.getTypeAttr(type));
+  result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
 
   // If function attributes are present, parse them.
   if (succeeded(parser->parseOptionalKeyword("attributes")))
@@ -219,7 +219,7 @@ void FuncOp::print(OpAsmPrinter *p) {
 
   // Print out function attributes, if present.
   SmallVector<StringRef, 2> ignoredAttrs = {SymbolTable::getSymbolAttrName(),
-                                            "type"};
+                                            getTypeAttrName()};
 
   // Ignore any argument attributes.
   std::vector<SmallString<8>> argAttrStorage;
@@ -242,34 +242,15 @@ void FuncOp::print(OpAsmPrinter *p) {
 }
 
 LogicalResult FuncOp::verify() {
-  auto fnInputTypes = getType().getInputs();
-  auto *ctx = getContext();
-
-  /// Verify that all of the argument attributes are dialect attributes.
-  for (unsigned i = 0, e = fnInputTypes.size(); i != e; ++i) {
-    for (auto attr : getArgAttrs(i)) {
-      if (!attr.first.strref().contains('.'))
-        return emitOpError("arguments may only have dialect attributes");
-      auto dialectNamePair = attr.first.strref().split('.');
-      if (auto *dialect = ctx->getRegisteredDialect(dialectNamePair.first)) {
-        if (failed(dialect->verifyRegionArgAttribute(*this, /*regionIndex=*/0,
-                                                     /*argIndex=*/i, attr)))
-          return failure();
-      }
-    }
-  }
-
   // If this function is external there is nothing to do.
   if (isExternal())
     return success();
 
   // Verify that the argument list of the function and the arg list of the entry
-  // block line up.
+  // block line up.  The trait already verified that the number of arguments is
+  // the same between the signature and the block.
+  auto fnInputTypes = getType().getInputs();
   Block &entryBlock = front();
-  if (fnInputTypes.size() != entryBlock.getNumArguments())
-    return emitOpError("entry block must have ")
-           << fnInputTypes.size() << " arguments to match function signature";
-
   for (unsigned i = 0, e = entryBlock.getNumArguments(); i != e; ++i)
     if (fnInputTypes[i] != entryBlock.getArgument(i)->getType())
       return emitOpError("type of entry block argument #")
@@ -278,17 +259,6 @@ LogicalResult FuncOp::verify() {
              << "function signature(" << fnInputTypes[i] << ')';
 
   return success();
-}
-
-/// Returns the name of this function.
-StringRef FuncOp::getName() {
-  return getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()).getValue();
-}
-
-/// Set the name of this function.
-void FuncOp::setName(StringRef name) {
-  return setAttr(SymbolTable::getSymbolAttrName(),
-                 StringAttr::get(name, getContext()));
 }
 
 /// Add an entry block to an empty function, and set up the block arguments
@@ -314,14 +284,6 @@ void FuncOp::cloneInto(FuncOp dest, BlockAndValueMapping &mapper) {
 
   // Clone the body.
   getBody().cloneInto(&dest.getBody(), mapper);
-}
-
-/// Delete all blocks from this function.
-void FuncOp::eraseBody() {
-  // First, drop all references in the blocks because they may point to values
-  // defined in the dominating blocks.
-  getBody().dropAllReferences();
-  getBody().getBlocks().clear();
 }
 
 /// Create a deep copy of this function and all of its blocks, remapping
@@ -361,59 +323,4 @@ FuncOp FuncOp::clone(BlockAndValueMapping &mapper) {
 FuncOp FuncOp::clone() {
   BlockAndValueMapping mapper;
   return clone(mapper);
-}
-
-//===----------------------------------------------------------------------===//
-// Function Argument Attribute.
-//===----------------------------------------------------------------------===//
-
-/// Set the attributes held by the argument at 'index'.
-void FuncOp::setArgAttrs(unsigned index, ArrayRef<NamedAttribute> attributes) {
-  assert(index < getNumArguments() && "invalid argument number");
-  SmallString<8> nameOut;
-  getArgAttrName(index, nameOut);
-
-  if (attributes.empty())
-    return (void)removeAttr(nameOut);
-  setAttr(nameOut, DictionaryAttr::get(attributes, getContext()));
-}
-
-void FuncOp::setArgAttrs(unsigned index, NamedAttributeList attributes) {
-  assert(index < getNumArguments() && "invalid argument number");
-  SmallString<8> nameOut;
-  if (auto newAttr = attributes.getDictionary())
-    return setAttr(getArgAttrName(index, nameOut), newAttr);
-  removeAttr(getArgAttrName(index, nameOut));
-}
-
-/// If the an attribute exists with the specified name, change it to the new
-/// value. Otherwise, add a new attribute with the specified name/value.
-void FuncOp::setArgAttr(unsigned index, Identifier name, Attribute value) {
-  auto curAttr = getArgAttrDict(index);
-  NamedAttributeList attrList(curAttr);
-  attrList.set(name, value);
-
-  // If the attribute changed, then set the new arg attribute list.
-  if (curAttr != attrList.getDictionary())
-    setArgAttrs(index, attrList);
-}
-
-/// Remove the attribute 'name' from the argument at 'index'.
-NamedAttributeList::RemoveResult FuncOp::removeArgAttr(unsigned index,
-                                                       Identifier name) {
-  // Build an attribute list and remove the attribute at 'name'.
-  NamedAttributeList attrList(getArgAttrDict(index));
-  auto result = attrList.remove(name);
-
-  // If the attribute was removed, then update the argument dictionary.
-  if (result == NamedAttributeList::RemoveResult::Removed)
-    setArgAttrs(index, attrList);
-  return result;
-}
-
-/// Returns the attribute entry name for the set of argument attributes at index
-/// 'arg'.
-StringRef FuncOp::getArgAttrName(unsigned arg, SmallVectorImpl<char> &out) {
-  out.clear();
-  return ("arg" + Twine(arg)).toStringRef(out);
 }

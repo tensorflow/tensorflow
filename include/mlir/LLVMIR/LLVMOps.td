@@ -302,6 +302,42 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", []> {
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
+def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
+      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
+  let summary = "LLVM dialect function, has wrapped LLVM IR function type";
+
+  let regions = (region AnyRegion:$body);
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState *result, StringRef name, "
+              "LLVMType type, ArrayRef<NamedAttribute> attrs, "
+              "ArrayRef<NamedAttributeList> argAttrs = {}">
+  ];
+
+  let extraClassDeclaration = [{
+    LLVMType getType() {
+      return getAttrOfType<TypeAttr>(getTypeAttrName())
+          .getValue().cast<LLVMType>();
+    }
+    bool isVarArg() {
+      return getType().getUnderlyingType()->isFunctionVarArg();
+    }
+
+    // Hook for OpTrait::FunctionLike, returns the number of function arguments.
+    // Depends on the type attribute being correct as checked by verifyType.
+    unsigned getNumFuncArguments();
+
+    // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
+    // attribute is present.  This can check for preconditions of the
+    // getNumArguments hook not failing.
+    LogicalResult verifyType();
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>,
                    LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);"> {
   let parser = [{ return parseUndefOp(parser, result); }];
