@@ -158,6 +158,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "depthwise_conv_test_lib",
+    testonly = 1,
+    srcs = ["depthwise_conv_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":depthwise_conv",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "depthwise_conv_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":depthwise_conv_test_lib"],
+)
+
 cc_library(
     name = "elementwise",
     srcs = ["elementwise.cc"],
