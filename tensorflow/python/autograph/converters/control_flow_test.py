@@ -39,7 +39,7 @@ class ControlFlowTest(converter_testing.TestCase):
     if not symbols:
       symbols = {}
     with self.converted(test_fn, control_flow, symbols,
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       self.assertAllEqual(self.evaluate(result.test_fn(*inputs)), expected)
 
   @test_util.run_deprecated_v1
