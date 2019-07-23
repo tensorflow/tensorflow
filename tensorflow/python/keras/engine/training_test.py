@@ -438,7 +438,7 @@ class TrainingTest(keras_parameterized.TestCase):
     with self.assertRaises(ValueError):
       model.train_on_batch({'input_a': input_a_np},
                            [output_d_np, output_e_np])
-    with self.assertRaises(AttributeError):
+    with self.assertRaises(ValueError):
       model.fit(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
           epochs=1,
@@ -446,7 +446,7 @@ class TrainingTest(keras_parameterized.TestCase):
           verbose=0)
     with self.assertRaises(ValueError):
       model.train_on_batch([input_a_np], [output_d_np, output_e_np])
-    with self.assertRaises(AttributeError):
+    with self.assertRaises(ValueError):
       model.train_on_batch(1, [output_d_np, output_e_np])
     with self.assertRaises(ValueError):
       model.train_on_batch(input_a_np, [output_d_np, output_e_np])

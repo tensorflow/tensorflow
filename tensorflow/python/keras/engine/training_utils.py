@@ -435,6 +435,10 @@ def standardize_single_array(x, expected_shape=None):
   if composite_tensor_utils.is_composite_or_composite_value(x):
     return x
 
+  if isinstance(x, int):
+    raise ValueError(
+        'Expected an array data type but received an integer: {}'.format(x))
+
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
