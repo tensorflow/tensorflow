@@ -92,7 +92,7 @@ versions {
 }
 
 # CHECK:       func @main() {
-# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", dtype = "tfdtype$DT_INT32", name = "Empty/shape", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> (tensor<2xi32>, !_tf.control)
+# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", dtype = "tfdtype$DT_INT32", name = "Empty/shape", value = dense<128> : tensor<2xi32>} : () -> (tensor<2xi32>, !_tf.control)
 # CHECK-NEXT:    %1:2 = "_tf.Empty"(%0#0) {device = "/job:localhost/replica:0/task:0/device:TPU:0", dtype = "tfdtype$DT_BFLOAT16", init = false, name = "Empty"} : (tensor<2xi32>) -> (tensor<128x128xbf16>, !_tf.control)
 # CHECK-NEXT:    %2 = "_tf._Send"(%1#0) {T = "tfdtype$DT_BFLOAT16", client_terminated = false, device = "/job:localhost/replica:0/task:0/device:TPU:0", name = "Empty/_0", recv_device = "/job:localhost/replica:0/task:0/device:CPU:0", send_device = "/job:localhost/replica:0/task:0/device:TPU:0", send_device_incarnation = 1 : i64, tensor_name = "edge_5_Empty"} : (tensor<128x128xbf16>) -> !_tf.control
 # CHECK-NEXT:    return

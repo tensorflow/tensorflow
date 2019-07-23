@@ -127,6 +127,28 @@ ConvertToDenseElementsAttr(
   return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(buff));
 }
 
+// Convert a TensorFlow tensor from its raw serialization into a
+// DenseElementAttr. This is a wrapper around mlir::DenseElementsAttr that
+// creates a temporary copy of the data for satisfying strict aliasing
+// defensively. TODO(aminim): this extra copy should not be needed,
+// DenseElementAttr will perform a similar copy internally.
+// Template parameter `T` must match the element type of the `type` argument
+// (this is checked in DenseElementsAttr::get()).
+template <typename T>
+mlir::DenseElementsAttr ConvertToDenseElementsAttr(const absl::Cord& values,
+                                                   ShapedType type,
+                                                   Builder* builder) {
+  DCHECK_EQ((values.size() % sizeof(T)), 0)
+      << "unexpected size vs elt type mismatch";
+  int n_elements = values.size() / sizeof(T);
+  auto data = absl::make_unique<T[]>(n_elements);
+  // This assumes that the endianess conversion was handled when loading the
+  // tensor in memory.
+  values.CopyToArray(reinterpret_cast<char*>(data.get()));
+  return mlir::DenseElementsAttr::get(
+      type, llvm::makeArrayRef(data.get(), n_elements));
+}
+
 // Converts an TensorFlow tensor proto with DT_FLOAT data type into an MLIR
 // elements attribute.
 StatusOr<ElementsAttr> ConvertFloatTensor(const TensorProto& input_tensor,
@@ -141,6 +163,9 @@ StatusOr<ElementsAttr> ConvertFloatTensor(const TensorProto& input_tensor,
     return ConvertToDenseElementsAttr<float, float>(input_tensor.float_val(),
                                                     type, builder);
   }
+  auto raw_data = input_tensor.tensor_content();
+  if (raw_data.size() == type.getSizeInBits() / 8)
+    return ConvertToDenseElementsAttr<float>(raw_data, type, builder);
   return ConvertToOpaqueElementsAttr(input_tensor, type, builder);
 }
 
@@ -156,9 +181,13 @@ StatusOr<ElementsAttr> ConvertIntTensor(const TensorProto& input_tensor,
   // set.
   auto repeated_val_size = input_tensor.int_val_size();
   if (repeated_val_size == 1 || repeated_val_size == type.getNumElements()) {
-    return ConvertToDenseElementsAttr<int, T>(input_tensor.int_val(), type,
-                                              builder);
+    return ConvertToDenseElementsAttr<int32_t, T>(input_tensor.int_val(), type,
+                                                  builder);
   }
+  auto raw_data = input_tensor.tensor_content();
+  if (raw_data.size() == type.getSizeInBits() / 8)
+    return ConvertToDenseElementsAttr<int32_t>(raw_data, type, builder);
+
   return ConvertToOpaqueElementsAttr(input_tensor, type, builder);
 }
 
@@ -177,6 +206,9 @@ StatusOr<ElementsAttr> ConvertInt64Tensor(const TensorProto& input_tensor,
                                       uint64_t>(input_tensor.int64_val(), type,
                                                 builder);
   }
+  auto raw_data = input_tensor.tensor_content();
+  if (raw_data.size() == type.getSizeInBits() / 8)
+    return ConvertToDenseElementsAttr<int64_t>(raw_data, type, builder);
   return ConvertToOpaqueElementsAttr(input_tensor, type, builder);
 }
 
