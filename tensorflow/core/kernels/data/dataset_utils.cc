@@ -246,68 +246,14 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 
 namespace {
 
-uint64 HashAttr(const FunctionDefLibrary& library, const string& attr_key,
-                const AttrValue& attr_value) {
-  uint64 attr_hash = 0;
-  if (attr_value.has_func()) {
-    for (const auto& func : library.function()) {
-      if (func.signature().name() == attr_value.func().name()) {
-        attr_hash = Hash64CombineUnordered(
-            attr_hash,
-            Hash64(absl::StrCat(attr_key, "=",
-                                HashSubgraphFunction(library, &func))));
-        break;
-      }
-    }
-  } else {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, Hash64(absl::StrCat(attr_key, "=",
-                                       DeterministicProtoHash64(attr_value))));
-  }
-
-  return attr_hash;
+uint64 DefaultDependencyLoopNodeHash() {
+  static const uint64 hash = Hash64("DependencyLoopNode");
+  return hash;
 }
 
-uint64 HashSubgraph(const grappler::GraphView& g, const NodeDef* node) {
-  uint64 input_hash = 0;
-  uint64 control_dep_hash = 0;
-
-  for (int i = 0; i < node->input_size(); ++i) {
-    DCHECK_GT(node->input(i).length(), 0);
-    if (node->input(i)[0] == '^') {
-      // TODO(frankchn): Investigate if control dependencies are necessary
-      // inputs to the hash.
-      // Control dependency node names start with '^', and order of appearance
-      // for the control dependencies does not matter.
-      control_dep_hash = Hash64CombineUnordered(
-          control_dep_hash,
-          HashSubgraph(g, g.GetNode(node->input(i).substr(1))));
-    } else {
-      // The output port is significant and is optionally delimited by a ':'
-      // for non-zero ports.
-      std::pair<std::string, std::string> node_spec =
-          absl::StrSplit(node->input(i), absl::MaxSplits(':', 1));
-      // TODO(frankchn): Cache hashes if possible.
-      uint64 child_node_hash = HashSubgraph(g, g.GetNode(node_spec.first));
-      uint64 child_port_hash = Hash64(node_spec.second);
-      input_hash = Hash64Combine(
-          input_hash, Hash64Combine(child_node_hash, child_port_hash));
-    }
-  }
-
-  uint64 op_hash = Hash64(node->op());
-
-  uint64 attr_hash = 0;
-  for (const auto& attr : node->attr()) {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(g.graph()->library(), attr.first, attr.second));
-  }
-
-  uint64 device_hash = Hash64(node->device());
-
-  return Hash64Combine(
-      Hash64Combine(attr_hash, op_hash),
-      Hash64Combine(device_hash, Hash64Combine(input_hash, control_dep_hash)));
+uint64 DefaultDependencyLoopFnHash() {
+  static const uint64 hash = Hash64("DependencyLoopFn");
+  return hash;
 }
 
 void ClearOpDefForHashing(OpDef* op) {
@@ -324,18 +270,144 @@ void ClearOpDefForHashing(OpDef* op) {
   }
 }
 
-}  // namespace
+// forward declaration for use in HashAttr.
+uint64 HashSubgraphFunctionImpl(
+    const FunctionDefLibrary& library, const FunctionDef* f,
+    std::vector<std::string>* visited,
+    absl::flat_hash_map<std::string, uint64>* cache);
 
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f) {
+// Produces a hash of a attribute from an op or a function. Since attributes
+// may refer to functions present in the graph, we may need to hash the function
+// referred to by the attribute, and thus we need the FunctionDefLibrary.
+uint64 HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
+                const AttrValue& attr_value, std::vector<std::string>* visited,
+                absl::flat_hash_map<std::string, uint64>* cache) {
+  uint64 attr_hash = 0;
+  if (attr_value.has_func()) {
+    for (const auto& func : library.function()) {
+      if (func.signature().name() == attr_value.func().name()) {
+        attr_hash = Hash64CombineUnordered(
+            attr_hash,
+            Hash64(absl::StrCat(
+                attr_key, "=",
+                HashSubgraphFunctionImpl(library, &func, visited, cache))));
+        break;
+      }
+    }
+  } else {
+    attr_hash = Hash64CombineUnordered(
+        attr_hash, Hash64(absl::StrCat(attr_key, "=",
+                                       DeterministicProtoHash64(attr_value))));
+  }
+
+  return attr_hash;
+}
+
+// This function hashes a subgraph (rooted at node) by traversing all possible
+// dependency paths from that node.
+uint64 HashSubgraphImpl(const grappler::GraphView& g, const NodeDef* node,
+                        std::vector<std::string>* visited,
+                        absl::flat_hash_map<std::string, uint64>* cache) {
+  uint64 input_hash = 0;
+  uint64 control_dep_hash = 0;
+
+  std::string canonical_node_name = absl::StrCat("node-", node->name());
+  auto it = cache->find(canonical_node_name);
+  if (it != cache->end()) {
+    return it->second;
+  }
+
+  uint64 op_hash = Hash64(node->op());
+
+  // Checks to make sure we won't get stuck in an infinite loop (especially in
+  // loops with control dependencies).
+  for (const std::string& visited_node_name : *visited) {
+    if (visited_node_name == canonical_node_name) {
+      uint64 final_hash =
+          Hash64Combine(DefaultDependencyLoopNodeHash(), op_hash);
+      (*cache)[canonical_node_name] = final_hash;
+      return final_hash;
+    }
+  }
+  visited->push_back(canonical_node_name);
+
+  for (int i = 0; i < node->input_size(); ++i) {
+    DCHECK_GT(node->input(i).length(), 0);
+    if (node->input(i)[0] == '^') {
+      // TODO(frankchn): Investigate if control dependencies are necessary
+      // inputs to the hash.
+      // Control dependency node names start with '^', and order of appearance
+      // for the control dependencies does not matter.
+      control_dep_hash = Hash64CombineUnordered(
+          control_dep_hash,
+          HashSubgraphImpl(g, g.GetNode(node->input(i).substr(1)), visited,
+                           cache));
+    } else {
+      // The output port is significant and is optionally delimited by a ':'
+      // for non-zero ports.
+      std::pair<std::string, std::string> node_spec =
+          absl::StrSplit(node->input(i), absl::MaxSplits(':', 1));
+      uint64 child_node_hash =
+          HashSubgraphImpl(g, g.GetNode(node_spec.first), visited, cache);
+      uint64 child_port_hash = Hash64(node_spec.second);
+      input_hash = Hash64Combine(
+          input_hash, Hash64Combine(child_node_hash, child_port_hash));
+    }
+  }
+
+  uint64 attr_hash = 0;
+  for (const auto& attr : node->attr()) {
+    attr_hash = Hash64CombineUnordered(
+        attr_hash, HashAttr(g.graph()->library(), attr.first, attr.second,
+                            visited, cache));
+  }
+
+  uint64 device_hash = Hash64(node->device());
+
+  uint64 final_hash = Hash64Combine(
+      Hash64Combine(attr_hash, op_hash),
+      Hash64Combine(device_hash, Hash64Combine(input_hash, control_dep_hash)));
+
+  (*cache)[canonical_node_name] = final_hash;
+  visited->pop_back();
+
+  return final_hash;
+}
+
+// This function hashes a function by traversing all possible dependency paths
+// from all output nodes declared by the function in its definition.
+uint64 HashSubgraphFunctionImpl(
+    const FunctionDefLibrary& library, const FunctionDef* f,
+    std::vector<std::string>* visited,
+    absl::flat_hash_map<std::string, uint64>* cache) {
+  std::string canonical_function_name =
+      absl::StrCat("function-", f->signature().name());
+
+  auto it = cache->find(canonical_function_name);
+  if (it != cache->end()) {
+    return it->second;
+  }
+
   OpDef op = f->signature();
   ClearOpDefForHashing(&op);
   uint64 signature_hash = OpDefHash(op);
 
+  // Checks to make sure we won't get stuck in an infinite loop (especially when
+  // functions depend on other function ops as a control dependency).
+  for (const std::string& visited_node_name : *visited) {
+    if (visited_node_name == canonical_function_name) {
+      uint64 final_hash =
+          Hash64Combine(DefaultDependencyLoopFnHash(), signature_hash);
+      (*cache)[canonical_function_name] = final_hash;
+      return final_hash;
+    }
+  }
+  visited->push_back(canonical_function_name);
+
   uint64 attr_hash = 0;
   for (const auto& attr : f->attr()) {
     attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(library, attr.first, attr.second));
+        attr_hash, HashAttr(library, attr.first, attr.second, visited, cache));
   }
 
   uint64 arg_attr_hash = 0;
@@ -343,8 +415,8 @@ uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
     for (const auto& attr : arg_attr.second.attr()) {
       arg_attr_hash = Hash64CombineUnordered(
           arg_attr_hash,
-          Hash64Combine(arg_attr.first,
-                        HashAttr(library, attr.first, attr.second)));
+          Hash64Combine(arg_attr.first, HashAttr(library, attr.first,
+                                                 attr.second, visited, cache)));
     }
   }
 
@@ -359,6 +431,8 @@ uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
     node_graph_node->set_name(input_arg.name());
     node_graph_node->set_op("_Retval");
   }
+  *(node_graph.mutable_library()) = library;
+
   grappler::GraphView node_gv(&node_graph);
 
   // TODO(frankchn): Investigate whether we need to hash the name of the
@@ -371,7 +445,8 @@ uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
     // For every return value, we need to hash the output node (and the subgraph
     // rooted at the output node) to ensure that the computation graph that
     // ends at the output node has not changed.
-    uint64 node_hash = HashSubgraph(node_gv, node_gv.GetNode(node_spec.first));
+    uint64 node_hash = HashSubgraphImpl(
+        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
     uint64 node_port_hash = Hash64(node_spec.second);
 
     ret_hash = Hash64CombineUnordered(
@@ -383,7 +458,9 @@ uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
   for (const auto& ret : f->control_ret()) {
     std::pair<std::string, std::string> node_spec =
         absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
-    uint64 node_hash = HashSubgraph(node_gv, node_gv.GetNode(node_spec.first));
+
+    uint64 node_hash = HashSubgraphImpl(
+        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
     uint64 node_port_hash = Hash64(node_spec.second);
 
     control_ret_hash = Hash64CombineUnordered(
@@ -392,13 +469,28 @@ uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
                       Hash64Combine(node_hash, node_port_hash)));
   }
 
-  return Hash64Combine(
+  uint64 final_hash = Hash64Combine(
       Hash64Combine(Hash64Combine(signature_hash, attr_hash), arg_attr_hash),
       Hash64Combine(ret_hash, control_ret_hash));
+  (*cache)[canonical_function_name] = final_hash;
+  visited->pop_back();
+
+  return final_hash;
+}
+
+}  // namespace
+
+uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
+                            const FunctionDef* f) {
+  std::vector<std::string> visited;
+  absl::flat_hash_map<std::string, uint64> cache;
+  return HashSubgraphFunctionImpl(library, f, &visited, &cache);
 }
 
 uint64 HashSubgraph(const GraphDef& g, const NodeDef* node) {
-  return HashSubgraph(grappler::GraphView(&g), node);
+  std::vector<std::string> visited;
+  absl::flat_hash_map<std::string, uint64> cache;
+  return HashSubgraphImpl(grappler::GraphView(&g), node, &visited, &cache);
 }
 
 namespace {
