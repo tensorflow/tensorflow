@@ -53,7 +53,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
-    self.assertAllEqual(self.evaluate(e), 1.0)
+    l = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    l, e = self.evaluate((l, e))
+    self.assertAllEqual(l, [])
+    self.assertAllEqual(e, 1.0)
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
@@ -94,7 +97,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
     _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+    l = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    l, e = self.evaluate((l, e))
     self.assertAllEqual(e, np.zeros((2, 3)))
+    self.assertAllEqual(l, np.zeros((3, 2, 3)))
 
   def testPopUninitializedTensorUseSpecifiedElementShape(self):
     l = list_ops.tensor_list_reserve(
@@ -954,14 +960,18 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l_concat_11 = list_ops.tensor_list_concat_lists(
         l_batch_1, l_batch_1, element_dtype=dtypes.float32)
 
+    expected_0 = [[1.0, 2.0], [-1.0]]
+    expected_1 = [[-1.0], [1.0, 2.0]]
     expected_00 = [[1.0, 2.0, 1.0, 2.0], [-1.0, -1.0]]
     expected_01 = [[1.0, 2.0, -1.0], [-1.0, 1.0, 2.0]]
     expected_10 = [[-1.0, 1.0, 2.0], [1.0, 2.0, -1.0]]
     expected_11 = [[-1.0, -1.0], [1.0, 2.0, 1.0, 2.0]]
 
     for i, (concat, expected) in enumerate(zip(
-        [l_concat_00, l_concat_01, l_concat_10, l_concat_11],
-        [expected_00, expected_01, expected_10, expected_11])):
+        [l_batch_0, l_batch_1,
+         l_concat_00, l_concat_01, l_concat_10, l_concat_11],
+        [expected_0, expected_1,
+         expected_00, expected_01, expected_10, expected_11])):
       splitted = array_ops.unstack(concat)
       splitted_stacked_ret = self.evaluate(
           (list_ops.tensor_list_stack(splitted[0], dtypes.float32),
