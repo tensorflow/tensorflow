@@ -253,8 +253,6 @@ class Network(base_layer.Layer):
         kwargs, {'trainable'},
         'Functional models may only specify `name` and `trainable` keyword '
         'arguments during initialization. Got an unexpected argument:')
-    self._call_convention = (base_layer_utils
-                             .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, list) and len(nest.flatten(inputs)) == 1:
       inputs = inputs[0]
@@ -378,8 +376,6 @@ class Network(base_layer.Layer):
                                   self._call_accepts_kwargs)
     self._expects_mask_arg = ('mask' in self._call_fn_args or
                               self._call_accepts_kwargs)
-    call_argspec = tf_inspect.getfullargspec(self.call)
-    self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = []
     self.inputs = []
     self.built = False
@@ -389,45 +385,6 @@ class Network(base_layer.Layer):
     if self._is_graph_network:
       return any(layer.dynamic for layer in self.layers)
     return self._dynamic or any(layer.dynamic for layer in self.layers)
-
-  def _determine_call_convention(self, call_argspec):
-    """Decides how `self.call()` is invoked. See `CallConvention`."""
-    if call_argspec.varargs:
-      may_take_single_argument = False
-    else:
-      try:
-        # Note: tf_inspect doesn't raise a TypeError when regular inspect would,
-        # so we need to keep in mind that "getcallargs" may have returned
-        # something even though we under-specified positional arguments.
-        all_args = tf_inspect.getcallargs(self.call, None)
-        self_args = set()
-        for arg_name, obj in all_args.items():
-          if obj is self:
-            self_args.add(arg_name)
-        may_take_single_argument = True
-      except TypeError:
-        may_take_single_argument = False
-    if may_take_single_argument:
-      # A single positional argument (plus "self") is considered equivalent to
-      # an "inputs" argument.
-      all_positional_args = len(call_argspec.args)
-      if call_argspec.defaults is not None:
-        all_positional_args -= len(call_argspec.defaults)
-      non_self_positional_args = all_positional_args
-      for positional_arg_name in call_argspec.args[:all_positional_args]:
-        if positional_arg_name in self_args:
-          non_self_positional_args -= 1
-      if non_self_positional_args == 1:
-        if 'inputs' in call_argspec.args[all_positional_args:]:
-          raise TypeError(
-              "Model.call() takes a single positional argument (to which "
-              "inputs are passed by convention) and a separate 'inputs' "
-              "argument. Unable to determine which arguments are inputs.")
-        return base_layer_utils.CallConvention.SINGLE_POSITIONAL_ARGUMENT
-    if 'inputs' in call_argspec.args:
-      return base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT
-    else:
-      return base_layer_utils.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Trackable dependencies on a list of Layers."""
@@ -863,21 +820,20 @@ class Network(base_layer.Layer):
           computed_tensors = nest.map_structure(
               lambda t: tensor_dict[str(id(t))], node.input_tensors)
 
-          # Ensure `training` and `mask` arg propagation if applicable.
+          # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
-          if 'mask' in kwargs:
 
-            def _map_mask_if_from_keras_layer(m):
-              # Replace input mask that originates from a Keras layer with
-              # its computed value.
-              m_id = str(id(m))
-              return tensor_dict[m_id] if m_id in tensor_dict else m
+          # Map Keras tensors in kwargs to their computed value.
+          def _map_tensor_if_from_keras_layer(t):
+            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+              t_id = str(id(t))
+              return tensor_dict[t_id]
+            return t
 
-            kwargs['mask'] = nest.map_structure(_map_mask_if_from_keras_layer,
-                                                kwargs['mask'])
+          kwargs = nest.map_structure(_map_tensor_if_from_keras_layer, kwargs)
 
           # Compute outputs.
           output_tensors = layer(computed_tensors, **kwargs)
@@ -1789,11 +1745,10 @@ def _map_graph_network(inputs, outputs):
 
     # Update the depth of inbound nodes.
     # The "depth" of a node is the max of the depths
-    # of all layers it is connected to.
-    for inbound_layer, node_index, _, _ in node.iterate_inbound():
-      inbound_node = inbound_layer._inbound_nodes[node_index]  # pylint: disable=protected-access
-      previous_depth = nodes_depths.get(inbound_node, 0)
-      nodes_depths[inbound_node] = max(depth + 1, previous_depth)
+    # of all nodes it is connected to + 1.
+    for node_dep in node._get_all_node_dependencies():
+      previous_depth = nodes_depths.get(node_dep, 0)
+      nodes_depths[node_dep] = max(depth + 1, previous_depth)
 
   # Handle inputs that are not connected to outputs.
   # We do not error out here because the inputs may be used to compute losses

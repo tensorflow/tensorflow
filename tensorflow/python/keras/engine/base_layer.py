@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import functools
-import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
 import json
 import threading
@@ -73,7 +72,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -197,8 +195,6 @@ class Layer(module.Module):
     self._metrics = []
 
     self._set_dtype_and_policy(dtype)
-    self._call_convention = (base_layer_utils
-                             .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Dependencies tracked via attribute assignment.
     self._maybe_create_attribute('_layers', [])
 
@@ -1792,27 +1788,6 @@ class Layer(module.Module):
     return args_dict[arg_name]
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
-    call_convention = getattr(
-        self, '_call_convention',
-        base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT)
-    if args:
-      if call_convention == (base_layer_utils
-                             .CallConvention.EXPLICIT_INPUTS_ARGUMENT):
-        raise TypeError(
-            'This layer ("{}") takes an `inputs` argument in `call()`, '
-            'and only the `inputs` argument may be specified as a positional '
-            'argument. Pass everything else as a keyword argument '
-            '(those arguments will not be tracked '
-            'as inputs to the layer).'.format(self.name))
-      elif call_convention == (base_layer_utils
-                               .CallConvention.SINGLE_POSITIONAL_ARGUMENT):
-        raise TypeError(
-            'This layer ("{}") takes a single positional argument in `call()`,'
-            ' which is by convention the `inputs` argument, '
-            'and only this argument may be specified as a positional argument. '
-            'Pass everything else as a keyword argument '
-            '(those arguments will not be tracked '
-            'as inputs to the layer).'.format(self.name))
 
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
@@ -1826,84 +1801,15 @@ class Layer(module.Module):
       output_ls_copy.append(x)
     outputs = nest.pack_sequence_as(outputs, output_ls_copy)
 
-    inputs, kwargs = self._inputs_from_call_args(
-        call_args=(inputs,) + args, call_kwargs=kwargs)
+    # Ignore `inputs` arg.
+    arguments = dict(zip(self._call_fn_args[1:], args))
+    arguments.update(kwargs)
+
     # Add an inbound node to the layer, so it can keep track of this call.
     # This updates the layer history of the output tensor(s).
     self._add_inbound_node(
-        input_tensors=inputs, output_tensors=outputs, arguments=kwargs)
+        input_tensors=inputs, output_tensors=outputs, arguments=arguments)
     return inputs, outputs
-
-  def _inputs_from_call_args(self, call_args, call_kwargs):
-    """Get Layer inputs from __call__ *args and **kwargs.
-
-    Args:
-      call_args: The positional arguments passed to __call__.
-      call_kwargs: The keyword argument dict passed to __call__.
-
-    Returns:
-      A tuple of (inputs, non_input_kwargs). These may be the same objects as
-      were passed in (call_args and call_kwargs).
-    """
-    call_convention = getattr(
-        self, '_call_convention',
-        base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT)
-    if (call_convention in (
-        base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT,
-        base_layer_utils.CallConvention.SINGLE_POSITIONAL_ARGUMENT)):
-      assert len(call_args) == 1  # TypeError raised earlier in __call__.
-      return call_args[0], call_kwargs
-    else:
-      call_arg_spec = tf_inspect.getfullargspec(self.call)
-      # There is no explicit "inputs" argument expected or provided to
-      # call(). Arguments which have default values are considered non-inputs,
-      # and arguments without are considered inputs.
-      if call_arg_spec.defaults:
-        if call_arg_spec.varargs is not None:
-          raise TypeError(
-              'Layers may not accept both positional arguments and '
-              'arguments with default values (unable to determine which '
-              'are inputs to the layer). '
-              'Issue occurred with layer "%s"' % (self.name))
-        keyword_arg_names = set(
-            call_arg_spec.args[-len(call_arg_spec.defaults):])
-      else:
-        keyword_arg_names = set()
-        # Training is never an input argument name, to allow signatures like
-        # call(x, training).
-      keyword_arg_names.add('training')
-      _, unwrapped_call = tf_decorator.unwrap(self.call)
-      bound_args = inspect.getcallargs(
-          unwrapped_call, *call_args, **call_kwargs)
-      if call_arg_spec.varkw is not None:
-        var_kwargs = bound_args.pop(call_arg_spec.varkw)
-        bound_args.update(var_kwargs)
-        keyword_arg_names = keyword_arg_names.union(var_kwargs.keys())
-      all_args = call_arg_spec.args
-      if all_args and bound_args[all_args[0]] is self:
-        # Ignore the 'self' argument of methods
-        bound_args.pop(call_arg_spec.args[0])
-        all_args = all_args[1:]
-      non_input_arg_values = {}
-      input_arg_values = []
-      remaining_args_are_keyword = False
-      for argument_name in all_args:
-        if argument_name in keyword_arg_names:
-          remaining_args_are_keyword = True
-        else:
-          if remaining_args_are_keyword:
-            raise TypeError(
-                'Found a positional argument in a layer call after a non-input '
-                'argument. All arguments after "training" must be keyword '
-                'arguments, and are not tracked as inputs to the layer. '
-                'Issue occurred with layer "%s"' % (self.name))
-        if remaining_args_are_keyword:
-          non_input_arg_values[argument_name] = bound_args[argument_name]
-        else:
-          input_arg_values.append(bound_args[argument_name])
-      if call_arg_spec.varargs is not None:
-        input_arg_values.extend(bound_args[call_arg_spec.varargs])
-      return input_arg_values, non_input_arg_values
 
   def _add_inbound_node(self,
                         input_tensors,

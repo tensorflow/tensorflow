@@ -686,6 +686,7 @@ class Model(network.Network):
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
     self._assert_compile_was_called()
+    self._check_call_args('fit')
 
     func = self._select_training_loop(x)
     return func.fit(
@@ -798,6 +799,7 @@ class Model(network.Network):
     """
     _keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
+    self._check_call_args('evaluate')
 
     func = self._select_training_loop(x)
     return func.evaluate(
@@ -875,6 +877,7 @@ class Model(network.Network):
             that is not a multiple of the batch size.
     """
     _keras_api_gauge.get_cell('predict').set(True)
+    self._check_call_args('predict')
 
     func = self._select_training_loop(x)
     return func.predict(
@@ -956,6 +959,7 @@ class Model(network.Network):
       return outputs
 
     self._assert_compile_was_called()
+    self._check_call_args('train_on_batch')
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
     # calls `train_on_batch` on each replica.
@@ -1048,6 +1052,7 @@ class Model(network.Network):
       return outputs
 
     self._assert_compile_was_called()
+    self._check_call_args('test_on_batch')
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
@@ -1100,6 +1105,7 @@ class Model(network.Network):
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
+    self._check_call_args('predict_on_batch')
     if self._run_distributed:
       return training_v2_utils.predict_on_batch(self, x)
 
@@ -1246,6 +1252,7 @@ class Model(network.Network):
       raise NotImplementedError('`fit_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('train').set(True)
+    self._check_call_args('fit_generator')
     return training_generator.fit_generator(
         self,
         generator,
@@ -1319,6 +1326,7 @@ class Model(network.Network):
       raise NotImplementedError('`evaluate_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('evaluate').set(True)
+    self._check_call_args('evaluate_generator')
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -1376,6 +1384,7 @@ class Model(network.Network):
       raise NotImplementedError('`predict_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
     _keras_api_gauge.get_cell('predict').set(True)
+    self._check_call_args('predict_generator')
     return training_generator.predict_generator(
         self,
         generator,
@@ -1385,6 +1394,25 @@ class Model(network.Network):
         use_multiprocessing=use_multiprocessing,
         verbose=verbose,
         callbacks=callbacks)
+
+  def _check_call_args(self, method_name):
+    """Check that `call` has only one positional arg."""
+    # Always allow first arg, regardless of arg name.
+    fullargspec = tf_inspect.getfullargspec(self.call)
+    if fullargspec.defaults:
+      positional_args = fullargspec.args[:-len(fullargspec.defaults)]
+    else:
+      positional_args = fullargspec.args
+    if 'training' in positional_args:
+      positional_args.remove('training')
+
+    # self and first arg can be positional.
+    if len(positional_args) > 2:
+      extra_args = positional_args[2:]
+      raise ValueError(
+          'Models passed to `' + method_name + '` can only have `training` '
+          'and the first argument in `call` as positional arguments, '
+          'found: ' + str(extra_args) + '.')
 
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
