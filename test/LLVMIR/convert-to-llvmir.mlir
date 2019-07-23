@@ -429,6 +429,20 @@ func @index_cast(%arg0: index, %arg1: i1) {
   return
 }
 
+// Checking conversion of integer types to floating point.
+// CHECK-LABEL: @sitofp
+func @sitofp(%arg0 : i32, %arg1 : i64) {
+// CHECK-NEXT: = llvm.sitofp {{.*}} : !llvm.i{{.*}} to !llvm.float
+  %0 = sitofp %arg0: i32 to f32
+// CHECK-NEXT: = llvm.sitofp {{.*}} : !llvm.i{{.*}} to !llvm.double
+  %1 = sitofp %arg0: i32 to f64
+// CHECK-NEXT: = llvm.sitofp {{.*}} : !llvm.i{{.*}} to !llvm.float
+  %2 = sitofp %arg1: i64 to f32
+// CHECK-NEXT: = llvm.sitofp {{.*}} : !llvm.i{{.*}} to !llvm.double
+  %3 = sitofp %arg1: i64 to f64
+  return
+}
+
 // CHECK-LABEL: @dfs_block_order
 func @dfs_block_order() -> (i32) {
 // CHECK-NEXT:  %0 = llvm.constant(42 : i32) : !llvm.i32

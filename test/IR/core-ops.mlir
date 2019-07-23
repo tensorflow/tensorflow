@@ -27,9 +27,9 @@ func @func_with_ops(f32) {
   return
 }
 
-// CHECK-LABEL: func @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index) {
-func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
-^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
+// CHECK-LABEL: func @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index, %arg4: i64) {
+func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64) {
+^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index, %j: i64):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "std.dim"(%t){index = 2} : (tensor<4x4x?xf32>) -> index
 
@@ -296,6 +296,18 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
   // CHECK: = index_cast {{.*}} : i32 to index
   %77 = index_cast %i : i32 to index
+
+  // CHECK: = sitofp {{.*}} : i32 to f32
+  %78 = sitofp %i : i32 to f32
+
+  // CHECK: = sitofp {{.*}} : i32 to f64
+  %79 = sitofp %i : i32 to f64
+
+  // CHECK: = sitofp {{.*}} : i64 to f32
+  %80 = sitofp %j : i64 to f32
+
+  // CHECK: = sitofp {{.*}} : i64 to f64
+  %81 = sitofp %j : i64 to f64
 
   return
 }

@@ -219,6 +219,7 @@ def LLVM_PtrToIntOp : LLVM_CastOp<"ptrtoint", "CreatePtrToInt">;
 def LLVM_SExtOp : LLVM_CastOp<"sext", "CreateSExt">;
 def LLVM_ZExtOp : LLVM_CastOp<"zext", "CreateZExt">;
 def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
+def LLVM_SIToFPOp : LLVM_CastOp<"sitofp", "CreateSIToFP">;
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,

@@ -1890,6 +1890,15 @@ static LogicalResult verify(ReturnOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SIToFPOp
+//===----------------------------------------------------------------------===//
+
+// sitofp is applicable from integer types to float types.
+bool SIToFPOp::areCastCompatible(Type a, Type b) {
+  return a.isa<IntegerType>() && b.isa<FloatType>();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 

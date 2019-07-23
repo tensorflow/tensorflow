@@ -702,6 +702,22 @@ func @index_cast_float_to_index(%arg0: f32) {
 
 // -----
 
+func @sitofp_i32_to_i64(%arg0 : i32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = sitofp %arg0 : i32 to i64
+  return
+}
+
+// -----
+
+func @sitofp_f32_to_i32(%arg0 : f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = sitofp %arg0 : f32 to i32
+  return
+}
+
+// -----
+
 func @return_not_in_function() {
   "foo.region"() ({
     // expected-error@+1 {{must be nested within a 'func' region}}

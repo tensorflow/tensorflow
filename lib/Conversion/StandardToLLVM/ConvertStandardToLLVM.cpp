@@ -890,6 +890,11 @@ struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
   }
 };
 
+struct SIToFPLowering
+    : public OneToOneLLVMOpLowering<SIToFPOp, LLVM::SIToFPOp> {
+  using Super::Super;
+};
+
 // Base class for LLVM IR lowering terminator operations with successors.
 template <typename SourceOp, typename TargetOp>
 struct OneToOneLLVMTerminatorLowering
@@ -1026,8 +1031,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, StoreOpLowering, SubFOpLowering, SubIOpLowering,
-      XOrOpLowering>::build(patterns, *converter.getDialect(), converter);
+      SelectOpLowering, SIToFPLowering, StoreOpLowering, SubFOpLowering,
+      SubIOpLowering, XOrOpLowering>::build(patterns, *converter.getDialect(),
+                                            converter);
 }
 
 // Convert types using the stored LLVM IR module.
