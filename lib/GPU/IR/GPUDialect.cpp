@@ -221,12 +221,13 @@ parseSizeAssignment(OpAsmParser *parser,
                     MutableArrayRef<OpAsmParser::OperandType> sizes,
                     MutableArrayRef<OpAsmParser::OperandType> regionSizes,
                     MutableArrayRef<OpAsmParser::OperandType> indices) {
-  if (parser->parseLParen() || parser->parseRegionArgument(indices[0]) ||
-      parser->parseComma() || parser->parseRegionArgument(indices[1]) ||
-      parser->parseComma() || parser->parseRegionArgument(indices[2]) ||
-      parser->parseRParen() || parser->parseKeyword("in") ||
-      parser->parseLParen())
+  assert(indices.size() == 3 && "space for three indices expected");
+  SmallVector<OpAsmParser::OperandType, 3> args;
+  if (parser->parseRegionArgumentList(args, /*requiredOperandCount=*/3,
+                                      OpAsmParser::Delimiter::Paren) ||
+      parser->parseKeyword("in") || parser->parseLParen())
     return failure();
+  std::move(args.begin(), args.end(), indices.begin());
 
   for (int i = 0; i < 3; ++i) {
     if (i != 0 && parser->parseComma())

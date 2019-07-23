@@ -3344,6 +3344,16 @@ public:
   ParseResult parseOperandList(SmallVectorImpl<OperandType> &result,
                                int requiredOperandCount = -1,
                                Delimiter delimiter = Delimiter::None) override {
+    return parseOperandOrRegionArgList(result, /*isOperandList=*/true,
+                                       requiredOperandCount, delimiter);
+  }
+
+  /// Parse zero or more SSA comma-separated operand or region arguments with
+  ///  optional surrounding delimiter and required operand count.
+  ParseResult
+  parseOperandOrRegionArgList(SmallVectorImpl<OperandType> &result,
+                              bool isOperandList, int requiredOperandCount = -1,
+                              Delimiter delimiter = Delimiter::None) {
     auto startLoc = parser.getToken().getLoc();
 
     // Handle delimiters.
@@ -3382,10 +3392,11 @@ public:
     // Check for zero operands.
     if (parser.getToken().is(Token::percent_identifier)) {
       do {
-        OperandType operand;
-        if (parseOperand(operand))
+        OperandType operandOrArg;
+        if (isOperandList ? parseOperand(operandOrArg)
+                          : parseRegionArgument(operandOrArg))
           return failure();
-        result.push_back(operand);
+        result.push_back(operandOrArg);
       } while (parser.consumeIf(Token::comma));
     }
 
@@ -3537,6 +3548,14 @@ public:
     if (parser.getToken().isNot(Token::percent_identifier))
       return success();
     return parseRegionArgument(argument);
+  }
+
+  ParseResult
+  parseRegionArgumentList(SmallVectorImpl<OperandType> &result,
+                          int requiredOperandCount = -1,
+                          Delimiter delimiter = Delimiter::None) override {
+    return parseOperandOrRegionArgList(result, /*isOperandList=*/false,
+                                       requiredOperandCount, delimiter);
   }
 
   //===--------------------------------------------------------------------===//

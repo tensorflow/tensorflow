@@ -459,4 +459,19 @@ def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
 def TestValidOp : TEST_Op<"valid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 
+//===----------------------------------------------------------------------===//
+// Test region argument list parsing.
+//===----------------------------------------------------------------------===//
+
+def PolyForOp : TEST_Op<"polyfor">
+{
+  let summary =  "polyfor operation";
+  let description = [{
+    Test op with multiple region arguments, each argument of index type.
+  }];
+
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
 #endif // TEST_OPS

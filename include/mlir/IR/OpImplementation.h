@@ -315,8 +315,8 @@ public:
   /// Parse a single operand.
   virtual ParseResult parseOperand(OperandType &result) = 0;
 
-  /// These are the supported delimiters around operand lists, used by
-  /// parseOperandList.
+  /// These are the supported delimiters around operand lists and region
+  /// argument lists, used by parseOperandList and parseRegionArgumentList.
   enum class Delimiter {
     /// Zero or more operands with no delimiters.
     None,
@@ -410,9 +410,24 @@ public:
                                           ArrayRef<OperandType> arguments,
                                           ArrayRef<Type> argTypes) = 0;
 
-  /// Parse a region argument.  Region arguments define new values, so this also
-  /// checks if the values with the same name has not been defined yet.
+  /// Parse a region argument.  Region arguments define new values; so this also
+  /// checks if values with the same name have not been defined yet.
   virtual ParseResult parseRegionArgument(OperandType &argument) = 0;
+
+  /// Parse zero or more region arguments with a specified surrounding
+  /// delimiter, and an optional required argument count. Region arguments
+  /// define new values; so this also checks if values with the same names have
+  /// not been defined yet.
+  virtual ParseResult
+  parseRegionArgumentList(SmallVectorImpl<OperandType> &result,
+                          int requiredOperandCount = -1,
+                          Delimiter delimiter = Delimiter::None) = 0;
+  virtual ParseResult
+  parseRegionArgumentList(SmallVectorImpl<OperandType> &result,
+                          Delimiter delimiter) {
+    return parseRegionArgumentList(result, /*requiredOperandCount=*/-1,
+                                   delimiter);
+  }
 
   /// Parse a region argument if present.
   virtual ParseResult parseOptionalRegionArgument(OperandType &argument) = 0;
@@ -486,6 +501,14 @@ public:
     result.append(types.begin(), types.end());
     return success();
   }
+
+private:
+  /// Parse either an operand list or a region argument list depending on
+  /// whether isOperandList is true.
+  ParseResult parseOperandOrRegionArgList(SmallVectorImpl<OperandType> &result,
+                                          bool isOperandList,
+                                          int requiredOperandCount,
+                                          Delimiter delimiter);
 };
 
 } // end namespace mlir

@@ -133,3 +133,18 @@ func @fail_to_convert_region() {
   }) : () -> ()
   return
 }
+
+// -----
+
+// Test parsing of an op with multiple region arguments, and without a
+// delimiter.
+
+// CHECK-LABEL: func @op_with_region_args
+func @op_with_region_args() {
+  // CHECK: "test.polyfor"() ( {
+  // CHECK-NEXT: ^bb{{.*}}(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
+  test.polyfor %i, %j, %k {
+    "foo"() : () -> ()
+  }
+  return
+}
