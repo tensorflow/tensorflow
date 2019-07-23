@@ -175,6 +175,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "elementwise_test_lib",
+    testonly = 1,
+    srcs = ["elementwise_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":elementwise",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "elementwise_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":elementwise_test_lib"],
+)
+
 cc_library(
     name = "fully_connected",
     srcs = ["fully_connected.cc"],
