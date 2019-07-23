@@ -309,6 +309,17 @@ def : Pat<(OpAttrMatch1 $required, $optional, $default_valued,
                         MoreConstraint:$more),
           (OpAttrMatch2 $required, $optional, $default_valued, $more)>;
 
+// Test unit attrs.
+def OpAttrMatch3 : TEST_Op<"match_op_attribute3"> {
+  let arguments = (ins UnitAttr:$attr);
+  let results = (outs I32);
+}
+def OpAttrMatch4 : TEST_Op<"match_op_attribute4"> {
+  let arguments = (ins UnitAttr:$attr1, UnitAttr:$attr2);
+  let results = (outs I32);
+}
+def : Pat<(OpAttrMatch3 $attr), (OpAttrMatch4 ConstUnitAttr, $attr)>;
+
 // Test with constant attr.
 def OpC : TEST_Op<"op_c">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
 def : Pat<(OpC $input), (OpB $input, ConstantAttr<I32Attr, "17">:$attr)>;

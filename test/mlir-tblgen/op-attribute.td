@@ -161,3 +161,16 @@ def MixOperandsAndAttrs : NS_Op<"mix_operands_and_attrs", []> {
 // CHECK-DAG: void MixOperandsAndAttrs::build(Builder *, OperationState *tblgen_state, FloatAttr attr, Value *operand, FloatAttr otherAttr, Value *otherArg)
 // CHECK-DAG: APFloat MixOperandsAndAttrs::attr()
 // CHECK-DAG: APFloat MixOperandsAndAttrs::otherAttr()
+
+// Test unit attributes.
+// ---
+
+def UnitAttrOp : NS_Op<"unit_attr_op", []> {
+  let arguments = (ins UnitAttr:$attr);
+}
+
+// CHECK-LABEL: UnitAttrOp definitions
+// CHECK: bool UnitAttrOp::attr() {
+// CHECK:   return {{.*}} != nullptr
+
+// CHECK: build(Builder *, OperationState *tblgen_state, /*optional*/UnitAttr attr)

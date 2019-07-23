@@ -80,6 +80,19 @@ func @verifyConstantAttr(%arg0 : i32) -> i32 {
   return %0 : i32
 }
 
+// CHECK-LABEL: verifyUnitAttr
+func @verifyUnitAttr() -> (i32, i32) {
+  // Unit attribute present in the matched op is propagated as attr2.
+  // CHECK: "test.match_op_attribute4"() {attr1, attr2} : () -> i32
+  %0 = "test.match_op_attribute3"() {attr} : () -> i32
+
+  // Since the original op doesn't have the unit attribute, the new op
+  // only has the constant-constructed unit attribute attr1.
+  // CHECK: "test.match_op_attribute4"() {attr1} : () -> i32
+  %1 = "test.match_op_attribute3"() : () -> i32
+  return %0, %1 : i32, i32
+}
+
 //===----------------------------------------------------------------------===//
 // Test Enum Attributes
 //===----------------------------------------------------------------------===//

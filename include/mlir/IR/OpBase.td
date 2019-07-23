@@ -640,12 +640,15 @@ class TypeAttrBase<string retType, string description> :
 
 def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
 
-
-// TODO(antiagainst): UnitAttr cannot be used for op definition because there
-// is no valid builder and getter defined. We should add them to complete
-// the definition.
+// The mere presence of unit attributes has a meaning.  Therefore, unit
+// attributes are always treated as optional and accessors to them return
+// "true" if the attribute is present and "false" otherwise.
 def UnitAttr : Attr<CPred<"$_self.isa<UnitAttr>()">, "unit attribute"> {
   let storageType = [{ UnitAttr }];
+  let constBuilderCall = "$_builder.getUnitAttr()";
+  let convertFromStorage = "$_self != nullptr";
+  let returnType = "bool";
+  let isOptional = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -880,6 +883,7 @@ class ConstantAttr<Attr attribute, string val> : AttrConstraint<
 class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 def ConstBoolAttrFalse : ConstantAttr<BoolAttr, "false">;
 def ConstBoolAttrTrue : ConstantAttr<BoolAttr, "true">;
+def ConstUnitAttr : ConstantAttr<UnitAttr, "unit">;
 
 //===----------------------------------------------------------------------===//
 // Common attribute constraints
