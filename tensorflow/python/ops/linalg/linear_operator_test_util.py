@@ -24,6 +24,7 @@ import numpy as np
 import six
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -49,6 +50,15 @@ class OperatorShapesInfo(object):
   def __init__(self, shape, **kwargs):
     self.shape = shape
     self.__dict__.update(kwargs)
+
+
+class CheckTapeSafeSkipOptions(object):
+
+  # Skip checking this particular method.
+  DETERMINANT = "determinant"
+  DIAG_PART = "diag_part"
+  LOG_ABS_DETERMINANT = "log_abs_determinant"
+  TRACE = "trace"
 
 
 @six.add_metaclass(abc.ABCMeta)  # pylint: disable=no-init
@@ -174,18 +184,35 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # To skip "test_foo", add "foo" to this list.
     return []
 
-  def check_tape_safe(self, operator):
-    """Check gradients are not None w.r.t. Variables.
+  def assertRaisesError(self, msg):
+    """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
+    if context.executing_eagerly():
+      return self.assertRaisesRegexp(Exception, msg)
+    return self.assertRaisesOpError(msg)
+
+  def check_tape_safe(self, operator, skip_options=None):
+    """Check gradients are not None w.r.t. operator.variables.
 
     Meant to be called from the derived class.
 
+    This ensures grads are not w.r.t every variable in operator.variables.  If
+    more fine-grained testing is needed, a custom test should be written.
+
     Args:
       operator: LinearOperator.  Exact checks done will depend on hints.
+      skip_options: Optional list of CheckTapeSafeSkipOptions.
+        Makes this test skip particular checks.
     """
+    skip_options = skip_options or []
+
+    if not operator.variables:
+      raise AssertionError("`operator.variables` was empty")
+
     def _assert_not_none(iterable):
       for item in iterable:
         self.assertIsNotNone(item)
 
+    # Tape tests that can be run on every operator below.
     with backprop.GradientTape() as tape:
       _assert_not_none(tape.gradient(operator.to_dense(), operator.variables))
 
@@ -193,23 +220,30 @@ class LinearOperatorDerivedClassTest(test.TestCase):
       _assert_not_none(
           tape.gradient(operator.adjoint().to_dense(), operator.variables))
 
-    x = array_ops.ones(shape=operator.H.shape_tensor()[:-1])
+    x = math_ops.cast(
+        array_ops.ones(shape=operator.H.shape_tensor()[:-1]), operator.dtype)
 
     with backprop.GradientTape() as tape:
       _assert_not_none(tape.gradient(operator.matvec(x), operator.variables))
 
+    # Tests for square, but possibly non-singular operators below.
     if not operator.is_square:
       return
 
-    with backprop.GradientTape() as tape:
-      _assert_not_none(
-          tape.gradient(operator.determinant(), operator.variables))
+    for option in [
+        CheckTapeSafeSkipOptions.DETERMINANT,
+        CheckTapeSafeSkipOptions.LOG_ABS_DETERMINANT,
+        CheckTapeSafeSkipOptions.DIAG_PART,
+        CheckTapeSafeSkipOptions.TRACE,
+    ]:
+      with backprop.GradientTape() as tape:
+        if option not in skip_options:
+          _assert_not_none(
+              tape.gradient(getattr(operator, option)(), operator.variables))
 
-    with backprop.GradientTape() as tape:
-      _assert_not_none(tape.gradient(operator.diag_part(), operator.variables))
-
-    with backprop.GradientTape() as tape:
-      _assert_not_none(tape.gradient(operator.trace(), operator.variables))
+    # Tests for non-singular operators below.
+    if operator.is_non_singular is False:  # pylint: disable=g-bool-id-comparison
+      return
 
     with backprop.GradientTape() as tape:
       _assert_not_none(
@@ -218,6 +252,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     with backprop.GradientTape() as tape:
       _assert_not_none(tape.gradient(operator.solvevec(x), operator.variables))
 
+    # Tests for SPD operators below.
     if not (operator.is_self_adjoint and operator.is_positive_definite):
       return
 
