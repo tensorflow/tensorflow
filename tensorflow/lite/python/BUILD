@@ -143,6 +143,8 @@ py_test(
     tags = [
         "no_oss",
         "no_windows",
+        # TODO(b/138223396) Re-enable after fixing compatibility horizon issue.
+        "notap",
     ],
     deps = [
         ":lite",
