@@ -34,7 +34,7 @@ func @rank(f32) {
 
 func @constant() {
 ^bb:
-  %x = "std.constant"(){value = "xyz"} : () -> i32 // expected-error {{requires a result type that aligns with the 'value' attribute}}
+  %x = "std.constant"(){value = "xyz"} : () -> i32 // expected-error {{unsupported 'value' attribute}}
   return
 }
 

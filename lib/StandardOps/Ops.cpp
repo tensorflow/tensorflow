@@ -1067,7 +1067,7 @@ static LogicalResult verify(ConstantOp &op) {
     return op.emitOpError() << "requires attribute's type (" << value.getType()
                             << ") to match op's return type (" << type << ")";
 
-  if (type.isa<IndexType>())
+  if (type.isa<IndexType>() || value.isa<BoolAttr>())
     return success();
 
   if (auto intAttr = value.dyn_cast<IntegerAttr>()) {
@@ -1114,8 +1114,7 @@ static LogicalResult verify(ConstantOp &op) {
   if (type.isa<NoneType>() && value.isa<UnitAttr>())
     return success();
 
-  return op.emitOpError(
-      "requires a result type that aligns with the 'value' attribute");
+  return op.emitOpError("unsupported 'value' attribute: ") << value;
 }
 
 OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
@@ -1133,8 +1132,9 @@ bool ConstantOp::isBuildableWith(Attribute value, Type type) {
   if (value.getType() != type)
     return false;
   // Finally, check that the attribute kind is handled.
-  return value.isa<IntegerAttr>() || value.isa<FloatAttr>() ||
-         value.isa<ElementsAttr>() || value.isa<UnitAttr>();
+  return value.isa<BoolAttr>() || value.isa<IntegerAttr>() ||
+         value.isa<FloatAttr>() || value.isa<ElementsAttr>() ||
+         value.isa<UnitAttr>();
 }
 
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
