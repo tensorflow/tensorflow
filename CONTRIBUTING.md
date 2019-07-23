@@ -29,7 +29,8 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a [howto](https://help.github.com/articles/using-pull-requests/).
+just getting started, Github has a
+[how to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
 pull requests are approved and pass continuous integration checks, a TensorFlow
