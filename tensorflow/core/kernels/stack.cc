@@ -103,24 +103,16 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
-  Status MarkAsSwapped(TensorAndAllocation* value, Tensor* cpu_tensor) {
+  void MarkAsSwapped(TensorAndAllocation* value, Tensor* cpu_tensor) {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(CheckNotClosed());
-
     value->tensor = *cpu_tensor;
     value->swapped_to_cpu = true;
-
-    return Status::OK();
   }
 
-  Status MarkAsUnswapped(TensorAndAllocation* value, Tensor* device_tensor) {
+  void MarkAsUnswapped(TensorAndAllocation* value, Tensor* device_tensor) {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(CheckNotClosed());
-
     value->tensor = *device_tensor;
     value->swapped_to_cpu = false;
-
-    return Status::OK();
   }
 
   bool GetTensorToSwapOut(std::function<bool(const TensorAndAllocation&)> cond,
