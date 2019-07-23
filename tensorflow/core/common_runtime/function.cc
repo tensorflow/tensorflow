@@ -2023,7 +2023,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
-    Endpoint data;  // Data input for the ret node.
+    Endpoint data{nullptr, 0};  // Data input for the ret node.
     for (const Edge* e : ret->in_edges()) {
       if (!e->IsControlEdge()) {
         data = {e->src(), e->src_output()};

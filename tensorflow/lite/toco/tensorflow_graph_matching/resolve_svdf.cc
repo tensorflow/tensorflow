@@ -112,7 +112,7 @@ void SvdfCluster::CreateNodes() {
   CHECK(new_nodes_.size() == 3 || new_nodes_.size() == 2);
   string* weights_feature_input = svdf_node->add_input();
   string* weights_time_input = svdf_node->add_input();
-  string* bias_input;
+  string* bias_input = nullptr;
   if (new_nodes_.size() == 3) {
     bias_input = svdf_node->add_input();
   }

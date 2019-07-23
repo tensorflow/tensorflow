@@ -150,7 +150,7 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   auto train_nodes = ComputeTransitiveFanin(graph_, item.fetch);
   LOG(INFO) << "Number of training nodes: " << train_nodes.size();
 
-  const NodeDef* dequeue_node;
+  const NodeDef* dequeue_node = nullptr;
   for (const auto& train_node : train_nodes) {
     if (IsDequeueOp(*train_node)) {
       dequeue_node = train_node;
