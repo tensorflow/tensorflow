@@ -476,7 +476,7 @@ class BigtableTable(object):
       if tensor_type != dtypes.string:
         raise ValueError("Not all elements of the dataset were `tf.string`")
     for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
-      if not shape.is_compatible_with(tensor_shape.scalar()):
+      if not shape.is_compatible_with(tensor_shape.TensorShape([])):
         raise ValueError("Not all elements of the dataset were scalars")
     if len(column_families) != len(columns):
       raise ValueError("len(column_families) != len(columns)")

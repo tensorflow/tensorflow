@@ -525,40 +525,43 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       structure.from_tensor_list(s_2, flat_s_1)
 
   @parameterized.named_parameters(
-      ("Tensor", dtypes.float32, tensor_shape.scalar(), ops.Tensor,
-       tensor_spec.TensorSpec([], dtypes.float32)),
-      ("SparseTensor", dtypes.int32, tensor_shape.matrix(
-          2, 2), sparse_tensor.SparseTensor,
+      ("Tensor", dtypes.float32, tensor_shape.TensorShape(
+          []), ops.Tensor, tensor_spec.TensorSpec([], dtypes.float32)),
+      ("SparseTensor", dtypes.int32, tensor_shape.TensorShape(
+          [2, 2]), sparse_tensor.SparseTensor,
        sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)),
-      ("TensorArray_0", dtypes.int32, tensor_shape.as_shape(
-          [None, True, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_0", dtypes.int32,
+       tensor_shape.TensorShape([None, True, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=None, infer_shape=True)),
-      ("TensorArray_1", dtypes.int32, tensor_shape.as_shape(
-          [True, None, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_1", dtypes.int32,
+       tensor_shape.TensorShape([True, None, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=None)),
-      ("TensorArray_2", dtypes.int32, tensor_shape.as_shape(
-          [True, False, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_2", dtypes.int32,
+       tensor_shape.TensorShape([True, False, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=False)),
-      ("RaggedTensor", dtypes.int32, tensor_shape.matrix(
-          2, None), ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
+      ("RaggedTensor", dtypes.int32, tensor_shape.TensorShape([2, None]),
+       ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
        ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1)),
       ("Nested", {
           "a": dtypes.float32,
           "b": (dtypes.int32, dtypes.string)
       }, {
-          "a": tensor_shape.scalar(),
-          "b": (tensor_shape.matrix(2, 2), tensor_shape.scalar())
+          "a": tensor_shape.TensorShape([]),
+          "b": (tensor_shape.TensorShape([2, 2]), tensor_shape.TensorShape([]))
       }, {
           "a": ops.Tensor,
           "b": (sparse_tensor.SparseTensor, ops.Tensor)
       }, {
           "a":
               tensor_spec.TensorSpec([], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32),
-                tensor_spec.TensorSpec([], dtypes.string))
+          "b": (sparse_tensor.SparseTensorSpec(
+              [2, 2], dtypes.int32), tensor_spec.TensorSpec([], dtypes.string))
       }),
   )
   def testConvertLegacyStructure(self, output_types, output_shapes,

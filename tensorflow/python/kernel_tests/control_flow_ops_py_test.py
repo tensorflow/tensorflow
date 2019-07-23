@@ -391,7 +391,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     b = control_flow_ops.cond(
         constant_op.constant(True), lambda: math_ops.square(x),
         lambda: math_ops.subtract(x, 1.))
-    self.assertEqual(b.shape, tensor_shape.scalar())
+    self.assertEqual(b.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_v1_only("b/120545219")
   def testFetchable(self):

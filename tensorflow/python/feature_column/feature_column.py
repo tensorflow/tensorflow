@@ -2462,7 +2462,7 @@ class _EmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,
@@ -2573,7 +2573,7 @@ class _SharedEmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,

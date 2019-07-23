@@ -1034,7 +1034,7 @@ class TensorArrayTest(test.TestCase):
             dtype=dtypes.float32,
             size=num_steps,
             clear_after_read=False,
-            element_shape=tensor_shape.scalar())
+            element_shape=tensor_shape.TensorShape([]))
         i = constant_op.constant(0, name="i")
 
         c = lambda i, acc: i < 5
@@ -1693,10 +1693,10 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(dtypes.float32, ta0.dtype)
       self.assertEqual(dtypes.int32, ta1.dtype)
       if context.executing_eagerly():
-        self.assertEqual(tensor_shape.scalar(), read0.get_shape())
+        self.assertEqual(tensor_shape.TensorShape([]), read0.get_shape())
       else:
         self.assertEqual(tensor_shape.unknown_shape(), read0.get_shape())
-      self.assertEqual(tensor_shape.scalar(), read1.get_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), read1.get_shape())
 
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())

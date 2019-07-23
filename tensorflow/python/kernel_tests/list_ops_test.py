@@ -1166,10 +1166,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(fn(tensor_shape.unknown_shape()), -1)
     # Scalar shape -> [] with type int32.
     self.assertEqual(fn([]).dtype, dtypes.int32)
-    self.assertEqual(fn(tensor_shape.scalar()).dtype, dtypes.int32)
+    self.assertEqual(fn(tensor_shape.TensorShape([])).dtype, dtypes.int32)
     self.assertAllEqual(self.evaluate(fn([])), np.array([], np.int32))
     self.assertAllEqual(
-        self.evaluate(fn(tensor_shape.scalar())), np.array([], np.int32))
+        self.evaluate(fn(tensor_shape.TensorShape([]))), np.array([], np.int32))
     # Tensor -> Tensor
     shape = constant_op.constant(1)
     self.assertIs(fn(shape), shape)
@@ -1327,7 +1327,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testConcatListWithScalarElementShapeFails(self):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=tensor_shape.scalar())
+        element_dtype=dtypes.float32,
+        element_shape=tensor_shape.TensorShape([]))
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         "Concat requires elements to be at least vectors, "

@@ -3165,7 +3165,7 @@ def _padding_value_to_tensor(value, output_type):
     TypeError: if the padding value's type does not match `output_type`.
   """
   value = ops.convert_to_tensor(value, name="padding_value")
-  if not value.shape.is_compatible_with(tensor_shape.scalar()):
+  if not value.shape.is_compatible_with(tensor_shape.TensorShape([])):
     raise ValueError("Padding value should be a scalar, but is not: %s" % value)
   if value.dtype != output_type:
     raise TypeError("Padding value tensor (%s) does not match output type: %s" %
@@ -3229,10 +3229,10 @@ class PaddedBatchDataset(UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
     def _padded_shape_to_batch_shape(s):
-      return tensor_shape.vector(
-          tensor_util.constant_value(self._batch_size) if smart_cond.
-          smart_constant_value(self._drop_remainder) else None).concatenate(
-              tensor_util.constant_value_as_shape(s))
+      return tensor_shape.TensorShape([
+          tensor_util.constant_value(self._batch_size)
+          if smart_cond.smart_constant_value(self._drop_remainder) else None
+      ]).concatenate(tensor_util.constant_value_as_shape(s))
 
     output_shapes = nest.map_structure(
         _padded_shape_to_batch_shape, self._padded_shapes)
