@@ -129,36 +129,39 @@ class NormalizationTest(keras_parameterized.TestCase,
 
   @parameterized.named_parameters(
       {
-          "adapt_data": np.array([[1], [2], [3], [4], [5]]),
+          "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]]),
           "axis": -1,
-          "test_data": np.array([[1], [2], [3]]),
+          "test_data": np.array([[1.], [2.], [3.]]),
           "expected": np.array([[-1], [-.5], [0]]),
           "testcase_name": "2d_single_element"
       }, {
           "adapt_data":
-              np.array([[[1, 2, 3], [2, 3, 4]], [[3, 4, 5], [4, 5, 6]]]),
+              np.array([[[1., 2., 3.], [2., 3., 4.]],
+                        [[3., 4., 5.], [4., 5., 6.]]]),
           "axis":
               1,
           "test_data":
-              np.array([[[1, 2, 3], [2, 3, 4]], [[3, 4, 5], [4, 5, 6]]]),
+              np.array([[[1., 2., 3.], [2., 3., 4.]],
+                        [[3., 4., 5.], [4., 5., 6.]]]),
           "expected":
               np.array([[[-1.2, -0.6, 0.], [-1.2, -0.6, 0.]],
                         [[0., 0.6, 1.2], [0., 0.6, 1.2]]]),
-          "testcase_name":
-              "3d_internal_axis"
+          "testcase_name": "3d_internal_axis"
       }, {
           "adapt_data":
-              np.array([[[1, 0, 3], [2, 3, 4]], [[3, -1, 5], [4, 5, 8]]]),
+              np.array([[[1., 0., 3.], [2., 3., 4.]],
+                        [[3., -1., 5.], [4., 5., 8.]]]),
           "axis": (1, 2),
           "test_data":
-              np.array([[[3, 1, -1], [2, 5, 4]], [[3, 0, 5], [2, 5, 8]]]),
+              np.array([[[3., 1., -1.], [2., 5., 4.]],
+                        [[3., 0., 5.], [2., 5., 8.]]]),
           "expected":
               np.array([[[1., 6., -5.], [-1., 1., -0.5]],
                         [[1., 2., 1.], [-1., 1., 0.5]]]),
-          "testcase_name":
-              "3d_multiple_axis"
+          "testcase_name": "3d_multiple_axis"
       })
   def test_layer_computation(self, adapt_data, axis, test_data, expected):
+
     cls = get_layer_class()
     layer = cls(axis=axis)
     layer.adapt(adapt_data)
@@ -167,13 +170,16 @@ class NormalizationTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=input_shape)
     output = layer(input_data)
     model = keras.Model(input_data, output)
-
+    model._run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
 
-  # 'assign' doesn't work in V1 mode, so don't test it in V1.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_mean_setting_continued_adapt_failure(self):
+
+    if not context.executing_eagerly():
+      self.skipTest("'assign' doesn't work in V1, so don't test in V1.")
+
     cls = get_layer_class()
     layer = cls()
     layer.build((2,))
@@ -181,9 +187,11 @@ class NormalizationTest(keras_parameterized.TestCase,
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
 
-  # 'assign' doesn't work in V1 mode, so don't test it in V1.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_var_setting_continued_adapt_failure(self):
+
+    if not context.executing_eagerly():
+      self.skipTest("'assign' doesn't work in V1, so don't test in V1.")
+
     cls = get_layer_class()
     layer = cls()
     layer.build((2,))
