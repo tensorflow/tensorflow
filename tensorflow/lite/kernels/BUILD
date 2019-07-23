@@ -309,23 +309,6 @@ cc_test(
 )
 
 cc_library(
-    name = "cpu_backend_support",
-    srcs = [
-        "cpu_backend_support.cc",
-    ],
-    hdrs = [
-        "cpu_backend_support.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        ":cpu_backend_context",
-        ":op_macros",
-        "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite/c:c_api_internal",
-    ],
-)
-
-cc_library(
     name = "activation_functor",
     hdrs = [
         "activation_functor.h",
@@ -483,7 +466,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
-        ":cpu_backend_support",
+        ":cpu_backend_context",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",

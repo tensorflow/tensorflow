@@ -26,6 +26,8 @@ namespace tflite {
 
 class CpuBackendContext final : public TfLiteInternalBackendContext {
  public:
+  static CpuBackendContext* GetFromContext(TfLiteContext* context);
+
   CpuBackendContext();
   ~CpuBackendContext() override;
 

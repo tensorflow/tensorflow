@@ -20,6 +20,32 @@ limitations under the License.
 
 namespace tflite {
 
+CpuBackendContext* CpuBackendContext::GetFromContext(TfLiteContext* context) {
+  auto* external_context = static_cast<ExternalCpuBackendContext*>(
+      context->GetExternalContext(context, kTfLiteCpuBackendContext));
+
+  if (external_context == nullptr) {
+    TF_LITE_FATAL(
+        "ExternalCpuBackendContext isn't properly initialized during TFLite "
+        "interpreter initialization.");
+  }
+
+  auto* cpu_backend_context = static_cast<CpuBackendContext*>(
+      external_context->internal_backend_context());
+  if (cpu_backend_context == nullptr) {
+    // We do the lazy initialization here for the TfLiteInternalBackendContext
+    // that's wrapped inside ExternalCpuBackendContext.
+    cpu_backend_context = new CpuBackendContext();
+    if (context->recommended_num_threads != -1) {
+      cpu_backend_context->SetMaxNumThreads(context->recommended_num_threads);
+    }
+    external_context->set_internal_backend_context(
+        std::unique_ptr<TfLiteInternalBackendContext>(cpu_backend_context));
+  }
+
+  return cpu_backend_context;
+}
+
 CpuBackendContext::CpuBackendContext()
     : TfLiteInternalBackendContext(),
       ruy_context_(new ruy::Context),
