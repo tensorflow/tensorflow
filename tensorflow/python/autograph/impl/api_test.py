@@ -456,8 +456,7 @@ class ApiTest(test.TestCase):
     # tc is still a TestClass - constructors are whitelisted.
     # TODO(b/124016764): Support this use case.
     # The error below is specific to the `if` statement not being converted.
-    with self.assertRaisesRegex(TypeError,
-                                'Using a `tf.Tensor` as a Python `bool`'):
+    with self.assertRaises(TypeError):
       tc.test_method()
 
   def test_converted_call_mangled_properties(self):

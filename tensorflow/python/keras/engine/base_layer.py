@@ -38,6 +38,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -710,16 +711,12 @@ class Layer(module.Module):
                 else:
                   outputs = call_fn(inputs, *args, **kwargs)
 
-            except TypeError as e:
-              exception_str = str(e)
-              exception_msg = 'Tensor objects are only iterable when eager'
-              if exception_msg in exception_str:
-                raise TypeError('You are attempting to use Python control '
-                                'flow in a layer that was not declared to be '
-                                'dynamic. Pass `dynamic=True` to the class '
-                                'constructor.\nEncountered error:\n"""\n' +
-                                exception_str + '\n"""')
-              raise
+            except errors.OperatorNotAllowedInGraphError as e:
+              raise TypeError('You are attempting to use Python control '
+                              'flow in a layer that was not declared to be '
+                              'dynamic. Pass `dynamic=True` to the class '
+                              'constructor.\nEncountered error:\n"""\n' +
+                              str(e) + '\n"""')
           else:
             # We will use static shape inference to return symbolic tensors
             # matching the specifications of the layer outputs.
@@ -844,11 +841,10 @@ class Layer(module.Module):
         if callable(u):
           try:
             u = u()
-          except ValueError as e:
-            if 'Trying to capture a tensor from an inner function' in str(e):
-              base_layer_utils.check_graph_consistency(
-                  method='add_update', force_raise=True)
-            raise
+          except errors.InaccessibleTensorError:
+            base_layer_utils.check_graph_consistency(
+                method='add_update', force_raise=True)
+            raise  # check_graph_consistency may not always raise.
         base_layer_utils.check_graph_consistency(u, method='add_update')
         updates.append(u)
     return updates + self._gather_children_attribute('updates')

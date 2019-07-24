@@ -100,7 +100,9 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
           return t(
               node_def=self.cause.node_def, op=self.cause.op, message=message)
 
-    elif preferred_type in (AutoGraphError, ConversionError, StagingError):
+    elif preferred_type in (AutoGraphError, ConversionError, StagingError,
+                            errors_impl.InaccessibleTensorError,
+                            errors_impl.OperatorNotAllowedInGraphError):
       return preferred_type(self.get_message())
 
     exc = super(_ErrorMetadata, self).create_exception(preferred_type)
