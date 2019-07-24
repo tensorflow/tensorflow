@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
