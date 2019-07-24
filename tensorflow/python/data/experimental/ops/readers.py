@@ -114,7 +114,7 @@ def _next_csv_row(
     filenames, num_cols, field_delim, use_quote_delim, header, file_io_fn):
   """Generator that yields rows of CSV file(s) in order."""
   for fn in filenames:
-    with file_io_fn(fn, "r") as f:
+    with file_io_fn(fn) as f:
       rdr = csv.reader(
           f,
           delimiter=field_delim,
@@ -164,7 +164,7 @@ def _infer_column_names(filenames, field_delim, use_quote_delim, file_io_fn):
       "delimiter": field_delim,
       "quoting": csv.QUOTE_MINIMAL if use_quote_delim else csv.QUOTE_NONE
   }
-  with file_io_fn(filenames[0], "r") as f:
+  with file_io_fn(filenames[0]) as f:
     try:
       column_names = next(csv.reader(f, **csv_kwargs))
     except StopIteration:
@@ -172,7 +172,7 @@ def _infer_column_names(filenames, field_delim, use_quote_delim, file_io_fn):
                         "of %s.  Empty file?") % filenames[0])
 
   for name in filenames[1:]:
-    with file_io_fn(name, "r") as f:
+    with file_io_fn(name) as f:
       try:
         if next(csv.reader(f, **csv_kwargs)) != column_names:
           raise ValueError(
@@ -431,21 +431,15 @@ def make_csv_dataset_v2(
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
 
   # Clean arguments; figure out column names and defaults
-  def gzip_file_io_open(filename, mode):
-    # By default, gzip will open in byte mode which will
-    # not work with csv.reader so we create a wrapper to
-    # append `t`.
-    mode = mode + "t" if "t" not in mode else mode
-    return gzip.open(filename, mode)
   if column_names is None or column_defaults is None:
     # Find out which io function to open the file
-    file_io_fn = file_io.FileIO
+    file_io_fn = lambda filename: file_io.FileIO(filename, 'r')
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
         raise ValueError("Received unkown compression_type")
       if compression_type_value == "GZIP":
-        file_io_fn = gzip_file_io_open
+        file_io_fn = lambda filename: gzip.open(filename, 'rt')
       elif compression_type_value == "ZLIB":
         raise ValueError(
             "compression_type (%s) is not supported for probing columns" %
