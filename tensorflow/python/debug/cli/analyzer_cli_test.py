@@ -46,9 +46,19 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
+# There are two types MKL supported operators. One type operators whose kernels
+# understand MKL layout in input tensors, # (e.g., MklConv2D, etc.) we
+# registered them with 'MklLayoutDependentOp' label. The other operators whose
+# kernels don't understand input tensors with MKL layout. # (e.g., MklMatMul,
+# MklTranspose), we registered them with 'MklNameChangeOp' label. With those
+# operators registered as 'MklNameChangeOp' operators, we go through a name
+# change during graph rewrite pass, and we changed the name of operators by
+# adding "Mkl" before their original name. In this test, only MatMul is
+# affected. We add this function to automatically change the operator's name
+# 'MatMul' to 'MklMatMul' when the test is running with MKL enabled TensorFlow,
+# so that the test can pass.
 def matmul_op_name():
-  op_name = "_MklMatMul" if test_util.IsMklEnabled() else "MatMul"
-  return op_name
+  return "_MklMatMul" if test_util.IsMklEnabled() else "MatMul"
 
 def _cli_config_from_temp_file():
   return cli_config.CLIConfig(
