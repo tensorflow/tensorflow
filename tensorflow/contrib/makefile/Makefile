@@ -133,6 +133,8 @@ $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/random/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/random/internal/*.cc) \
 tensorflow/contrib/makefile/downloads/absl/absl/synchronization/internal/mutex_nonprod.cc \
 tensorflow/contrib/makefile/downloads/absl/absl/hash/internal/print_hash_of.cc
 

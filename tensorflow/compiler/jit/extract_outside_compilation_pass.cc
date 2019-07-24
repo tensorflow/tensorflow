@@ -525,14 +525,11 @@ xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
 void AddEdgesFromOutsideCompilationNodes(
     const int original_arg_count, const int arg_to_input_edge_offset,
     const std::vector<DataType>& data_types,
-    const std::vector<std::pair<Node*, Node*>>&
-        lifted_arg_nodes_and_outside_compilation_nodes,
-    Graph* g, Node* n) {
+    const std::vector<Node*>& outside_compilation_nodes, Graph* g, Node* n) {
   // Add edges from outside compilation nodes to While node.
   for (int i = original_arg_count; i < data_types.size(); i++) {
     Node* outside_compilation_node =
-        lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
-            .second;
+        outside_compilation_nodes[i - original_arg_count];
     g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
   }
 }
@@ -574,14 +571,15 @@ Status AddMatchingRetvalNode(const FunctionBody& function_body,
 
 void ReplaceLiftedArgNodePlaceholderWithArg(
     const FunctionBody& function_body, const int original_arg_count,
-    const int arg_idx,
-    const std::vector<std::pair<Node*, Node*>>&
-        lifted_arg_nodes_and_outside_compilation_nodes,
+    const int arg_idx, const std::vector<Node*>& lifted_arg_nodes,
     Node* arg_node) {
-  Node* lifted_arg_node =
-      lifted_arg_nodes_and_outside_compilation_nodes[arg_idx -
-                                                     original_arg_count]
-          .first;
+  Node* lifted_arg_node = lifted_arg_nodes[arg_idx - original_arg_count];
+  // This might happen because lifted_arg_node only exists in one branch of an
+  // If node, and we are handling the other branch.
+  if (!lifted_arg_node) {
+    return;
+  }
+
   for (const Edge* e : lifted_arg_node->out_edges()) {
     if (e->IsControlEdge()) {
       function_body.graph->AddControlEdge(arg_node, e->dst());
@@ -589,7 +587,6 @@ void ReplaceLiftedArgNodePlaceholderWithArg(
       function_body.graph->AddEdge(arg_node, 0, e->dst(), e->dst_input());
     }
   }
-
   function_body.graph->RemoveNode(lifted_arg_node);
 }
 
@@ -630,13 +627,25 @@ Status PostprocessLiftedArgsForWhile(
                            n));
 
   // Add edges from outside compilation nodes to While node.
-  AddEdgesFromOutsideCompilationNodes(
-      original_arg_count,
-      /*arg_to_input_edge_offset=*/0, data_types,
-      lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
 
   // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
   // nodes with the new _Arg nodes.
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
   for (int i = original_arg_count; i < data_types.size(); i++) {
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
@@ -646,8 +655,7 @@ Status PostprocessLiftedArgsForWhile(
         AddMatchingRetvalNode(*body_function_body, i, data_types[i], arg_node));
 
     ReplaceLiftedArgNodePlaceholderWithArg(
-        *body_function_body, original_arg_count, i,
-        lifted_arg_nodes_and_outside_compilation_nodes, arg_node);
+        *body_function_body, original_arg_count, i, lifted_arg_nodes, arg_node);
   }
 
   FunctionDef rewritten_body_function_def;
@@ -730,20 +738,53 @@ Status PostprocessLiftedArgsForIf(
       LiftedArgsAndOutsideCompilationNodesInFunctionBody(
           *else_branch_function_body, outside_compilation_attr_to_node));
 
+  // Merge lifted args from then and else branches.
+  std::vector<Node*> outside_compilation_nodes;
+  std::vector<Node*> then_branch_lifted_arg_nodes;
+  for (const auto& pair :
+       then_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    outside_compilation_nodes.push_back(pair.second);
+    then_branch_lifted_arg_nodes.push_back(pair.first);
+  }
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    if (std::find(outside_compilation_nodes.begin(),
+                  outside_compilation_nodes.end(),
+                  pair.second) == outside_compilation_nodes.end()) {
+      outside_compilation_nodes.push_back(pair.second);
+      // Then branch does not contain this lifted arg. Add an empty item to
+      // then_branch_lifted_arg_nodes.
+      then_branch_lifted_arg_nodes.push_back(nullptr);
+    }
+  }
+  // Reorder else_branch_lifted_arg_nodes_and_outside_compilation_nodes.
+  std::vector<Node*> else_branch_lifted_arg_nodes(
+      outside_compilation_nodes.size());
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    auto iter = std::find(outside_compilation_nodes.begin(),
+                          outside_compilation_nodes.end(), pair.second);
+    TF_RET_CHECK(iter != outside_compilation_nodes.end());
+    int index = iter - outside_compilation_nodes.begin();
+    else_branch_lifted_arg_nodes[index] = pair.first;
+  }
+
   // Append lifted args' types to If node's Tin attribute.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DataType> data_types,
-      UpdateTypesAttribute(
-          then_branch_lifted_arg_nodes_and_outside_compilation_nodes, "Tin",
-          n));
+  std::vector<DataType> data_types;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
+  for (Node* n : outside_compilation_nodes) {
+    data_types.push_back(n->output_type(0));
+  }
+  n->ClearAttr("Tin");
+  n->AddAttr("Tin", data_types);
 
   // Add edges from outside compilation nodes to If node. If node's input #0
   // is predicate input, input #1 maps to _Arg #0 of branch functions, thus
   // arg_to_input_edge_offset is set to 1.
-  AddEdgesFromOutsideCompilationNodes(
-      original_arg_count,
-      /*arg_to_input_edge_offset=*/1, data_types,
-      then_branch_lifted_arg_nodes_and_outside_compilation_nodes, g, n);
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/1,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
 
   for (int i = original_arg_count; i < data_types.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
@@ -752,8 +793,7 @@ Status PostprocessLiftedArgsForIf(
 
     ReplaceLiftedArgNodePlaceholderWithArg(
         *then_branch_function_body, original_arg_count, i,
-        then_branch_lifted_arg_nodes_and_outside_compilation_nodes,
-        then_branch_arg_node);
+        then_branch_lifted_arg_nodes, then_branch_arg_node);
 
     TF_ASSIGN_OR_RETURN(Node * else_branch_arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
@@ -761,8 +801,7 @@ Status PostprocessLiftedArgsForIf(
 
     ReplaceLiftedArgNodePlaceholderWithArg(
         *else_branch_function_body, original_arg_count, i,
-        else_branch_lifted_arg_nodes_and_outside_compilation_nodes,
-        else_branch_arg_node);
+        else_branch_lifted_arg_nodes, else_branch_arg_node);
   }
 
   FunctionDef rewritten_then_branch_function_def;
@@ -778,6 +817,91 @@ Status PostprocessLiftedArgsForIf(
       HostGraphControlRetMapping, &rewritten_else_branch_function_def));
   TF_RETURN_IF_ERROR(fld->ReplaceFunction(else_branch_func.name(),
                                           rewritten_else_branch_function_def));
+  return Status::OK();
+}
+
+Status PostprocessLiftedArgsForCall(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  const FunctionDef* fdef = fld->Find(n->type_string());
+  TF_RET_CHECK(fdef);
+
+  // Nothing to do if the function does not contain any lifted arguments.
+  if (!HasLiftedArgs(*fdef)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, n->attrs(), fld, &fbody));
+
+  int original_arg_count = fbody->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(auto lifted_arg_nodes_and_outside_compilation_nodes,
+                      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+                          *fbody, outside_compilation_attr_to_node));
+
+  // Append lifted args' types to call node's input data types.
+  std::vector<DataType> data_types(n->input_types().begin(),
+                                   n->input_types().end());
+  for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
+    Node* outside_compilation_node = pair.second;
+    DataType data_type;
+    TF_RET_CHECK(outside_compilation_node->IsIdentity() ||
+                 outside_compilation_node->type_string() == "Placeholder");
+    if (outside_compilation_node->IsIdentity()) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+    } else {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+    }
+    data_types.push_back(data_type);
+  }
+
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
+  for (int i = original_arg_count; i < data_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        Node * arg_node,
+        AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(*fbody, original_arg_count, i,
+                                           lifted_arg_nodes, arg_node);
+  }
+
+  FunctionDef rewritten_fdef;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, n->type_string(),
+                                        HostGraphControlRetMapping,
+                                        &rewritten_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(n->type_string(), rewritten_fdef));
+
+  // We need to recreate the node. Otherwise TF will not know n->num_inputs()
+  // has increased.
+  NodeDef node_def = n->def();
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    Node* outside_compilation_node =
+        lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
+            .second;
+    node_def.add_input(absl::StrCat(outside_compilation_node->name(), ":", 0));
+  }
+  TF_ASSIGN_OR_RETURN(n, ReplaceNode(g, n, node_def));
+
+  // Add edges from outside compilation nodes to call node.
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
+
   return Status::OK();
 }
 
@@ -806,6 +930,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
   TF_ASSIGN_OR_RETURN(auto outside_compilation_attr_to_node,
                       OutsideCompilationAttrToNode(*g));
 
+  std::vector<Node*> call_nodes;
   for (Node* n : g->op_nodes()) {
     if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
       continue;
@@ -820,6 +945,19 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
+
+    // Outside compilation host side function call will always be direct
+    // function call nodes.
+    // Function call nodes need to be handled separately because we rewrite
+    // nodes in `PostprocessLiftedArgsForCall`.
+    if (fld->Contains(n->type_string())) {
+      call_nodes.push_back(n);
+    }
+  }
+
+  for (Node* n : call_nodes) {
+    TF_RETURN_IF_ERROR(PostprocessLiftedArgsForCall(
+        outside_compilation_attr_to_node, g, n, fld));
   }
 
   return Status::OK();
@@ -1646,17 +1784,8 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
       if_nodes.push_back(n);
     } else if (n->type_string() == "While") {
       while_nodes.push_back(n);
-    } else if (fld->Contains(n->type_string())) {
+    } else if (IsFunctionCall(*fld, *n)) {
       func_call_nodes.push_back(n);
-    } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
-      // Only gradient for user-defined function should be considered as
-      // function call node.
-      NameAttrList original_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(
-          n->def(), FunctionLibraryDefinition::kFuncAttr, &original_func));
-      if (fld->Contains(original_func.name())) {
-        func_call_nodes.push_back(n);
-      }
     }
   }
 
@@ -1664,9 +1793,17 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     // Extract outside compilation for the function call.
     bool func_has_outside_compilation = false;
     NameAttrList func;
-    func.set_name(n->type_string());
-    typedef protobuf::Map<string, AttrValue> AttrMap;
-    *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    if (fld->Contains(n->type_string())) {
+      func.set_name(n->type_string());
+      typedef protobuf::Map<string, AttrValue> AttrMap;
+      *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    } else if (n->IsPartitionedCall()) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
+    } else {
+      TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
+      func.set_name(FunctionLibraryDefinition::kGradientOp);
+      *func.mutable_attr() = n->def().attr();
+    }
     string new_func_name = absl::StrCat(n->name(), "_oc");
     string host_func_name = absl::StrCat("oc_func_call_host_", n->name());
     TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(

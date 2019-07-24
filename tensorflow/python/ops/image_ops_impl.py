@@ -1597,6 +1597,13 @@ def adjust_brightness(image, delta):
 
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
+  
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.adjust_brightness(x, delta=0.1)
+    ```
   """
   with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
     image = ops.convert_to_tensor(image, name='image')

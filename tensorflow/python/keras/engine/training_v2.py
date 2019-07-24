@@ -182,9 +182,7 @@ class Loop(training_utils.TrainingLoop):
     dist_utils.validate_callbacks(input_callbacks=callbacks,
                                   optimizer=model.optimizer)
     # Enter tf.distribute.Strategy scope.
-    with dist_utils.distributed_scope(
-        strategy=strategy, learning_phase=1):
-
+    with strategy.scope():
       training_data_adapter, validation_adapter = _process_training_inputs(
           model,
           x,
@@ -336,9 +334,7 @@ class Loop(training_utils.TrainingLoop):
     dist_utils.validate_callbacks(input_callbacks=callbacks,
                                   optimizer=model.optimizer)
     # Enter tf.distribute.Strategy scope.
-    with dist_utils.distributed_scope(
-        strategy=strategy, learning_phase=0):
-
+    with strategy.scope():
       adapter = _process_inputs(
           model,
           x,

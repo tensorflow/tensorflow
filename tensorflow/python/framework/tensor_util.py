@@ -833,11 +833,11 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
   shape = tensor.get_shape().with_rank(1)
   if shape == [0]:
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
     # would not be rank 1.
     assert tensor.op.get_attr("axis") == 0
@@ -855,7 +855,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[1:]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
@@ -865,7 +865,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[-1]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[:-1]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.

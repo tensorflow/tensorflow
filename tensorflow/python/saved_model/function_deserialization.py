@@ -375,6 +375,15 @@ def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
     if attr_value.func.name:
       attr_value.func.name = functions[attr_value.func.name].name
 
+  # Fix old table creation bug.
+  if node_def.op == "HashTableV2":
+    if ("use_node_name_sharing" not in node_def.attr or
+        not node_def.attr["use_node_name_sharing"].b):
+      node_def.attr["use_node_name_sharing"].b = True
+      # We are turning on node mame sharing, so have to make sure we don't
+      # accidentally share a table resource.
+      shared_name_suffix += "_{}".format(ops.uid())
+
   # TODO(b/124205571): Avoid accidental sharing and destruction of restored
   # resources. For now uniquify "shared_name" when loading functions to avoid
   # sharing.

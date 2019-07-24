@@ -3134,7 +3134,7 @@ class EmbeddingColumn(
   @property
   def variable_shape(self):
     """See `DenseColumn` base class."""
-    return tensor_shape.vector(self.dimension)
+    return tensor_shape.TensorShape([self.dimension])
 
   @property
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
@@ -3418,7 +3418,8 @@ class SharedEmbeddingColumn(
   @property
   def variable_shape(self):
     """See `DenseColumn` base class."""
-    return tensor_shape.vector(self.shared_embedding_column_creator.dimension)
+    return tensor_shape.TensorShape(
+        [self.shared_embedding_column_creator.dimension])
 
   @property
   def _variable_shape(self):

@@ -2282,7 +2282,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -4233,7 +4234,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:

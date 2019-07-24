@@ -319,14 +319,14 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
       // 'ScopedActivity' will trace the OpKernel scheduling time on host.
       profiler::TraceMe activity(
           [&] {
-            return strings::StrCat(
-                op_name, ":", kernel_->type_string(),
-                "#id=", step_container ? step_container->step_id() : 0,
-                ",device=", device_->name(), ",async=false#");
+            return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
+                                step_container ? step_container->step_id() : 0,
+                                ",device=", device_->name(), ",async=false#");
           },
           profiler::TraceMeLevel::kInfo);
       // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
+      tracing::ScopedAnnotation annotation(
+          [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
       device_->Compute(kernel_.get(), &context);
     } else {
       profiler::TraceMe activity(

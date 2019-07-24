@@ -71,24 +71,26 @@ class CallTreeTransformer(converter.Base):
     return node
 
   def visit_Call(self, node):
+    full_name = str(anno.getanno(node.func, anno.Basic.QN, default=''))
+    node = self.generic_visit(node)
+
     # TODO(mdan): Refactor converted_call as a 'Call' operator.
 
     # Calls to the internal 'ag__' module are never converted (though their
     # arguments might be).
-    full_name = str(anno.getanno(node.func, anno.Basic.QN, default=''))
     if full_name.startswith('ag__.'):
-      return self.generic_visit(node)
+      return node
 
     # Calls to pdb.set_trace or ipdb.set_trace are never converted. We don't use
     # the normal mechanisms to bypass these literals because they are sensitive
     # to the frame they are being called from.
     # TODO(mdan): Generalize this to a "static whitelist" config.
     if full_name in ('pdb.set_trace', 'ipdb.set_trace'):
-      return self.generic_visit(node)
+      return node
 
     if (full_name == 'print' and
         not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
-      return self.generic_visit(node)
+      return node
 
     func = node.func
 
@@ -99,7 +101,6 @@ class CallTreeTransformer(converter.Base):
         assert starred_arg is None, 'Multiple *args should be impossible.'
         starred_arg = a
       else:
-        a = self.visit(a)
         normal_args.append(a)
     if starred_arg is None:
       args = templates.replace_as_expression('(args,)', args=normal_args)
@@ -116,7 +117,6 @@ class CallTreeTransformer(converter.Base):
         assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
         kwargs_arg = k
       else:
-        k = self.visit(k)
         normal_keywords.append(k)
     if kwargs_arg is None:
       if not normal_keywords:

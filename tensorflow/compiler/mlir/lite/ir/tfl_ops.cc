@@ -569,6 +569,31 @@ static LogicalResult Verify(UnpackOp op) {
 // TODO(b/133854225): Implement shape inference to Mean
 
 //===----------------------------------------------------------------------===//
+// LSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(LSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError("LSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
+// UnidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError(
+      "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 

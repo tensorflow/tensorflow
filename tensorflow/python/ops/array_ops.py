@@ -1307,8 +1307,7 @@ def concat(values, axis, name="concat"):
     with ops.name_scope(name) as scope:
       ops.convert_to_tensor(
           axis, name="concat_dim",
-          dtype=dtypes.int32).get_shape().assert_is_compatible_with(
-              tensor_shape.scalar())
+          dtype=dtypes.int32).get_shape().assert_has_rank(0)
       return identity(values[0], name=scope)
   return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 

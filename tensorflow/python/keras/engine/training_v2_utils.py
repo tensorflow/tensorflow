@@ -29,6 +29,7 @@ import functools
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_utils
@@ -332,4 +333,5 @@ def predict_on_batch(model, x):
     if len(inputs) == 1:
       inputs = inputs[0]
 
-  return model(inputs)  # pylint: disable=not-callable
+  with backend.eager_learning_phase_scope(0):
+    return model(inputs)  # pylint: disable=not-callable

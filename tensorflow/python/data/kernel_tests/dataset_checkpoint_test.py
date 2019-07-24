@@ -142,7 +142,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
     with ops.Graph().as_default() as g:
       # Create an empty IteratorResource and restore the Iterator into it.
       output_types = dtypes.int64
-      output_shapes = tensor_shape.scalar()
+      output_shapes = tensor_shape.TensorShape([])
       iterator = iterator_ops.Iterator.from_structure(output_types,
                                                       output_shapes)
       restore_op = self._restore_op(iterator._iterator_resource)

@@ -60,7 +60,7 @@ class AccumulateNBenchmark(test.Benchmark):
     return self._AccumulateNTemplate(
         inputs,
         init=array_ops.zeros_like(gen_control_flow_ops.merge(inputs)[0]),
-        shape=tensor_shape.vector(0),
+        shape=tensor_shape.TensorShape([0]),
         validate_shape=False)
 
   def _AccumulateNInitializedWithShape(self, inputs):

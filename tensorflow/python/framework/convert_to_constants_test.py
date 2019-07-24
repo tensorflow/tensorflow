@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -288,7 +289,8 @@ class VariablesToConstantsTest(test.TestCase):
     self._testConvertedFunction(root, fn, output_func, input_data)
 
   @test_util.run_v2_only
-  def testControlFlow(self):
+  def testIf(self):
+    """Test whether If op freezes correctly."""
     input_data = {
         "x": constant_op.constant([1., 2.], shape=[1, 2]),
         "b": constant_op.constant(True)
@@ -309,6 +311,37 @@ class VariablesToConstantsTest(test.TestCase):
     def model(x, b):
       return control_flow_ops.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
+
+    root = tracking.AutoTrackable()
+    root.f = model
+    input_func = root.f.get_concrete_function()
+    input_func(**input_data)
+
+    output_func = convert_to_constants.convert_variables_to_constants_v2(
+        input_func, lower_control_flow=False)
+    constant_graph_def = output_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
+  @test_util.run_v2_only
+  def testStatelessIf(self):
+    """Test whether StatelessIf op freezes correctly."""
+    input_data = {"b": constant_op.constant(True)}
+
+    x = constant_op.constant([1., 2.], shape=[1, 2], name="x")
+
+    def true_fn():
+      return x
+
+    def false_fn():
+      return x + 2
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)])
+    def model(b):
+      return cond_v2.cond_v2(b, true_fn, false_fn)
 
     root = tracking.AutoTrackable()
     root.f = model

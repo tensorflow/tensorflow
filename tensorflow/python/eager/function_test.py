@@ -683,7 +683,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     compiled = def_function.function(f)
     var_handle = compiled()
     self.assertEqual(var_handle.dtype, dtypes.resource)
-    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -760,7 +760,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       compiled = def_function.function(f)
       var_handle = compiled()
       self.assertEqual(var_handle.dtype, dtypes.resource)
-      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
       var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
       self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -790,14 +790,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def f():
         tl, value = list_ops.tensor_list_pop_back(
             tensor_list, element_dtype=dtypes.float32)
-        self.assertEqual(value.shape, tensor_shape.scalar())
+        self.assertEqual(value.shape, tensor_shape.TensorShape([]))
         return tl
 
       compiled = def_function.function(f)
       output_tensor_list = compiled()
       _, value = list_ops.tensor_list_pop_back(
           output_tensor_list, element_dtype=dtypes.float32)
-      self.assertEqual(value.shape, tensor_shape.scalar())
+      self.assertEqual(value.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
