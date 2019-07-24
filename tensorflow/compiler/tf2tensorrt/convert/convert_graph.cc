@@ -541,6 +541,7 @@ Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
   // graph is the input graph to be optimized by TRT.
   GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
+  /*
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : segment_graph->op_nodes()) {
@@ -615,6 +616,7 @@ Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
     }
     segment_graph->RemoveNode(node);
   }
+  */
   return Status::OK();
 }
 
