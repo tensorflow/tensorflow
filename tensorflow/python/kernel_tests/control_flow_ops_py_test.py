@@ -43,6 +43,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -2116,6 +2117,50 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r.row_splits.shape.as_list(), [3])
     self.assertTrue(r.values.row_splits.shape.as_list() in ([6], [None]))
     self.assertTrue(r.values.values.shape.as_list() in ([49], [None]))
+
+  def testWhileShapeInvariantTensorSpec(self):
+    i = constant_op.constant(0)
+    x = constant_op.constant([1])
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, array_ops.stack([x, x]))
+    shape_invariants = [
+        tensor_spec.TensorSpec([], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(None, dtype=dtypes.int32)]
+    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+
+  # TODO(b/131265085) Remove this decorator when bug is fixed.
+  @test_util.build_as_function_and_v1_graph
+  def testWhileShapeInvariantWrongTypeSpecType(self):
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, x)
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor([[0]], [1.0], [10])
+    shape_invariants = [
+        tensor_spec.TensorSpec([], dtype=dtypes.int32),
+        sparse_tensor.SparseTensorSpec([None])]
+    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+
+    x2 = constant_op.constant([1])
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i, x2], shape_invariants)
+
+    x3 = ragged_factory_ops.constant([[1, 2], [3]])
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i, x3], shape_invariants)
+
+    i2 = constant_op.constant(0.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i2, x], shape_invariants)
+
+  # TODO(b/131265085) Remove this decorator when bug is fixed.
+  @test_util.build_as_function_and_v1_graph
+  def testWhileShapeInvariantBadType(self):
+    i = constant_op.constant(0)
+    x = constant_op.constant([1])
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, x)
+    with self.assertRaises((ValueError, TypeError)):
+      control_flow_ops.while_loop(c, b, [i, x], ["foo", "bar"])
 
   def _testNestedWhile_1(self, use_gpu):
     with self.cached_session(use_gpu=use_gpu):

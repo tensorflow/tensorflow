@@ -482,6 +482,12 @@ def _get_shape_invariant(var, shape=None):
 
   elif shape is None:
     return var.shape
+  elif isinstance(shape, tensor_spec.TensorSpec):
+    if var.dtype != shape.dtype:
+      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
+    return shape.shape
+  elif isinstance(shape, type_spec.TypeSpec):
+    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
   else:
     return shape
 
@@ -498,6 +504,8 @@ def _shape_invariant_to_type_spec(var, shape):
     A `TypeSpec` for `var`, consistent with the given shape.
   """
   if isinstance(shape, type_spec.TypeSpec):
+    if not shape.is_compatible_with(var):
+      raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
     raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
