@@ -92,7 +92,7 @@ tensorflow::Status EagerExecutor::status() const {
 
 void EagerExecutor::Run() {
   while (true) {
-    EagerNode* curr_node;
+    EagerNode* curr_node_raw;
     {
       tensorflow::mutex_lock l(node_queue_mutex_);
       while (node_queue_.empty() || !status_.ok()) {
@@ -100,39 +100,56 @@ void EagerExecutor::Run() {
         nodes_pending_.wait(l);
       }
       // Obtain raw pointer since we don't want to remove from the queue until
-      // the node has been run.
-      curr_node = node_queue_.front().get();
+      // the node has been run. Otherwise, WaitForAllPendingNodes can return
+      // too early.
+      // Note, we don't std::move from the here because the front of the queue
+      // will then contain a nullptr. This can be a problem in
+      // WaitForAllPendingNodes where we get the top EagerNode pointer
+      // and register a notification for its completion.
+      curr_node_raw = node_queue_.front().get();
     }
-    tensorflow::Status status = curr_node->Run();
+    tensorflow::Status status = curr_node_raw->Run();
     const bool ok = status.ok();
-    tensorflow::mutex_lock l(node_queue_mutex_);
-    node_queue_.pop();
-    if (!ok) {
-      status_ = status;
-      // We remove any pending ops so that we don't try to execute them if
-      // ClearError is called.
-      errors::AppendToMessage(&status,
-                              ". Encountered when executing an operation using "
-                              "EagerExecutor. This error cancels all future "
-                              "operations and poisons their output tensors.");
-      for (int i = 0; i < node_queue_.size(); ++i) {
-        node_queue_.front()->Abort(status);
-        // Dequeue and delete nodes
-        node_queue_.pop();
+
+    std::unique_ptr<EagerNode> curr_node;
+    std::vector<std::unique_ptr<EagerNode>> nodes_to_destroy;
+    {
+      tensorflow::mutex_lock l(node_queue_mutex_);
+      curr_node = std::move(node_queue_.front());
+      node_queue_.pop();
+      if (!ok) {
+        status_ = status;
+        // We remove any pending ops so that we don't try to execute them if
+        // ClearError is called.
+        errors::AppendToMessage(
+            &status,
+            ". Encountered when executing an operation using "
+            "EagerExecutor. This error cancels all future "
+            "operations and poisons their output tensors.");
+        for (int i = 0; i < node_queue_.size(); ++i) {
+          node_queue_.front()->Abort(status);
+          nodes_to_destroy.push_back(std::move(node_queue_.front()));
+          node_queue_.pop();
+        }
+      }
+      if (!node_done_notifications_.empty()) {
+        // Note that we notify all waiting threads in case an error has
+        // occurred. These calling threads are responsible for checking status_
+        // before proceeding.
+        const auto range =
+            ok ? node_done_notifications_.equal_range(curr_node_raw)
+               : make_pair(node_done_notifications_.begin(),
+                           node_done_notifications_.end());
+        for (auto it = range.first; it != range.second; ++it) {
+          it->second->notify_all();
+        }
+        node_done_notifications_.erase(range.first, range.second);
       }
     }
-    if (!node_done_notifications_.empty()) {
-      // Note that we notify all waiting threads in case an error has occurred.
-      // These calling threads are responsible for checking status_ before
-      // proceeding.
-      const auto range = ok ? node_done_notifications_.equal_range(curr_node)
-                            : make_pair(node_done_notifications_.begin(),
-                                        node_done_notifications_.end());
-      for (auto it = range.first; it != range.second; ++it) {
-        it->second->notify_all();
-      }
-      node_done_notifications_.erase(range.first, range.second);
-    }
+    // curr_node and nodes_to_destroy will be destructed here, while not holding
+    // node_queue_mutex_. This is important because, unfortunately, some nodes'
+    // destructors can enqueue more operations onto this executor and cause
+    // a deadlock.
   }
 }
 
