@@ -2815,6 +2815,8 @@ class Graph(object):
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
     self._add_control_dependencies = False
+    # Cache for OpDef protobufs retrieved via the C API.
+    self._op_def_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -3715,14 +3717,20 @@ class Graph(object):
 
   def _get_op_def(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
-    with c_api_util.tf_buffer() as buf:
-      # pylint: disable=protected-access
-      c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
-      # pylint: enable=protected-access
-      data = c_api.TF_GetBuffer(buf)
-    op_def = op_def_pb2.OpDef()
-    op_def.ParseFromString(compat.as_bytes(data))
-    return op_def
+    # NOTE: No locking is required because the lookup and insertion operations
+    # on Python dictionaries are atomic.
+    try:
+      return self._op_def_cache[type]
+    except KeyError:
+      with c_api_util.tf_buffer() as buf:
+        # pylint: disable=protected-access
+        c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
+        # pylint: enable=protected-access
+        data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      self._op_def_cache[type] = op_def
+      return op_def
 
   def as_default(self):
     """Returns a context manager that makes this `Graph` the default graph.
