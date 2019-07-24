@@ -36,7 +36,6 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
-from tensorflow.python.eager import context
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
@@ -165,37 +164,32 @@ def _show_inputs_outputs(
            meta_graph_def.signature_def[signature_def_key].method_name)
 
 
-def _show_defined_functions(saved_model_dir, indent=0):
+def _show_defined_functions(saved_model_dir):
   """Prints the function definition of SavedModel2.0 located at saved_model_dir
 
      Args:
        saved_model_dir: Directory containing the SavedModel to inspect.
-       indent: How far (in increments of 2 spaces) to indent each line of output.
   """
   with ops_lib.Graph().as_default():
     trackable_object = load.load(saved_model_dir)
-  indent_str = '  ' * indent
-
-  def in_print(s):
-    print(indent_str + s)
 
   print('Defined Functions:')
   functions = save._AugmentedGraphView(
       trackable_object).list_functions(trackable_object)
   for name, function in functions.items():
-    in_print('Function Name: \'%s\'' % name)
+    print('  Function Name: \'%s\'' % name)
     for index, concrete_functions in enumerate(
             function._list_all_concrete_functions_for_serialization(), 1):
       args, kwargs = (concrete_functions.structured_input_signature)
-      in_print('Option #%d' % index)
-      in_print('  Callable with:')
+      print('  Option #%d' % index)
+      print('    Callable with:')
       _print_args(args, indent=3)
       if kwargs:
         _print_args(kwargs, "Named Argument", indent=3)
 
 
 def _print_args(arguments, argument_type="Argument", indent=0):
-  """Formats and prints the argument of the concrete functions defined in the model
+  """Formats and prints the argument of the concrete functions defined in the model.
 
      Args:
        arguments: Arguments of the concrete functions.
@@ -204,7 +198,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
   """
   indent_str = '  ' * indent
 
-  def quotes(value):
+  def _may_be_add_quotes(value):
     is_quotes = '\'' * isinstance(value, str)
     return is_quotes + value + is_quotes
 
@@ -233,7 +227,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
             _print_args(element, indent + 1)
             in_print('        ]')
           else:
-            in_print('      \'%s\': %s' % (str(key), quotes(value)), end='')
+            in_print('      \'%s\': %s' % (str(key), _may_be_add_quotes(value)), end='')
         in_print('      }')
       else:
         in_print('  DType: %s' % type(element).__name__)
@@ -305,7 +299,7 @@ def _show_all(saved_model_dir):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
       _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
-  _show_defined_functions(saved_model_dir, indent=1)
+  _show_defined_functions(saved_model_dir)
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):
