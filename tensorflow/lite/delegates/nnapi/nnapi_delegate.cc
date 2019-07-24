@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
 #include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -142,7 +143,9 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
     }
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinSub:
-    case kTfLiteBuiltinTanh: {
+    case kTfLiteBuiltinTanh:
+    case kTfLiteBuiltinReduceMin:
+    case kTfLiteBuiltinReduceMax: {
       return input_type == kTfLiteInt8;
     }
     default:
@@ -1292,16 +1295,31 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinLshProjection:
         if (version == 1) {
-          // NNAPI does not support sparse projection correctly (b/111751836).
           if (reinterpret_cast<TfLiteLSHProjectionParams*>(node->builtin_data)
                   ->type == kTfLiteLshProjectionSparse) {
-            return nullptr;
+            // NNAPI does not support sparse projection correctly pre-Q
+            // (b/111751836).
+            if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+              return nullptr;
+            }
+            // NNAPI does not support weights for sparse projects.
+            if (node->inputs->size != 2) {
+              return nullptr;
+            }
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             auto builtin = reinterpret_cast<TfLiteLSHProjectionParams*>(
                 mapping_args.node->builtin_data);
-            mapping_args.builder->AddScalarInt32Operand(builtin->type);
+            int type = builtin->type;
+            // In Android Q+, NNAPI uses 3 to denote kTfLiteLshProjectionSparse.
+            const int kNNAPILshProjectionSparse = 3;
+            if (builtin->type == kTfLiteLshProjectionSparse) {
+              type = kNNAPILshProjectionSparse;
+              // Add NNAPI null weight operand.
+              mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
+            }
+            mapping_args.builder->AddScalarInt32Operand(type);
             return ANEURALNETWORKS_LSH_PROJECTION;
           };
         }
@@ -1707,6 +1725,14 @@ class NNAPIDelegateKernel {
              (android_sdk_version >= kMinSdkVersionForNNAPI12 &&
               context->tensors[node->inputs->data[0]].type == kTfLiteUInt8)) &&
             context->tensors[node->outputs->data[0]].dims->size > 0) {
+          auto input_param = context->tensors[node->inputs->data[0]].params;
+          auto output_param = context->tensors[node->outputs->data[0]].params;
+          // NNAPI requires that the input and output have the same
+          // quantization parameters.
+          if (input_param.scale != output_param.scale ||
+              input_param.zero_point != output_param.zero_point) {
+            return nullptr;
+          }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             auto builtin = reinterpret_cast<TfLiteReducerParams*>(
@@ -2026,6 +2052,96 @@ class NNAPIDelegateKernel {
             quantization_params.scale > 0.f) {
           return BasicMappingFn<ANEURALNETWORKS_QUANTIZE>;
         }
+      } break;
+      case kTfLiteBuiltinReduceAny: {
+        if (version != 1 || android_sdk_version < kMinSdkVersionForNNAPI12) {
+          return nullptr;
+        }
+        // NNAPI does not support generating a scalar as output for REDUCE_ANY.
+        if (context->tensors[node->outputs->data[0]].dims->size == 0) {
+          return nullptr;
+        }
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteReducerParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
+          return ANEURALNETWORKS_REDUCE_ANY;
+        };
+      } break;
+      case kTfLiteBuiltinReduceMin: {
+        if (version != 1 || android_sdk_version < kMinSdkVersionForNNAPI12) {
+          return nullptr;
+        }
+        // NNAPI does not support generating a scalar as output for REDUCE_MIN.
+        if (context->tensors[node->outputs->data[0]].dims->size == 0) {
+          return nullptr;
+        }
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteReducerParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
+          return ANEURALNETWORKS_REDUCE_MIN;
+        };
+      } break;
+      case kTfLiteBuiltinReduceMax: {
+        if (version != 1 || android_sdk_version < kMinSdkVersionForNNAPI12) {
+          return nullptr;
+        }
+        // NNAPI does not support generating a scalar as output for REDUCE_MAX.
+        if (context->tensors[node->outputs->data[0]].dims->size == 0) {
+          return nullptr;
+        }
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteReducerParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
+          return ANEURALNETWORKS_REDUCE_MAX;
+        };
+      } break;
+      case kTfLiteBuiltinReduceProd: {
+        if (version != 1 || android_sdk_version < kMinSdkVersionForNNAPI12) {
+          return nullptr;
+        }
+        // NNAPI only supports floating point REDUCE_PROD.
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (input_type != kTfLiteFloat32) {
+          return nullptr;
+        }
+        // NNAPI does not support generating a scalar as output for REDUCE_PROD.
+        if (context->tensors[node->outputs->data[0]].dims->size == 0) {
+          return nullptr;
+        }
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteReducerParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
+          return ANEURALNETWORKS_REDUCE_PROD;
+        };
+      } break;
+      case kTfLiteBuiltinSum: {
+        if (version != 1 || android_sdk_version < kMinSdkVersionForNNAPI12) {
+          return nullptr;
+        }
+        // NNAPI only supports floating point REDUCE_SUM.
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (input_type != kTfLiteFloat32) {
+          return nullptr;
+        }
+        // NNAPI does not support generating a scalar as output for REDUCE_SUM.
+        if (context->tensors[node->outputs->data[0]].dims->size == 0) {
+          return nullptr;
+        }
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteReducerParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
+          return ANEURALNETWORKS_REDUCE_SUM;
+        };
       } break;
       default:
         // All other operators are not mapped.
