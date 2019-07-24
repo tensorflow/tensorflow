@@ -62,7 +62,6 @@ template <typename T, typename U>
 __global__ void CustomL2NormGradFunctor_kernel_stage2(int N, int k, const T* in, const T* out_grad, const float* temp, T* out, float a, 
   const U* _bias, const U* _scale)
 {
-  //float scale = (float)*_scale;
   for(int idx = threadIdx.x + 1024*blockIdx.x; idx<N; idx+=1024*1024)
   {
     float mean = temp[idx*2+0];
@@ -92,7 +91,6 @@ __global__ void CustomL2NormGradFunctor_kernel_stage2(int N, int k, const T* in,
 template <typename T, typename U>
 __global__ void CustomL2NormFunctor_kernel_stage1_v2(int N, int k, const T* in, float* out, float averager, const U* _eps)
 {
-    //int k = blockDim.x;
     int i = threadIdx.x;
     int idx = threadIdx.y + blockDim.y*(blockIdx.x + 1024*blockIdx.y);
     if(idx>=N)
@@ -103,7 +101,6 @@ __global__ void CustomL2NormFunctor_kernel_stage1_v2(int N, int k, const T* in, 
       out[idx*2+0] = 0;
       out[idx*2+1] = 0;
     }
-    //__syncthreads();
     
     float sum = (i<k) ? (float)in[idx*k+i] : 0.0f;
     float sumsq = sum*sum;
@@ -283,22 +280,6 @@ __global__ void CustomDropoutFunctor2_kernel(const T* in,
           out[i*s0+j] = in[i*s0+j] * (rng[i*r0+j*r1]>=threshold ? scale : (T)0.0);
 }
 
-template <typename T>
-void CustomDropoutFunctor2<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevice& d, 
-    const T* in,
-    const T* rng,
-    T* out,
-    const T* pthr,
-    int d0, int d1,
-    int s0, int s1,
-    int r0, int r1
-    )
-{
-    dim3 threads(min(d1,1024),1,1);
-    dim3 blocks(min(1024,d0),min(1024,(d0+1023)/1024),1);
-    CustomDropoutFunctor2_kernel<<<blocks,threads,0, d.stream()>>> (in, rng, out, pthr, d0, d1, s0, s1, r0, r1);
-}
-
 // TODO: all the explicit loop unrolling may be unnecessary
 template <typename T>
 __global__ void CustomDropoutFunctor3_kernel(const T* in,
@@ -381,43 +362,20 @@ __global__ void CustomDropoutFunctor4_kernel(const T* in,
         }
 }
 
-/* Special case for d <= 1024 (no need for a loop over d2) */
 template <typename T>
-__global__ void CustomDropoutFunctor3_v2_kernel(const T* in,
+void CustomDropoutFunctor2<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevice& d, 
+    const T* in,
     const T* rng,
     T* out,
     const T* pthr,
-    int d0, int d1, int d2,
-    int s0, int s1, int s2,
-    int r0, int r1, int r2)
+    int d0, int d1,
+    int s0, int s1,
+    int r0, int r1
+    )
 {
-    T threshold = (T)*pthr;
-    T scale = T(1.)/(T(1.)-threshold);
-    int i=blockIdx.x+blockIdx.y*gridDim.x;
-    const T* ip = in + i*s0 + threadIdx.y*s1 + threadIdx.x;
-    const T* rp = rng + i*r0 + threadIdx.y*r1 + threadIdx.x*r2;
-    T* op = out + i*s0 + threadIdx.y*s1 + threadIdx.x;
-    s0 *= gridDim.x*gridDim.y;
-    r0 *= gridDim.x*gridDim.y;
-    s1 *= blockDim.y;
-    r1 *= blockDim.y;
-
-    for(; i<d0; i+=gridDim.x*gridDim.y)
-    {
-      const T* ipp = ip;
-      const T* rpp = rp;
-      T* opp = op;
-      for(int j=threadIdx.y; j<d1; j+=blockDim.y)
-      {
-        opp[0] = ipp[0] * (rpp[0]>=threshold ? scale : (T)0.0);
-        ipp += s1;
-        opp += s1;
-        rpp += r1;
-      }
-      ip += s0;
-      op += s0;
-      rp += r0;
-    }
+    dim3 threads(min(d1,1024),1,1);
+    dim3 blocks(min(1024,d0),min(1024,(d0+1023)/1024),1);
+    CustomDropoutFunctor2_kernel<<<blocks,threads,0, d.stream()>>> (in, rng, out, pthr, d0, d1, s0, s1, r0, r1);
 }
 
 template <typename T>
@@ -438,25 +396,14 @@ void CustomDropoutFunctor3<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevi
   }
   else if(d0 == 1)
   {
-  //  printf("fallback: %d x %d x %d\n", d0, d1, d2);
     CustomDropoutFunctor2<Eigen::GpuDevice,T>()(d, in, rng, out, pthr, d1, d2, s1, s2, r1, r2);
   }
   else
-  /* if(d2<=1024)
-  {
-    dim3 threads(d2,1024/d2,1);
-    dim3 blocks(min(1024,d0),min(1024,(d0+1023)/1024),1);
-  //   printf("v2: %d x %d x %d -> %d %d\n", d0, d1, d2, threads.x, threads.y);
-    CustomDropoutFunctor3_v2_kernel<<<blocks,threads,0, d.stream()>>> (in, rng, out, pthr, d0, d1, d2, s0, s1, s2, r0, r1, r2);
-  }
-  else
-    */
   {
     int threads_x = min(d2, 1024);
     int threads_y = min(d1, 1024/threads_x);
     dim3 threads(threads_x, threads_y, 1);
     dim3 blocks((d2+1023)/1024, min(65536,d0),min(65536,(d0+65535)/65536));
-  //  printf("v1: %d x %d x %d -> %d %d\n", d0, d1, d2, threads_x, threads_y);
     CustomDropoutFunctor3_kernel<<<blocks,threads,0, d.stream()>>> (in, rng, out, pthr, d0, d1, d2, s0, s1, s2, r0, r1, r2);
   }
 }
@@ -480,7 +427,6 @@ void CustomDropoutFunctor4<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevi
   }
   else if(d0 == 1)
   {
-  //  printf("fallback: %d x %d x %d\n", d0, d1, d2);
     CustomDropoutFunctor3<Eigen::GpuDevice,T>()(d, in, rng, out, pthr, d1, d2, d3, s1, s2, s3, r1, r2, r3);
   }
   else if(d3 == 1)
@@ -488,15 +434,6 @@ void CustomDropoutFunctor4<Eigen::GpuDevice, T>::operator()(const Eigen::GpuDevi
     CustomDropoutFunctor3<Eigen::GpuDevice,T>()(d, in, rng, out, pthr, d0, d1, d2, s0, s1, s2, r0, r1, r2);
   }
   else
-  /* if(d2<=1024)
-  {
-    dim3 threads(d2,1024/d2,1);
-    dim3 blocks(min(1024,d0),min(1024,(d0+1023)/1024),1);
-  //   printf("v2: %d x %d x %d -> %d %d\n", d0, d1, d2, threads.x, threads.y);
-    CustomDropoutFunctor3_v2_kernel<<<blocks,threads,0, d.stream()>>> (in, rng, out, pthr, d0, d1, d2, s0, s1, s2, r0, r1, r2);
-  }
-  else
-    */
   {
     int threads_x = min(d3, 1024);
     int threads_y = min(d2, 1024/threads_x);
