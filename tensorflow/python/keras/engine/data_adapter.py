@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util import nest
@@ -170,7 +171,16 @@ class TensorLikeDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    return all(isinstance(v, (ops.Tensor, np.ndarray)) for v in flat_inputs)
+    def _is_tensor_or_composite(v):
+      if isinstance(v, (ops.Tensor, np.ndarray)):
+        return True
+      # Dataset inherits from CompositeTensor but shouldn't be handled here.
+      if (isinstance(v, composite_tensor.CompositeTensor) and
+          not isinstance(v, dataset_ops.DatasetV2)):
+        return True
+      return False
+
+    return all(_is_tensor_or_composite(v) for v in flat_inputs)
 
   def __init__(self, x, y=None, sample_weights=None, batch_size=None,
                shuffle=False, **kwargs):

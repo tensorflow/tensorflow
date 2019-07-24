@@ -1191,7 +1191,8 @@ def check_steps_argument(input_data, steps, steps_name):
 
 
 def cast_single_tensor(x, dtype=None):
-  x = ops.convert_to_tensor(x)
+  if isinstance(x, np.ndarray):
+    x = ops.convert_to_tensor(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
