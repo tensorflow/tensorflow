@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -298,6 +299,7 @@ class IteratorContext {
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
+          cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -343,6 +345,9 @@ class IteratorContext {
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
+    // The CancellationManager to be used to cancel execution of ops.
+    CancellationManager* cancellation_manager;
+
     // Interface to operating system functionality.
     Env* env = nullptr;
 
@@ -385,6 +390,10 @@ class IteratorContext {
 
   std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
     return params_.allocator_getter;
+  }
+
+  CancellationManager* cancellation_manager() {
+    return params_.cancellation_manager;
   }
 
   Env* env() const { return params_.env; }
