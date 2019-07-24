@@ -36,4 +36,8 @@ tf_module {
     name: "segment_ids_to_row_splits"
     argspec: "args=[\'segment_ids\', \'num_segments\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
+  member_method {
+    name: "stack"
+    argspec: "args=[\'values\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
 }
