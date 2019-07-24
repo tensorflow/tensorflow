@@ -113,6 +113,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               data_type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, output->type, data_type);
   TF_LITE_ENSURE_EQ(context, filter->type, data_type);
+  // Filter in DepthwiseConv is expected to be [1, H, W, O].
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 0), 1);
 
   if (hasBias) {
     bias = GetInput(context, node, kBiasTensor);
