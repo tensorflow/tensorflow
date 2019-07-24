@@ -15,9 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/rnn/lstm_ops.h"
 
@@ -378,7 +378,7 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                \
   template <>                                                              \
@@ -412,7 +412,7 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, bool USE_CUBLAS>
 class LSTMBlockCellGradOp : public OpKernel {
@@ -665,7 +665,7 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                   \
   template <>                                                                 \
@@ -707,7 +707,7 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -1012,7 +1012,7 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                              \
   template <>                                                            \
@@ -1044,7 +1044,7 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, bool USE_CUBLAS>
 class BlockLSTMGradOp : public OpKernel {
@@ -1287,7 +1287,7 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
   template <>                                                                  \
@@ -1355,6 +1355,6 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
