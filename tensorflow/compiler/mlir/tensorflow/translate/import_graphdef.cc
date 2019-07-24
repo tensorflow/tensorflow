@@ -300,8 +300,8 @@ Status Importer::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
-  TF_RETURN_IF_ERROR(
-      ::tensorflow::ConvertGraphDefToGraph(opts, graph_def, graph_.get()));
+  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
+      opts, std::move(graph_def), graph_.get()));
 
   // Remove all the backedges. So the nodes can be added to the shape refiner.
   TF_RETURN_IF_ERROR(back_edge_helper_.Remove(graph_.get()));
@@ -1394,8 +1394,8 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(AddDefaultsToNodeDef(&preprocessed_graphdef));
   }
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
 
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);

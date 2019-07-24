@@ -784,7 +784,7 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 
-// Checks if boolean attribute is defined and it's value is 'true'.
+// Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
   Status s = GetNodeAttr(n->attrs(), attr_name, &match);
