@@ -172,10 +172,8 @@ def _show_defined_functions(saved_model_dir, indent=0):
        saved_model_dir: Directory containing the SavedModel to inspect.
        indent: How far (in increments of 2 spaces) to indent each line of output.
   """
-  if context.executing_eagerly():
-    # Disable eager execution to prevent loading of checkpoints
-    ops_lib.disable_eager_execution()
-  trackable_object = load.load(saved_model_dir)
+  with ops_lib.Graph().as_default():
+    trackable_object = load.load(saved_model_dir)
   indent_str = '  ' * indent
 
   def in_print(s):
