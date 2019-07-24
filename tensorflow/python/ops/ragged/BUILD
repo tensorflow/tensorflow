@@ -232,6 +232,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ragged_array_ops",
+        ":ragged_math_ops",
         ":ragged_tensor",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -736,6 +737,25 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_string_ops_test",
+    srcs = ["ragged_string_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged",
+        ":ragged_factory_ops",
+        ":ragged_string_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
         "@absl_py//absl/testing:parameterized",
     ],
 )

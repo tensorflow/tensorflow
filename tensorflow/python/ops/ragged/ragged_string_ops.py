@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -642,3 +643,10 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
       return ragged_result
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
+
+
+def reduce_join(inputs, axis=None, keepdims=None, separator="", name=None):
+  """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
+  return ragged_math_ops.ragged_reduce_aggregate(
+      string_ops.reduce_join, string_ops.unsorted_segment_join, inputs, axis,
+      keepdims, separator, name or "RaggedSegmentJoin")
