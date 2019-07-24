@@ -44,15 +44,25 @@ Value *Aliases::find(Value *v) {
            "Buffer or block argument expected");
     return it->getSecond();
   }
-  if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
-    auto it = aliases.insert(std::make_pair(v, find(slice.getBaseView())));
-    return it.first->second;
+
+  while (true) {
+    if (isa<BlockArgument>(v))
+      return v;
+    if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
+      auto it = aliases.insert(std::make_pair(v, find(slice.getBaseView())));
+      return it.first->second;
+    }
+    if (auto view = dyn_cast_or_null<ViewOp>(v->getDefiningOp())) {
+      auto it = aliases.insert(std::make_pair(v, view.getSupportingBuffer()));
+      return it.first->second;
+    }
+    if (auto view = dyn_cast_or_null<SubViewOp>(v->getDefiningOp())) {
+      v = view.getView();
+      continue;
+    }
+    llvm::errs() << "View alias analysis reduces to: " << *v << "\n";
+    llvm_unreachable("unsupported view alias case");
   }
-  if (auto view = dyn_cast_or_null<ViewOp>(v->getDefiningOp())) {
-    auto it = aliases.insert(std::make_pair(v, view.getSupportingBuffer()));
-    return it.first->second;
-  }
-  llvm_unreachable("unsupported view alias case");
 }
 
 LinalgDependenceGraph::LinalgDependenceGraph(Aliases &aliases,
