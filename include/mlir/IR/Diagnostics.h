@@ -251,7 +251,8 @@ public:
   template <typename T, template <typename> class Container>
   Diagnostic &appendRange(const Container<T> &c, const char *delim = ", ") {
     interleave(
-        c, [&](T a) { *this << a; }, [&]() { *this << delim; });
+        c, [&](const detail::ValueOfRange<Container<T>> &a) { *this << a; },
+        [&]() { *this << delim; });
     return *this;
   }
 
