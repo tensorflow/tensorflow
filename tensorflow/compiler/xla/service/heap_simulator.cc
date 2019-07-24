@@ -32,17 +32,18 @@ using absl::flat_hash_set;
 namespace {
 // FlattenSchedule walks through the instruction, and recurse into each called
 // computations. As it walks it also tracks down the ordinal number of each
-// instruction in the schedule and store it in the `instruction_schedule`. The
-// end of each computation is tracked in `computation_schedule`.
+// instruction in the schedule and store it in the `instruction_schedule` and
+// 'flattened_instruction_sequence`. The end of each computation is tracked in
+// `computation_schedule`.
 int64 FlattenSchedule(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloSchedule* schedule, int64 start_time,
+    HloInstructionSequence* flattened_instruction_sequence,
     absl::flat_hash_map<const HloInstruction*, int64>* instruction_schedule,
     absl::flat_hash_map<const HloComputation*, int64>* computation_schedule) {
   int64 time = start_time;
-  for (const HloInstruction* instruction :
-       instruction_sequence.instructions()) {
+  for (HloInstruction* instruction : instruction_sequence.instructions()) {
     if (schedule != nullptr) {
       // Recurse into sub computations if we have a module-scoped schedule.
       if (instruction->opcode() == HloOpcode::kCall ||
@@ -51,32 +52,37 @@ int64 FlattenSchedule(
              instruction->called_computations()) {
           const HloInstructionSequence& called_sequence =
               schedule->sequence(called_computation);
-          time =
-              FlattenSchedule(*called_computation, called_sequence, schedule,
-                              time, instruction_schedule, computation_schedule);
+          time = FlattenSchedule(*called_computation, called_sequence, schedule,
+                                 time, flattened_instruction_sequence,
+                                 instruction_schedule, computation_schedule);
           computation_schedule->insert({called_computation, time});
         }
       }
       if (instruction->opcode() == HloOpcode::kWhile) {
         const HloInstructionSequence& condition_sequence =
             schedule->sequence(instruction->while_condition());
-        time = FlattenSchedule(*instruction->while_condition(),
-                               condition_sequence, schedule, time,
-                               instruction_schedule, computation_schedule);
+        time =
+            FlattenSchedule(*instruction->while_condition(), condition_sequence,
+                            schedule, time, flattened_instruction_sequence,
+                            instruction_schedule, computation_schedule);
         computation_schedule->insert({instruction->while_condition(), time});
         const HloInstructionSequence& body_sequence =
             schedule->sequence(instruction->while_body());
-        time =
-            FlattenSchedule(*instruction->while_body(), body_sequence, schedule,
-                            time, instruction_schedule, computation_schedule);
+        time = FlattenSchedule(*instruction->while_body(), body_sequence,
+                               schedule, time, flattened_instruction_sequence,
+                               instruction_schedule, computation_schedule);
       }
     }
     if (instruction_schedule->count(instruction) != 0) {
       continue;
     }
     instruction_schedule->insert({instruction, time++});
+    flattened_instruction_sequence->push_back(instruction);
   }
   computation_schedule->insert({&computation, time});
+  DCHECK_EQ(instruction_schedule->size(),
+            flattened_instruction_sequence->size());
+  DCHECK_EQ(instruction_schedule->size(), time);
   return time;
 }
 
@@ -328,18 +334,17 @@ Status HeapSimulator::RunComputation(
 
   HloDataflowAnalysis& dataflow_analysis = alias_analysis.dataflow_analysis();
 
-  // instruction_schedule and computation_schedule are the maps that track each
-  // instruction/computation and their ordinal in the schedule.
-  absl::flat_hash_map<const HloInstruction*, int64> instruction_schedule;
-  absl::flat_hash_map<const HloComputation*, int64> computation_schedule;
-
   // program_end_time is the time of the last instruction scheduled. It is equal
   // to the number of instructions in a computation.
   int64 program_end_time =
       FlattenSchedule(computation, instruction_sequence, schedule_, 0,
-                      &instruction_schedule, &computation_schedule);
+                      &flattened_instruction_sequence_, &instruction_schedule_,
+                      &computation_schedule_);
 
   VLOG(1) << "Program end time: " << program_end_time;
+
+  algorithm_->SetSchedules(&flattened_instruction_sequence_,
+                           &instruction_schedule_, &computation_schedule_);
 
   // We track the definition and free events for each buffer, then we go through
   // each step and reply those events in program order.
@@ -368,14 +373,14 @@ Status HeapSimulator::RunComputation(
   // Keeps track of buffer start time and buffer end time.
   for (const HloValue* value : dataflow_analysis.values()) {
     // Ignore buffers that are not defined.
-    if (instruction_schedule.count(value->defining_instruction()) == 0) {
+    if (instruction_schedule_.count(value->defining_instruction()) == 0) {
       continue;
     }
     if (IgnoreBuffer(value)) {
       continue;
     }
     values_to_assign.push_back(value);
-    int64 buffer_start_time = instruction_schedule[value->instruction()];
+    int64 buffer_start_time = instruction_schedule_[value->instruction()];
 
     int64 buffer_end_time = -1;
     // A buffer's live range ends when the last user finishes executing.
@@ -391,13 +396,13 @@ Status HeapSimulator::RunComputation(
         VLOG(1) << "Moved value " << value->ToShortString()
                 << " to while param: " << used->ToString();
       }
-      if (instruction_schedule.count(used) == 0) {
+      if (instruction_schedule_.count(used) == 0) {
         // We didn't track the instruction `used`. This happens when we do
         // computation scope (versus module scope) heap simulation and when the
         // used instruction is outside of the computation being simulated.
         continue;
       }
-      buffer_end_time = std::max(buffer_end_time, instruction_schedule[used]);
+      buffer_end_time = std::max(buffer_end_time, instruction_schedule_[used]);
     }
 
     if (buffer_end_time == -1) {
@@ -412,11 +417,11 @@ Status HeapSimulator::RunComputation(
         if (schedule_ == nullptr && &computation != position_comp) {
           continue;
         }
-        if (computation_schedule.count(position_comp) == 0) {
+        if (computation_schedule_.count(position_comp) == 0) {
           continue;
         }
         buffer_end_time =
-            std::max(buffer_end_time, computation_schedule[position_comp]);
+            std::max(buffer_end_time, computation_schedule_[position_comp]);
       }
     }
 
@@ -910,8 +915,8 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
 
 GlobalDecreasingSizeBestFitHeap::ChunkCandidate
 GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval)
-    const {
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
+    int64 preferred_offset) const {
   VLOG(1) << "Finding chunks for buffer: "
           << buffer_interval.buffer->ToString();
   VLOG(1) << "Size " << buffer_interval.size << ", start "
@@ -960,7 +965,16 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
       return;
     }
 
-    if (free_size < min_fit_chunk.size) {
+    // If a preferred offset is provided, pick that offset.
+    if (free_offset <= preferred_offset &&
+        free_offset + free_size >= preferred_offset + buffer_interval.size) {
+      min_fit_chunk = {preferred_offset, buffer_interval.size};
+    }
+
+    // Pick the min-fit chunk only if we didn't have a preferred offset or a
+    // chunk at the preferred offset hasn't been found.
+    if ((preferred_offset < 0 || min_fit_chunk.offset != preferred_offset) &&
+        free_size < min_fit_chunk.size) {
       min_fit_chunk = {free_offset, free_size};
     }
   };
@@ -993,16 +1007,18 @@ void GlobalDecreasingSizeBestFitHeap::CommitChunk(
   interval_tree_.Add(buffer_interval.start, buffer_interval.end,
                      chunk_candidate.chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    const auto emplace_result =
-        result_.chunk_map.emplace(colocation, chunk_candidate.chunk);
-    DCHECK(emplace_result.second);
+    AddToChunkMap(colocation, chunk_candidate.chunk);
     auto colocation_interval = buffer_intervals_[colocation];
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        chunk_candidate.chunk);
   }
 
-  const auto emplace_result =
-      result_.chunk_map.emplace(buffer_interval.buffer, chunk_candidate.chunk);
+  AddToChunkMap(buffer_interval.buffer, chunk_candidate.chunk);
+}
+
+void GlobalDecreasingSizeBestFitHeap::AddToChunkMap(const HloValue* buffer,
+                                                    Chunk chunk) {
+  const auto emplace_result = result_.chunk_map.emplace(buffer, chunk);
   DCHECK(emplace_result.second);
 }
 

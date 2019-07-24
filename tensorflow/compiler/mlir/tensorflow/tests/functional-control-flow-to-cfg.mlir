@@ -7,7 +7,7 @@ func @testIf1Else(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 func @testIf1Result(tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>):
   %1 = "tf.If"(%arg0, %arg1, %arg2) {
-    then_branch = @testIf1Then, else_branch = @testIf1Else
+    then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK:   %0 = extract_element %arg0[] : tensor<i1>
@@ -31,7 +31,7 @@ func @testIf3Else(tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>
 func @testIf3Result(tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>) {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<*xf32>):
   %1:3 = "tf.If"(%arg0, %arg1) {
-    then_branch = @testIf3Then, else_branch = @testIf3Else
+    then_branch = @testIf3Then, else_branch = @testIf3Else, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
 
 // CHECK:   %0 = extract_element %arg0[] : tensor<i1>
@@ -57,7 +57,7 @@ func @testIf1Casts(tensor<i1>, tensor<2x2xf32>, tensor<*xf32>) -> tensor<2x?xf32
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2x2xf32>, %arg2: tensor<*xf32>):
 
   %1 = "tf.If"(%arg0, %arg1, %arg2) {
-    then_branch = @testIf1Then, else_branch = @testIf1Else
+    then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
   } : (tensor<i1>, tensor<2x2xf32>, tensor<*xf32>) -> tensor<2x?xf32>
 
 // CHECK:  %0 = extract_element %arg0[] : tensor<i1>
@@ -97,7 +97,7 @@ func @testIf1x4(tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 
   // expected-error @+1 {{only supports zero-D bool tensors now}}
   %1 = "tf.If"(%arg0, %arg1, %arg2) {
-    then_branch = @testIf1Then, else_branch = @testIf1Else
+    then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
   } : (tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   return %1 : tensor<*xf32>

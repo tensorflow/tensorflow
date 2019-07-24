@@ -133,6 +133,8 @@ $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*benchmark*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/random/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/random/internal/*.cc) \
 tensorflow/contrib/makefile/downloads/absl/absl/synchronization/internal/mutex_nonprod.cc \
 tensorflow/contrib/makefile/downloads/absl/absl/hash/internal/print_hash_of.cc
 
@@ -909,11 +911,15 @@ $(HOST_OBJDIR)%.pb.o: $(HOST_GENDIR)%.pb.cc
 $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
 
 # Ensures we link CoreFoundation as it is used for time library when building
-# for Mac.
-ifeq ($(TARGET),IOS)
-  ifeq ($(IOS_ARCH),X86_64)
+# for Mac and iOS
+ifeq ($(TARGET),OSX)
+  ifeq ($(HOST_ARCH),x86_64)
     HOST_LDOPTS += -framework CoreFoundation
+    LIBS += -framework CoreFoundation
   endif
+endif
+ifeq ($(TARGET),IOS)
+  HOST_LDOPTS += -framework CoreFoundation
 endif
 
 # Runs proto_text to generate C++ source files from protos.

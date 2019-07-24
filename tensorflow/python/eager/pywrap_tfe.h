@@ -51,18 +51,24 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
+// Execute a cancelable TensorFlow operation.
+//
+// Arguments as above (for TFE_Py_Execute), with the addition of:
+// 'cancellation_manager': A pointer to a TFE_CancellationManager that can be
+//                         used to cancel execution of the given operation.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status);
+
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
-
-// Registers e as the type of the ResourceVariable class.
-// Returns Py_None if registration succeeds, else throws a TypeError and returns
-// NULL.
-//
-// This function is not thread-safe.
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 
 // Registers e as the VSpace to use.
 // `vspace` must be a imperative_grad.py:VSpace named tuple.
@@ -85,6 +91,14 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
+
+// Registers e as the forward_gradient_function.  The registered function takes
+// (op_name, attrs, inputs, outputs, tangents) and returns the output
+// tangents. This function is used only for operations, not for custom gradients
+// or functional ops.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -265,5 +279,21 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
 
 void TFE_Py_EnableInteractivePythonLogging();
+
+// Sets `python_context` as the current eager Context object (defined
+// in eager/context.py). This function must be called at least once before
+// eager tensors are created.
+// If an error is encountered, sets python error and returns NULL. Else, returns
+// Py_None.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+
+// Returns the current eager Context object (defined in eager/context.py)
+// that was last set using TFE_Py_SetEagerContext.
+// If an error is encountered, sets python error and returns NULL.
+// The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
+// some point.
+PyObject* GetPyEagerContext();
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

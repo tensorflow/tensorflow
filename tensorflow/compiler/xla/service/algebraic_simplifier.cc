@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -167,13 +168,8 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
 // more general case a worklist based approach would be needed.
-class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
+class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
-  // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
-  }
-
   Status HandleAdd(HloInstruction* add) override;
 
   Status HandleAnd(HloInstruction* logical_and) override;
@@ -248,9 +244,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleSubtract(HloInstruction* sub) override;
 
   Status HandleMap(HloInstruction* map) override;
-
-  // Returns whether algebraic simplification has occurred.
-  const bool changed() const { return changed_; }
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
@@ -349,35 +342,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
       HloInstruction* broadcast);
 
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceWithNewInstruction(
-      HloInstruction* old_instruction,
-      std::unique_ptr<HloInstruction> new_instruction) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        old_instruction, std::move(new_instruction)));
-    changed_ = true;
-    return Status::OK();
-  }
-
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(
-        computation_->ReplaceInstruction(old_instruction, new_instruction));
-    changed_ = true;
-    return Status::OK();
-  }
-
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
       const HloInstruction& dot, HloInstruction* lhs, int64 lhs_contracting_dim,
@@ -444,7 +408,7 @@ bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      AlgebraicSimplifier* simplifier) {
   AlgebraicSimplifierVisitor visitor(computation, options, simplifier);
   TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_;
+  return visitor.changed_ || visitor.changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -467,8 +431,8 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
-  auto bitcast = computation_->AddInstruction(HloInstruction::CreateUnary(
-      instruction->shape(), HloOpcode::kBitcast, operand));
+  auto bitcast = computation_->AddInstruction(
+      HloInstruction::CreateBitcast(instruction->shape(), operand));
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -609,8 +573,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
     return ReplaceWithNewInstruction(
-        bitcast,
-        HloInstruction::CreateUnary(bitcast->shape(), HloOpcode::kBitcast, op));
+        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
   }
   // All bitcasts can be eliminated (assuming layout constraints are
   // satisified).
@@ -1722,6 +1685,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 }
 
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
+  CHECK(computation_ == dot->parent());
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
   if (options_.is_layout_sensitive()) {
@@ -1740,7 +1704,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
+  if (options_.enable_dot_to_multiply_rewrite() &&
+      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -2659,6 +2624,11 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
   HloInstruction *a, *b;
   CHECK(Match(remainder, m::Remainder(m::Op(&a), m::Op(&b))));
 
+  // (A % B) % B == A % B.
+  if (Match(a, m::Remainder(m::Op(), m::Op().Is(b)))) {
+    return ReplaceInstruction(remainder, a);
+  }
+
   // A % B => A & (B - 1) if B is a power of 2.
   switch (remainder->shape().element_type()) {
     case S8:
@@ -2711,6 +2681,65 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       break;
     default:
       break;
+  }
+
+  // If M < N, then {0, ..., M} % N ==> {0, ..., M}.
+  //
+  // Currently this only covers the case when N is a broadcasted constant
+  // scalar.  We could also cover the case when N is a non-broadcasted constant
+  // with the same value repeated.
+  HloInstruction* iota;
+  HloInstruction* divisor;
+  if (Match(remainder,
+            m::Remainder(m::Iota(&iota),
+                         m::Broadcast(m::ConstantEffectiveScalar(&divisor))))) {
+    // The iota counts {0, ..., iota_upper_bound - 1}.  (Actually this is
+    // conservative; the iota may overflow and count up to a smaller value than
+    // this.  But that's OK for our purposes here.)
+    int64 iota_upper_bound = iota->shape().dimensions(
+        Cast<HloIotaInstruction>(iota)->iota_dimension());
+    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+        std::vector<int64>(0, divisor->shape().dimensions_size()));
+    if (divisor_val.ok() && divisor_val.ValueOrDie() >= iota_upper_bound) {
+      return ReplaceInstruction(remainder, iota);
+    }
+  }
+
+  // (X + N) % N = X % N, so long as X + N does not overflow.
+  //
+  // We don't have range tracking in XLA that would let us know whether X + N
+  // overflows, so for now we only do this simplification when X is an iota.  We
+  // could add other operations where it's easy to see a range, such as
+  // remainder, convert, etc., though at some point we'd probably want a
+  // range-tracking analysis.
+  HloInstruction* bcast;
+  HloInstruction* addend;
+  if (Match(
+          remainder,
+          m::Remainder(
+              m::AddAnyOrder(m::Iota(&iota),
+                             m::Broadcast(m::ConstantEffectiveScalar(&addend))),
+              m::Broadcast(&bcast, m::ConstantEffectiveScalar(&divisor)))) &&
+      addend == divisor) {
+    // The iota counts {0, ...iota_upper_bound - 1}, with the same caveat above
+    // that iota_upper_bound is conservative, and the true upper bound may be
+    // smaller.
+    int64 iota_upper_bound = iota->shape().dimensions(
+        Cast<HloIotaInstruction>(iota)->iota_dimension());
+    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+        std::vector<int64>(0, divisor->shape().dimensions_size()));
+    if (divisor_val.ok()) {
+      // Check whether divisor_val + iota_upper_bound - 1 overflows.
+      absl::optional<int64> max_val =
+          OverflowSafeAdd(divisor_val.ValueOrDie(), iota_upper_bound);
+      if (max_val.has_value() &&
+          FitsInIntegralType(*max_val, iota->shape().element_type())) {
+        return ReplaceWithNewInstruction(
+            remainder,
+            HloInstruction::CreateBinary(remainder->shape(),
+                                         HloOpcode::kRemainder, iota, bcast));
+      }
+    }
   }
 
   return Status::OK();
@@ -3296,12 +3325,6 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return Status::OK();
   }
 
-  // Bail on dilation.
-  if (window_util::HasDilation(window)) {
-    VLOG(10) << "Not folding pad into reduce-window as there is dilation.";
-    return Status::OK();
-  }
-
   VLOG(10) << "Considering folding Pad: " << pad->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString()
            << (convert != nullptr
@@ -3311,8 +3334,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   // Do not fold interior padding into ReduceWindow since the backends do not
   // support it.
   const PaddingConfig& pad_config = pad->padding_config();
-  if (HasInteriorPadding(pad_config)) {
-    VLOG(10) << "Not folding pad into reduce-window due to interior padding.";
+  if (HasInteriorPadding(pad_config) && window_util::HasBaseDilation(window)) {
+    VLOG(10) << "Not folding interior pad into base-dilated reduce-window.";
     return Status::OK();
   }
 
@@ -3355,6 +3378,10 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
     if (!window_util::HasSymmetricPadding(pad_config)) {
       VLOG(10) << "Window has uneven padding.";
+      return false;
+    }
+    if (HasInteriorPadding(pad_config)) {
+      VLOG(10) << "Window has interior padding.";
       return false;
     }
     for (int64 i = 0; i < pad_config.dimensions_size(); ++i) {
@@ -3427,6 +3454,10 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                                pad_dim.edge_padding_low());
     window_dim.set_padding_high(window_dim.padding_high() +
                                 pad_dim.edge_padding_high());
+    if (pad_dim.interior_padding() != 0) {
+      CHECK_EQ(window_dim.base_dilation(), 1);
+      window_dim.set_base_dilation(1 + pad_dim.interior_padding());
+    }
   }
 
   return ReplaceWithNewInstruction(
@@ -3775,7 +3806,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     std::vector<int64> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);
     return computation_->AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kBitcast, operand));
+        HloInstruction::CreateBitcast(shape, operand));
   };
 
   // Replace it with a dot, with bitcasts around it to get the right shape.

@@ -354,6 +354,16 @@ class _EagerDefinedFunction(object):
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
+    graph_output_names = graph._output_names  # pylint: disable=protected-access
+    if (graph_output_names is not None
+        and all(t in graph_output_names for t in outputs)):
+      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+      if len(set(output_names)) != len(output_names):
+        # There are duplicate names for some reason, probably an invalid
+        # signature. Revert to auto-naming.
+        output_names = []
+    else:
+      output_names = []
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
@@ -361,7 +371,7 @@ class _EagerDefinedFunction(object):
         [o._c_op for o in operations],  # pylint: disable=protected-access
         [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
         [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-        [],
+        output_names,
         [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
         [],  # control_output_names
         None,
@@ -419,7 +429,7 @@ class _EagerDefinedFunction(object):
   def stateful_ops(self):
     return self._stateful_ops
 
-  def call(self, ctx, args):
+  def call(self, ctx, args, cancellation_manager=None):
     """Calls this function with `args` as inputs.
 
     `ConcreteFunction` execution respects device annotations only if the
@@ -428,6 +438,8 @@ class _EagerDefinedFunction(object):
     Args:
       ctx: a Context object
       args: a list of arguments to supply this function with.
+      cancellation_manager: a `CancellationManager` object that can be used to
+        cancel function execution.
 
     Returns:
       The outputs of the function call.
@@ -450,13 +462,21 @@ class _EagerDefinedFunction(object):
     executing_eagerly = ctx.executing_eagerly()
     if executing_eagerly:
       with _InterpolateFunctionError(self):
-        outputs = execute.execute(
-            str(self.signature.name),
-            num_outputs=self._num_outputs,
-            inputs=args,
-            attrs=("executor_type", executor_type,
-                   "config_proto", config),
-            ctx=ctx)
+        if cancellation_manager is None:
+          outputs = execute.execute(
+              str(self.signature.name),
+              num_outputs=self._num_outputs,
+              inputs=args,
+              attrs=("executor_type", executor_type, "config_proto", config),
+              ctx=ctx)
+        else:
+          outputs = execute.execute_with_cancellation(
+              str(self.signature.name),
+              num_outputs=self._num_outputs,
+              inputs=args,
+              attrs=("executor_type", executor_type, "config_proto", config),
+              ctx=ctx,
+              cancellation_manager=cancellation_manager)
       # Replace empty list with None
       outputs = outputs or None
     else:
@@ -465,13 +485,19 @@ class _EagerDefinedFunction(object):
       # branch if a TPU kernel is registered for `PartitionedCall`.
       with _InterpolateFunctionError(self):
         with ops.control_dependencies(self._control_captures):
-          outputs = functional_ops.partitioned_call(
-              args=args,
-              f=self,
-              tout=self._output_types,
-              executing_eagerly=executing_eagerly,
-              config=config,
-              executor_type=executor_type)
+          # The caller must use record_operation to record this operation in the
+          # eager case, so we enforce the same requirement for the non-eager
+          # case by explicitly pausing recording. We don't have a gradient
+          # registered for PartitionedCall, so recording this operation confuses
+          # forwardprop code (GradientTape manages to ignore it).
+          with tape.stop_recording():
+            outputs = functional_ops.partitioned_call(
+                args=args,
+                f=self,
+                tout=self._output_types,
+                executing_eagerly=executing_eagerly,
+                config=config,
+                executor_type=executor_type)
 
     if executing_eagerly:
       return outputs
@@ -576,6 +602,10 @@ class ConcreteFunction(object):
         Variables.
       TypeError: For invalid positional/keyword argument combinations.
     """
+    return self._call_impl(args, kwargs)
+
+  def _call_impl(self, args, kwargs, cancellation_manager=None):
+    """See `__call__` for details."""
     if self._arg_keywords is None or self._num_positional_args is None:
       if self._signature is not None:
         if kwargs:
@@ -612,7 +642,7 @@ class ConcreteFunction(object):
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
       raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
           list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args, self.captured_inputs)
+    return self._call_flat(args, self.captured_inputs, cancellation_manager)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
@@ -634,7 +664,7 @@ class ConcreteFunction(object):
                            resource_variable_ops.BaseResourceVariable))),
         self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.
 
     Args:
@@ -642,6 +672,8 @@ class ConcreteFunction(object):
         expanded before calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
+      cancellation_manager: (Optional.) A `CancellationManager` that can be
+        used to cancel function invocation.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -708,16 +740,28 @@ class ConcreteFunction(object):
     possible_gradient_type = _PossibleTapeGradientTypes(
         pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
     if possible_gradient_type == _PossibleTapeGradientTypes.FIRST_ORDER:
-      # There is a single non-persistent tape active, so the user can only
-      # request first-order gradients from a tape. We can spend less time graph
-      # building since we know this.
-      #
-      # We may still end up computing higher-order gradients, but that'd be
-      # through `tf.gradients`, which can re-write the forward pass and so needs
-      # no preparation here.
-      forward_function, backward_function = (
-          self._tape_functions_for_first_order())
-      return self._tape_backprop_call(args, forward_function, backward_function)
+      if context.executing_eagerly():
+        # There is a single non-persistent tape active, so the user can only
+        # request first-order gradients from a tape. We can spend less time
+        # graph building since we know this.
+        #
+        # We may still end up computing higher-order gradients, but that'd be
+        # through `tf.gradients`, which can re-write the forward pass and so
+        # needs no preparation here.
+        forward_function, backward_function = (
+            self._tape_functions_for_first_order())
+        return self._tape_backprop_call(
+            args, forward_function, backward_function)
+      else:
+        # We can avoid computing second-order gradients in some cases by doing a
+        # delayed rewrite when graph building. Since we know we'll only compute
+        # first-order tape gradients, the delayed rewrite is safe: we won't need
+        # to tell the tape about side outputs.
+        #
+        # TODO(allenl): This case is really dirty. It would be better if we
+        # could temporarily pop all of the current tapes to avoid
+        # accidentally taking second-order gradients.
+        return self._backprop_call_with_delayed_rewrite(args)
     elif possible_gradient_type == _PossibleTapeGradientTypes.HIGHER_ORDER:
       # Either there's a persistent tape watching, or there are multiple nested
       # tapes. Either way, the user may request higher-order gradients. We'll
@@ -730,7 +774,8 @@ class ConcreteFunction(object):
 
     # Only need to override the gradient in graph mode and when we have outputs.
     if context.executing_eagerly() or not self.outputs:
-      outputs = self._inference_function.call(ctx, args)
+      outputs = self._inference_function.call(
+          ctx, args, cancellation_manager=cancellation_manager)
     else:
       self._register_gradient()
       with ops.get_default_graph().gradient_override_map(
@@ -790,6 +835,23 @@ class ConcreteFunction(object):
     return backwards_function._call_flat(  # pylint: disable=protected-access
         cleaned_doutputs, remapped_captures)
 
+  def _experimental_with_cancellation_manager(self, cancellation_manager):
+    """Returns a callable that invokes a cancelable version of this function.
+
+    Args:
+      cancellation_manager: A `CancellationManager` object that can be used to
+        cancel function invocation.
+
+    Returns:
+      A callable with the same signature as this concrete function.
+    """
+
+    def cancellable_call(*args, **kwargs):
+      return self._call_impl(
+          args, kwargs, cancellation_manager=cancellation_manager)
+
+    return cancellable_call
+
   @property
   def name(self):
     """`ConcreteFunction` name."""
@@ -839,7 +901,7 @@ class ConcreteFunction(object):
   def output_shapes(self):
     """The function's output shapes."""
     return nest.map_structure(
-        lambda x: getattr(x, 'shape', tensor_shape.TensorShape(None)),
+        lambda x: getattr(x, "shape", tensor_shape.TensorShape(None)),
         composite_tensor.replace_composites_with_components(
             self._func_graph.structured_outputs),
         expand_composites=False)
@@ -1521,6 +1583,13 @@ def _convert_numpy_inputs(inputs):
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
+
+  def format_error_message(inputs, input_signature):
+    return ("  inputs: (\n" + "    " +
+            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
+            "  input_signature: (\n" + "    " +
+            ",\n    ".join([str(i) for i in input_signature]) + ")")
+
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there
     # are ignored arguments. Calling with arguments that are not part of the
@@ -1531,8 +1600,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         expand_composites=True)
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature. Inputs (%s), input_signature(%s)." %
-                     (str(inputs), str(input_signature)))
+                     "input_signature:\n%s" %
+                     format_error_message(inputs, input_signature))
 
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
@@ -1544,16 +1613,15 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         need_packing = True
       except ValueError:
         raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be convertible to tensors."
-                         "Inputs (%s), input_signature(%s)." %
-                         (str(inputs), str(input_signature)))
+                         "the Python function must be convertible to "
+                         "tensors:\n%s" %
+                         format_error_message(inputs, input_signature))
 
   if any(not spec.is_compatible_with(other) for spec, other in zip(
       flat_input_signature,
       flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature: "
-                     "inputs (%s), input_signature (%s)" %
-                     (str(inputs), str(input_signature)))
+    raise ValueError("Python inputs incompatible with input_signature:\n%s" %
+                     format_error_message(inputs, input_signature))
 
   if need_packing:
     inputs = nest.pack_sequence_as(

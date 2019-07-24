@@ -381,7 +381,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
-    self.experimental_enable_get_next_as_optional = True
+    # TODO(b/128995245): Enable last partial batch support in graph mode.
+    if ops.executing_eagerly_outside_functions():
+      self.experimental_enable_get_next_as_optional = True
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -400,8 +402,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._local_mode = True
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
-    self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
-        devices)
+    self._inferred_cross_device_ops = None if self._cross_device_ops else (
+        cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
 
   def _initialize_multi_worker(self, devices):
@@ -554,7 +556,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.DistributedDatasetsFromFunction(
+    return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
         input_contexts,

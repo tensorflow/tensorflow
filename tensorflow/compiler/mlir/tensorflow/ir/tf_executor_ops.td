@@ -250,25 +250,6 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
     TfeControlType: $control
   );
 
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands = {}",
-    [{
-      assert(operands.size() >= 2 && "tf_executor.Switch builder expects at "
-             "least two operands");
-      return build(builder, result, operands[0], operands[1], operands.drop_front(2));
-    }]>,
-    OpBuilder<
-    "Builder *builder, OperationState *result, Value *data, Value *predicate, ArrayRef<Value *> controls = {}",
-    [{
-      Type dataTy = data->getType();
-      Type controlTy = ControlType::get(builder->getContext());
-      result->types = { dataTy, dataTy, controlTy };
-      result->operands.push_back(data);
-      result->operands.push_back(predicate);
-      result->operands.insert(result->operands.end(), controls.begin(), controls.end());
-    }]>
-   ];
-
    let verifier = ?;
 }
 
@@ -311,7 +292,6 @@ def TfExecutor_SwitchNOp :
     Variadic<AnyType>:$outputs,
     TfeControlType: $control
   );
-
 }
 
 def TfExecutor_MergeOp : TfExecutor_Op<"Merge", [NoSideEffect, ControlOperandsAfterAllData]> {
@@ -346,18 +326,6 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge", [NoSideEffect, ControlOperandsAf
     TensorOf<[I32]>:$valueIndex,
     TfeControlType:$control
   );
-
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands",
-    [{
-      assert(operands.size() >= 1 && "tf_executor.Merge builder expects at "
-             "least one operand");
-      Type data_type = operands[0]->getType();
-      Type control_type = ControlType::get(builder->getContext());
-      result->types = { data_type, builder->getIntegerType(32), control_type};
-      result->operands.append(operands.begin(), operands.end());
-    }]>
-   ];
 }
 
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
@@ -408,19 +376,6 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
   );
 
   let verifier = ?;
-
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, ArrayRef<Value *> operands",
-    [{
-      assert(operands.size() >= 1 && "tf_executor.Enter builder "
-             "expects at least one operand");
-      result->operands.append(operands.begin(), operands.end());
-
-      Type control_type = ControlType::get(builder->getContext());
-      result->types.push_back(operands[0]->getType());
-      result->types.push_back(control_type);
-    }]>
-   ];
 }
 
 def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [NoSideEffect]> {
@@ -460,10 +415,6 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [No
     Note: Additional result corresponds to the control output.
   }];
 
-  let arguments = (ins
-    Variadic<TfeControlType>:$controlInputs
-  );
-
   let results = (outs
     AnyType:$output,
     // The NextIteration.Source operation returns an extra token consumed by the sink.
@@ -472,12 +423,13 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [No
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Type resultTy, ArrayRef<Value *> controlInputs = {}",
+    "Builder *builder, OperationState *result, Type result_type, "
+    "ArrayRef<NamedAttribute> attributes = {}",
     [{
-      Type tokenTy = TokenType::get(builder->getContext());
-      Type controlTy = ControlType::get(builder->getContext());
-      result->types = { resultTy, tokenTy, controlTy };
-      result->operands.append(controlInputs.begin(), controlInputs.end());
+      Type token_type = TokenType::get(builder->getContext());
+      Type control_type = ControlType::get(builder->getContext());
+      result->types = { result_type, token_type, control_type };
+      result->attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }
@@ -527,6 +479,19 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink"> {
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs
   );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *token, "
+    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    [{
+      assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
+             "expects at least one operand");
+      result->operands.push_back(token);
+      result->operands.insert(result->operands.end(), operands.begin(),
+                              operands.end());
+      result->attributes.append(attributes.begin(), attributes.end());
+    }]>
+   ];
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
@@ -590,6 +555,20 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger", [NoSideEffect]
   );
 
   let verifier = ?;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, "
+    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    [{
+      assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
+             "expects at least one operand");
+      result->operands.insert(result->operands.end(), operands.begin(),
+                              operands.end());
+      Type control_type = ControlType::get(builder->getContext());
+      result->types = {control_type};
+      result->attributes.append(attributes.begin(), attributes.end());
+    }]>
+   ];
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond", [NoSideEffect]> {

@@ -145,7 +145,7 @@ class NegativeBinomial(distribution.Distribution):
     return array_ops.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # Here we use the fact that if:

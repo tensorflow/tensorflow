@@ -19,8 +19,9 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -277,10 +278,14 @@ void buildComparisonBinOp(Builder *builder, OperationState *result, Value *lhs,
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
   result->addOperands({lhs, rhs});
-  auto resultShape = result_type.cast<ShapedType>().getShape();
   // Comparison binary ops always return i1 tensor.
-  result->types.push_back(
-      builder->getTensorType(resultShape, builder->getI1Type()));
+  if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
+    auto resultShape = shaped_type.getShape();
+    result->types.push_back(
+        builder->getTensorType(resultShape, builder->getI1Type()));
+  } else {
+    result->types.push_back(builder->getTensorType(builder->getI1Type()));
+  }
 }
 
 void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,
@@ -562,6 +567,31 @@ static LogicalResult Verify(UnpackOp op) {
 //===----------------------------------------------------------------------===//
 
 // TODO(b/133854225): Implement shape inference to Mean
+
+//===----------------------------------------------------------------------===//
+// LSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(LSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError("LSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
+// UnidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError(
+      "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

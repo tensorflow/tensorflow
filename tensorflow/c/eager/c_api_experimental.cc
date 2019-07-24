@@ -542,6 +542,26 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
 
+void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
+                                          TFE_ContextMirroringPolicy policy) {
+  options->mirroring_policy = policy;
+}
+
+void TFE_ContextSetThreadLocalMirroringPolicy(
+    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
+  ctx->context->SetThreadLocalMirroringPolicy(
+      static_cast<tensorflow::ContextMirroringPolicy>(policy));
+}
+
+// Note: this function looks up a thread local policy. So it should be called in
+// the appropriate client thread. In particular, in async mode, it may not be
+// safe to call this function from the async EagerExecutor threads.
+extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
+    TFE_Context* ctx) {
+  return static_cast<TFE_ContextMirroringPolicy>(
+      ctx->context->GetMirroringPolicy());
+}
+
 TFE_CancellationManager* TFE_NewCancellationManager() {
   return new TFE_CancellationManager;
 }
@@ -559,4 +579,11 @@ bool TFE_CancellationManagerIsCancelled(
 void TFE_DeleteCancellationManager(
     TFE_CancellationManager* cancellation_manager) {
   delete cancellation_manager;
+}
+
+void TFE_OpSetCancellationManager(TFE_Op* op,
+                                  TFE_CancellationManager* cancellation_manager,
+                                  TF_Status* status) {
+  op->operation.SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
 }

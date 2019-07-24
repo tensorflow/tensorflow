@@ -95,6 +95,16 @@ cc_library(
 )
 
 cc_library(
+    name = "external_cpu_backend_context",
+    srcs = ["external_cpu_backend_context.cc"],
+    hdrs = ["external_cpu_backend_context.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
     copts = TFLITE_DEFAULT_COPTS,
@@ -201,6 +211,7 @@ cc_library(
     deps = [
         ":allocation",
         ":arena_planner",
+        ":external_cpu_backend_context",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",

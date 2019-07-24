@@ -84,7 +84,7 @@ class ToSparse(Layer):
   """Create a sparse tensor based on a given dense tensor."""
 
   def call(self, inputs):
-    indices = array_ops.where(math_ops.not_equal(inputs, 0))
+    indices = array_ops.where_v2(math_ops.not_equal(inputs, 0))
     values = array_ops.gather_nd(inputs, indices)
     shape = array_ops.shape(inputs, out_type=dtypes.int64)
     return sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
@@ -181,7 +181,9 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase):
     self.assertAllEqual(expected_output, output)
 
   def test_training_internal_ragged_tensors(self):
-
+    if testing_utils.should_run_distributed():
+      # Training loop stall without clear reason.
+      self.skipTest("b/137397816")
     # Create a model that implements y=Mx. This is easy to learn and will
     # demonstrate appropriate gradient passing. (We have to use RaggedTensors
     # for this test, as ToSparse() doesn't support gradient propagation through
@@ -195,7 +197,8 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase):
     model.compile(
         loss="mse",
         optimizer="adam",
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     history = model.fit(input_data, expected_data, epochs=10, verbose=0)
 
     # If the model trained, the loss stored at history[0] should be different

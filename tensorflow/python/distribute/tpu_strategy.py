@@ -105,10 +105,9 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-    # tf.distribute supports Eager functions, so AutoGraph should not be applied
-    # when when the caller is also in Eager mode.
-    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
-                              convert_by_default=False)
+    # Note: the target function is converted to graph even when in Eager mode,
+    # so autograph is on by default here.
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -265,7 +264,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.DistributedDatasetsFromFunction(
+    return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
         input_contexts,

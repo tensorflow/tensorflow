@@ -38,7 +38,7 @@ class AssertsTest(converter_testing.TestCase):
       return tf.no_op()  # pylint:disable=undefined-variable
 
     with self.converted(test_fn, (asserts, side_effect_guards), {},
-                        gen_control_flow_ops.no_op) as result:
+                        (gen_control_flow_ops.no_op,)) as result:
       with self.cached_session() as sess:
         op = result.test_fn(constant_op.constant(False))
         with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,

@@ -23,12 +23,11 @@ import contextlib
 import copy
 import json
 import os
-import six
 import subprocess
 import sys
 import threading
 import unittest
-import numpy as np
+import six
 
 _portpicker_import_error = None
 try:
@@ -178,15 +177,23 @@ def create_in_process_cluster(num_workers,
   # 2) there is something global in CUDA such that if we initialize CUDA in the
   # parent process, the child process cannot initialize it again and thus cannot
   # use GPUs (https://stackoverflow.com/questions/22950047).
-  return _create_cluster(
-      num_workers,
-      num_ps=num_ps,
-      has_chief=has_chief,
-      has_eval=has_eval,
-      worker_config=worker_config,
-      ps_config=ps_config,
-      eval_config=eval_config,
-      protocol=rpc_layer)
+  cluster = None
+  try:
+    cluster = _create_cluster(
+        num_workers,
+        num_ps=num_ps,
+        has_chief=has_chief,
+        has_eval=has_eval,
+        worker_config=worker_config,
+        ps_config=ps_config,
+        eval_config=eval_config,
+        protocol=rpc_layer)
+  except errors.UnknownError as e:
+    if 'Could not start gRPC server' in e.message:
+      test.TestCase.SkipTest('Cannot start std servers.')
+    else:
+      raise
+  return cluster
 
 
 # TODO(rchao): Remove `test_obj` once estimator repo picks up the updated
@@ -245,8 +252,7 @@ class MultiWorkerTestBase(test.TestCase):
     # different session config or master target.
     self._thread_local = threading.local()
     self._thread_local.cached_session = None
-    self._result = 0
-    self._lock = threading.Lock()
+    self._coord = coordinator.Coordinator()
 
   @contextlib.contextmanager
   def session(self, graph=None, config=None, target=None):
@@ -316,15 +322,17 @@ class MultiWorkerTestBase(test.TestCase):
 
   def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
                   *args, **kwargs):
+
+    def wrapped_client_fn():
+      with self._coord.stop_on_exception():
+        client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+
     if eager_mode:
       with context.eager_mode():
-        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+        wrapped_client_fn()
     else:
       with context.graph_mode():
-        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
-    if np.all(result):
-      with self._lock:
-        self._result += 1
+        wrapped_client_fn()
 
   def _run_between_graph_clients(self, client_fn, cluster_spec, num_gpus, *args,
                                  **kwargs):
@@ -332,7 +340,7 @@ class MultiWorkerTestBase(test.TestCase):
 
     Args:
       client_fn: a function that needs to accept `task_type`, `task_id`,
-        `num_gpus` and returns True if it succeeds.
+        `num_gpus`.
       cluster_spec: a dict specifying jobs in a cluster.
       num_gpus: number of GPUs per worker.
       *args: will be passed to `client_fn`.
@@ -348,9 +356,7 @@ class MultiWorkerTestBase(test.TestCase):
             kwargs=kwargs)
         t.start()
         threads.append(t)
-    for t in threads:
-      t.join()
-    self.assertEqual(self._result, len(threads))
+    self._coord.join(threads)
 
 
 class MockOsEnv(collections.Mapping):

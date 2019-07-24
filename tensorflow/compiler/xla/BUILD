@@ -12,6 +12,7 @@ package(
 
 package_group(
     name = "friends",
+    includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
@@ -220,6 +221,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )

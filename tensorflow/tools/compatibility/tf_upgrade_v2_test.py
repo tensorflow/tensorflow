@@ -1489,6 +1489,19 @@ tf.print('abc')
       _, unused_report, unused_errors, actual = self._upgrade(text)
       self.assertEqual(actual, expected)
 
+  def testStructure(self):
+    for (text, expected) in [
+        ("tf.data.experimental.DatasetStructure", "tf.data.DatasetSpec"),
+        ("tf.data.experimental.OptionalStructure", "tf.OptionalSpec"),
+        ("tf.data.experimental.RaggedTensorStructure", "tf.RaggedTensorSpec"),
+        ("tf.data.experimental.SparseTensorStructure", "tf.SparseTensorSpec"),
+        ("tf.data.experimental.Structure", "tf.TypeSpec"),
+        ("tf.data.experimental.TensorArrayStructure", "tf.TensorArraySpec"),
+        ("tf.data.experimental.TensorStructure", "tf.TensorSpec"),
+    ]:
+      _, unused_report, unused_errors, actual = self._upgrade(text)
+      self.assertEqual(actual, expected)
+
   def testMapAndBatch(self):
     suffix = ".data.experimental.map_and_batch_with_legacy_function(args)"
     text = "tf" + suffix

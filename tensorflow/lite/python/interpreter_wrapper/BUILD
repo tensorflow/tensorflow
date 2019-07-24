@@ -10,6 +10,8 @@ cc_library(
     srcs = ["numpy.cc"],
     hdrs = ["numpy.h"],
     deps = [
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -27,7 +29,6 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
     ],
@@ -48,10 +49,8 @@ cc_library(
     srcs = ["python_utils.cc"],
     hdrs = ["python_utils.h"],
     deps = [
-        ":numpy",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
 )

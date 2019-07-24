@@ -53,6 +53,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -252,12 +253,14 @@ cc_library(
         ":kernel_and_device",
         ":tensor_handle",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -347,6 +350,9 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*_test.cc"],
+        exclude = [
+            "*_test.cc",
+            "remote_*",
+        ],
     ),
 )

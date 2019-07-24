@@ -810,6 +810,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     output = a(b(a(b(x))))
     m = keras.models.Model(x, output)
     m.run_eagerly = testing_utils.should_run_eagerly()
+    m._run_distributed = testing_utils.should_run_distributed()
 
     output_val = m.predict(x_val)
 
@@ -837,6 +838,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     m = keras.models.Model(inputs=input_layer, outputs=output)
     m.run_eagerly = testing_utils.should_run_eagerly()
+    m._run_distributed = testing_utils.should_run_distributed()
 
     x_val = np.random.random((10, 16, 9, 3))
     output_val = m.predict(x_val)
@@ -865,7 +867,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='sgd',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.train_on_batch(x, y)
     self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
 
@@ -874,6 +877,117 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model = keras.models.Model(a, b)
     preds = model.predict(x)
     self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
+
+  @keras_parameterized.run_all_keras_modes
+  def test_mask_derived_from_keras_layer(self):
+    inputs = keras.Input((5, 10))
+    mask = keras.Input((5,))
+    outputs = keras.layers.RNN(keras.layers.LSTMCell(100))(inputs, mask=mask)
+    model = keras.Model([inputs, mask], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed()
+    )
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # All data is masked, returned values are 0's.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.ones((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # Data is not masked, returned values are random.
+    self.assertGreater(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_arg_derived_from_keras_layer(self):
+
+    class MyAdd(keras.layers.Layer):
+
+      def call(self, x1, x2):
+        return x1 + x2
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    outputs = MyAdd()(input1, input2)
+    model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_kwarg_derived_from_keras_layer(self):
+
+    class MaybeAdd(keras.layers.Layer):
+
+      def call(self, x1, x2=None):
+        if x2 is not None:
+          return x1 + x2
+        return x1
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    outputs = MaybeAdd()(input1, x2=input2)
+    model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_nested_arg_derived_from_keras_layer(self):
+
+    class AddAll(keras.layers.Layer):
+
+      def call(self, x1, x2, x3=None):
+        out = x1 + x2
+        if x3 is not None:
+          for t in x3.values():
+            out += t
+        return out
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    input3 = keras.Input(10)
+    outputs = AddAll()(
+        input1,
+        4 * array_ops.ones((1, 10)),
+        x3={
+            'a': input2,
+            'b': input3,
+            'c': 5 * array_ops.ones((1, 10))
+        })
+    model = keras.Model([input1, input2, input3], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
+    self.assertEqual(history.history['loss'][0], 0.0)
 
   @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
@@ -892,11 +1006,13 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     o = keras.layers.add(o)
     model = keras.Model(i, o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._run_distributed = testing_utils.should_run_distributed()
 
     i2 = keras.layers.Input(shape=(3, 2, 1))
     o2 = model(i2)
     model2 = keras.Model(i2, o2)
     model2.run_eagerly = testing_utils.should_run_eagerly()
+    model2._run_distributed = testing_utils.should_run_distributed()
 
     x = np.random.random((4, 3, 2, 1))
     out = model2.predict(x)
@@ -914,7 +1030,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='sgd',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     json_str = model.to_json()
     keras.models.model_from_json(json_str)
@@ -1213,7 +1330,8 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     model_input = np.random.randint(
         low=1, high=5, size=(10, 3, 4)).astype('float32')
@@ -1395,11 +1513,17 @@ class AddLossTest(keras_parameterized.TestCase):
     initial_weights = model.get_weights()
 
     x = np.ones((10, 10))
-    model.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
-    model2.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model2.compile(
+        'sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model2.set_weights(initial_weights)
     model2.fit(x, batch_size=2, epochs=1)
 
@@ -1420,11 +1544,19 @@ class AddLossTest(keras_parameterized.TestCase):
     initial_weights = model.get_weights()
 
     x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
-    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model2.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model2.set_weights(initial_weights)
     model2.fit(x, y, batch_size=2, epochs=1)
 

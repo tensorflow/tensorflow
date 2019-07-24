@@ -18,9 +18,93 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 
 namespace tensorflow {
 namespace data {
+
+string ToString(CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZLIB:
+      return "ZLIB";
+    case CompressionType::GZIP:
+      return "GZIP";
+    case CompressionType::RAW:
+      return "RAW";
+    case CompressionType::UNCOMPRESSED:
+      return "";
+  }
+}
+
+io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZLIB:
+      return io::ZlibCompressionOptions::DEFAULT();
+    case CompressionType::GZIP:
+      return io::ZlibCompressionOptions::GZIP();
+    case CompressionType::RAW:
+      return io::ZlibCompressionOptions::RAW();
+    case CompressionType::UNCOMPRESSED:
+      LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
+                   << ToString(compression_type);
+      return io::ZlibCompressionOptions::DEFAULT();
+  }
+}
+
+Status WriteDataToFile(const string& filename, const char* data) {
+  return WriteDataToFile(filename, data, CompressionParams());
+}
+
+Status WriteDataToFile(const string& filename, const char* data,
+                       const CompressionParams& params) {
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> file_writer;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
+  if (params.compression_type == CompressionType::UNCOMPRESSED) {
+    TF_RETURN_IF_ERROR(file_writer->Append(data));
+  } else if (params.compression_type == CompressionType::ZLIB ||
+             params.compression_type == CompressionType::GZIP ||
+             params.compression_type == CompressionType::RAW) {
+    auto zlib_compression_options =
+        GetZlibCompressionOptions(params.compression_type);
+    io::ZlibOutputBuffer out(file_writer.get(), params.input_buffer_size,
+                             params.output_buffer_size,
+                             zlib_compression_options);
+    TF_RETURN_IF_ERROR(out.Init());
+    TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Flush());
+    TF_RETURN_IF_ERROR(out.Close());
+  } else {
+    return tensorflow::errors::InvalidArgument(
+        "Unsupported compression_type: ", ToString(params.compression_type));
+  }
+
+  TF_RETURN_IF_ERROR(file_writer->Flush());
+  TF_RETURN_IF_ERROR(file_writer->Close());
+
+  return Status::OK();
+}
+
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params) {
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> file_writer;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
+  auto options = io::RecordWriterOptions::CreateRecordWriterOptions(
+      ToString(params.compression_type));
+  options.zlib_options.input_buffer_size = params.input_buffer_size;
+  io::RecordWriter record_writer(file_writer.get(), options);
+  for (const auto& record : records) {
+    TF_RETURN_IF_ERROR(record_writer.WriteRecord(record));
+  }
+  TF_RETURN_IF_ERROR(record_writer.Flush());
+  TF_RETURN_IF_ERROR(record_writer.Close());
+  TF_RETURN_IF_ERROR(file_writer->Flush());
+  TF_RETURN_IF_ERROR(file_writer->Close());
+  return Status::OK();
+}
 
 template <typename T>
 Status IsEqual(const Tensor& t1, const Tensor& t2) {
@@ -187,6 +271,46 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
       RunOpKernel(tensor_slice_dataset_kernel.get(), context.get()));
   TF_RETURN_IF_ERROR(
       GetDatasetFromContext(context.get(), 0, tensor_slice_dataset));
+  return Status::OK();
+}
+
+// Create a `RangeDataset` dataset as a variant tensor.
+Status DatasetOpsTestBase::MakeRangeDataset(
+    const Tensor& start, const Tensor& stop, const Tensor& step,
+    const DataTypeVector& output_types,
+    const std::vector<PartialTensorShape>& output_shapes,
+    Tensor* range_dataset) {
+  GraphConstructorOptions graph_opts;
+  graph_opts.allow_internal_ops = true;
+  graph_opts.expect_device_spec = false;
+  TF_RETURN_IF_ERROR(
+      RunFunction(test::function::MakeRangeDataset(),
+                  /*attrs*/
+                  {{RangeDatasetOp::kOutputTypes, output_types},
+                   {RangeDatasetOp::kOutputShapes, output_shapes}},
+                  /*inputs*/ {start, stop, step}, graph_opts,
+                  /*rets*/ {range_dataset}));
+  return Status::OK();
+}
+
+// Create a `TakeDataset` dataset as a variant tensor.
+Status DatasetOpsTestBase::MakeTakeDataset(
+    const Tensor& input_dataset, int64 count,
+    const DataTypeVector& output_types,
+    const std::vector<PartialTensorShape>& output_shapes,
+    Tensor* take_dataset) {
+  GraphConstructorOptions graph_opts;
+  graph_opts.allow_internal_ops = true;
+  graph_opts.expect_device_spec = false;
+
+  Tensor count_tensor = CreateTensor<int64>(TensorShape({}), {count});
+  TF_RETURN_IF_ERROR(
+      RunFunction(test::function::MakeTakeDataset(),
+                  /*attrs*/
+                  {{TakeDatasetOp::kOutputTypes, output_types},
+                   {TakeDatasetOp::kOutputShapes, output_shapes}},
+                  /*inputs*/ {input_dataset, count_tensor}, graph_opts,
+                  /*rets*/ {take_dataset}));
   return Status::OK();
 }
 

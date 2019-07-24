@@ -41,8 +41,11 @@ namespace tensorflow {
 // device to another.
 class EagerNode {
  public:
-  explicit EagerNode(uint64 id);
-
+  EagerNode() {}
+  // Nodes should not do any work in their destructor. This is because if the
+  // node is being destructed by the EagerExecutor, then the node queue lock may
+  // be held. Instead opt for calling clean-up code as part of Run() or Abort(),
+  // since one of those are guaranteed to be run.
   virtual ~EagerNode() {}
 
   // Runs the computation corresponding to this node and blocks till the
@@ -54,13 +57,6 @@ class EagerNode {
   // For example, if the node would have computed some tensors in the Run(),
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
-
-  uint64 Id() const { return id_; }
-
- private:
-  // An id unique to the TFE_Context under which this node is created. Allocated
-  // monotonically.
-  const uint64 id_;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -81,23 +77,11 @@ class EagerExecutor {
   // independently.
   void EnableAsync();
 
-  // Helper function to create monotonically increasing ids unique to this
-  // object.
-  uint64 NextId();
-
   // Schedules `node` for execution.
-  // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(std::unique_ptr<EagerNode> node);
-
-  // Causes the caller to block till node with id `node_id` has finished
-  // execution.
-  Status WaitFor(uint64 node_id);
+  Status Add(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.
   Status WaitForAllPendingNodes();
-
-  // Checks if the specific node_id is queued.
-  bool IsQueued(uint64 node_id) const;
 
   // Clears all currently set errors which re-enables async execution.
   void ClearError();
@@ -130,7 +114,7 @@ class EagerExecutor {
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
   // done executing, or if an error is found in execution of any EagerNode.
-  std::multimap<uint64, condition_variable*> node_done_notifications_
+  std::multimap<EagerNode*, condition_variable*> node_done_notifications_
       GUARDED_BY(node_queue_mutex_);
 
   // Thread object that calls the `Run` method. Currently we use only one thread
@@ -140,12 +124,6 @@ class EagerExecutor {
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
   bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
-
-  // Indicates the id of last successfully or unsuccessfully executed node.
-  uint64 last_node_id_ GUARDED_BY(node_queue_mutex_) = 0;
-
-  mutex next_id_mutex_;
-  uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
 };
 
 }  // namespace tensorflow

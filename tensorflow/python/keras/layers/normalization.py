@@ -264,6 +264,11 @@ class BatchNormalizationBase(Layer):
     else:
       return self.dtype or dtypes.float32
 
+  def _support_zero_size_input(self):
+    return distribution_strategy_context.has_strategy() and getattr(
+        distribution_strategy_context.get_strategy().extended,
+        'experimental_enable_get_next_as_optional', False)
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -484,9 +489,7 @@ class BatchNormalizationBase(Layer):
 
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    # TODO(b/130185866): Support zero batch input in graph mode.
-    if ops.executing_eagerly_outside_functions(
-    ) and distribution_strategy_context.has_strategy():
+    if self._support_zero_size_input():
       inputs_size = array_ops.size(inputs)
     else:
       inputs_size = None
@@ -617,9 +620,7 @@ class BatchNormalizationBase(Layer):
     mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    # TODO(b/130185866): Support zero batch input in graph mode.
-    if (ops.executing_eagerly_outside_functions() and
-        distribution_strategy_context.has_strategy()):
+    if self._support_zero_size_input():
       inputs_size = array_ops.size(inputs)
       mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
       variance = array_ops.where(inputs_size > 0, variance,
@@ -735,8 +736,7 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
-      if ops.executing_eagerly_outside_functions(
-      ) and distribution_strategy_context.has_strategy():
+      if self._support_zero_size_input():
         inputs_size = array_ops.size(inputs)
       else:
         inputs_size = None

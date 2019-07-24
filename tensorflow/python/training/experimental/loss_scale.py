@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -93,10 +94,10 @@ class LossScale(trackable.Trackable):
     cross-replica context.
 
     Args:
-      grads: A list of unscaled gradients, each which is the gradient of the
-        loss with respect to a weight. The gradients should have already been
-        divided by the loss scale being before passed to this function. 'None'
-        gradients are accepted, and are ignored.
+      grads: A nested structure of unscaled gradients, each which is the
+        gradient of the loss with respect to a weight. The gradients should have
+        already been divided by the loss scale being before passed to this
+        function. 'None' gradients are accepted, and are ignored.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
@@ -324,10 +325,11 @@ class DynamicLossScale(LossScale):
     return self._multiplier
 
   def __call__(self):
-    return self._current_loss_scale
+    return ops.convert_to_tensor(self._current_loss_scale)
 
   def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
+    grads = nest.flatten(grads)
     if distribution_strategy_context.has_strategy():
       distribution = distribution_strategy_context.get_cross_replica_context()
 

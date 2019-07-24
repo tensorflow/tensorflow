@@ -28,9 +28,12 @@ from __future__ import division
 from __future__ import print_function
 
 from os import path
+import textwrap
 
 from absl import app
 from absl import flags
+from distutils.version import LooseVersion
+
 import tensorflow as tf
 
 from tensorflow_docs.api_generator import doc_controls
@@ -139,13 +142,27 @@ else:
     ```
     """
 
-tf.raw_ops.__doc__ += """
+_raw_ops_doc = textwrap.dedent("""\n
+  Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
+  [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+  for details. Unless you are library writer, you likely do not need to use these
+  ops directly.""")
 
-Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
-[the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md) 
-for details. Unless you are library writer, you likely do not need to use these
-ops directly.
-"""
+if LooseVersion(tf.__version__) < LooseVersion('2'):
+  tf.raw_ops.__doc__ = _raw_ops_doc
+  tf.contrib.__doc__ = """
+    Contrib module containing volatile or experimental code.
+
+    Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
+    of its submodules have been integrated into TensorFlow core, or spun-off into
+    other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
+    [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
+    on how to upgrade see the
+    [Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+    """
+else:
+  tf.raw_ops.__doc__ += _raw_ops_doc
+
 
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
@@ -185,6 +202,7 @@ def _hide_layer_and_module_methods():
       doc_controls.do_not_doc_in_subclasses(obj)
     except AttributeError:
       pass
+
 
 def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.

@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import variables
 
 
 def _create_tensor(value, device=None, dtype=None):
@@ -47,7 +48,7 @@ def _create_tensor(value, device=None, dtype=None):
     dtype = dtype.as_datatype_enum
   try:
     return ops.EagerTensor(
-        value, context=ctx._handle, device=device, dtype=dtype)
+        value, context=ctx, device=device, dtype=dtype)
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e.code, e.message)
 
@@ -66,7 +67,6 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testBadConstructorArgs(self):
     context.ensure_initialized()
     ctx = context.context()
-    handle = ctx._handle
     device = ctx.device_name
     # Missing context.
     with self.assertRaisesRegexp(
@@ -75,11 +75,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     # Missing device.
     with self.assertRaisesRegexp(
         TypeError, r".*argument 'device' \(pos 3\).*"):
-      ops.EagerTensor(1, context=handle)
+      ops.EagerTensor(1, context=ctx)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
-      ops.EagerTensor(1, context=handle, device=device, dtype="1")
+      ops.EagerTensor(1, context=ctx, device=device, dtype="1")
 
     # Following errors happen when trying to copy to GPU.
     if not test_util.is_gpu_available():
@@ -89,12 +89,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       device = ctx.device_name
       # Bad context.
       with self.assertRaisesRegexp(
-          TypeError, "Expecting a PyCapsule encoded context handle. Got"):
+          TypeError,
+          "Expected `context` argument in EagerTensor constructor to have a "
+          "`_handle` field but it did not. Was eager Context initialized?"):
         ops.EagerTensor(1.0, context=1, device=device)
       # Bad device.
       with self.assertRaisesRegexp(
           TypeError, "Error parsing device argument to CopyToDevice"):
-        ops.EagerTensor(1.0, context=handle, device=1)
+        ops.EagerTensor(1.0, context=ctx, device=1)
 
   def testNumpyValue(self):
     values = np.array([3.0])
@@ -121,7 +123,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     # Bad dtype value.
     with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
       ops.EagerTensor(
-          values, context=ctx._handle, device=ctx.device_name, dtype=12345)
+          values, context=ctx, device=ctx.device_name, dtype=12345)
 
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
@@ -376,8 +378,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testEagerTensorError(self):
     with self.assertRaisesRegexp(
         TypeError,
-        "Cannot convert provided value to EagerTensor. "
-        "Provided value.*Requested dtype.*"):
+        "Cannot convert .* to EagerTensor of dtype .*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
 
   def testEagerLargeConstant(self):
@@ -391,6 +392,16 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = constant_op.constant([0.0])
     t._numpy()[0] = 42.0
     self.assertAllClose(t, constant_op.constant([42.0]))
+
+  def test_numpyFailsForResource(self):
+    v = variables.Variable(42)
+    with self.assertRaisesRegex(ValueError, "Cannot convert .+ resource"):
+      v._handle._numpy()
+
+  def testMemoryviewFailsForResource(self):
+    v = variables.Variable(42)
+    with self.assertRaisesRegex(BufferError, "Cannot convert .+ resource"):
+      np.asarray(memoryview(v._handle))
 
   def testMemoryviewIsReadonly(self):
     t = constant_op.constant([0.0])
@@ -526,7 +537,6 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
-
 
 if __name__ == "__main__":
   test.main()

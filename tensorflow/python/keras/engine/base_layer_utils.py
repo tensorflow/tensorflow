@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import threading
 
-import enum
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -37,20 +35,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 _call_context = threading.local()
-
-
-class CallConvention(enum.Enum):
-  """Calling conventions for passing `Layer` inputs to `Layer.call`."""
-  # The Layer takes inputs as its first argument, named "inputs" for
-  # compatibility with the signature of Layer.__call__. This is the mode assumed
-  # for Layers which are not subclassed Models.
-  EXPLICIT_INPUTS_ARGUMENT = 1
-  # The Layer takes a single positional argument, not named "inputs". It's
-  # treated like an "inputs" argument.
-  SINGLE_POSITIONAL_ARGUMENT = 2
-  # The Layer has multiple positional arguments to which its inputs should be
-  # bound.
-  POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
 
 
 def create_mean_metric(value, name=None):
@@ -436,6 +420,34 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
   return 'training' in full_args and full_args['training'] is not None
+
+
+def _get_var_read_dtype(input_list, should_cast):
+  """Gets the dtype that AutoCastVariables should be read in."""
+  if should_cast and input_list and input_list[0].dtype.is_floating:
+    return input_list[0].dtype.base_dtype
+  else:
+    return None
+
+
+def autocast_context_manager(input_list, should_cast):
+  """Returns a context manager to autocast AutoCastVariables.
+
+  Under this context manager, if `should_cast` is True, AutoCastVariables will
+  be casted. If `should_cast` is False, AutoCastVariables will not be casted,
+  which can be used to disable autocasting if nested under another
+  call to `autocast_context_manager`.
+
+  Args:
+    input_list: The inputs to the layer with the AutoCastVariables.
+    should_cast: Whether AutoCastVariables should be casted.
+
+  Returns:
+    A context manager to automatically cast AutoCastVariables.
+  """
+  var_read_dtype = _get_var_read_dtype(input_list, should_cast)
+  return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
+      var_read_dtype)
 
 
 def is_subclassed(layer):

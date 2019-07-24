@@ -75,7 +75,7 @@ class FixedResultUniformScale {
       Builder builder(op->getContext());
       IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *
-                           ::exp10(static_cast<double>(ScaleExp));
+                           ::pow(10.0, static_cast<double>(ScaleExp));
       return UniformQuantizedType::getChecked(
           Sign, storage_type, result_type.getElementType(), scale, ZeroPoint,
           StorageTypeMin, StorageTypeMax, builder.getUnknownLoc());
@@ -118,6 +118,25 @@ class NoQuantizableResult
     : public QuantizationSpecTraitBase<ConcreteType, NoQuantizableResult> {
  public:
   static bool IsQuantizable() { return false; }
+};
+
+// The trait to specify that the specified operands of the TFL op are stateful.
+// This is used as a trait like this:
+//
+//   class LSTMOp
+//       : public Op<LSTMOp, OpTrait::TFL::StatefulOperands<18, 19>::Impl> {
+//
+template <int... Operands>
+class StatefulOperands {
+ public:
+  template <typename ConcreteType>
+  class Impl
+      : public TraitBase<ConcreteType, StatefulOperands<Operands...>::Impl> {
+   public:
+    static std::vector<int> GetStatefulOperands() {
+      return std::vector<int>({Operands...});
+    }
+  };
 };
 
 }  // namespace TFL

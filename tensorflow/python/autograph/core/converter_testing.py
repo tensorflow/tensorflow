@@ -37,8 +37,6 @@ from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
 
-RESULT_OF_MOCK_CONVERTED_CALL = 7
-
 
 class TestCase(test.TestCase):
   """Base class for unit tests in this module. Contains relevant utilities."""
@@ -54,15 +52,17 @@ class TestCase(test.TestCase):
       sys.stdout = sys.__stdout__
 
   @contextlib.contextmanager
-  def compiled(self, node, namespace, *symbols):
+  def compiled(self, node, namespace, symbols=()):
     source = None
 
     self.dynamic_calls = []
     # See api.converted_call
-    def converted_call(unused_f, unused_opts, args, kwargs):
+    def converted_call(f, unused_opts, args, kwargs):
       """Mock version of api.converted_call."""
       self.dynamic_calls.append((args, kwargs))
-      return RESULT_OF_MOCK_CONVERTED_CALL
+      if kwargs is None:
+        kwargs = {}
+      return f(*args, **kwargs)
 
     try:
       result, source, source_map = compiler.ast_to_object(
@@ -92,7 +92,8 @@ class TestCase(test.TestCase):
       raise
 
   @contextlib.contextmanager
-  def converted(self, entity, converter_module, namespace, *tf_symbols):
+  def converted(self, entity, converter_module, namespace, tf_symbols=()):
+
     node, ctx = self.prepare(entity, namespace)
 
     if not isinstance(converter_module, (list, tuple)):
@@ -101,7 +102,7 @@ class TestCase(test.TestCase):
       node = converter.standard_analysis(node, ctx, is_initial=not i)
       node = m.transform(node, ctx)
 
-    with self.compiled(node, namespace, *tf_symbols) as result:
+    with self.compiled(node, namespace, tf_symbols) as result:
       yield result
 
   def make_fake_mod(self, name, *symbols):

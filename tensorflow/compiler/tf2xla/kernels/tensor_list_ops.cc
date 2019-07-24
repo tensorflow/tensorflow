@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -306,6 +307,59 @@ class TensorListGetItemOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("TensorListGetItem"), TensorListGetItemOp);
+
+class TensorListGatherOp : public XlaOpKernel {
+ public:
+  explicit TensorListGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
+
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListGather."));
+
+    DataType indices_type = ctx->input_type(1);
+
+    const TensorShape indices_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, indices_shape.dims() == 1,
+                errors::InvalidArgument("indices must be rank 1"));
+
+    xla::XlaOp list = ctx->Input(0);
+    xla::XlaOp indices = ctx->Input(1);
+
+    xla::XlaOp buffer;
+    OP_REQUIRES_OK(ctx, GetTensorListBuffer(list, &buffer));
+    xla::Shape buffer_xla_shape;
+    OP_REQUIRES_OK(ctx, GetTensorListBufferShape(list, &buffer_xla_shape));
+    TensorShape buffer_shape;
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(buffer_xla_shape, &buffer_shape));
+
+    xla::XlaOp result;
+    OP_REQUIRES_OK(
+        ctx, XlaGather(buffer, buffer_shape, indices, indices_shape, /*axis=*/0,
+                       /*indices_are_nd=*/false, dtype_, indices_type,
+                       ctx->builder(), &result));
+    ctx->SetOutput(0, result);
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorListGatherOp);
+};
+
+REGISTER_XLA_OP(Name("TensorListGather"), TensorListGatherOp);
 
 class TensorListStackOp : public XlaOpKernel {
  public:

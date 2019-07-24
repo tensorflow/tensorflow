@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -43,7 +44,7 @@ class ConvolutionTransposedBuffers : public NodeShader {
     const int32_t inner_size_w = (weights.w - 1) / attr.stride.w + 1;
     const int32_t inner_size_h = (weights.h - 1) / attr.stride.h + 1;
 
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
         {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
@@ -94,6 +95,7 @@ class ConvolutionTransposedBuffers : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/source,

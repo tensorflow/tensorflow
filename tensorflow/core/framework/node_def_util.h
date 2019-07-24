@@ -336,10 +336,11 @@ Status AttachDef(const Status& status, const Node& node,
                  bool allow_multiple_formatted_node = false);
 
 // Appends the given prefix and suffix to the original node name in order to
-// make the name unique. If it's an "Enter" node, use the same way to reset
-// attribute "frame_name".
+// make the name unique. If it's an "Enter" node and uniquify_frame_name is
+// true, use the same way to reset attribute "frame_name".
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
-                                NodeDef* node_def);
+                                NodeDef* node_def,
+                                bool uniquify_frame_name = true);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

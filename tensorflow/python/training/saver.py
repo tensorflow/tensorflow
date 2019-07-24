@@ -1276,11 +1276,12 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
 
-    if not checkpoint_management.checkpoint_exists(compat.as_text(save_path)):
+    checkpoint_prefix = compat.as_text(save_path)
+    if not checkpoint_management.checkpoint_exists_internal(checkpoint_prefix):
       raise ValueError("The passed save_path is not a valid checkpoint: " +
-                       compat.as_text(save_path))
+                       checkpoint_prefix)
 
-    logging.info("Restoring parameters from %s", compat.as_text(save_path))
+    logging.info("Restoring parameters from %s", checkpoint_prefix)
     try:
       if context.executing_eagerly():
         self._build_eager(save_path, build_save=False, build_restore=True)

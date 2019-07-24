@@ -391,7 +391,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     b = control_flow_ops.cond(
         constant_op.constant(True), lambda: math_ops.square(x),
         lambda: math_ops.subtract(x, 1.))
-    self.assertEqual(b.shape, tensor_shape.scalar())
+    self.assertEqual(b.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_v1_only("b/120545219")
   def testFetchable(self):
@@ -4399,6 +4399,15 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           [tensor_shape.TensorShape([None])])
       self.assertAllEqual(while_output.shape.as_list(), [None])
     runTest()
+
+  def testFunctionInWhile(self):
+
+    @def_function.function
+    def body(x):
+      return x + 1
+
+    r = control_flow_ops.while_loop(lambda x: x < 5, body, [0])
+    self.assertAllEqual(r, 5.)
 
 
 class ControlFlowContextCheckTest(test.TestCase):

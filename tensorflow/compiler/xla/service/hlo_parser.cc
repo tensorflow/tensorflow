@@ -1833,7 +1833,7 @@ bool HloParser::ParseSharding(OpSharding* sharding) {
       }
     } while (EatIfPresent(TokKind::kComma));
   }
-  sharding->set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+  sharding->set_type(OpSharding::TUPLE);
 
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
 }
@@ -1915,13 +1915,13 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
       return Error(loc,
                    "replicated shardings should not have any devices assigned");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+    sharding->set_type(OpSharding::REPLICATED);
   } else if (maximal) {
     if (devices.size() != 1) {
       return Error(loc,
                    "maximal shardings should have exactly one device assigned");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    sharding->set_type(OpSharding::MAXIMAL);
     sharding->add_tile_assignment_devices(devices[0]);
   } else {
     if (devices.size() <= 1) {
@@ -1934,7 +1934,7 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
           "non-maximal shardings must have a tile assignment list including "
           "dimensions");
     }
-    sharding->set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    sharding->set_type(OpSharding::OTHER);
     for (int64 dim : tile_assignment_dimensions) {
       sharding->add_tile_assignment_dimensions(dim);
     }
@@ -2344,6 +2344,20 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         elems_seen_per_dim[0] = shape.dimensions(0);
         lexer_.Lex();
+        // Fill data with deterministic (garbage) values. Use static to avoid
+        // creating identical constants which could potentially got CSE'ed
+        // away. This is a best-effort approach to make sure replaying a HLO
+        // gives us same optimized HLO graph.
+        static uint32 data = 0;
+        uint32* raw_data = static_cast<uint32*>(literal->untyped_data());
+        for (int64 i = 0; i < literal->size_bytes() / 4; ++i) {
+          raw_data[i] = data++;
+        }
+        uint8* raw_data_int8 = static_cast<uint8*>(literal->untyped_data());
+        static uint8 data_int8 = 0;
+        for (int64 i = 0; i < literal->size_bytes() % 4; ++i) {
+          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++;
+        }
         break;
       }
       case TokKind::kComma:
@@ -4222,7 +4236,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
 
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
   auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
   HloParser parser(str);
@@ -4230,11 +4244,9 @@ StatusOr<std::unique_ptr<HloModule>> ParseHloString(
   return std::move(module);
 }
 
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"_", HloModuleConfig());
-  HloParser parser(str);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
-  return std::move(module);
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
+    absl::string_view str) {
+  return ParseAndReturnUnverifiedModule(str, HloModuleConfig());
 }
 
 Status ParseHloString(absl::string_view str, HloModule* module) {

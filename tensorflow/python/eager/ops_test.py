@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import threading
 import weakref
 
@@ -421,6 +422,19 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(weak_key_dict))
     del strong_y
     self.assertEqual([], list(weak_key_dict))
+
+  def testEagerTensorsCanBeGarbageCollected(self):
+    x = constant_op.constant([[1.]])
+    y = constant_op.constant([[2.]])
+    x.y = y
+    y.x = x
+    weak_x = weakref.ref(x)
+    weak_y = weakref.ref(y)
+    del x
+    del y
+    gc.collect()
+    self.assertIs(weak_x(), None)
+    self.assertIs(weak_y(), None)
 
 
 if __name__ == '__main__':

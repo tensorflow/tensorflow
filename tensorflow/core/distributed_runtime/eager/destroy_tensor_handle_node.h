@@ -27,10 +27,9 @@ namespace eager {
 // request to destroy a remote tensor handle.
 class DestroyTensorHandleNode : public tensorflow::EagerNode {
  public:
-  DestroyTensorHandleNode(tensorflow::uint64 node_id,
-                          std::unique_ptr<EnqueueRequest> request,
+  DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
                           EagerClient* eager_client)
-      : tensorflow::EagerNode(node_id),
+      : tensorflow::EagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client) {}
 

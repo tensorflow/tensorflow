@@ -313,7 +313,7 @@ func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*
     %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
     tf_executor.NextIteration.Sink [%3#1] %3#0, %1#2 : tensor<*xf32>
 // CHECK: %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
-// CHECK: tf_executor.NextIteration.Sink [%3#1] %3#0 : tensor<*xf32>
+// CHECK: tf_executor.NextIteration.Sink [%3#1] %3#0, %1#2 : tensor<*xf32>
     tf_executor.fetch %3#0 : tensor<*xf32>
   }
   return %0 : tensor<*xf32>

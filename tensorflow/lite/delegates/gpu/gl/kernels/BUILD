@@ -49,6 +49,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -85,6 +86,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:ideal_workgroup_picker",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -123,6 +125,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:ideal_workgroup_picker",
         "@com_google_absl//absl/memory",
     ],
@@ -191,6 +194,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -257,6 +261,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -324,6 +329,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -354,10 +360,10 @@ cc_library(
     hdrs = ["pooling.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -427,6 +433,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -493,6 +500,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -528,6 +536,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -588,6 +597,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -621,6 +631,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )

@@ -12,6 +12,7 @@ cc_library(
     hdrs = ["api.h"],
     deps = [
         ":command_queue",
+        ":common_cc_fbs",
         ":compiler",
         ":compiler_options",
         ":gl_call",
@@ -23,6 +24,7 @@ cc_library(
         ":runtime",
         ":runtime_options",
         ":stats",
+        ":variable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -221,7 +223,7 @@ cc_library(
         ":gl_errors",
         ":gl_shader",
         ":portable",
-        ":uniform_parameter",
+        ":variable",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/types:variant",
@@ -298,7 +300,7 @@ cc_library(
         ":compiler_options",
         ":gpu_info",
         ":object",
-        ":uniform_parameter",
+        ":variable",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -360,13 +362,12 @@ cc_library(
         ":portable",
         ":runtime_options",
         ":stats",
-        ":uniform_parameter",
+        ":variable",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl/runtime:shared_buffer",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -383,7 +384,7 @@ cc_library(
         ":common_cc_fbs",
         ":compiled_model_cc_fbs",
         ":object",
-        ":uniform_parameter",
+        ":variable",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -405,7 +406,7 @@ cc_test(
     deps = [
         ":object",
         ":serialization",
-        ":uniform_parameter",
+        ":variable",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -423,8 +424,8 @@ cc_library(
 )
 
 cc_library(
-    name = "uniform_parameter",
-    hdrs = ["uniform_parameter.h"],
+    name = "variable",
+    hdrs = ["variable.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/types:variant",

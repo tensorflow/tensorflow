@@ -86,14 +86,15 @@ tensorflow_rbe_config(
 )
 
 tensorflow_rbe_config(
-    name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5",
-    compiler = "gcc",
-    compiler_prefix = "/dt7/usr/bin",
+    name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1",
+    compiler = "/dt7/usr/bin/gcc",
+    compiler_prefix = "/usr/bin",
     cuda_version = "10.0",
     cudnn_version = "7",
     os = "ubuntu16.04-manylinux2010",
     python_version = "3.6",
-    tensorrt_version = "5",
+    tensorrt_install_path = "/usr/local/tensorrt",
+    tensorrt_version = "5.1",
 )
 
 tensorflow_rbe_config(

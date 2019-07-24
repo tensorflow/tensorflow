@@ -511,13 +511,15 @@ class Function(object):
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
+      op_map = {}
       for v, init in initializer_map.items():
         with ops.init_scope():
           if resource_variable_ops.var_is_initialized_op(v.handle):
             # Ignore variables which are already initialized at trace time.
             continue
-        v.assign(lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph())[init])
+        op_map = lift_to_graph.lift_to_graph(
+            [init], ops.get_default_graph(), op_map=op_map)
+        v.assign(op_map[init])
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()

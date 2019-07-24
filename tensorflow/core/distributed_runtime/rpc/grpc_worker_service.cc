@@ -370,11 +370,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
                     GrpcWorkerServiceOptions options)
       : is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
-    // TODO(jingdong): it would be cleaner to move this option to GrpcWorker
-    // since the cache is maintained by GrpcWorker now.
-    if (options.cache_rpc_response) {
-      worker->EnableResponseCache();
-    }
 
     for (int i = 0; i < options.num_serving_threads; i++) {
       threads_.emplace_back(
@@ -428,7 +423,11 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
       recv_buf_max_chunk_(
           config.experimental().recv_buf_max_chunk() > 0
               ? config.experimental().recv_buf_max_chunk()
-              : (config.experimental().recv_buf_max_chunk() < 0 ? 0 : 4096)) {}
+              : (config.experimental().recv_buf_max_chunk() < 0 ? 0 : 4096)) {
+  if (config.rpc_options().cache_rpc_response()) {
+    EnableResponseCache();
+  }
+}
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(1) << "Enabling gRPC tensor response cache.";

@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -285,7 +286,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._key_func = dataset_ops.StructuredFunctionWrapper(
         key_func, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
-        structure.TensorStructure(dtypes.int64, [])):
+        tensor_spec.TensorSpec([], dtypes.int64)):
       raise ValueError(
           "`key_func` must return a single tf.int64 tensor. "
           "Got type=%s and shape=%s"
@@ -296,7 +297,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     self._init_func = dataset_ops.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
-        input_structure=structure.TensorStructure(dtypes.int64, []))
+        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
@@ -419,9 +420,9 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._window_size_func = dataset_ops.StructuredFunctionWrapper(
         window_size_func_wrapper,
         self._transformation_name(),
-        input_structure=structure.TensorStructure(dtypes.int64, []))
+        input_structure=tensor_spec.TensorSpec([], dtypes.int64))
     if not self._window_size_func.output_structure.is_compatible_with(
-        structure.TensorStructure(dtypes.int64, [])):
+        tensor_spec.TensorSpec([], dtypes.int64)):
       raise ValueError(
           "`window_size_func` must return a single tf.int64 scalar tensor.")
 
@@ -433,21 +434,20 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
     self._key_func = dataset_ops.StructuredFunctionWrapper(
         key_func_wrapper, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
-        structure.TensorStructure(dtypes.int64, [])):
+        tensor_spec.TensorSpec([], dtypes.int64)):
       raise ValueError(
           "`key_func` must return a single tf.int64 scalar tensor.")
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
-    nested_dataset = dataset_ops.DatasetStructure(
+    nested_dataset = dataset_ops.DatasetSpec(
         input_dataset.element_spec)
-    input_structure = (structure.TensorStructure(dtypes.int64,
-                                                 []), nested_dataset)
+    input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
     self._reduce_func = dataset_ops.StructuredFunctionWrapper(
         reduce_func, self._transformation_name(),
         input_structure=input_structure)
     if not isinstance(
-        self._reduce_func.output_structure, dataset_ops.DatasetStructure):
+        self._reduce_func.output_structure, dataset_ops.DatasetSpec):
       raise TypeError("`reduce_func` must return a `Dataset` object.")
     # pylint: disable=protected-access
     self._element_spec = (

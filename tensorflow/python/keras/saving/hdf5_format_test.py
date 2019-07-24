@@ -815,11 +815,9 @@ class TestWholeModelSaving(test.TestCase):
     def _make_model():
       inputs = keras.Input(shape=(4,))
       x = keras.layers.Dense(8, activation='relu')(inputs)
-      y = keras.layers.Dense(3, activation='softmax')(x)
-      custom_loss = keras.layers.Lambda(lambda x: keras.backend.sum(x * x))(x)
-      # Connect the loss to the network.
-      outputs = keras.layers.Lambda(lambda x: x[0])((y, custom_loss))
+      outputs = keras.layers.Dense(3, activation='softmax')(x)
       model = keras.Model(inputs=inputs, outputs=outputs)
+      custom_loss = keras.layers.Lambda(lambda x: keras.backend.sum(x * x))(x)
       model.add_loss(custom_loss)
       model.add_metric(custom_loss, aggregation='mean', name='custom_loss')
       return model
@@ -848,6 +846,113 @@ class TestWholeModelSaving(test.TestCase):
     self.assertNear(
         evaluation_results['sparse_categorical_crossentropy'] +
         evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+
+
+# Factory functions to create models that will be serialized inside a Network.
+def _make_graph_network(input_size, output_size):
+  inputs = keras.Input(input_size)
+  x = keras.layers.Dense(8, activation='relu')(inputs)
+  y = keras.layers.Dense(output_size)(x)
+  return keras.Model(inputs=inputs, outputs=y)
+
+
+def _make_sequential(input_size, output_size):
+  del input_size
+  return keras.Sequential([
+      keras.layers.Dense(8, activation='relu'),
+      keras.layers.Dense(output_size),
+  ])
+
+
+def _make_sequential_built(input_size, output_size):
+  model = _make_sequential(input_size, output_size)
+  model.build((None, input_size))
+  return model
+
+
+def _make_sequential_graph_network(input_size, output_size):
+  return keras.Sequential([
+      keras.layers.InputLayer(input_size),
+      keras.layers.Dense(8, activation='relu'),
+      keras.layers.Dense(output_size),
+  ])
+
+
+def _make_sequential_input_shape(input_size, output_size):
+  return keras.Sequential([
+      keras.layers.Dense(8, activation='relu', input_shape=(input_size,)),
+      keras.layers.Dense(output_size),
+  ])
+
+
+class _make_subclassed(keras.Model):  # pylint: disable=invalid-name
+
+  def __init__(self, input_size, output_size):
+    super(_make_subclassed, self).__init__()
+    self._config = {'input_size': input_size, 'output_size': output_size}
+    self._hidden_layer = keras.layers.Dense(8, activation='relu', name='hidden')
+    self._logits_layer = keras.layers.Dense(output_size, name='logits')
+
+  def call(self, inputs):
+    x = self._hidden_layer(inputs)
+    return self._logits_layer(x)
+
+  def get_config(self):
+    return self._config
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
+
+
+class _make_subclassed_built(_make_subclassed):  # pylint: disable=invalid-name
+
+  def __init__(self, input_size, output_size):
+    super(_make_subclassed_built, self).__init__(input_size, output_size)
+    self.build((None, input_size))
+
+
+class TestWholeModelSavingWithNesting(test.TestCase, parameterized.TestCase):
+  """Tests saving a whole model that contains other models."""
+
+  @parameterized.named_parameters([
+      ('graph_network', _make_graph_network),
+      ('sequential', _make_sequential),
+      ('sequential_built', _make_sequential_built),
+      ('sequential_graph_network', _make_sequential_graph_network),
+      ('sequential_input_shape', _make_sequential_input_shape),
+      ('subclassed', _make_subclassed),
+      ('subclassed_built', _make_subclassed_built),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def test_functional(self, model_fn):
+    """Tests serializing a model that uses a nested model to share weights."""
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    def _make_model():
+      inputs = (keras.Input(shape=(4,), name='examples'),
+                keras.Input(shape=(4,), name='neighbors'))
+      base_model = model_fn(inputs[0].shape.as_list()[-1], 2)
+      outputs = keras.layers.add([base_model(inputs[0]), base_model(inputs[1])])
+      return keras.Model(inputs=inputs, outputs=outputs)
+
+    x = (np.random.normal(size=(16, 4)).astype(np.float32),
+         np.random.normal(size=(16, 4)).astype(np.float32))
+    model = _make_model()
+    predictions = model(x)
+    # Save and reload.
+    model_path = os.path.join(self.get_temp_dir(), 'model.h5')
+    model.save(model_path)
+    del model
+    loaded_model = keras.models.load_model(
+        model_path,
+        custom_objects={
+            '_make_subclassed': _make_subclassed,
+            '_make_subclassed_built': _make_subclassed_built,
+        },
+        compile=False)
+    self.assertAllClose(loaded_model(x), predictions, 1e-9)
 
 
 class SubclassedModel(training.Model):

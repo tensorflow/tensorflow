@@ -37,9 +37,9 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
   }
 }
 
-PythonRefManager::ManagedPyObjects PythonRefManager::ManageReferences(
-    absl::Span<py::object> objects) {
-  return ManagedPyObjects(this, objects);
+std::shared_ptr<PythonRefManager::ManagedPyObjects>
+PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
+  return std::make_shared<ManagedPyObjects>(this, objects);
 }
 
 void PythonRefManager::CollectGarbage() {
@@ -47,6 +47,11 @@ void PythonRefManager::CollectGarbage() {
   // no API to do this across all Python versions.
   absl::MutexLock lock(&mu_);
   python_garbage_.clear();
+}
+
+PythonRefManager* GlobalPyRefManager() {
+  static PythonRefManager* static_ref_manager = new PythonRefManager();
+  return static_ref_manager;
 }
 
 }  // namespace xla

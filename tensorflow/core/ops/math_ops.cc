@@ -1597,6 +1597,16 @@ REGISTER_OP("Cumprod")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("CumulativeLogsumexp")
+    .Input("x : T")
+    .Input("axis: Tidx")
+    .Attr("exclusive: bool = false")
+    .Attr("reverse: bool = false")
+    .Output("out: T")
+    .Attr("T: {float16, float32, float64}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("QuantizedMatMul")
     .Input("a: T1")
     .Input("b: T2")
