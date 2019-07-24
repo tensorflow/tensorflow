@@ -89,7 +89,7 @@ class MPITests(tf.test.TestCase):
       dtypes = [tf.int32, tf.float32]
       dims = [1, 2, 3]
       for dtype, dim in itertools.product(dtypes, dims):
-        tf.set_random_seed(1234)
+        tf.random.set_seed(1234)
         tensor = tf.random_uniform([17] * dim, -100, 100, dtype=dtype)
         summed = mpi.allreduce(tensor, average=False)
         multiplied = tensor * size
@@ -133,7 +133,7 @@ class MPITests(tf.test.TestCase):
       dtype = tf.float32
       dim = 3
       with tf.device("/gpu:0"):
-        tf.set_random_seed(1234)
+        tf.random.set_seed(1234)
         tensor = tf.random_uniform([17] * dim, -100, 100, dtype=dtype)
         summed = mpi.allreduce(tensor, average=False)
         multiplied = tensor * size
@@ -166,14 +166,14 @@ class MPITests(tf.test.TestCase):
         return
 
       # Same rank, different dimension
-      tf.set_random_seed(1234)
+      tf.random.set_seed(1234)
       dims = [17 + rank] * 3
       tensor = tf.random_uniform(dims, -1.0, 1.0)
       with self.assertRaises(tf.errors.FailedPreconditionError):
         session.run(mpi.allreduce(tensor))
 
       # Same number of elements, different rank
-      tf.set_random_seed(1234)
+      tf.random.set_seed(1234)
       if rank == 0:
         dims = [17, 23 * 57]
       else:
