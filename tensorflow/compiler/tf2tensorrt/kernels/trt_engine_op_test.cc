@@ -51,6 +51,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
+
     // Create simple TF graph.
     Scope s = Scope::NewRootScope();
     auto feed = ops::Placeholder(s.WithOpName("TensorRTInputPH_0"), dtype,
@@ -71,6 +72,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     
     PartialTensorShape shape({-1, -1});
 
+    // Create the op.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     TF_ASSERT_OK(NodeDefBuilder("myop", "TRTEngineOp")
                      .Input(FakeInput(1, dtype))

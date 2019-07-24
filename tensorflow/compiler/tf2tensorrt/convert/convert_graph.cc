@@ -66,7 +66,6 @@ using absl::StrCat;
 
 namespace {
 
-
 Status BuildNodeMap(const Graph& graph,
                     std::unordered_map<string, Node*>* node_map) {
   for (auto* node : graph.op_nodes()) {

@@ -193,7 +193,6 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
 Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
                                             const string& device_name) {
   VLOG(1) << "Constructing function handle";
-  // auto lib = ctx->function_library();
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
   }
@@ -254,9 +253,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
-  OP_REQUIRES_ASYNC(ctx, !funcdef_name_.empty(),
-                    errors::Internal("Fallback path is disabled, for ", name()),
-                    *helper);
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {

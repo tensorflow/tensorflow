@@ -56,9 +56,13 @@ Status ConvertAfterShapes(const ConversionParams& params);
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
+// Method to replace Placeholder and identity nodes with Arg and Retval.
+// graph is the full graph, while segment_graph is only the segment.
 Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
                                  Graph* segment_graph);
 
+// Method that registers the segment graph to a function library.
+// graph is the full graph, while segment_graph is only the segment.
 Status RegisterModifiedGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
                                               FunctionDefLibrary fdeflib,
                                               const string& engine_name);

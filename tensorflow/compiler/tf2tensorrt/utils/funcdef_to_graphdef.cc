@@ -131,8 +131,10 @@ Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
 
   ToGraphDefWithIOPrefix(graph.release(), graph_def);
 
-  for (const auto node_def : graph_def->node()) {
-    string node_name = node_def.name();
+  if VLOG_IS_ON(2) {
+    for (const auto node_def : graph_def->node()) {
+      VLOG(2) << "Node name after FunctionDefToGraphDef: " << node_def.name();
+    }
   }
 
   return Status::OK();

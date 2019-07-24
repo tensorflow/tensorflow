@@ -558,10 +558,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         segment_funcdef_name = node.attr["segment_funcdef_name"].s
         function_name = node.name + "_native_segment"
         is_dynamic_engine = not node.attr["static_engine"].b
-        if IsQuantizationWithCalibration(run_params) or is_dynamic_engine:
-          self.assertNotEmpty(segment_funcdef_name, node.name)
-          self.assertIn(function_name, functions)
-        else:
+        self.assertNotEmpty(segment_funcdef_name, node.name)
+        self.assertIn(function_name, functions)
+        if not IsQuantizationWithCalibration and not is_dynamic_engine:
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(node.name, expected_engines)
         self.assertEqual(

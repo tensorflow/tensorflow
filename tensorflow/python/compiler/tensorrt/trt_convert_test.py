@@ -442,14 +442,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                sess,
                batch_size,
                expect_engine_is_run=True):
-    try:
-      result = sess.run(
-          "output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
-      self.assertAllEqual([[[4.0]]] * batch_size, result)
-    except errors.OpError as e:
-      # This should happen only when fallback path is disabled and TRT engine
-      # fails to run.
-      self.assertIn("Fallback path is disabled, for TRTEngineOp_0", str(e))
+    result = sess.run(
+        "output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
+    self.assertAllEqual([[[4.0]]] * batch_size, result)
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self):
@@ -554,11 +549,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
             expect_engine_is_run=False)
 
   @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_StaticOp_NoFallback(self):
-    self._TestStaticOp()
-
-  @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_StaticOp_WithFallback(self):
+  def testTrtGraphConverter_StaticOp(self):
     self._TestStaticOp()
 
 
