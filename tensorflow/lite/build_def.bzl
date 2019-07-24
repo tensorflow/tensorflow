@@ -110,6 +110,7 @@ def tflite_jni_binary(
         linkstatic = 1,
         testonly = 0,
         deps = [],
+        tags = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
@@ -130,6 +131,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
+        tags = tags,
         linkopts = linkopts,
         testonly = testonly,
     )
