@@ -430,6 +430,32 @@ def TFL_AveragePool2DOp:
   let customOption = "Pool2DOptions";
 }
 
+def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
+  let summary = "ArgMax operator";
+
+  let description = [{
+    Returns the index with the largest value across dimensions of a tensor.
+  }];
+
+  let arguments = (
+    // TODO: Add support for uint8.
+    ins TensorOf<[F32, I32, I8]>:$input,
+    TFL_I32OrI64Tensor:$dim
+  );
+
+  let results = (outs
+    TFL_I32OrI64Tensor:$output
+  );
+
+  let hasOptions = 1;
+
+  DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
+    return getResult()->getType().cast<TensorType>().getElementType().
+        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+            tflite::TensorType_INT32;
+    }]>;
+}
+
 def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let summary = "ArgMin operator";
 
@@ -449,6 +475,14 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let results = (outs
     TFL_I32OrI64Tensor:$output
   );
+
+  let hasOptions = 1;
+
+  DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
+    return getResult()->getType().cast<TensorType>().getElementType().
+        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+            tflite::TensorType_INT32;
+    }]>;
 }
 
 def TFL_CeilOp: TFL_Op<"ceil", [NoSideEffect, SameOperandsAndResultType]> {

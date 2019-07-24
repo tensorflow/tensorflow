@@ -80,6 +80,7 @@ def : Pat<(TF_AvgPoolOp $value,
               /*stride_w=*/ExtractI32At<2>:$strides,
               /*fused_activation_function=*/TFL_AF_None)>;
 
+def : Pat<(TF_ArgMaxOp $input, $dim), (TFL_ArgMaxOp $input, $dim)>;
 def : Pat<(TF_ArgMinOp $input, $dim), (TFL_ArgMinOp $input, $dim)>;
 
 def : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
