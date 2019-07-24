@@ -89,6 +89,10 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
   let builders = [OpBuilder<"Builder *, OperationState *state">];
 
+  // We need to ensure the block inside the region is properly terminated;
+  // the auto-generated builders do not guarantee that.
+  let skipDefaultBuilders = 1;
+
   let hasOpcode = 0;
 
   let extraClassDeclaration = [{
