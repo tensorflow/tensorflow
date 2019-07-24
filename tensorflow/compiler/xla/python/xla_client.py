@@ -98,10 +98,6 @@ class LocalBackend(Backend):
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.PyLocalBuffer.from_python_values(pyvals_and_devices,
-                                                 self.client)
-
   def make_tuple(self, c_buffers, device_ordinal):
     return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
 
@@ -112,6 +108,7 @@ class LocalBackend(Backend):
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
+    options.debug_options.xla_cpu_fast_math_honor_division = True
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
@@ -1256,7 +1253,7 @@ class ComputationBuilder(object):
     """
     return ops.BuildConstantSubGraph(operand)
 
-  def DotGeneral(self, lhs, rhs, dimension_numbers):
+  def DotGeneral(self, lhs, rhs, dimension_numbers, precision_config=None):
     """Enqueues a general dot operation onto the computation.
 
     Args:
@@ -1270,10 +1267,17 @@ class ComputationBuilder(object):
     """
     if isinstance(dimension_numbers, tuple):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
-    return ops.DotGeneral(lhs, rhs, dimension_numbers)
+    return ops.DotGeneral(
+        lhs, rhs, dimension_numbers, precision_config=precision_config)
 
-  def Conv(self, lhs, rhs, window_strides, padding,
-           feature_group_count=1, batch_group_count=1):
+  def Conv(self,
+           lhs,
+           rhs,
+           window_strides,
+           padding,
+           feature_group_count=1,
+           batch_group_count=1,
+           precision_config=None):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1296,7 +1300,8 @@ class ComputationBuilder(object):
         pads, [], [],
         dimension_numbers=None,
         feature_group_count=feature_group_count,
-        batch_group_count=batch_group_count)
+        batch_group_count=batch_group_count,
+        precision_config=precision_config)
 
   def ConvWithGeneralPadding(self,
                              lhs,
@@ -1306,7 +1311,8 @@ class ComputationBuilder(object):
                              lhs_dilation,
                              rhs_dilation,
                              feature_group_count=1,
-                             batch_group_count=1):
+                             batch_group_count=1,
+                             precision_config=None):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1331,7 +1337,8 @@ class ComputationBuilder(object):
         list(rhs_dilation),
         dimension_numbers=None,
         feature_group_count=feature_group_count,
-        batch_group_count=batch_group_count)
+        batch_group_count=batch_group_count,
+        precision_config=precision_config)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1357,7 +1364,8 @@ class ComputationBuilder(object):
                          rhs_dilation,
                          dimension_numbers=None,
                          feature_group_count=1,
-                         batch_group_count=1):
+                         batch_group_count=1,
+                         precision_config=None):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1411,9 +1419,17 @@ class ComputationBuilder(object):
       dimension_numbers.output_spatial_dimensions.extend(
           sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                  key=lambda i: rhs_spec.index(out_spec[i])))
-    return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                  lhs_dilation, rhs_dilation, dimension_numbers,
-                                  feature_group_count, batch_group_count)
+    return ops.ConvGeneralDilated(
+        lhs,
+        rhs,
+        window_strides,
+        padding,
+        lhs_dilation,
+        rhs_dilation,
+        dimension_numbers,
+        feature_group_count,
+        batch_group_count,
+        precision_config=precision_config)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
@@ -1544,6 +1560,7 @@ _OTHER_OPS = [
     'Dot',
     'Gather',
     'GetTupleElement',
+    'ReducePrecision',
     'Rev',
     'Select',
     'SliceInDim',
@@ -1655,6 +1672,16 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
+
+
+class PrecisionConfig(object):
+  """Python representation of a xla.PrecisionConfig protobuf."""
+  __slots__ = ('operand_precision',)
+
+  Precision = _xla.PrecisionConfig_Precision
+
+  def __init__(self):
+    self.operand_precision = []
 
 
 class GatherDimensionNumbers(object):

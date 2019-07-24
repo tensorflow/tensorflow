@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -47,8 +47,8 @@ class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 
-  // fusion_can_share_buffer: backend specific function that decides whether a
-  // fusion can share buffer with its operand.
+  // backend specific function that decides whether an instruction
+  // can share buffer with its operand.
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
@@ -83,8 +83,8 @@ class CopyInsertion : public HloModulePass {
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
 
-  // Backend specific function that decides whether a fusion can share buffer
-  // with its operand.
+  // Backend specific function that decides whether an instruction can share
+  // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:

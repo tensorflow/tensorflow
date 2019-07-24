@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/impl/service_type.h"
 #include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
+#include "grpcpp/support/async_stream.h"
+#include "grpcpp/support/async_unary_call.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -422,7 +425,13 @@ class ServerBidirectionalStreamingCall
         stream_(&ctx_),
         grpc_service_(grpc_service),
         cq_(cq),
-        enqueue_function_(enqueue_function) {}
+        enqueue_function_(enqueue_function) {
+    VLOG(3) << "Creating ServerBidirectionalStreamingCall " << this;
+  }
+
+  ~ServerBidirectionalStreamingCall() override {
+    VLOG(3) << "Destroying ServerBidirectionalStreamingCall " << this;
+  }
 
   void CallOpen() override {
     // Let gRPC know that we can accept another call.

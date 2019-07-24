@@ -107,8 +107,7 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
 
-    shape_invariants = (
-        [tensor_shape.scalar(), tensor_shape.scalar()] + shape_invariants)
+    shape_invariants = [tensor_shape.TensorShape([])] * 2 + shape_invariants
     signature = (
         [tensor_spec.TensorSpec.from_tensor(loop_counter),
          tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +
@@ -470,6 +469,16 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   counter = constant_op.constant(
       0, dtype=total_iters.dtype, name="grad_counter")
 
+  # Build frozen sets so that we do not have linear time lookups in
+  # `_is_loop_invariant`. Note: `body_graph.inputs` and `body_graph.outputs`
+  # may get updated during gradient computation because we add accumulators to
+  # the forward op. However, those are not loop invariants so wouldn't affect
+  # the output of `_is_loop_invariant`. Also we would never attempt to capture
+  # those accumulators so `_is_loop_invariant` should never receive those new
+  # tensors as args.
+  body_graph_inputs = frozenset(body_graph.inputs)
+  body_graph_outputs = frozenset(body_graph.outputs)
+
   args = [counter, maximum_iterations, total_iters] + list(grads)
   # Note: The returned function does not have `args` in the list of
   # `external_captures`.
@@ -478,18 +487,28 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
       lambda *args: _grad_fn(ys, xs, args, body_graph),
       args, {},
       func_graph=_WhileBodyGradFuncGraph(name, cond_graph, body_graph,
-                                         maximum_iterations, while_op))
+                                         maximum_iterations, while_op,
+                                         body_graph_inputs, body_graph_outputs))
 
-  # Add the popped accumulators to the list of outputs.
-  for internal_capture in grad_func_graph.internal_captures:
+  # Update the list of outputs with tensors corresponding to the captured
+  # tensors. We capture 3 types of tensors when building the grad fn:
+  # 1. Accumulators for forward graph intermediates which are not loop
+  #    invariants. The outputs corresponding to these are populated in
+  #    `popped_tensor_lists` by `_WhileBodyGradFuncGraph`.
+  # 2. Resources, which are output as is.
+  # 3. Forward graph loop invariants, which are output as is.
+  for external_capture, internal_capture in grad_func_graph.captures.items():
     if internal_capture in grad_func_graph.popped_tensor_lists:
       new_output = grad_func_graph.popped_tensor_lists[internal_capture]
-    elif internal_capture.dtype == dtypes.resource:
+    elif (internal_capture.dtype == dtypes.resource or _is_loop_invariant(
+        external_capture, body_graph_inputs, body_graph_outputs)):
       new_output = internal_capture
     else:
-      raise ValueError("Tensor %s is in list of internal_captures but is"
-                       " neither a resource nor is in popped_tensor_lists." %
-                       str(internal_capture))
+      raise ValueError("Tensor %s which captures %s is in list of "
+                       "internal_captures but is not a resource, is not in "
+                       "popped_tensor_lists and does not capture a loop "
+                       "invariant." %
+                       (str(internal_capture), str(external_capture)))
     grad_func_graph.outputs.append(new_output)
     grad_func_graph.structured_outputs.append(new_output)
 
@@ -562,7 +581,7 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
     # graph or a captured resource variable (note that input gradients are
     # regular non-captured inputs).
     if t.graph == body_graph:
-      # Captured accumulator
+      # Captured accumulator or loop invariant.
       t = while_op.outputs[t.graph.outputs.index(t)]
       # Note: We rely on the capturing logic of the gradient While op graph to
       # correctly capture the tensors in `body_graph.outer_graph`. Both cond_v2
@@ -715,7 +734,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """
 
   def __init__(self, name, forward_cond_graph, forward_body_graph,
-               maximum_iterations, forward_while_op):
+               maximum_iterations, forward_while_op, body_graph_inputs,
+               body_graph_outputs):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
     self.empty_tensor_lists = []
     self.popped_tensor_lists = {}
@@ -725,6 +745,11 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     self._forward_cond_graph = forward_cond_graph
     self._maximum_iterations = maximum_iterations
     self._forward_while_op = forward_while_op
+    # Only for use in `_is_loop_invariant`. These are not updated when
+    # additional tensors are added to `forward_body_graph.inputs` and
+    # `forward_body_graph.outputs` in `_capture_helper`.
+    self._forward_graph_inputs = body_graph_inputs
+    self._forward_graph_outputs = body_graph_outputs
     # Dict from forward intermediate tensor to its indirectly captured tensor
     # in this graph. Indirect capturing happens in two ways:
     # 1. For non-resource tensors we capture their accumulators from the forward
@@ -780,6 +805,15 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # Resource tensors are not accumulated and handled specially.
     if tensor.dtype == dtypes.resource:
       return self._resource_capture_helper(tensor)
+
+    # No need to accumulate loop invariants. Capture them directly.
+    # The captured tensor gets resolved to the corresponding while output in
+    # `_resolve_grad_captures`.
+    if _is_loop_invariant(tensor, self._forward_graph_inputs,
+                          self._forward_graph_outputs):
+      captured_tensor = super(_WhileBodyGradFuncGraph,
+                              self)._capture_helper(tensor, name)
+      return captured_tensor
 
     # Create or find an existing accumulator output for `tensor` in the forward
     # graph, and fetch from this accumulator in the gradient graph to get the
@@ -955,5 +989,9 @@ def _build_maximum_iterations_loop_var(maximum_iterations):
 def _build_accumulator_name(tensor):
   # Tensor name may be of the form "pow/y:0". Name scope does not allow ":".
   return "{}/accumulator".format(tensor.name).replace(":", "_")
+
+
+def _is_loop_invariant(tensor, inputs, outputs):
+  return tensor in inputs and tensor in outputs
 
 # pylint: enable=protected-access

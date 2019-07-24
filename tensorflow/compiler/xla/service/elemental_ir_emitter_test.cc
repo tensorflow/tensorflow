@@ -117,5 +117,77 @@ ENTRY resampler_Resampler.49 {
                           ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest,
+           DivideComplexNumbersWithInfiniteNormRhs) {
+  constexpr char hlo_text[] = R"(
+    HloModule DivideComplexNumbers
+    ENTRY DivideComplexNumbers {
+      constant.1 = c64[8]{0} constant({
+        (1, 1),     (1, inf),   (1, inf),   (nan, 1),
+        (inf, inf), (inf, nan), (nan, nan), (1, 2)})
+      real = f32[8]{0} constant({nan, nan, inf, inf, inf, 1, inf, 3})
+      imag = f32[8]{0} constant({inf, inf, inf, inf, 1, inf, inf, 4})
+      complex.2 = c64[8]{0} complex(real, imag)
+      ROOT divide.1 = c64[8]{0} divide(constant.1, complex.2)
+    }
+  )";
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_fast_math_honor_nans(true);
+  debug_options.set_xla_cpu_fast_math_honor_infs(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest,
+           DivideComplexNumbersWithFiniteNormRhs) {
+  constexpr char hlo_text[] = R"(
+    HloModule DivideComplexNumbers
+    ENTRY DivideComplexNumbers {
+      constant.1 = c64[5]{0} constant({
+        (1, inf), (inf, 1), (inf, nan), (inf, inf), (nan, inf)})
+      real = f32[5]{0} constant({1, 1, 1, 1, 1})
+      imag = f32[5]{0} constant({1, 1, 1, 1, 1})
+      complex.2 = c64[5]{0} complex(real, imag)
+      ROOT divide.1 = c64[5]{0} divide(constant.1, complex.2)
+    }
+  )";
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_fast_math_honor_nans(true);
+  debug_options.set_xla_cpu_fast_math_honor_infs(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest,
+           DivideComplexNumbersWithZeroNormRhs) {
+  constexpr char hlo_text[] = R"(
+    HloModule DivideComplexNumbers
+    ENTRY DivideComplexNumbers {
+      constant.1 = c64[9]{0} constant({
+        (1, 1),     (1, nan), (1, inf),   (inf, inf), (inf, 1),
+        (inf, nan), (nan, 1), (nan, inf), (nan, nan)})
+      real = f32[9]{0} constant({0, 0, 0, 0, 0, 0, 0, 0, 0})
+      imag = f32[9]{0} constant({0, 0, 0, 0, 0, 0, 0, 0, 0})
+      complex.2 = c64[9]{0} complex(real, imag)
+      ROOT divide.1 = c64[9]{0} divide(constant.1, complex.2)
+    }
+  )";
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_fast_math_honor_nans(true);
+  debug_options.set_xla_cpu_fast_math_honor_infs(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+}
+
 }  // namespace
 }  // namespace xla

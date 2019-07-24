@@ -23,11 +23,11 @@ import contextlib
 import copy
 import json
 import os
-import six
 import subprocess
 import sys
 import threading
-import numpy as np
+import unittest
+import six
 
 _portpicker_import_error = None
 try:
@@ -65,7 +65,11 @@ def pick_unused_port():
   global ASSIGNED_PORTS
   with lock:
     while True:
-      port = portpicker.pick_unused_port()
+      try:
+        port = portpicker.pick_unused_port()
+      except portpicker.NoFreePortFoundError:
+        raise unittest.SkipTest('Flakes in portpicker library do not represent '
+                                'TensorFlow errors.')
       if port > 10000 and port not in ASSIGNED_PORTS:
         ASSIGNED_PORTS.add(port)
         logging.info('Using local port %r', port)
@@ -173,43 +177,51 @@ def create_in_process_cluster(num_workers,
   # 2) there is something global in CUDA such that if we initialize CUDA in the
   # parent process, the child process cannot initialize it again and thus cannot
   # use GPUs (https://stackoverflow.com/questions/22950047).
-  return _create_cluster(
-      num_workers,
-      num_ps=num_ps,
-      has_chief=has_chief,
-      has_eval=has_eval,
-      worker_config=worker_config,
-      ps_config=ps_config,
-      eval_config=eval_config,
-      protocol=rpc_layer)
+  cluster = None
+  try:
+    cluster = _create_cluster(
+        num_workers,
+        num_ps=num_ps,
+        has_chief=has_chief,
+        has_eval=has_eval,
+        worker_config=worker_config,
+        ps_config=ps_config,
+        eval_config=eval_config,
+        protocol=rpc_layer)
+  except errors.UnknownError as e:
+    if 'Could not start gRPC server' in e.message:
+      test.TestCase.SkipTest('Cannot start std servers.')
+    else:
+      raise
+  return cluster
 
 
-def create_cluster_spec(test_obj,
-                        has_chief=False,
+# TODO(rchao): Remove `test_obj` once estimator repo picks up the updated
+# nightly TF.
+def create_cluster_spec(has_chief=False,
                         num_workers=1,
                         num_ps=0,
-                        has_eval=False):
+                        has_eval=False,
+                        test_obj=None):
   """Create a cluster spec with tasks with unused local ports."""
+  del test_obj
+
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
 
   cluster_spec = {}
-  try:
-    if has_chief:
-      cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]
-    if num_workers:
-      cluster_spec['worker'] = [
-          'localhost:%s' % pick_unused_port() for _ in range(num_workers)
-      ]
-    if num_ps:
-      cluster_spec['ps'] = [
-          'localhost:%s' % pick_unused_port() for _ in range(num_ps)
-      ]
-    if has_eval:
-      cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
-  except portpicker.NoFreePortFoundError:
-    test_obj.skipTest('Flakes in portpicker library do not represent '
-                      'TensorFlow errors.')
+  if has_chief:
+    cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]
+  if num_workers:
+    cluster_spec['worker'] = [
+        'localhost:%s' % pick_unused_port() for _ in range(num_workers)
+    ]
+  if num_ps:
+    cluster_spec['ps'] = [
+        'localhost:%s' % pick_unused_port() for _ in range(num_ps)
+    ]
+  if has_eval:
+    cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
   return cluster_spec
 
 
@@ -219,7 +231,9 @@ def skip_if_grpc_server_cant_be_started(test_obj):
     yield
   except errors.UnknownError as e:
     if 'Could not start gRPC server' in e.message:
-      test_obj.skipTest('Cannot start std servers.')
+      reason = 'Cannot start std servers.'
+      test_obj.test_skipped_reason = reason
+      test_obj.skipTest(reason)
     else:
       raise
 
@@ -238,8 +252,7 @@ class MultiWorkerTestBase(test.TestCase):
     # different session config or master target.
     self._thread_local = threading.local()
     self._thread_local.cached_session = None
-    self._result = 0
-    self._lock = threading.Lock()
+    self._coord = coordinator.Coordinator()
 
   @contextlib.contextmanager
   def session(self, graph=None, config=None, target=None):
@@ -309,15 +322,17 @@ class MultiWorkerTestBase(test.TestCase):
 
   def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
                   *args, **kwargs):
+
+    def wrapped_client_fn():
+      with self._coord.stop_on_exception():
+        client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+
     if eager_mode:
       with context.eager_mode():
-        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+        wrapped_client_fn()
     else:
       with context.graph_mode():
-        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
-    if np.all(result):
-      with self._lock:
-        self._result += 1
+        wrapped_client_fn()
 
   def _run_between_graph_clients(self, client_fn, cluster_spec, num_gpus, *args,
                                  **kwargs):
@@ -325,7 +340,7 @@ class MultiWorkerTestBase(test.TestCase):
 
     Args:
       client_fn: a function that needs to accept `task_type`, `task_id`,
-        `num_gpus` and returns True if it succeeds.
+        `num_gpus`.
       cluster_spec: a dict specifying jobs in a cluster.
       num_gpus: number of GPUs per worker.
       *args: will be passed to `client_fn`.
@@ -341,9 +356,7 @@ class MultiWorkerTestBase(test.TestCase):
             kwargs=kwargs)
         t.start()
         threads.append(t)
-    for t in threads:
-      t.join()
-    self.assertEqual(self._result, len(threads))
+    self._coord.join(threads)
 
 
 class MockOsEnv(collections.Mapping):

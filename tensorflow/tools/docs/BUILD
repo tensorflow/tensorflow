@@ -128,26 +128,6 @@ py_binary(
 )
 
 py_test(
-    name = "build_docs_test",
-    size = "medium",
-    srcs = ["build_docs_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    tags = [
-        # No reason to run sanitizers or fastbuild for this test.
-        "noasan",
-        "nomsan",
-        "notsan",
-        "optonly",
-    ],
-    deps = [
-        ":generate_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/debug:debug_py",
-    ],
-)
-
-py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
@@ -160,6 +140,7 @@ py_test(
         "nomsan",
         "notsan",
         "optonly",
+        "notap",
     ],
     deps = [
         ":generate2_lib",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -237,6 +238,18 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
   if (node.input_size() <= i) return nullptr;
   MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), i);
   return graph.GetRegularFanin(input_port).node;
+}
+
+Status GetDatasetOutputTypesAttr(const NodeDef& node, AttrValue* output_types) {
+  // We don't name the output_types attr consistently, so should check for both.
+  for (const string& attr_name : {"output_types", "Toutput_types"}) {
+    if (node.attr().contains(attr_name)) {
+      *output_types = node.attr().at(attr_name);
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Could not find output_types attr for node: ",
+                                 node.name(), " with op: ", node.op());
 }
 
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,

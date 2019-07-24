@@ -45,7 +45,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
       const TensorData& filter, const TensorData& output, int stride_width = 2,
       int stride_height = 2, enum Padding padding = Padding_VALID,
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
-      int dilation_width_factor = 1, int dilation_height_factor = 1) {
+      int dilation_width_factor = 1, int dilation_height_factor = 1,
+      int num_threads = -1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -97,7 +98,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
 
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
                                                     registration);
-    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
+                     num_threads);
   }
 
  protected:
@@ -142,6 +144,37 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_FLOAT32, {3, 2, 2, 1}},
                        {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 18, 2, 5,  // first batch, left
+                                 18, 2, 5,  // first batch, right
+                                 17, 4, 3,  // second batch, left
+                                 37, 4, 3,  // second batch, right
+                             }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestFloat32SingleThreaded) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+                       {TensorType_FLOAT32, {3, 2, 2, 1}},
+                       {TensorType_FLOAT32, {}}, 2, 2, Padding_VALID,
+                       ActivationFunctionType_NONE, 1, 1, /*num_threads=*/1);
 
   m.SetInput({
       // First batch
@@ -971,7 +1004,8 @@ class HybridConvolutionOpModel : public BaseConvolutionOpModel {
 TEST_P(ConvolutionOpTest, SimpleTestHybridUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
-      {TensorType_UINT8, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
+      {TensorType_UINT8, {3, 2, 2, 1}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}});
 
   m.SetInput({
       // First batch
@@ -1030,7 +1064,8 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridUint8) {
 TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
-      {TensorType_UINT8, {3, 2, 2, 2}}, {TensorType_FLOAT32, {}});
+      {TensorType_UINT8, {3, 2, 2, 2}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}});
 
   m.SetInput({
       // First batch
@@ -1062,7 +1097,8 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsUint8) {
 TEST_P(ConvolutionOpTest, PointwiseHybridUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
-      {TensorType_UINT8, {1, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
+      {TensorType_UINT8, {1, 1, 1, 2}, 0, 0, 2.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}}, 1, 1);
 
   m.SetInput({
       // First batch
@@ -1104,7 +1140,8 @@ TEST_P(ConvolutionOpTest, PointwiseHybridUint8) {
 TEST_P(ConvolutionOpTest, SimpleTestHybridInt8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
-      {TensorType_INT8, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
+      {TensorType_INT8, {3, 2, 2, 1}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}});
 
   m.SetInput({
       // First batch
@@ -1161,9 +1198,20 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridInt8) {
 //
 // 2 * (A/2) * B = A * B, where the left side is this new test.
 TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsInt8) {
-  HybridConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
-      {TensorType_INT8, {3, 2, 2, 2}}, {TensorType_FLOAT32, {}});
+  HybridConvolutionOpModel m(GetRegistration(),
+                             {TensorType_FLOAT32, {2, 2, 4, 2}},
+                             {TensorType_INT8,
+                              {3, 2, 2, 2},
+                              0,
+                              0,
+                              0,
+                              0,
+                              /*per_channel_quantization=*/true,
+                              /*per_channel_quantization_scales=*/
+                              {4.0 / 127.0, 4.0 / 127.0, 4.0 / 127.0},
+                              /*per_channel_quantization_offsets=*/{0, 0, 0},
+                              /*channel_index=*/0},
+                             {TensorType_FLOAT32, {}});
 
   m.SetInput({
       // First batch
@@ -1195,7 +1243,8 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsInt8) {
 TEST_P(ConvolutionOpTest, PointwiseHybridInt8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
-      {TensorType_INT8, {1, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
+      {TensorType_INT8, {1, 1, 1, 2}, 0, 0, 2.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}}, 1, 1);
 
   m.SetInput({
       // First batch

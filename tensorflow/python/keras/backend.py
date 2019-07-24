@@ -32,6 +32,7 @@ import weakref
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
@@ -63,7 +64,6 @@ from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -774,7 +774,7 @@ def variable(value, dtype=None, name=None, constraint=None):
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
     return v
-  v = resource_variable_ops.ResourceVariable(
+  v = variables_module.Variable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -1593,8 +1593,9 @@ def moving_average_update(x, value, momentum):
   # moving_averages, being low-level ops, should not be part of the training
   # module.
   from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
+  zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=True)
+      x, value, momentum, zero_debias=zero_debias)
 
 
 # LINEAR ALGEBRA
@@ -2282,7 +2283,19 @@ def maximum(x, y):
       y: Tensor or variable.
 
   Returns:
-      A tensor.
+      A tensor with the element wise maximum value(s) of `x` and `y`.
+
+  Examples:
+  ```python
+      # maximum of two tensors
+      >>> x = tf.Variable([[1, 2], [3, 4]])
+      >>> y = tf.Variable([[2, 1], [0, -1]])
+      >>> m = tf.keras.backend.maximum(x, y)
+      >>> m
+      <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+      array([[2, 2],
+             [3, 4]], dtype=int32)>
+  ```
   """
   return math_ops.maximum(x, y)
 
@@ -2608,9 +2621,11 @@ def resize_images(x, height_factor, width_factor, data_format,
   if data_format == 'channels_first':
     x = permute_dimensions(x, [0, 2, 3, 1])
   if interpolation == 'nearest':
-    x = image_ops.resize_nearest_neighbor(x, new_shape)
+    x = image_ops.resize_images_v2(
+        x, new_shape, method=image_ops.ResizeMethod.NEAREST_NEIGHBOR)
   elif interpolation == 'bilinear':
-    x = image_ops.resize_bilinear(x, new_shape)
+    x = image_ops.resize_images_v2(x, new_shape,
+                                   method=image_ops.ResizeMethod.BILINEAR)
   else:
     raise ValueError('interpolation should be one '
                      'of "nearest" or "bilinear".')
@@ -3485,11 +3500,10 @@ class EagerExecutionFunction(object):
     # EagerTensor.numpy() will often make a copy to ensure memory safety.
     # However in this case `outputs` is not directly returned, so it is always
     # safe to reuse the underlying buffer without checking. In such a case the
-    # private numpy conversion method is preferred to guarantee performance. We
-    # also have to call `_cpu_nograd()` since the Tensor may not be on the CPU.
-    # (otherwise it's just a no-op.)
+    # private numpy conversion method is preferred to guarantee performance.
     return nest.pack_sequence_as(
-        self._outputs_structure, [x._cpu_nograd()._numpy() for x in outputs],  # pylint: disable=protected-access
+        self._outputs_structure,
+        [x._numpy() for x in outputs],  # pylint: disable=protected-access
         expand_composites=True)
 
 
@@ -5414,9 +5428,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   num_batches_tns = array_ops.stack([label_shape[0]])
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
-  def range_less_than(_, current_input):
+  def range_less_than(old_input, current_input):
     return array_ops.expand_dims(
-        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+        math_ops.range(array_ops.shape(old_input)[1]), 0) < array_ops.fill(
             max_num_labels_tns, current_input)
 
   init = math_ops.cast(

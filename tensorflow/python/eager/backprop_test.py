@@ -38,6 +38,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -1333,6 +1334,9 @@ class BackpropTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMaxPooling3DGradient(self):
 
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
+
     def forward(a):
       r = max_pooling3d(a, pool_size=pool_size, strides=strides, padding='SAME')
       return r
@@ -1352,6 +1356,12 @@ class BackpropTest(test.TestCase):
           tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
       tf_da = gradients.gradients(tf_max, [tf_aa])
       self.assertAllEqual(da[0], tf_da[0].eval())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchBadThing(self):
+    g = backprop.GradientTape()
+    with self.assertRaisesRegexp(ValueError, 'ndarray'):
+      g.watch(np.array(1.))
 
 
 class JacobianTest(test.TestCase):
@@ -1459,6 +1469,16 @@ class JacobianTest(test.TestCase):
     dy_xx = g.batch_jacobian(dy_x, x)
     dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
     self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_indexed_slices(self):
+    with backprop.GradientTape(persistent=True) as g:
+      inp = random_ops.random_uniform([3, 2])
+      g.watch(inp)
+      output = nn.embedding_lookup(inp, [0, 2])
+    self.assertAllClose(
+        g.jacobian(output, inp, experimental_use_pfor=True),
+        g.jacobian(output, inp, experimental_use_pfor=False))
 
 
 @test_util.run_all_in_graph_and_eager_modes

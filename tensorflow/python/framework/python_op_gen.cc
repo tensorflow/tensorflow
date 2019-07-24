@@ -391,8 +391,13 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
       for (int i = 0; i < op_def_.attr_size(); ++i) {
         if (i > 0) strings::StrAppend(&attr_values, ", ");
         const auto& attr_name(op_def_.attr(i).name());
-        strings::StrAppend(&attr_values, "\"", attr_name, "\", _op.get_attr(\"",
-                           attr_name, "\")");
+        if (op_def_.attr(i).type() == "type") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_type(\"", attr_name, "\")");
+        } else {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op.get_attr(\"", attr_name, "\")");
+        }
       }
       strings::StrAppend(&attr_values, ")");
       strings::StrAppend(

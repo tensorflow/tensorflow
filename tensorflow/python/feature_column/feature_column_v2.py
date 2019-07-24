@@ -393,6 +393,27 @@ class _BaseFeaturesLayer(Layer):
     _verify_static_batch_size_equality(output_tensors, self._feature_columns)
     return array_ops.concat(output_tensors, -1)
 
+  def get_config(self):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    column_configs = serialization.serialize_feature_columns(
+        self._feature_columns)
+    config = {'feature_columns': column_configs}
+
+    base_config = super(  # pylint: disable=bad-super-call
+        _BaseFeaturesLayer, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    config_cp = config.copy()
+    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
+        config['feature_columns'], custom_objects=custom_objects)
+
+    return cls(**config_cp)
+
 
 @keras_export('keras.layers.DenseFeatures')
 class DenseFeatures(_BaseFeaturesLayer):
@@ -490,27 +511,6 @@ class DenseFeatures(_BaseFeaturesLayer):
           cols_to_output_tensors[column] = processed_tensors
         output_tensors.append(processed_tensors)
     return self._verify_and_concat_tensors(output_tensors)
-
-  def get_config(self):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    column_configs = serialization.serialize_feature_columns(
-        self._feature_columns)
-    config = {'feature_columns': column_configs}
-
-    base_config = super(  # pylint: disable=bad-super-call
-        DenseFeatures, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config, custom_objects=None):
-    # Import here to avoid circular imports.
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    config_cp = config.copy()
-    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
-        config['feature_columns'], custom_objects=custom_objects)
-
-    return cls(**config_cp)
 
 
 class _LinearModelLayer(Layer):
@@ -633,6 +633,7 @@ class _LinearModelLayer(Layer):
     return cls(feature_columns=columns, **config_cp)
 
 
+# TODO(tanzheny): Cleanup it with respect to Premade model b/132690565.
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
@@ -2196,6 +2197,50 @@ class FeatureColumn(object):
     """Returns string. Used for naming."""
     pass
 
+  def __lt__(self, other):
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    In CPython, `__lt__` must be defined for all objects in the
+    sequence being sorted.
+
+    If any objects in teh sequence being sorted do not have an `__lt__` method
+    compatible with feature column objects (such as strings), then CPython will
+    fall back to using the `__gt__` method below.
+    https://docs.python.org/3/library/stdtypes.html#list.sort
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically less
+      than the string representation of `other`. For FeatureColumn objects,
+      this looks like "<__main__.FeatureColumn object at 0xa>".
+    """
+    return str(self) < str(other)
+
+  def __gt__(self, other):
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    `__gt__` is called when the "other" object being compared during the sort
+    does not have `__lt__` defined.
+    Example: http://gpaste/4803354716798976
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically
+      greater than the string representation of `other`. For FeatureColumn
+      objects, this looks like "<__main__.FeatureColumn object at 0xa>".
+    """
+    return str(self) > str(other)
+
   @abc.abstractmethod
   def transform_feature(self, transformation_cache, state_manager):
     """Returns intermediate representation (usually a `Tensor`).
@@ -3089,7 +3134,7 @@ class EmbeddingColumn(
   @property
   def variable_shape(self):
     """See `DenseColumn` base class."""
-    return tensor_shape.vector(self.dimension)
+    return tensor_shape.TensorShape([self.dimension])
 
   @property
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
@@ -3373,7 +3418,8 @@ class SharedEmbeddingColumn(
   @property
   def variable_shape(self):
     """See `DenseColumn` base class."""
-    return tensor_shape.vector(self.shared_embedding_column_creator.dimension)
+    return tensor_shape.TensorShape(
+        [self.shared_embedding_column_creator.dimension])
 
   @property
   def _variable_shape(self):

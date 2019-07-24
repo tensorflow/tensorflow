@@ -76,6 +76,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -142,5 +143,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    shard_count = 4,
     xla_enable_strict_auto_jit = True,
 )

@@ -1034,7 +1034,7 @@ class TensorArrayTest(test.TestCase):
             dtype=dtypes.float32,
             size=num_steps,
             clear_after_read=False,
-            element_shape=tensor_shape.scalar())
+            element_shape=tensor_shape.TensorShape([]))
         i = constant_op.constant(0, name="i")
 
         c = lambda i, acc: i < 5
@@ -1064,6 +1064,15 @@ class TensorArrayTest(test.TestCase):
       else:
         grad = gradients_impl.gradients(loop(x), [x])[0]
       self.assertAllClose(31.0, self.evaluate(grad))
+
+  def testShapeAfterWhileLoop(self):
+    size = 10
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+    _, ta = control_flow_ops.while_loop(
+        lambda i, _: i < size,
+        lambda i, ta: (i + 1, ta.write(i, [[0.]])), [0, ta],
+        parallel_iterations=1)
+    self.assertIsNotNone(ta.element_shape.dims)
 
   @test_util.deprecated_graph_mode_only
   def testSkipEagerSumOfTwoReadVariablesWithoutRepeatGrad(self):
@@ -1684,10 +1693,10 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(dtypes.float32, ta0.dtype)
       self.assertEqual(dtypes.int32, ta1.dtype)
       if context.executing_eagerly():
-        self.assertEqual(tensor_shape.scalar(), read0.get_shape())
+        self.assertEqual(tensor_shape.TensorShape([]), read0.get_shape())
       else:
         self.assertEqual(tensor_shape.unknown_shape(), read0.get_shape())
-      self.assertEqual(tensor_shape.scalar(), read1.get_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), read1.get_shape())
 
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())

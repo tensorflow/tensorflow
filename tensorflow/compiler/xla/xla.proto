@@ -171,9 +171,14 @@ message DebugOptions {
   bool xla_cpu_fast_math_honor_nans = 120;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce infinites.  Ignored when xla_cpu_enable_fast_math is
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
   // false.
   bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -277,7 +282,7 @@ message DebugOptions {
 
   bool xla_gpu_force_conv_nchw = 125;
 
-  // Next id: 126
+  // Next id: 127
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

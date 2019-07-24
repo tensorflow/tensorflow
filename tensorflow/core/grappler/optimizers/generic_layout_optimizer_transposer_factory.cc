@@ -27,16 +27,25 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
     return GetOrCreateIfNotFound<DefaultLayoutSensitiveOpTransposer>(
         "DefaultLayoutSensitiveOp");
   }
+  if (IsAvgPoolGrad(node)) {
+    return GetOrCreateIfNotFound<AvgPoolGradTransposer>("AvgPoolGrad");
+  }
   if (IsBiasAddGrad(node)) {
     return GetOrCreateIfNotFound<BiasAddGradTransposer>("BiasAddGrad");
   }
-  if (IsConv2DBackpropFilter(node)) {
+  if (IsConv2DBackpropFilter(node) ||
+      IsDepthwiseConv2dNativeBackpropFilter(node)) {
     return GetOrCreateIfNotFound<Conv2DBackpropFilterTransposer>(
         "Conv2DBackpropFilter");
   }
-  if (IsConv2DBackpropInput(node)) {
+  if (IsConv2DBackpropInput(node) ||
+      IsDepthwiseConv2dNativeBackpropInput(node)) {
     return GetOrCreateIfNotFound<Conv2DBackpropInputTransposer>(
         "Conv2DBackpropInput");
+  }
+  if (IsFusedBatchNormEx(node)) {
+    return GetOrCreateIfNotFound<FusedBatchNormExTransposer>(
+        "FusedBatchNormEx");
   }
   if (IsFusedBatchNormGrad(node)) {
     return GetOrCreateIfNotFound<FusedBatchNormGradTransposer>(
@@ -45,10 +54,10 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
   if (IsMaxPoolV2(node)) {
     return GetOrCreateIfNotFound<MaxPoolV2Transposer>("MaxPoolV2");
   }
-  if (IsMaxPoolGrad(node)) {
+  if (IsMaxPoolGrad(node) || IsMaxPoolGradGradV1(node)) {
     return GetOrCreateIfNotFound<MaxPoolGradTransposer>("MaxPoolGrad");
   }
-  if (IsMaxPoolGradV2(node)) {
+  if (IsMaxPoolGradV2(node) || IsMaxPoolGradGradV2(node)) {
     return GetOrCreateIfNotFound<MaxPoolGradV2Transposer>("MaxPoolGradV2");
   }
   // Check layout agnostic ops.

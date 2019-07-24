@@ -128,7 +128,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         tf_shared_lock l(mu_);
         buffer_limit = auto_tuner_.buffer_limit();
       }
-      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit, "#");
+      string prefetch_with_slack_trace = "";
+      if (dataset()->slack_period_ > 0) {
+        int64 slack_us = slack_us_;
+        prefetch_with_slack_trace = strings::StrCat(",slack=", slack_us);
+      }
+      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit,
+                             prefetch_with_slack_trace, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -324,8 +330,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    // Prefetches elements of the input, storing results in an internal
-    // buffer.
+    // Prefetches elements of the input, storing results in an internal buffer.
     //
     // It owns the iterator context passed to it.
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
@@ -460,14 +465,12 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64 buffer_size = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
-  OP_REQUIRES(ctx,
-              buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
+  OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
                                       "buffer_size to be ",
-                                      PrefetchAutotuner::kAutoTune,
-                                      " for auto-tuning"));
+                                      model::kAutotune, " for auto-tuning"));
 
-  if (buffer_size == PrefetchAutotuner::kAutoTune) {
+  if (buffer_size == model::kAutotune) {
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 

@@ -24,7 +24,6 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -52,10 +51,6 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
-
-_ops_counter = monitoring.Counter("/tensorflow/api/ops/nn",
-                                  "number of neural net ops in the graph.",
-                                  "op_name")
 
 
 def _get_sequence(value, n, channel_index, name):
@@ -965,7 +960,6 @@ def convolution_internal(
     if all(i == 1 for i in dilations):
       # fast path if no dilation as gradient only supported on GPU for dilations
       op = conv_ops[n]
-      _ops_counter.get_cell("conv{}d".format(n)).increase_by(1)
       return op(
           input,
           filters,
@@ -2288,7 +2282,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -4239,7 +4234,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:

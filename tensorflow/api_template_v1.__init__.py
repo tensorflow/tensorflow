@@ -30,10 +30,12 @@ from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
+# WRAPPER_PLACEHOLDER
+
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
-_API_MODULE = bitwise  # pylint: disable=undefined-variable
+_API_MODULE = _sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _current_module = _sys.modules[__name__]
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
 if not hasattr(_current_module, '__path__'):
@@ -46,6 +48,7 @@ try:
   from tensorflow_estimator.python.estimator.api._v1 import estimator
   _current_module.__path__ = (
       [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
 except ImportError:
   pass
 
@@ -53,6 +56,7 @@ try:
   from tensorflow.python.keras.api._v1 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
 except ImportError:
   pass
 
@@ -77,9 +81,8 @@ if '__all__' in vars():
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 # The 'app' module will be imported as part of the placeholder section above.
-app.flags = flags  # pylint: disable=undefined-variable
-if '__all__' in vars():
-  vars()['__all__'].append('flags')
+_current_module.app.flags = flags  # pylint: disable=undefined-variable
+setattr(_current_module, "flags", flags)
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -122,23 +125,16 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
-  if '__all__' in vars():
-    vars()['__all__'].remove('python')
-  del core
-  if '__all__' in vars():
-    vars()['__all__'].remove('core')
 except NameError:
-  # Don't fail if these modules are not available.
-  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-  # does not have 'python', 'core' directories. Then, it will be copied
-  # to tensorflow/ which does have these two directories.
   pass
-# Similarly for compiler. Do it separately to make sure we do this even if the
-# others don't exist.
+try:
+  del core
+except NameError:
+  pass
 try:
   del compiler
-  if '__all__' in vars():
-    vars()['__all__'].remove('compiler')
 except NameError:
   pass
+
+_current_module.compat.v2.compat.v1 = _current_module.compat.v1
 # pylint: enable=undefined-variable

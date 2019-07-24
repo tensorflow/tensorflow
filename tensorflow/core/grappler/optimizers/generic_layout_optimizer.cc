@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 
+#include <utility>
+
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -31,15 +35,78 @@ namespace grappler {
 
 namespace {
 
-inline int GetNumGPUs(const Cluster& cluster) {
+constexpr char kNHWC[] = "NHWC";
+constexpr char kNCHW[] = "NCHW";
+constexpr float kVoltaGPURatioThreshold = 0.5;
+constexpr float kConv2DGPUFP16Threshold = 0.5;
+
+inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
+  int num_volta = 0;
   for (const auto& device : devices) {
-    if (device.second.type() == "GPU") {
-      num_gpus++;
+    if (device.second.type() != kGPU) {
+      continue;
+    }
+    num_gpus++;
+    auto compute_capability_it =
+        device.second.environment().find("architecture");
+    if (compute_capability_it == device.second.environment().end()) {
+      continue;
+    }
+    double compute_capability = 0.0;
+    if (absl::SimpleAtod(compute_capability_it->second, &compute_capability) &&
+        compute_capability >= 7.0) {
+      num_volta++;
     }
   }
-  return num_gpus;
+  return {num_gpus, num_volta};
+}
+
+inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
+    const TransposeContext& context, absl::string_view device,
+    const DataType& data_type) {
+  int num_conv2d_gpu = 0;
+  int num_conv2d_gpu_fp16 = 0;
+
+  for (const auto& node : context.graph_view->GetNodes()) {
+    const auto* node_def = node.node();
+    if (!IsConv2D(*node_def)) {
+      continue;
+    }
+    const string& device_name =
+        GetDeviceName(context.virtual_placer.get(), *node_def);
+    string device_type;
+    string task;
+    if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
+        !absl::StrContains(absl::AsciiStrToLower(device_type),
+                           absl::AsciiStrToLower(device))) {
+      continue;
+    }
+    num_conv2d_gpu++;
+    const auto* t_attr = node.GetAttr("T");
+    if (t_attr == nullptr) {
+      continue;
+    }
+    if (t_attr->type() == data_type) {
+      num_conv2d_gpu_fp16++;
+    }
+  }
+
+  return (static_cast<float>(num_conv2d_gpu_fp16) /
+          static_cast<float>(num_conv2d_gpu)) >= kConv2DGPUFP16Threshold;
+}
+
+inline std::pair<string, string> GetSrcAndDstDataFormats(
+    const TransposeContext& context, int num_gpus, int num_voltas) {
+  string src_format = kNHWC;
+  string dst_format = kNCHW;
+  if (((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
+       kVoltaGPURatioThreshold) &&
+      NumConv2DOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
+    std::swap(src_format, dst_format);
+  }
+  return {src_format, dst_format};
 }
 
 Status ExpandLayoutSensitiveOp(TransposeContext* context,
@@ -89,11 +156,13 @@ inline bool IsCancellableConstPermTransposeNodePair(
     const utils::MutableNodeView& fanout_transpose,
     const utils::MutableNodeView& fanin_transpose) {
   Tensor fanout_tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(fanout_transpose, &fanout_tensor)) {
+  if (!GetValueAttrFromConstInputNode(fanout_transpose, IsTranspose, 1,
+                                      &fanout_tensor)) {
     return false;
   }
   Tensor fanin_tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(fanin_transpose, &fanin_tensor)) {
+  if (!GetValueAttrFromConstInputNode(fanin_transpose, IsTranspose, 1,
+                                      &fanin_tensor)) {
     return false;
   }
   if (fanout_tensor.NumElements() != fanin_tensor.NumElements()) {
@@ -159,20 +228,16 @@ Status EraseCancellableNodes(TransposeContext* context) {
       continue;
     }
     const auto& regular_fanin_0 = node->GetRegularFanin(0);
-    auto* input_transpose = regular_fanin_0.node_view();
-    if (!IsCancellableNodePair(*node, *input_transpose)) {
+    auto* fanin_node = regular_fanin_0.node_view();
+    // TODO(lyandy): Lift restriction once original nodes in the graph can be
+    // pruned away.
+    if (fanin_node->node_index() < original_num_nodes) {
       continue;
     }
-    // Skip transpose not added by optimizer.
-    if ((node->GetRegularFanouts().size() != 1 &&
-         node->NumControlledFanouts() != 0) ||
-        (input_transpose->GetRegularFanouts().size() != 1 &&
-         input_transpose->NumControlledFanouts() != 0)) {
-      VLOG(1) << "There is always only a single output for a Transpose "
-                 "node, due to the way it is added by Layout Optimizer.";
+    if (!IsCancellableNodePair(*node, *fanin_node)) {
       continue;
     }
-    const auto& fanin_to_forward = input_transpose->GetRegularFanin(0);
+    const auto& fanin_to_forward = fanin_node->GetRegularFanin(0);
     TensorId fanin_id_to_forward(fanin_to_forward.node_view()->GetName(),
                                  fanin_to_forward.index());
     for (const auto& regular_fanout : node->GetRegularFanout(0)) {
@@ -181,8 +246,95 @@ Status EraseCancellableNodes(TransposeContext* context) {
                                         fanin_id_to_forward);
     }
     mutation->RemoveNode(node);
-    mutation->RemoveNode(input_transpose);
+    if (node->NumRegularFanins() > 1) {
+      mutation->RemoveNode(node->GetRegularFanin(1).node_view());
+    }
+    mutation->RemoveNode(fanin_node);
+    if (fanin_node->NumRegularFanins() > 1) {
+      mutation->RemoveNode(fanin_node->GetRegularFanin(1).node_view());
+    }
   }
+  return mutation->Apply();
+}
+
+// TODO(ezhulenev): This is a temporary workaround for a graph pattern
+// in Resnet models. We should be able to push down transpose nodes across Pad
+// and many other ops, and then rely on cancellation to remove them.
+//
+// From: Transpose[NHWC->NCHW] -> Pad[paddings] -> Transpose[NCHW->NHWC]
+// To:   Pad[Permute(paddings)]
+Status EraseCancellableNodesAroundPad(TransposeContext* context) {
+  utils::MutableGraphView* graph_view = context->graph_view.get();
+  utils::Mutation* mutation = graph_view->GetMutationBuilder();
+
+  const int num_nodes = graph_view->NumNodes();
+  for (int i = 0; i < num_nodes; ++i) {
+    // Transpose node after Pad.
+    auto* transpose_after = graph_view->GetNode(i);
+    if (!IsTranspose(*transpose_after->node())) continue;
+
+    // Pad node.
+    const auto& transpose_after_fanin = transpose_after->GetRegularFanin(0);
+    auto* pad = transpose_after_fanin.node_view();
+    if (!IsPad(*pad->node())) continue;
+
+    // Transpose node before Pad.
+    const auto& pad_fanin_0 = pad->GetRegularFanin(0);
+    auto* transpose_before = pad_fanin_0.node_view();
+    if (!IsTranspose(*transpose_before->node())) continue;
+
+    // Transpose before output used once by the Pad node.
+    if (transpose_before->NumRegularFanouts() != 1) continue;
+
+    // Transposes are cancellable.
+    if (!IsCancellableConstPermTransposeNodePair(*transpose_after,
+                                                 *transpose_before))
+      continue;
+
+    // Paddings are known constant values.
+    Tensor paddings_t;
+    if (!GetValueAttrFromConstInputNode(*pad, IsPad, 1, &paddings_t)) continue;
+
+    // Paddings value used once by the pad node only.
+    const auto& pad_fanin_1 = pad->GetRegularFanin(1);
+    auto* paddings = pad_fanin_1.node_view();
+    if (paddings->NumRegularFanouts() != 1) continue;
+
+    // Get permutation after the padding.
+    Tensor permute_t;
+    if (!GetValueAttrFromConstInputNode(*transpose_after, IsTranspose, 1,
+                                        &permute_t))
+      continue;
+
+    VLOG(0) << "Cancel transpose node pair around pad node:"
+            << " transpose_before=" << transpose_before->node()->name()
+            << " pad=" << pad->node()->name()
+            << " transpose_after=" << transpose_after->node()->name();
+
+    // Permute paddings in place according to permutation in second transpose.
+    auto permutation_s = absl::Span<int32>(permute_t.flat<int32>().data(),
+                                           permute_t.NumElements());
+    auto paddings_s = absl::Span<int32>(paddings_t.flat<int32>().data(),
+                                        paddings_t.NumElements());
+    TF_RETURN_IF_ERROR(PermuteDouble(permutation_s, &paddings_s));
+
+    // Update paddings constant value with a permuted tensor.
+    AttrValue permuted_paddings_tensor;
+    paddings_t.AsProtoTensorContent(permuted_paddings_tensor.mutable_tensor());
+    mutation->AddOrUpdateNodeAttr(paddings, "value", permuted_paddings_tensor);
+
+    // Transform Transpose nodes into Identity nodes.
+    const auto transpose_to_identity =
+        [&mutation](utils::MutableNodeView* transpose) -> void {
+      mutation->UpdateNodeOp(transpose, "Identity");
+      mutation->RemoveNodeAttr(transpose, "Tperm");
+      mutation->RemoveRegularFanin(transpose, 1);
+    };
+
+    transpose_to_identity(transpose_before);
+    transpose_to_identity(transpose_after);
+  }
+
   return mutation->Apply();
 }
 
@@ -207,19 +359,36 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
         << "generic layout optimizer was called with cluster == nullptr";
     return errors::Aborted("cluster == nullptr.");
   }
-  if (GetNumGPUs(*cluster) < 1) {
+  const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
+  const int num_gpus = num_gpus_and_num_volta.first;
+  if (num_gpus < 1) {
     return errors::Aborted(
         "No GPUs found: GenericLayoutOptimizer is currently only tuned for "
         "GPU.");
   }
 
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
+
   TransposeContext context;
-  TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
-      item, cluster, src_format_, dst_format_, target_device_, &context));
+  TF_RETURN_IF_ERROR(
+      TransposeContext::InitializeTransposeContext(item, cluster, &context));
+
+  const auto src_dst_formats =
+      GetSrcAndDstDataFormats(context, num_gpus, num_gpus_and_num_volta.second);
+  context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
+                                     src_dst_formats.second);
+
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+  if (context.graph.node_size() > context.num_nodes || is_aggressive) {
+    TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
+    TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
+    TF_RETURN_IF_ERROR(EraseCancellableNodesAroundPad(&context));
+    // TODO(lyandy): Remove sorting once other optimizers are migrated to using
+    // `utils::GraphView`.
+    TF_RETURN_IF_ERROR(
+        context.graph_view->SortTopologically(/*ignore_cycles=*/false, {}));
+  }
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
   *output = context.graph;
@@ -232,13 +401,6 @@ void GenericLayoutOptimizer::Feedback(Cluster* cluster,
                                       double result) {
   // Takes no feedback.
 }
-
-Status GenericLayoutOptimizer::Init(
-    const RewriterConfig_CustomGraphOptimizer* config) {
-  return Status::OK();
-}
-
-REGISTER_GRAPH_OPTIMIZER_AS(GenericLayoutOptimizer, "GenericLayoutOptimizer");
 
 }  // end namespace grappler
 }  // end namespace tensorflow

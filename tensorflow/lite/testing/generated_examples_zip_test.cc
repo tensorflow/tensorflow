@@ -59,7 +59,7 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
     // L2Norm only supports tensors with 4D or fewer.
-    {R"(^\/l2norm_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
+    {R"(^\/l2norm.*_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
     // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
@@ -68,19 +68,20 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
 
     // L2Norm only works for dim=-1.
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])",
+    {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])",
      "67963812"},
-    {R"(^\/l2norm_dim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2norm.*_dim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])",
+     "67963812"},
 
     // ResizeBilinear looks completely incompatible with Tensorflow
     {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},

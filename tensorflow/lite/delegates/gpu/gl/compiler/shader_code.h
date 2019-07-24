@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -30,7 +30,7 @@ namespace gl {
 
 struct ShaderCode {
   ShaderCode() = default;
-  ShaderCode(const std::vector<UniformParameter>& in_parameters,
+  ShaderCode(const std::vector<Variable>& in_parameters,
              const std::vector<Object>& in_objects, const uint3& in_workload,
              const uint3& in_recommended_workgroup,
              const std::string& in_source_code,
@@ -43,7 +43,7 @@ struct ShaderCode {
         node_indices(in_node_indices) {}
 
   // A list of uniform parameters to be set.
-  std::vector<UniformParameter> parameters;
+  std::vector<Variable> parameters;
 
   // A list of objects to bind to opengl program.
   std::vector<Object> objects;

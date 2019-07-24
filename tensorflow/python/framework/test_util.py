@@ -547,7 +547,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
   a bit of Python.
   """
 
-  def decorator(self, **kwargs):
+  def decorator(self, *args, **kwargs):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
@@ -558,7 +558,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       # tests that fail with 1 warmup run, and pass with 2, on various versions
       # of python2.7.x.
       for _ in range(2):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -567,7 +567,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
             for collection in ops.get_default_graph().collections
         }
       for _ in range(3):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       # Note that gc.get_objects misses anything that isn't subject to garbage
       # collection (C types). Collections are a common source of leaks, so we
       # test for collection sizes explicitly.
@@ -1368,6 +1368,21 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
       CUDA compute capability required, or None if no requirement.
 
+  Note that the keyword arg name "cuda_only" is misleading (since routine will
+  return true when a GPU device is available irrespective of whether TF was
+  built with CUDA support or ROCm support. However no changes here because
+
+  ++ Changing the name "cuda_only" to something more generic would break
+     backward compatibility
+
+  ++ Adding an equivalent "rocm_only" would require the implementation check
+     the build type. This in turn would require doing the same for CUDA and thus
+     potentially break backward compatibility
+
+  ++ Adding a new "cuda_or_rocm_only" would not break backward compatibility,
+     but would require most (if not all) callers to update the call to use
+     "cuda_or_rocm_only" instead of "cuda_only"
+
   Returns:
     True if a GPU device of the requested kind is available.
   """
@@ -1900,7 +1915,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                                  tensor.dense_shape.numpy())
         elif ragged_tensor.is_ragged(tensor):
           return ragged_tensor_value.RaggedTensorValue(
-              tensor.values.numpy(), tensor.row_splits.numpy())
+              self._eval_tensor(tensor.values),
+              self._eval_tensor(tensor.row_splits))
         elif isinstance(tensor, ops.IndexedSlices):
           return ops.IndexedSlicesValue(
               values=tensor.values.numpy(),
@@ -2363,6 +2379,8 @@ class TensorFlowTestCase(googletest.TestCase):
           to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
           `[p] = [1]['d']`, then `a[p] = (6, 7)`.
     """
+    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
+      return self._assertRaggedClose(a, b, rtol, atol, msg)
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
@@ -2441,6 +2459,8 @@ class TensorFlowTestCase(googletest.TestCase):
       b: the actual numpy ndarray or anything can be converted to one.
       msg: Optional message to report on failure.
     """
+    if (ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b)):
+      return self._assertRaggedEqual(a, b, msg)
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -2729,6 +2749,51 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(
         device1, device2,
         "Devices %s and %s are not equal. %s" % (device1, device2, msg))
+
+  def _GetPyList(self, a):
+    """Converts `a` to a nested python list."""
+    if isinstance(a, ragged_tensor.RaggedTensor):
+      return self.evaluate(a).to_list()
+    elif isinstance(a, ops.Tensor):
+      a = self.evaluate(a)
+      return a.tolist() if isinstance(a, np.ndarray) else a
+    elif isinstance(a, np.ndarray):
+      return a.tolist()
+    elif isinstance(a, ragged_tensor_value.RaggedTensorValue):
+      return a.to_list()
+    else:
+      return np.array(a).tolist()
+
+  def _assertRaggedEqual(self, a, b, msg):
+    """Asserts that two ragged tensors are equal."""
+    a_list = self._GetPyList(a)
+    b_list = self._GetPyList(b)
+    self.assertEqual(a_list, b_list, msg)
+
+    if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
+      self.assertEqual(a_ragged_rank, b_ragged_rank, msg)
+
+  def _assertRaggedClose(self, a, b, rtol, atol, msg=None):
+    a_list = self._GetPyList(a)
+    b_list = self._GetPyList(b)
+    self._assertListCloseRecursive(a_list, b_list, rtol, atol, msg)
+
+    if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
+      self.assertEqual(a_ragged_rank, b_ragged_rank, msg)
+
+  def _assertListCloseRecursive(self, a, b, rtol, atol, msg, path="value"):
+    self.assertEqual(type(a), type(b))
+    if isinstance(a, (list, tuple)):
+      self.assertLen(a, len(b), "Length differs for %s" % path)
+      for i in range(len(a)):
+        self._assertListCloseRecursive(a[i], b[i], rtol, atol, msg,
+                                       "%s[%s]" % (path, i))
+    else:
+      self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3 compatibility issues
   if six.PY3:

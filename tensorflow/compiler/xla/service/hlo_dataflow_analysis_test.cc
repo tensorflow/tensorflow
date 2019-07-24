@@ -1105,8 +1105,8 @@ TEST_P(HloDataflowAnalysisTest, BitcastDefinesValue) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kBitcast, constant));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(scalar_shape_, constant));
 
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
@@ -1606,6 +1606,25 @@ TEST_P(HloDataflowAnalysisTest, EmbeddedComputationInterference) {
   EXPECT_TRUE(InstructionsMayInterfere(ordering, negate, embedded_log));
 }
 
+TEST_P(HloDataflowAnalysisTest, GetFlattenedValueSet) {
+  const char* hlo_text = R"(
+HloModule test_aliasing_module
+
+ENTRY root {
+  param = s32[1000] parameter(0)
+  p0 = s32[1000] copy(param)
+  p1 = s32[1000] copy(param)
+  ROOT t = (s32[1000], s32[1000]) tuple(p0, p1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
+  auto entry = module_->entry_computation();
+  entry->GetInstructionWithName("t");
+  auto& dataflow_analysis = RunAnalysis(GetParam());
+  auto set = dataflow_analysis.GetFlattenedValueSet(
+      entry->GetInstructionWithName("t"));
+  EXPECT_EQ(set.values().size(), 3);
+}
+
 TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
   // Test conditional with identity computations in both true and false cases.
   //
@@ -1948,7 +1967,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
                           HloDataflowAnalysis::Run(*module));
@@ -2456,7 +2475,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
   computation_ = module_->entry_computation();
   RunAnalysis();
 
@@ -2471,6 +2490,31 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
       indices_param, {}, scatter, {}));
   EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
       updates_param, {}, scatter, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
+  const char* hlo_text = R"(
+    HloModule TensorFlowTriangularSolve
+
+    ENTRY main {
+      a = f32[4,4]{1,0} parameter(0)
+      b = f32[3,4]{1,0} parameter(1)
+      ROOT triangular-solve = f32[3,4]{1,0} triangular-solve(a, b), lower=true,
+                                              transpose_a=NO_TRANSPOSE
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
+  computation_ = module_->entry_computation();
+  RunAnalysis();
+
+  HloInstruction* lhs_param = computation_->parameter_instruction(0);
+  HloInstruction* rhs_param = computation_->parameter_instruction(1);
+  HloInstruction* triangular_solve = computation_->root_instruction();
+
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      lhs_param, {}, triangular_solve, {}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      rhs_param, {}, triangular_solve, {}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {

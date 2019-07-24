@@ -47,7 +47,7 @@ class InstructionFusionForTesting : public InstructionFusion {
 };
 
 TEST_F(InstructionFusionTest, FuseInstructions) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -67,7 +67,7 @@ TEST_F(InstructionFusionTest, FuseInstructions) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   fused_computation {
     p1 = f32[4,3] parameter(0)
@@ -90,7 +90,7 @@ TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
 }
 
 TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -196,7 +196,7 @@ static int Count(const HloModule& module, HloOpcode op) {
 }
 
 TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -221,7 +221,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //
   // (p0, p1) -> add -------------------------> sub
   //                 \-> abs1 -> rng -> abs2 -/
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -253,7 +253,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   // (p0, p1) -> add -------------------------> sub
   //                 \-> abs1 -> log -> abs2 -/
   //                                 \-> send
-  module = ParseHloString(R"(
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -262,7 +262,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     abs1 = f32[4,3]{1,0} abs(add)
     log = f32[4,3]{1,0} log(abs1)
     token0 = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token0), channel_id=0
+    send = f32[4,3]{1,0} send(log, token0), channel_id=1
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -286,7 +286,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //          \         \-> add2 -/
   //           \-> log -/
   //                   \-> send
-  module = ParseHloString(R"(
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -294,7 +294,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add1 = f32[4,3]{1,0} add(p0, p1)
     log = f32[4,3]{1,0} log(p0)
     token0 = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token0), channel_id=0
+    send = f32[4,3]{1,0} send(log, token0), channel_id=1
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -320,7 +320,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //                             \------> sub1
   //                              log -/
   //                                  \-> send
-  module = ParseHloString(R"(
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -329,7 +329,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add2 = f32[4,3]{1,0} add(add1, p1)
     log = f32[4,3]{1,0} log(add2)
     token0 = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token0), channel_id=0
+    send = f32[4,3]{1,0} send(log, token0), channel_id=1
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)
@@ -404,7 +404,7 @@ TEST_F(InstructionFusionTest, AllowBinarySameValueOperandsDuplication) {
   //
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> rng -> abs2 -/
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -433,7 +433,7 @@ TEST_F(InstructionFusionTest, AllowBinarySameValueOperandsDuplication) {
 }
 
 TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f32[100] parameter(0)
@@ -458,7 +458,7 @@ TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
 }
 
 TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f32[100] parameter(0)
@@ -484,7 +484,7 @@ TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
 
 TEST_F(InstructionFusionTest,
        WideningConvertsAreAlwaysDuplicableIntoConsumers) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f16[100] parameter(0)

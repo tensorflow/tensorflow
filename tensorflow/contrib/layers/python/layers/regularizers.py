@@ -156,8 +156,13 @@ def sum_regularizer(regularizer_list, scope=None):
   def sum_reg(weights):
     """Applies the sum of all the input regularizers."""
     with ops.name_scope(scope, 'sum_regularizer', [weights]) as name:
-      regularizer_tensors = [reg(weights) for reg in regularizer_list]
-      return math_ops.add_n(regularizer_tensors, name=name)
+      regularizer_tensors = []
+      for reg in regularizer_list:
+        tensor = reg(weights)
+        if tensor is not None:
+          regularizer_tensors.append(tensor)
+      return math_ops.add_n(
+          regularizer_tensors, name=name) if regularizer_tensors else None
 
   return sum_reg
 

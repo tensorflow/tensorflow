@@ -1,3 +1,9 @@
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_shared_object",
+    "tflite_copts",
+)
+
 package(
     default_visibility = [":experimental"],
     licenses = ["notice"],  # Apache 2.0
@@ -9,12 +15,6 @@ package_group(
         "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
     ],
-)
-
-load(
-    "//tensorflow/lite:build_def.bzl",
-    "tflite_cc_shared_object",
-    "tflite_copts",
 )
 
 tflite_cc_shared_object(
@@ -36,15 +36,6 @@ tflite_cc_shared_object(
         ":exported_symbols.lds",
         ":version_script.lds",
     ],
-)
-
-# Create a local copy of the dependent c_api_internal.h header. This is required
-# for downstream library targets that assume a flat directory structure.
-genrule(
-    name = "c_api_types",
-    srcs = ["//tensorflow/lite/c:c_api_internal.h"],
-    outs = ["c_api_types.h"],
-    cmd = "cp -f $< $@",
 )
 
 cc_library(

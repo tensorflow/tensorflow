@@ -199,21 +199,22 @@ def convert_stack(stack, include_func_start_lineno=False):
       included as the 5th entry in return tuples.
 
   Returns:
-    A list of n 4-tuples or 5-tuples
+    A tuple of n 4-tuples or 5-tuples
     (filename, lineno, name, code, [optional: func_start_lineno]), where the
     code tuple element is calculated from the corresponding elements of the
     input tuple.
   """
-  ret = []
-  for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
-    linecache.checkcache(filename)
-    line = linecache.getline(filename, lineno, frame_globals)
-    if line:
-      line = line.strip()
-    else:
-      line = None
-    if include_func_start_lineno:
-      ret.append((filename, lineno, name, line, func_start_lineno))
-    else:
-      ret.append((filename, lineno, name, line))
-  return ret
+  def _tuple_generator():  # pylint: disable=missing-docstring
+    for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
+      linecache.checkcache(filename)
+      line = linecache.getline(filename, lineno, frame_globals)
+      if line:
+        line = line.strip()
+      else:
+        line = None
+      if include_func_start_lineno:
+        yield (filename, lineno, name, line, func_start_lineno)
+      else:
+        yield (filename, lineno, name, line)
+
+  return tuple(_tuple_generator())

@@ -191,10 +191,8 @@ class BatchReshape(distribution_lib.Distribution):
         self.distribution.survival_function, x)
 
   def _entropy(self):
-    return self._call_and_reshape_output(
-        self.distribution.entropy,
-        [],
-        [tensor_shape.scalar()])
+    return self._call_and_reshape_output(self.distribution.entropy, [],
+                                         [tensor_shape.TensorShape([])])
 
   def _mean(self):
     return self._call_and_reshape_output(self.distribution.mean)

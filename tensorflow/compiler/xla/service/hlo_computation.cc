@@ -142,6 +142,26 @@ HloInstruction* HloComputation::AddEntryComputationParameter(
   return instructions_.back().get();
 }
 
+Status HloComputation::ReplaceEntryComputationParameter(
+    int64 param_no, HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> instruction) {
+  CHECK_GE(param_no, 0);
+  CHECK_LT(param_no, param_instructions_.size());
+  CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
+  CHECK(parent()->entry_computation() == this);
+
+  HloModuleConfig config = parent()->config();
+  *config.mutable_entry_computation_layout()->mutable_parameter_layout(
+      param_no) = ShapeLayout(instruction->shape());
+  parent()->set_config(config);
+
+  instruction->set_parent(this);
+  param_instructions_[param_no] = instruction.get();
+  AddInstructionInternal(std::move(instruction));
+
+  return ForceRemoveInstruction(old_instruction);
+}
+
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -229,7 +249,7 @@ bool HloComputation::HasSideEffect() const {
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
@@ -251,6 +271,9 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
       worklist.push(item->mutable_operand(i));
     }
 
+    if (cleanup) {
+      cleanup(item);
+    }
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
     removed.insert(item);
   }
@@ -373,7 +396,7 @@ void HloComputation::ComputeInstructionPostOrder(
         case HloOpcode::kRecvDone:
           return inst->channel_id();
         case HloOpcode::kAllReduce:
-          return inst->all_reduce_id();
+          return inst->channel_id();
         default:
           return absl::nullopt;
       }
@@ -428,13 +451,10 @@ HloComputation::ComputeChannelDependencies() const {
     switch (instruction->opcode()) {
       case HloOpcode::kSend:
       case HloOpcode::kRecvDone:
-        channel_dependency_group[instruction->channel_id()].push_back(
-            instruction.get());
-        break;
       case HloOpcode::kAllReduce: {
-        auto all_reduce_id = instruction->all_reduce_id();
-        if (all_reduce_id) {
-          channel_dependency_group[all_reduce_id.value()].push_back(
+        auto channel_id = instruction->channel_id();
+        if (channel_id) {
+          channel_dependency_group[channel_id.value()].push_back(
               instruction.get());
         }
         break;
@@ -790,6 +810,13 @@ Status HloComputation::ReplaceWithNewInstruction(
                             AddInstruction(std::move(new_instruction)));
 }
 
+Status HloComputation::ReplaceWithNewEntryComputationParameter(
+    HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> new_instruction) {
+  return ReplaceInstruction(old_instruction, AddEntryComputationParameter(
+                                                 std::move(new_instruction)));
+}
+
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
   TF_RET_CHECK(
@@ -899,18 +926,6 @@ template Status HloComputation::AcceptOrdered(
     DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 template Status HloComputation::AcceptOrdered(
     ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
-
-Status HloComputation::Accept(
-    const std::function<Status(HloInstruction*)>& visitor_func) {
-  FunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
-Status HloComputation::Accept(
-    const std::function<Status(const HloInstruction*)>& visitor_func) const {
-  ConstFunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
 
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {

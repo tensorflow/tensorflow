@@ -71,6 +71,12 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
     external_contexts_[i] = nullptr;
   }
 
+  // This operation is cheap because we allocate the CPU context resources (i.e.
+  // threads) lazily.
+  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  external_contexts_[kTfLiteCpuBackendContext] =
+      own_external_cpu_backend_context_.get();
+
   UseNNAPI(false);
 }
 
@@ -78,6 +84,26 @@ Interpreter::~Interpreter() {}
 
 void Interpreter::SetExternalContext(TfLiteExternalContextType type,
                                      TfLiteExternalContext* ctx) {
+  if (ctx == own_external_cpu_backend_context_.get()) {
+    error_reporter_->Report(
+        "WARNING: The passed external context is identical to the internally "
+        "owned one.");
+    return;
+  }
+
+  // We have an internally owned external context of kTfLiteCpuBackendContext.
+  // If it's overwritten here, we will release the resource of the internally
+  // owned external context.
+  // Note: the 'max thread count' info associated with the overwritten context
+  // will be lost here, and such info is now detemined by the new context, thus
+  // affecting how much parallelism a TFLite op would have.
+  if (kTfLiteCpuBackendContext == type &&
+      external_contexts_[kTfLiteCpuBackendContext] ==
+          own_external_cpu_backend_context_.get()) {
+    own_external_cpu_backend_context_.reset();
+  }
+
+  // This essentially changes the "external_contexts_[type]".
   primary_subgraph().SetExternalContext(type, ctx);
 }
 
@@ -118,9 +144,9 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
-  return primary_subgraph().AddNodeWithParameters(inputs, outputs, init_data,
-                                                  init_data_size, builtin_data,
-                                                  registration, node_index);
+  return primary_subgraph().AddNodeWithParameters(
+      inputs, outputs, {}, init_data, init_data_size, builtin_data,
+      registration, node_index);
 }
 
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,

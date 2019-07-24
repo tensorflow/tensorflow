@@ -6,6 +6,7 @@
 /tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mrry
 /tensorflow/core/platform/s3 @yongtang
+/tensorflow/python/autograph/ @mdanatg @kkimdev
 /tensorflow/python/debug @caisq
 /tensorflow/python/eager @jaingurav @alextp
 /tensorflow/python/tools/api/generator/ @annarev
@@ -15,6 +16,7 @@
 # contrib
 
 # NEED OWNER: /tensorflow/contrib/all_reduce
+/tensorflow/contrib/autograph/ @mdanatg @kkimdev
 /tensorflow/contrib/batching/ @alextp @chrisolston
 /tensorflow/contrib/bayesflow/ @ebrevdo @rsepassi @jvdillon
 /tensorflow/contrib/boosted_trees/ @sshrdp @yk5 @nataliaponomareva

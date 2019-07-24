@@ -25,10 +25,11 @@ TF_ECOSYSTEM_URL="https://github.com/tensorflow/ecosystem.git"
 # environment variables can be set to skip either repository.
 DEPLOY_BINTRAY="${DEPLOY_BINTRAY:-true}"
 DEPLOY_OSSRH="${DEPLOY_OSSRH:-true}"
+DEPLOY_LOCAL="${DEPLOY_LOCAL:-false}"
 
 PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip"
-if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
-  echo "Must deploy to at least one of Bintray or OSSRH" >&2
+if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" && "${DEPLOY_LOCAL}" != "true" ]]; then
+  echo "Must deploy to at least one of Bintray, OSSRH or local" >&2
   exit 2
 fi
 
@@ -40,7 +41,7 @@ clean() {
   # artifacts lying around)
   mvn -q clean
   rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
-    libtensorflow/src libtensorflow/target tensorflow-android/target proto/src proto/target \
+    libtensorflow/src libtensorflow/target proto/src proto/target \
     tensorflow-hadoop/src tensorflow-hadoop/target spark-tensorflow-connector/src spark-tensorflow-connector/target
 }
 
@@ -69,17 +70,6 @@ download_libtensorflow() {
   jar -xvf /tmp/src.jar
   rm -rf META-INF
   cd "${DIR}"
-}
-
-# Fetch the android aar artifact from the CI build system, and update
-# its associated pom file.
-update_tensorflow_android() {
-  TARGET_DIR="${DIR}/tensorflow-android/target"
-  mkdir -p "${TARGET_DIR}"
-  python "${DIR}/tensorflow-android/update.py" \
-    --version "${TF_VERSION}" \
-    --template "${DIR}/tensorflow-android/pom-android.xml.template" \
-    --dir "${TARGET_DIR}"
 }
 
 download_libtensorflow_jni() {
@@ -211,19 +201,11 @@ download_tf_ecosystem() {
 #   n/a
 deploy_profile() {
   local profile="$1"
-  # Deploy the non-android pieces.
-  mvn deploy -P"${profile}"
-  # Determine the correct pom file property to use
-  # for the repository url.
-  local rtype
-  rtype='repository'
-  local url=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.url")
-  local repositoryId=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.id")
-  mvn gpg:sign-and-deploy-file \
-    -Dfile="${DIR}/tensorflow-android/target/tensorflow.aar" \
-    -DpomFile="${DIR}/tensorflow-android/target/pom-android.xml" \
-    -Durl="${url}" \
-    -DrepositoryId="${repositoryId}"
+  if [[ ${profile} == "local" ]]; then
+    mvn install
+  else
+    mvn deploy -P"${profile}"
+  fi
 }
 
 # If successfully built, try to deploy.
@@ -232,6 +214,10 @@ deploy_profile() {
 #   ./release.sh ${TF_VERSION} ${SETTINGS_XML} bash
 # To get a shell to poke around the maven artifacts with.
 deploy_artifacts() {
+  # Deploy artifacts to local maven repository if requested
+  if [[ "${DEPLOY_LOCAL}" == "true" ]]; then
+    deploy_profile 'local'
+  fi
   # Deploy artifacts to ossrh if requested.
   if [[ "${DEPLOY_OSSRH}" == "true" ]]; then
     deploy_profile 'ossrh'
@@ -264,7 +250,6 @@ update_version_in_pom
 download_libtensorflow
 download_libtensorflow_jni
 download_libtensorflow_jni_gpu
-update_tensorflow_android
 generate_java_protos
 download_tf_ecosystem
 

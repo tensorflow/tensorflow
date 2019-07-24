@@ -89,6 +89,30 @@ class BaseFeatureColumnForTests(fc.FeatureColumn):
     raise ValueError('Should not use this method.')
 
 
+class SortableFeatureColumnTest(test.TestCase):
+
+  def test_sort_columns_by_string_representation(self):
+    # These should be sorted lexicographically based on their string
+    # representations. For FeatureColumns, this looks like
+    # '<__main__.FeatureColumn object at ...>'.
+
+    a = fc.numeric_column('first')  # '<__main__.NumericColumn ...>'
+    b = fc.numeric_column('second')  # '<__main__.NumericColumn ...>'
+    c = fc_old._numeric_column('third')  # '<__main__._NumericColumn ...>'
+
+    sorted_sequence = ['0', a, b, c, 'd']
+    reversed_sequence = sorted_sequence[::-1]
+    self.assertAllEqual(sorted(reversed_sequence), sorted_sequence)
+
+    # pylint: disable=g-generic-assert
+    self.assertTrue(a < b)  # V2 < V2 feature columns.
+    self.assertTrue(a < c)  # V2 < V1 feature columns.
+    self.assertFalse(c < a)  # V1 < V2 feature columns.
+    self.assertTrue('0' < a)  # string < V2 feature column.
+    self.assertTrue(a < 'd')  # V2 feature column < string.
+    # pylint: enable=g-generic-assert
+
+
 class LazyColumnTest(test.TestCase):
 
   def test_transformations_called_once(self):
@@ -265,11 +289,13 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(((3., 2.),), a.default_value)
 
   def test_shape_and_default_value_compatibility(self):
-    fc.numeric_column('aaa', shape=[2], default_value=[1, 2.])
+    a = fc.numeric_column('aaa', shape=[2], default_value=[1, 2.])
+    self.assertEqual((1, 2.), a.default_value)
     with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
       fc.numeric_column('aaa', shape=[2], default_value=[1, 2, 3.])
-    fc.numeric_column(
-        'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
+      a = fc.numeric_column(
+          'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
+      self.assertEqual(((2, 3), (1, 2), (2, 3.)), a.default_value)
     with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
       fc.numeric_column(
           'aaa', shape=[3, 1], default_value=[[2, 3], [1, 2], [2, 3.]])
@@ -858,8 +884,11 @@ class HashedCategoricalColumnTest(test.TestCase):
       fc.categorical_column_with_hash_bucket('aaa', 0)
 
   def test_dtype_should_be_string_or_integer(self):
-    fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
-    fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
+    a = fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
+    b = fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
+    self.assertEqual(dtypes.string, a.dtype)
+    self.assertEqual(dtypes.int32, b.dtype)
+
     with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
       fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 

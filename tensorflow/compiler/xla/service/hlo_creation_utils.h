@@ -103,6 +103,10 @@ StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
 StatusOr<HloInstruction*> MakeConcatHlo(
     absl::Span<HloInstruction* const> operands, int64 dimension);
 
+// Creates a Convert HLO instruction that converts the given instruction to have
+// the given primitive type.
+HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
+
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation).
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
@@ -152,6 +156,14 @@ StatusOr<HloInstruction*> MakeR1ConstantHlo(HloComputation* computation,
   }
   return computation->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
+}
+
+// Creates an R0 Constant HLO instruction of the PrimitiveType corresponding to
+// `NativeT` with the given value and adds it to the given computation.
+template <class NativeT>
+HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
+  return computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)));
 }
 
 // -----------------------------------------------------------------------------

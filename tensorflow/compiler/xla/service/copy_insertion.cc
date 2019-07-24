@@ -295,7 +295,6 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   // deep copy).
   std::vector<HloInstruction*> param_users = param->users();
 
-  ShapeIndex current_index;
   TF_ASSIGN_OR_RETURN(auto pair,
                       DeepCopyAndAddControlEdges(param, root, indices_to_copy));
 

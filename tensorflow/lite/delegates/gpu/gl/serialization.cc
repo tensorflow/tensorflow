@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -276,16 +277,16 @@ void SerializedCompiledModelBuilder::AddShader(const std::string& shader_src) {
 }
 
 void SerializedCompiledModelBuilder::AddProgram(
-    const std::vector<UniformParameter>& parameters,
-    const std::vector<Object>& objects, const uint3& workgroup_size,
-    const uint3& num_workgroups, size_t shader_index) {
+    const std::vector<Variable>& parameters, const std::vector<Object>& objects,
+    const uint3& workgroup_size, const uint3& num_workgroups,
+    size_t shader_index) {
   Offset<data::Uint3> fb_workgroups = Encode(num_workgroups, &builder_);
   Offset<data::Uint3> fb_workgroup_size = Encode(workgroup_size, &builder_);
 
   Offset<Vector<Offset<data::UniformParameter>>> fb_params;
   {
     std::vector<Offset<data::UniformParameter>> offsets;
-    for (const UniformParameter& param : parameters) {
+    for (const Variable& param : parameters) {
       auto name = builder_.CreateString(param.name);
       auto data = absl::visit(ParameterValueGetter{&builder_}, param.value);
       data::UniformParameterBuilder builder(builder_);
@@ -344,7 +345,7 @@ absl::Span<const uint8_t> SerializedCompiledModelBuilder::Finalize(
 namespace {
 
 Status ParseParameter(const data::UniformParameter& fb_parameter,
-                      UniformParameter* parameter) {
+                      Variable* parameter) {
   parameter->name = fb_parameter.name()->str();
   switch (fb_parameter.type()) {
     case data::ParameterType::INT32: {
@@ -539,13 +540,13 @@ Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
     RETURN_IF_ERROR(
         handler->OnShader(absl::MakeSpan(shader->c_str(), shader->size())));
   }
-  std::vector<UniformParameter> parameters;
+  std::vector<Variable> parameters;
   std::vector<Object> objects;
   for (auto program : *model->programs()) {
     parameters.clear();
     objects.clear();
     for (auto fb_parameter : *program->parameters()) {
-      UniformParameter parameter;
+      Variable parameter;
       RETURN_IF_ERROR(ParseParameter(*fb_parameter, &parameter));
       parameters.push_back(std::move(parameter));
     }

@@ -153,6 +153,8 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
   *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
+  fail->set_buffer_address(
+      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -170,8 +172,8 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
 }
 
 using ConvCacheKey =
-    std::tuple<se::StreamExecutor*, std::string, std::string, Shape,
-               std::vector<Shape>, std::string, std::string, int64>;
+    std::tuple<se::StreamExecutor*,
+               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
 
 struct ConvCacheStats {
   int64 cache_hits = 0;
@@ -183,20 +185,11 @@ struct ConvCacheStats {
   }
 };
 
-StatusOr<ConvCacheKey> AutotuneCacheKeyfromInstruction(
+ConvCacheKey AutotuneCacheKeyfromInstruction(
     const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      conv->backend_config<CudnnConvBackendConfig>());
-  std::vector<Shape> operand_shapes;
-  absl::c_transform(conv->operands(), std::back_inserter(operand_shapes),
-                    [&](const HloInstruction* op) { return op->shape(); });
-
-  return std::make_tuple(
-      se, backend_config.SerializeAsString(), conv->custom_call_target(),
-      conv->shape(), std::move(operand_shapes),
-      conv->window().SerializeAsString(),
-      conv->convolution_dimension_numbers().SerializeAsString(),
-      conv->feature_group_count());
+  auto options = HloPrintOptions::Canonical();
+  options.set_print_backend_config(true);
+  return std::make_tuple(se, conv->ToString(options));
 }
 
 tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
@@ -223,8 +216,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   // which can greatly improve both stability (deterministic numeric results
   // within a process for a given input) and performance (2x speedup on some
   // models).
-  TF_ASSIGN_OR_RETURN(ConvCacheKey key,
-                      AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+  ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
     tensorflow::mutex_lock lock(autotune_cache_lock);
     auto it = autotune_cache.find(key);
@@ -398,6 +390,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                 << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -406,11 +400,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
       comparator.emplace(result_shape, hlo_module_config);
-      reference_result_buffer = result_buffer;
-      TF_ASSIGN_OR_RETURN(result_buffer,
-                          input_output_allocator.AllocateBytes(
-                              &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffer,
+          input_output_allocator.AllocateBytes(&stream, result_buffer.size()));
+      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
+                        result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -421,9 +415,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
-      for (const auto* op : instr->operands()) {
-        *instr_log.add_operand_shapes() = op->shape().ToProto();
+      for (int i = 0; i < instr->operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+        instr_log.add_operand_addresses(
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
+      instr_log.set_result_address(
+          reinterpret_cast<uint64>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {
@@ -437,7 +435,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
-      tensorflow::Logger::Singleton()->LogProto(log);
+      tensorflow::Logger::GetSingleton()->LogProto(log);
     }
   }
 

@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -36,9 +37,9 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
   Examples:
 
   ```python
-  >>> tf.strings.to_bytes('hello')
+  >>> tf.strings.bytes_split('hello')
   ['h', 'e', 'l', 'l', 'o']
-  >>> tf.strings.to_bytes(['hello', '123'])
+  >>> tf.strings.bytes_split(['hello', '123'])
   <RaggedTensor [['h', 'e', 'l', 'l', 'o'], ['1', '2', '3']]>
   ```
 
@@ -53,7 +54,7 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `RaggedTensor` of rank `N+1`: the bytes that make up the soruce strings.
+    A `RaggedTensor` of rank `N+1`: the bytes that make up the source strings.
   """
   with ops.name_scope(name, "StringsByteSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(input,
@@ -642,3 +643,10 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
       return ragged_result
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
+
+
+def reduce_join(inputs, axis=None, keepdims=None, separator="", name=None):
+  """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
+  return ragged_math_ops.ragged_reduce_aggregate(
+      string_ops.reduce_join, string_ops.unsorted_segment_join, inputs, axis,
+      keepdims, separator, name or "RaggedSegmentJoin")

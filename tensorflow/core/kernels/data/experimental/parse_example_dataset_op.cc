@@ -76,7 +76,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
-        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
         errors::InvalidArgument(
             "num_parallel_calls must be greater than zero."));
 
@@ -397,6 +397,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::size_t> elements_per_stride_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),
     ParseExampleDatasetOp);

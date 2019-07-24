@@ -153,12 +153,12 @@ class _OptionalImpl(Optional):
 
   @property
   def _type_spec(self):
-    return OptionalStructure.from_value(self)
+    return OptionalSpec.from_value(self)
 
 
-# TODO(b/133606651) Rename this class to OptionalSpec
-@tf_export("OptionalSpec", "data.experimental.OptionalStructure")
-class OptionalStructure(type_spec.TypeSpec):
+@tf_export(
+    "OptionalSpec", v1=["OptionalSpec", "data.experimental.OptionalStructure"])
+class OptionalSpec(type_spec.TypeSpec):
   """Represents an optional potentially containing a structured value."""
 
   __slots__ = ["_value_structure"]
@@ -186,7 +186,7 @@ class OptionalStructure(type_spec.TypeSpec):
 
   @staticmethod
   def from_value(value):
-    return OptionalStructure(value.value_structure)
+    return OptionalSpec(value.value_structure)
 
   def _to_legacy_output_types(self):
     return self

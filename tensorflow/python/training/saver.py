@@ -777,7 +777,7 @@ class Saver(object):
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
       RuntimeError: If eager execution is enabled and`var_list` does not specify
-        a list of varialbes to save.
+        a list of variables to save.
 
     @compatibility(eager)
     When eager execution is enabled, `var_list` must specify a `list` or `dict`
@@ -1276,11 +1276,12 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
 
-    if not checkpoint_management.checkpoint_exists(compat.as_text(save_path)):
+    checkpoint_prefix = compat.as_text(save_path)
+    if not checkpoint_management.checkpoint_exists_internal(checkpoint_prefix):
       raise ValueError("The passed save_path is not a valid checkpoint: " +
-                       compat.as_text(save_path))
+                       checkpoint_prefix)
 
-    logging.info("Restoring parameters from %s", compat.as_text(save_path))
+    logging.info("Restoring parameters from %s", checkpoint_prefix)
     try:
       if context.executing_eagerly():
         self._build_eager(save_path, build_save=False, build_restore=True)

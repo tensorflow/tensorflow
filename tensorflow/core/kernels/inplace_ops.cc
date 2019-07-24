@@ -416,6 +416,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
 
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_bool(CASE);
+    TF_CALL_string(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ",

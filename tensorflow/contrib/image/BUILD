@@ -111,6 +111,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "notap",  # b/136286905
+    ],
 )
 
 tf_custom_op_library(

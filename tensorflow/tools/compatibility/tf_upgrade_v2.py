@@ -629,6 +629,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.train.sdca_fprint",
         "tf.train.sdca_optimizer",
         "tf.train.sdca_shrink_l1",
+        "tf.data.experimental.TensorStructure",
+        "tf.data.experimental.SparseTensorStructure",
+        "tf.data.experimental.RaggedTensorStructure",
+        "tf.data.experimental.TensorArrayStructure",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -1204,6 +1208,15 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
     }
+
+    for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
+      warning = (
+          ast_edits.WARNING, (
+              "(Manual edit required) `{}` has been migrated to `{}` in "
+              "TensorFlow Addons. The API spec may have changed during the "
+              "migration. Please see https://github.com/tensorflow/addons "
+              "for more info.").format(symbol, replacement))
+      self.function_warnings[symbol] = warning
 
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {

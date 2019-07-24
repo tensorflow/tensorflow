@@ -17,9 +17,7 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -112,6 +110,7 @@ tf_cc_test(
     deps = [
         ":worker_session",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -269,17 +268,14 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
 
 cc_library(
     name = "worker_cache_wrapper",
     hdrs = ["worker_cache_wrapper.h"],
-    deps = [
-        ":worker_cache",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
+    deps = [":worker_cache"],
 )
 
 cc_library(
@@ -290,6 +286,7 @@ cc_library(
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],
@@ -412,7 +409,6 @@ cc_library(
     hdrs = ["master_env.h"],
     deps = [
         ":worker_cache",
-        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
     ],
@@ -490,16 +486,13 @@ cc_library(
     srcs = ["rpc_collective_executor_mgr.cc"],
     hdrs = ["rpc_collective_executor_mgr.h"],
     deps = [
-        ":base_rendezvous_mgr",
         ":collective_param_resolver_distributed",
         ":collective_rma_distributed",
         ":device_resolver_distributed",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -531,7 +524,6 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",  # protobuf::Any
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
@@ -549,6 +541,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -562,15 +555,11 @@ cc_library(
     srcs = ["collective_param_resolver_distributed.cc"],
     hdrs = ["collective_param_resolver_distributed.h"],
     deps = [
-        ":call_options",
         ":cancellable_call",
         ":device_resolver_distributed",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -616,9 +605,8 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

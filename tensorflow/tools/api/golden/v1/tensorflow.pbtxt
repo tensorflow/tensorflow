@@ -1021,6 +1021,10 @@ tf_module {
     argspec: "args=[\'control_inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "control_flow_v2_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "convert_to_tensor"
     argspec: "args=[\'value\', \'dtype\', \'name\', \'preferred_dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -1387,6 +1391,10 @@ tf_module {
   member_method {
     name: "global_variables_initializer"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "grad_pass_through"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gradients"
@@ -1866,7 +1874,7 @@ tf_module {
   }
   member_method {
     name: "reduce_join"
-    argspec: "args=[\'inputs\', \'axis\', \'keep_dims\', \'separator\', \'name\', \'reduction_indices\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'axis\', \'keep_dims\', \'separator\', \'name\', \'reduction_indices\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_logsumexp"

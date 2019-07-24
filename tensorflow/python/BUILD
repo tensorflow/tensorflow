@@ -12,11 +12,24 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/neural_structured_learning/keras:__pkg__",
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
+
+load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "tf_cuda_library", "tf_gen_op_wrapper_py", "py_test", "tf_py_test", "py_tests", "tf_py_build_info_genrule", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library", "tf_proto_library", "tf_proto_library_py", "tf_additional_lib_deps", "tf_additional_all_protos", "tf_protos_grappler", "tf_additional_cupti_test_flags")  # @unused
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps", "tf_additional_verbs_deps", "tf_additional_mpi_deps", "tf_additional_gdr_deps", "if_static")
+load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 package(
     default_visibility = visibility,
@@ -26,37 +39,6 @@ package(
 exports_files(["LICENSE"])
 
 exports_files(["platform/base.i"])
-
-load("//tensorflow:tensorflow.bzl", "if_not_v2")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_grappler")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
 
 py_library(
     name = "python",
@@ -132,6 +114,7 @@ py_library(
         ":cudnn_rnn_ops_gen",
         ":errors",
         ":framework",
+        ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":functional_ops",
         ":gradient_checker",
@@ -289,6 +272,7 @@ tf_py_test(
     tags = [
         "no_windows",
         "nomac",
+        "notap",  # TODO(b/137133525): enable after this is fixed.
     ],
 )
 
@@ -1345,6 +1329,40 @@ py_library(
 )
 
 py_library(
+    name = "framework_combinations",
+    srcs = ["framework/combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+        ":framework_test_combinations_lib",
+        ":tf2",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "framework_test_combinations_lib",
+    srcs = ["framework/test_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "test_combinations_test",
+    srcs = ["framework/test_combinations_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_combinations_lib",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
     name = "client_testlib",
     srcs = ["platform/test.py"],
     srcs_version = "PY2AND3",
@@ -1901,6 +1919,10 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/core:array_ops_op_lib",
     ],
 )
 
@@ -2515,7 +2537,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
-        ":util",
     ],
 )
 
@@ -2530,6 +2551,17 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "control_flow_v2_toggles",
+    srcs = ["ops/control_flow_v2_toggles.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_util",
+        ":framework_ops",
+        ":util",
     ],
 )
 
@@ -2552,6 +2584,7 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:function",
     ],
@@ -3228,7 +3261,6 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
-        "//tensorflow/python/eager:monitoring",
         "//third_party/py/numpy",
     ],
 )
@@ -3569,6 +3601,8 @@ py_library(
         ":math_ops",
         ":platform",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "@functools32_archive//:functools32",
+        "@opt_einsum_archive//:opt_einsum",
     ],
 )
 
@@ -3932,6 +3966,7 @@ cuda_py_test(
         ":framework_test_lib",
         ":functional_ops",
         ":gradients",
+        ":init_ops",
         ":list_ops",
         ":math_grad",
         ":math_ops",
@@ -3939,6 +3974,7 @@ cuda_py_test(
         ":nn_ops",
         ":platform_test",
         ":state_grad",
+        ":state_ops",
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
@@ -4429,12 +4465,12 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        "//tensorflow/tools/compatibility:all_renames_v2",
-        "//third_party/py/numpy",
-        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
+        "@com_google_protobuf//:protobuf_python",
+        "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
+        "//tensorflow/tools/compatibility:all_renames_v2",
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
 # Placeholder for intenal nest_test comments.
@@ -4559,9 +4595,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "deprecation_wrapper_test",
+    name = "module_wrapper_test",
     size = "small",
-    srcs = ["util/deprecation_wrapper_test.py"],
+    srcs = ["util/module_wrapper_test.py"],
     additional_deps = [
         ":client_testlib",
         ":util",
@@ -4769,6 +4805,7 @@ tf_py_wrap_cc(
         "util/tfprof.i",
         "util/transform_graph.i",
         "util/util.i",
+        "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
@@ -4815,6 +4852,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
@@ -5076,6 +5114,7 @@ tf_py_test(
     grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
+        "nofwdcompat",  # b/137641346
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
@@ -5218,6 +5257,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    args = tf_additional_cupti_test_flags(),
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
 )
 
@@ -5311,6 +5351,21 @@ tf_py_test(
         ":lib",
         ":util",
     ],
+)
+
+tf_py_test(
+    name = "tf_record_multiprocessing_test",
+    size = "small",
+    srcs = ["lib/io/tf_record_multiprocessing_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":errors",
+        ":lib",
+        ":util",
+    ],
+    # The multiprocessing module behaves differently on windows, so we
+    # disable this test on windows.
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -6335,6 +6390,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
     xla_enable_strict_auto_jit = False,
@@ -6451,37 +6507,39 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_test(
-    name = "layout_optimizer_test",
-    size = "medium",
-    srcs = [
-        "grappler/layout_optimizer_test.py",
-    ],
-    additional_deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":array_ops",
-        ":constant_op",
-        ":dtypes",
-        ":functional_ops",
-        ":math_ops",
-        ":nn",
-        ":ops",
-        ":random_ops",
-        ":state_ops",
-        ":tf_cluster",
-        ":tf_optimizer",
-        ":training",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
-    shard_count = 10,
-    tags = [
-        "grappler",
-    ],
-    # This test will not run on XLA because it primarily tests the TF Classic flow.
-    xla_enable_strict_auto_jit = False,
-)
+# TODO(b/131764887) Remove once LayoutOptimizer is swapped out with GenericLayoutOptimizer.
+#
+# cuda_py_test(
+#     name = "layout_optimizer_test",
+#     size = "medium",
+#     srcs = [
+#         "grappler/layout_optimizer_test.py",
+#     ],
+#     additional_deps = [
+#         ":client_testlib",
+#         ":framework_for_generated_wrappers",
+#         ":array_ops",
+#         ":constant_op",
+#         ":dtypes",
+#         ":functional_ops",
+#         ":math_ops",
+#         ":nn",
+#         ":ops",
+#         ":random_ops",
+#         ":state_ops",
+#         ":tf_cluster",
+#         ":tf_optimizer",
+#         ":training",
+#         "//third_party/py/numpy",
+#         "//tensorflow/core:protos_all_py",
+#     ],
+#     shard_count = 10,
+#     tags = [
+#         "grappler",
+#     ],
+#     # This test will not run on XLA because it primarily tests the TF Classic flow.
+#     xla_enable_strict_auto_jit = False,
+# )
 
 py_library(
     name = "cost_analyzer",
@@ -6697,8 +6755,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":framework_combinations",
         ":tf2",
-        "//tensorflow/python/distribute:combinations",
     ],
 )
 

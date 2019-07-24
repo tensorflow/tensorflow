@@ -7,16 +7,16 @@ http_archive(
     sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
     strip_prefix = "rules_closure-308b05b2419edb5c8ee0471b67a40403df940149",
     urls = [
-        "http://mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",
+        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",
         "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
     ],
 )
 
-# Load tf_workspace() before loading dependencies for other repository so that
-# dependencies like com_google_protobuf won't be overridden.
-load("//tensorflow:workspace.bzl", "tf_workspace")
+# Load tf_repositories() before loading dependencies for other repository so
+# that dependencies like com_google_protobuf won't be overridden.
+load("//tensorflow:workspace.bzl", "tf_repositories")
 # Please add all new TensorFlow dependencies in workspace.bzl.
-tf_workspace()
+tf_repositories()
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 

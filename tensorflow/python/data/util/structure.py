@@ -31,44 +31,35 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Define backwards-compatiblity wrappers for using TypeSpec and its subclasses
-# to replace Structure and its subclasses.  Note that the constructor argument
-# order is different in many cases -- in particular, TypeSpec follows TensorSpec
-# and uses the order (shape, dtype); but most Structure subclasses use the
-# order (dtype, shape).
-#
-# TODO(b/133606651) Update tf.data to use TypeSpec directly, and then remove
-# these compatibility wrappers.
-
-
-Structure = type_spec.TypeSpec
-
-
 # pylint: disable=invalid-name
-
-
-@tf_export("data.experimental.TensorStructure")
-def TensorStructure(dtype, shape):
+@tf_export(v1=["data.experimental.TensorStructure"])
+@deprecation.deprecated(None, "Use `tf.TensorSpec` instead.")
+def _TensorStructure(dtype, shape):
   return tensor_spec.TensorSpec(shape, dtype)
 
 
-@tf_export("data.experimental.SparseTensorStructure")
-def SparseTensorStructure(dtype, shape):
+@tf_export(v1=["data.experimental.SparseTensorStructure"])
+@deprecation.deprecated(None, "Use `tf.SparseTensorSpec` instead.")
+def _SparseTensorStructure(dtype, shape):
   return sparse_tensor.SparseTensorSpec(shape, dtype)
 
 
-@tf_export("data.experimental.TensorArrayStructure")
-def TensorArrayStructure(dtype, element_shape, dynamic_size, infer_shape):
+@tf_export(v1=["data.experimental.TensorArrayStructure"])
+@deprecation.deprecated(None, "Use `tf.TensorArraySpec` instead.")
+def _TensorArrayStructure(dtype, element_shape, dynamic_size, infer_shape):
   return tensor_array_ops.TensorArraySpec(element_shape, dtype,
                                           dynamic_size, infer_shape)
 
 
-@tf_export("data.experimental.RaggedTensorStructure")
-def RaggedTensorStructure(dtype, shape, ragged_rank):
+@tf_export(v1=["data.experimental.RaggedTensorStructure"])
+@deprecation.deprecated(None, "Use `tf.RaggedTensorSpec` instead.")
+def _RaggedTensorStructure(dtype, shape, ragged_rank):
   return ragged_tensor.RaggedTensorSpec(shape, dtype, ragged_rank)
+# pylint: enable=invalid-name
 
 
 # TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
@@ -91,7 +82,7 @@ def normalize_element(element):
   """
   components = nest.flatten(element)
   normalized_components = []
-  with ops.name_scope("normalize_tensors"):
+  with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, t in enumerate(components):
@@ -103,8 +94,7 @@ def normalize_element(element):
             ragged_tensor.convert_to_tensor_or_ragged_tensor(
                 t, name="component_%d" % i))
       elif isinstance(
-          spec,
-          (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetStructure)):
+          spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
         normalized_components.append(t)
       elif isinstance(t, composite_tensor.CompositeTensor):
         normalized_components.append(t)
@@ -150,14 +140,14 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
     if isinstance(flat_class, type_spec.TypeSpec):
       flat_ret.append(flat_class)
     elif issubclass(flat_class, sparse_tensor.SparseTensor):
-      flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
+      flat_ret.append(sparse_tensor.SparseTensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, ops.Tensor):
-      flat_ret.append(TensorStructure(flat_type, flat_shape))
+      flat_ret.append(tensor_spec.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
       # We sneaked the dynamic_size and infer_shape into the legacy shape.
       flat_ret.append(
-          TensorArrayStructure(
-              flat_type, flat_shape[2:],
+          tensor_array_ops.TensorArraySpec(
+              flat_shape[2:], flat_type,
               dynamic_size=tensor_shape.dimension_value(flat_shape[0]),
               infer_shape=tensor_shape.dimension_value(flat_shape[1])))
     else:
@@ -168,164 +158,6 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
           "Could not build a structure for output class %r" % (flat_class,))
 
   return nest.pack_sequence_as(output_classes, flat_ret)
-
-
-# TODO(b/133606651) Once cl/253160704 is part of tf-nightly, remove the use
-# of NestedStructure from TFF and remove this class.
-@tf_export("data.experimental.NestedStructure")
-class NestedStructure(type_spec.BatchableTypeSpec):
-  """Represents a nested structure in which each leaf is a `TypeSpec`."""
-
-  # NOTE(edloper): This class makes extensive use of non-public TypeSpec
-  # methods, so we disable the protected-access lint warning once here.
-  # pylint: disable=protected-access
-
-  __slots__ = ["_nested_structure", "_flat_nested_structure",
-               "__flat_tensor_specs"]
-
-  def __init__(self, nested_structure):
-    self._nested_structure = nested_structure
-    self._flat_nested_structure = nest.flatten(nested_structure)
-    self.__flat_tensor_specs = []
-    for s in self._flat_nested_structure:
-      if not isinstance(s, type_spec.TypeSpec):
-        raise TypeError("nested_structure must be a (potentially nested) tuple "
-                        "or dictionary of TypeSpec objects.")
-      self.__flat_tensor_specs.extend(s._flat_tensor_specs)
-
-  value_type = property(lambda self: type(self._nested_structure))
-
-  def _serialize(self):
-    return self._nested_structure
-
-  @classmethod
-  def _deserialize(cls, nested_structure):
-    return cls(nested_structure)
-
-  def most_specific_compatible_type(self, other):
-    if type(self) is not type(other):
-      raise ValueError("Incompatible types")
-    return self._deserialize(
-        nest.map_structure(lambda a, b: a.most_specific_compatible_type(b),
-                           self._nested_structure, other._nested_structure))
-
-  def __eq__(self, other):
-    if not isinstance(other, NestedStructure):
-      return False
-    try:
-      nest.assert_same_structure(self._nested_structure,
-                                 other._nested_structure)
-    except (ValueError, TypeError):
-      return False
-    return (nest.flatten(self._nested_structure) ==
-            nest.flatten(other._nested_structure))
-
-  def __hash__(self):
-    return hash(tuple(nest.flatten(self._nested_structure)))
-
-  def is_compatible_with(self, other):
-    if not isinstance(other, NestedStructure):
-      return False
-    try:
-      nest.assert_same_structure(self._nested_structure,
-                                 other._nested_structure)
-    except (ValueError, TypeError):
-      return False
-
-    # pylint: disable=g-complex-comprehension
-    return all(
-        substructure.is_compatible_with(other_substructure)
-        for substructure, other_substructure in zip(
-            nest.flatten(self._nested_structure),
-            nest.flatten(other._nested_structure)))
-
-  _component_specs = property(lambda self: self._nested_structure)
-  _flat_tensor_specs = property(lambda self: self.__flat_tensor_specs)
-
-  def _to_components(self, value):
-    return nest.map_structure_up_to(
-        self._nested_structure, lambda t, v: t._to_components(v),
-        self._nested_structure, value)
-
-  def _from_components(self, value):
-    return nest.map_structure_up_to(
-        self._nested_structure, lambda t, v: t._from_components(v),
-        self._nested_structure, value)
-
-  def _to_tensor_list(self, value):
-    return self.__value_to_tensors(
-        value, lambda struct, val: struct._to_tensor_list(val))
-
-  def _to_batched_tensor_list(self, value):
-    return self.__value_to_tensors(
-        value, lambda struct, val: struct._to_batched_tensor_list(val))
-
-  def __value_to_tensors(self, value, to_tensor_list_fn):
-    ret = []
-
-    try:
-      flat_value = nest.flatten_up_to(self._nested_structure, value)
-    except (ValueError, TypeError):
-      raise ValueError("The value %r is not compatible with the nested "
-                       "structure %r." % (value, self._nested_structure))
-
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      if not structure.is_compatible_with(
-          type_spec.type_spec_from_value(sub_value)):
-        raise ValueError("Component value %r is not compatible with the nested "
-                         "structure %r." % (sub_value, structure))
-      ret.extend(to_tensor_list_fn(structure, sub_value))
-    return ret
-
-  def _from_tensor_list(self, value):
-    return self.__tensors_to_value(
-        value, lambda struct, val: struct._from_tensor_list(val))
-
-  def _from_compatible_tensor_list(self, value):
-    return self.__tensors_to_value(
-        value, lambda struct, val: struct._from_compatible_tensor_list(val))
-
-  def __tensors_to_value(self, flat_value, from_tensor_list_fn):
-    if len(flat_value) != len(self._flat_tensor_specs):
-      raise ValueError("Expected %d flat values in NestedStructure but got %d."
-                       % (len(self._flat_tensor_specs), len(flat_value)))
-    flat_ret = []
-    i = 0
-    for structure in self._flat_nested_structure:
-      num_flat_values = len(structure._flat_tensor_specs)
-      sub_value = flat_value[i:i + num_flat_values]
-      flat_ret.append(from_tensor_list_fn(structure, sub_value))
-      i += num_flat_values
-
-    return nest.pack_sequence_as(self._nested_structure, flat_ret)
-
-  @staticmethod
-  def from_value(value):
-    flat_nested_structure = [
-        type_spec.type_spec_from_value(sub_value)
-        for sub_value in nest.flatten(value)
-    ]
-    return NestedStructure(nest.pack_sequence_as(value, flat_nested_structure))
-
-  def _to_legacy_output_types(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_types(), self._nested_structure)
-
-  def _to_legacy_output_shapes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_shapes(), self._nested_structure)
-
-  def _to_legacy_output_classes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_classes(), self._nested_structure)
-
-  def _batch(self, batch_size):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._batch(batch_size), self._nested_structure))
-
-  def _unbatch(self):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._unbatch(), self._nested_structure))
 
 
 def _from_tensor_list_helper(decode_fn, element_spec, tensor_list):
@@ -436,10 +268,7 @@ def get_flat_tensor_shapes(element_spec):
   Returns:
     A list `tf.TensorShapes`s for the element tensor representation.
   """
-
-  # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_shapes,
-                          nest.flatten(element_spec), [])
+  return [spec.shape for spec in get_flat_tensor_specs(element_spec)]
 
 
 def get_flat_tensor_types(element_spec):
@@ -452,10 +281,7 @@ def get_flat_tensor_types(element_spec):
   Returns:
     A list `tf.DType`s for the element tensor representation.
   """
-
-  # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_types,
-                          nest.flatten(element_spec), [])
+  return [spec.dtype for spec in get_flat_tensor_specs(element_spec)]
 
 
 def _to_tensor_list_helper(encode_fn, element_spec, element):

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -298,6 +299,7 @@ class IteratorContext {
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
+          cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -321,7 +323,7 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::NumSchedulableCPUs();
+        runner_threadpool_size = port::MaxParallelism();
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
@@ -342,6 +344,9 @@ class IteratorContext {
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+
+    // The CancellationManager to be used to cancel execution of ops.
+    CancellationManager* cancellation_manager;
 
     // Interface to operating system functionality.
     Env* env = nullptr;
@@ -385,6 +390,10 @@ class IteratorContext {
 
   std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
     return params_.allocator_getter;
+  }
+
+  CancellationManager* cancellation_manager() {
+    return params_.cancellation_manager;
   }
 
   Env* env() const { return params_.env; }
@@ -471,6 +480,12 @@ class IteratorBase {
   // If no more outputs remain in this iterator's range, `true` will
   // be stored in `*end_of_sequence`, and the content of
   // `*out_tensors` will be undefined.
+  //
+  // Implementations should never return `OutOfRange` error. If at end of
+  // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
+  // Internally raised `OutOfRange` errors that do not imply end of sequence
+  // should be converted to a different error type before being propagated to
+  // the caller.
   //
   // This method is thread-safe.
   //
@@ -877,6 +892,35 @@ class DatasetIterator : public DatasetBaseIterator {
   const DatasetType* const typed_dataset_;  // Not owned.
 };
 
+template <typename T>
+Status ParseScalarArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name, T* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a scalar");
+  }
+  *output = argument_t->scalar<T>()();
+  return Status::OK();
+}
+
+template <typename T>
+Status ParseVectorArgument(OpKernelContext* ctx,
+                           const StringPiece& argument_name,
+                           std::vector<T>* output) {
+  const Tensor* argument_t;
+  TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+  if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+    return errors::InvalidArgument(argument_name, " must be a vector");
+  }
+  int size = argument_t->vec<T>().size();
+  output->reserve(size);
+  for (int i = 0; i < size; ++i) {
+    output->push_back(argument_t->vec<T>()(i));
+  }
+  return Status::OK();
+}
+
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
@@ -888,35 +932,6 @@ class DatasetOpKernel : public OpKernel {
   // Subclasses should implement this method. It will be called during Compute
   // execution.
   virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
-
-  template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a scalar");
-    }
-    *output = argument_t->scalar<T>()();
-    return Status::OK();
-  }
-
-  template <typename T>
-  Status ParseVectorArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name,
-                             std::vector<T>* output) {
-    const Tensor* argument_t;
-    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
-    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
-      return errors::InvalidArgument(argument_name, " must be a vector");
-    }
-    int size = argument_t->vec<T>().size();
-    output->reserve(size);
-    for (int i = 0; i < size; ++i) {
-      output->push_back(argument_t->vec<T>()(i));
-    }
-    return Status::OK();
-  }
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

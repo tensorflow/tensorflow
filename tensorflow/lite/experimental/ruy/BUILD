@@ -13,6 +13,11 @@ package(
 )
 
 cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
+)
+
+cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     deps = ["//tensorflow/lite/kernels/internal:compatibility"],
@@ -60,6 +65,7 @@ cc_library(
     ],
     deps = [
         ":opt_set",
+        ":platform",
         ":time",
     ],
 )
@@ -158,12 +164,17 @@ cc_library(
     hdrs = [
         "detect_dotprod.h",
     ],
+    visibility = ruy_visibility(),
 )
 
 cc_library(
     name = "path",
     hdrs = ["path.h"],
-    deps = [":size_util"],
+    visibility = ruy_visibility(),
+    deps = [
+        ":platform",
+        ":size_util",
+    ],
 )
 
 cc_library(
@@ -205,12 +216,14 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
+    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
 cc_library(
     name = "spec",
     hdrs = ["spec.h"],
+    visibility = ruy_visibility(),
     deps = [":matrix"],
 )
 
@@ -235,13 +248,15 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":path",
+        ":platform",
     ],
 )
 
 cc_library(
     name = "kernel",
     srcs = [
-        "kernel.cc",
+        "kernel_arm32.cc",
+        "kernel_arm64.cc",
     ],
     hdrs = [
         "kernel.h",
@@ -251,6 +266,7 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":size_util",
         ":spec",
         ":tune",
@@ -262,7 +278,7 @@ cc_library(
 cc_library(
     name = "pack",
     srcs = [
-        "pack.cc",
+        "pack_arm.cc",
     ],
     hdrs = [
         "pack.h",
@@ -272,7 +288,28 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":spec",
+        ":tune",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "trmul",
+    srcs = ["trmul.cc"],
+    hdrs = ["trmul.h"],
+    deps = [
+        ":allocator",
+        ":block_map",
+        ":common",
+        ":context",
+        ":internal_matrix",
+        ":kernel",
+        ":opt_set",
+        ":pack",
+        ":thread_pool",
+        ":trace",
         ":tune",
         "@gemmlowp//:profiler",
     ],
@@ -284,30 +321,21 @@ cc_library(
     srcs = [
         "dispatch.h",
         "prepack.h",
-        "trmul.cc",
-        "trmul.h",
     ],
     hdrs = [
-        "matrix.h",
-        "path.h",
         "ruy.h",
         "ruy_advanced.h",
     ],
     visibility = ruy_visibility(),
     deps = [
-        ":allocator",
-        ":block_map",
         ":check_macros",
         ":common",
         ":context",
-        ":internal_matrix",
-        ":kernel",
-        ":opt_set",
-        ":pack",
+        ":matrix",
+        ":path",
         ":size_util",
         ":spec",
-        ":thread_pool",
-        ":trace",
+        ":trmul",
         ":tune",
         "@gemmlowp//:profiler",
     ],
@@ -356,6 +384,7 @@ cc_library(
         ":ruy",
         ":time",
         "@com_google_googletest//:gtest",
+        ":platform",
     ] + ruy_test_ext_deps(),
 )
 

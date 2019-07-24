@@ -59,10 +59,11 @@ limitations under the License.
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
+%rename("%s") TFE_Py_RegisterForwardGradientFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
-%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_ExecuteCancelable;
 %rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
@@ -74,6 +75,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
@@ -94,6 +96,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
 %rename("%s") TFE_Py_EnableInteractivePythonLogging;
+%rename("%s") TFE_Py_SetEagerContext;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
@@ -158,6 +161,10 @@ limitations under the License.
 %rename("%s") TFE_MonitoringNewSampler2;
 %rename("%s") TFE_MonitoringDeleteSampler2;
 %rename("%s") TFE_MonitoringGetCellSampler2;
+%rename("%s") TFE_NewCancellationManager;
+%rename("%s") TFE_CancellationManagerIsCancelled;
+%rename("%s") TFE_CancellationManagerStartCancel;
+%rename("%s") TFE_DeleteCancellationManager;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -349,6 +356,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
+        tensorflow::Safe_PyObjectPtr name_attr(
+            PyObject_GetAttrString(elem, "name"));
         SWIG_exception_fail(
             SWIG_TypeError,
             tensorflow::strings::StrCat(
@@ -363,8 +372,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
-                .c_str());
+                TFE_GetPythonString(name_attr.get())
+            ).c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,

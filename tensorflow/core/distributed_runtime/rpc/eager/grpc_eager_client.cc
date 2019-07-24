@@ -64,7 +64,7 @@ class GrpcEagerClient : public EagerClient {
       enqueue_dispatchers_.erase(request->context_id());
     } else {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
-                 << " does not seems to exist.";
+                 << " does not seem to exist.";
     }
   }
 
@@ -147,10 +147,13 @@ class GrpcEagerClientCache : public EagerClientCache {
             void* tag;
             bool ok;
             while (completion_queue_.Next(&tag, &ok)) {
+              VLOG(4) << "GrpcEagerClientThread got next tag";
               GrpcClientCQTag* callback_tag =
                   static_cast<GrpcClientCQTag*>(tag);
               callback_tag->OnCompleted(ok);
+              VLOG(4) << "GrpcEagerClientThread blocking for next tag";
             }
+            VLOG(4) << "GrpcEagerClientThread exiting";
           }));
     }
 

@@ -49,6 +49,7 @@ constexpr char kCeilOp[] = "Ceil";
 constexpr char kBatchOp[] = "BatchDataset";
 constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
@@ -267,12 +268,12 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
 
   // Set the `num_parallel_calls` input argument
   if (old_map_node.op() != kMapOp) {
-    // `num_parallel_calls` = `kAutoTune`
+    // `num_parallel_calls` = `kAutotune`
     // TODO(rachelim): Evaluate the performance of other potential
     // transformations to `num_parallel_calls`,
     // e.g. ceil(old num_parallel_calls // batch size)
     auto autotune_val = graph_utils::AddScalarConstNode(
-        static_cast<int32>(data::model::kAutoTune), graph);
+        static_cast<int32>(data::model::kAutotune), graph);
     map_node.add_input(autotune_val->name());
   }
 
@@ -302,11 +303,11 @@ Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
   // `input_dataset`
   prefetch_node.add_input(new_map_node.name());
 
-  // `buffer_size` == `kAutoTune`
+  // `buffer_size` == `kAutotune`
   // TODO(rachelim): Evaluate the performance of other potential transformations
   // to `buffer_size`, e.g. ceil(old buffer size // batch size)
   auto autotune_val = graph_utils::AddScalarConstNode(
-      static_cast<int64>(data::model::kAutoTune), graph);
+      static_cast<int64>(data::model::kAutotune), graph);
   prefetch_node.add_input(autotune_val->name());
 
   for (const auto& key : {"output_shapes", "output_types"}) {
@@ -456,7 +457,7 @@ bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
   const NodeDef*& map_node = *map_node_output;
   const NodeDef*& input_node = *input_node_output;
 
-  if (node.op() == kExperimentalMapAndBatchOp) {
+  if (node.op() == kMapAndBatchOp || node.op() == kExperimentalMapAndBatchOp) {
     batch_node = &node;
     map_node = &node;
   } else if (node.op() == kBatchOp || node.op() == kBatchV2Op) {
@@ -559,7 +560,8 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
       original_branch.push_back(optional_prefetch_node);
       vectorized_branch.push_back(optional_new_prefetch_node);
     }
-    if (batch_node->op() != kExperimentalMapAndBatchOp) {
+    if (batch_node->op() != kMapAndBatchOp &&
+        batch_node->op() != kExperimentalMapAndBatchOp) {
       original_branch.push_back(batch_node);
     }
 

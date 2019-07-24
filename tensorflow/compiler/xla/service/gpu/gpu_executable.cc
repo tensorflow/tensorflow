@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
@@ -36,8 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -50,18 +51,17 @@ using tensorflow::tracing::ScopedAnnotation;
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    const string& ptx, const std::vector<uint8>& cubin,
-    std::pair<int, int> compute_capability,
-    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    const string& text, const std::vector<uint8>& binary,
+    GpuVersion gpu_version, std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      ptx_(ptx),
-      cubin_(cubin),
-      compute_capability_(compute_capability),
+      text_(text),
+      binary_(binary),
+      gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
   CHECK(has_module() && assignment_);
@@ -89,26 +89,51 @@ void GpuExecutable::ComputeThunkAnnotations() {
   }
 }
 
+Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
+    const ServiceExecutableRunOptions* run_options) {
+  se::Stream* main_stream = run_options->stream();
+
+  stream_executor::PlatformKind platform_kind =
+      main_stream->parent()->platform_kind();
+  if (platform_kind == stream_executor::PlatformKind::kROCm) {
+    int stream_isa_version;
+    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
+        &stream_isa_version);
+    GpuVersion amd_isa_version = stream_isa_version;
+    TF_RET_CHECK(amd_isa_version == gpu_version_)
+        << "AMDGPU GCN ISA version mismatch; expected {"
+        << absl::get<int>(gpu_version_) << ", but was " << stream_isa_version;
+  } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
+    std::pair<int, int> stream_compute_compatibility;
+    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+        &stream_compute_compatibility.first,
+        &stream_compute_compatibility.second);
+    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+        << "Compute capability mismatch; expected {"
+        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
+        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
+        << stream_compute_compatibility.first << ", "
+        << stream_compute_compatibility.second << "}";
+  } else {
+    return InternalError("Unknown platform: %d", platform_kind);
+  }
+
+  return Status::OK();
+}
+
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
+  TF_RETURN_IF_ERROR(
+      CheckCompatibilityWithServiceExecutableRunOptions(run_options));
   GpuDebugInfoManager::Get()->OnModuleStart(module().name());
   auto cleanup = MakeCleanup(
       [&]() { GpuDebugInfoManager::Get()->OnModuleStop(module().name()); });
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
-
-  std::pair<int, int> stream_compute_compatibility;
-  executor->GetDeviceDescription().cuda_compute_capability(
-      &stream_compute_compatibility.first,
-      &stream_compute_compatibility.second);
-  TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
-      << "Compute capability mismatch; expected {" << compute_capability_.first
-      << ", " << compute_capability_.second << "}, but was {"
-      << stream_compute_compatibility.first << ", "
-      << stream_compute_compatibility.second << "}";
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -210,10 +235,10 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  if (!cubin().empty()) {
-    module_spec.AddCudaCubinInMemory(cubin());
+  if (!binary().empty()) {
+    module_spec.AddCudaCubinInMemory(binary());
   }
-  module_spec.AddCudaPtxInMemory(ptx().c_str());
+  module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
@@ -256,7 +281,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
     HloExecutionProfile* hlo_execution_profile, bool block_host_until_done) {
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
-  if (GetRootPointsToSet().IsAmbiguous()) {
+  if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
@@ -327,20 +352,20 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
-        const auto& sources = this->GetRootPointsToSet().element(index);
+        const auto& sources = this->GetRootValueSet().element(index);
         // The points-to set is unambiguous so the set should be a
         // singleton. That is, we know exactly which instruction
         // produced the array at this element.
-        CHECK_EQ(1, sources.size());
-        auto src_hlo = sources[0]->instruction();
+        CHECK_EQ(1, sources.values().size());
+        auto src_hlo = sources.values()[0]->instruction();
 
-        VLOG(4) << "Looking at: " << sources[0];
+        VLOG(4) << "Looking at: " << sources.values()[0];
 
         // The source instruction should have a non-parameter buffer
         // assigned.
-        TF_ASSIGN_OR_RETURN(
-            const BufferAllocation::Slice slice,
-            this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
+        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                            this->assignment_->GetUniqueSlice(
+                                src_hlo, sources.values()[0]->index()));
 
         se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
@@ -381,8 +406,11 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
+  // TODO(b/134086343): ExecuteOnStream should not be async according to the
+  // documentation, instead ExecuteAsyncOnStream should be used.
   return Execute(run_options, arguments, hlo_execution_profile,
-                 /*block_host_until_done=*/true);
+                 /*block_host_until_done=*/
+                 !run_options->allocator()->AllowsAsynchronousDeallocation());
 }
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
@@ -395,8 +423,8 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return Execute(run_options, arguments, nullptr, block_host_until_done);
 }
 
-const PointsToSet& GpuExecutable::GetRootPointsToSet() const {
-  return assignment_->points_to_analysis().GetPointsToSet(
+const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
+  return assignment_->dataflow_analysis().GetInstructionValueSet(
       module().entry_computation()->root_instruction());
 }
 

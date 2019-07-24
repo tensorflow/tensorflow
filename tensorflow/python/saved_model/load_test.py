@@ -35,6 +35,8 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -51,6 +53,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -1544,7 +1547,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      v.aggregation)
-    root = util.Checkpoint(v=v)
+    root = tracking.AutoTrackable()
+    root.v = v
     root = self.cycle(root, cycles)
     self.assertEqual(False, root.v.trainable)
     self.assertEqual(variables.VariableSynchronization.NONE,
@@ -1677,6 +1681,83 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         [initial_output],
         list(model.signatures["serving_default"](model_input).values()))
+
+  def test_destroy_resource(self, cycles):
+
+    def get_handle():
+      return gen_resource_variable_ops.var_handle_op(
+          shape=tensor_shape.as_shape([]),
+          dtype=dtypes.float32,
+          shared_name="my_var_name",
+          name="my_var",
+          container="my_container")
+
+    class MyResourceDeleter(tracking.CapturableResourceDeleter):
+
+      def destroy_resource(self):
+        handle = get_handle()
+        gen_resource_variable_ops.destroy_resource_op(
+            handle, ignore_lookup_error=True)
+
+    class MyResource(tracking.TrackableResource):
+
+      def __init__(self):
+        # Set the resource deleter, so when the resource object goes out of
+        # scope it will be deleted automatically.
+        super(MyResource, self).__init__(deleter=MyResourceDeleter())
+
+      def _create_resource(self):
+        return get_handle()
+
+      def _initialize(self):
+        gen_resource_variable_ops.assign_variable_op(
+            self.resource_handle, 1.0, name="assign")
+
+    class MyModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.resource = MyResource()
+
+      @def_function.function(input_signature=[])
+      def increase(self):
+        handle = self.resource.resource_handle
+        gen_resource_variable_ops.assign_add_variable_op(
+            handle, 10.0, name="assign_add")
+        return gen_resource_variable_ops.read_variable_op(
+            handle, dtypes.float32)
+
+    root = MyModel()
+    imported = self.cycle(root, cycles)
+    self.assertEqual(11, imported.increase().numpy())  # Create the resource.
+
+    handle = imported.resource.resource_handle
+
+    # Delete the imported SaveModel. Since we explicitly set the deleter, it
+    # should destroy the resource automatically.
+    del imported
+
+    # Try to destroy the resource again, should fail.
+    with self.assertRaisesRegexp(errors.NotFoundError,
+                                 r"Resource .* does not exist."):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=False)
+
+  def test_function_called_as_operation(self, cycles):
+
+    @framework_function.Defun(dtypes.float32)
+    def inner(x):
+      return x + 1.
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
+    def outer(x):
+      return inner(x)
+
+    root = module.Module()
+    root.f = outer
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(2., imported.f(constant_op.constant(1.)))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

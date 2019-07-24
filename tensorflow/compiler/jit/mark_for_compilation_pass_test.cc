@@ -89,7 +89,6 @@ absl::flat_hash_map<string, std::vector<string>> GetClusterSets(
 
 TEST(XlaCompilationTest, Chains) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a =
@@ -115,7 +114,6 @@ TEST(XlaCompilationTest, Chains) {
 
 TEST(XlaCompilationTest, UncompilableCycles) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -136,7 +134,6 @@ TEST(XlaCompilationTest, UncompilableCycles) {
 
 TEST(XlaCompilationTest, CompilableCycles) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -158,7 +155,6 @@ TEST(XlaCompilationTest, CompilableCycles) {
 
 TEST(XlaCompilationTest, StringUnsupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp(
@@ -178,7 +174,6 @@ TEST(XlaCompilationTest, StringUnsupported) {
 
 TEST(XlaCompilationTest, HalfSupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Tensor t(DT_HALF, TensorShape());
@@ -254,7 +249,6 @@ TEST(XlaCompilationTest, FunctionCalls) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
 
   std::unique_ptr<Graph> graph(new Graph(&flib_def));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately, &flib_def);
     Node* a =
@@ -292,7 +286,6 @@ TEST(XlaCompilationTest, CallXlaDeviceFuncWithResourceOp) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
 
   std::unique_ptr<Graph> graph(new Graph(&flib_def));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately, &flib_def);
     Node* resource =
@@ -382,7 +375,6 @@ REGISTER_OP_GRADIENT("Unsupported", UnsupportedGrad);
 
 TEST(XlaCompilationTest, SymbolicGradients) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a =
@@ -450,7 +442,6 @@ TEST(XlaCompilationTest, Loops) {
 
 TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -484,7 +475,6 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
 
 TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -513,7 +503,6 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
 
 TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -556,7 +545,6 @@ TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
 
 TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -790,7 +778,6 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
 
 TEST(XlaCompilationTest, Retval) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
@@ -1718,6 +1705,28 @@ TEST(XlaCompilationTest, DontClusterTheSpecialIdentityDrivingConstsInLoop) {
   auto clusters = GetClusters(*graph);
 
   EXPECT_EQ(clusters["identity"], "");
+}
+
+TEST(XlaCompilationTest, UnsupportedEnterExitPattern) {
+  // Regression test for b/32350199, where the autoclustering code introduced a
+  // deadlock in a graph containing a while loop.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
+  auto enter_0 = ops::internal::Enter(root.WithOpName("enter_a"), a, "frame");
+  auto exit_0 = ops::internal::Exit(root.WithOpName("exit_a"), enter_0);
+  auto tanh = ops::Tanh(root.WithOpName("tanh"), exit_0);
+  auto enter_1 =
+      ops::internal::Enter(root.WithOpName("enter_1"), tanh, "frame");
+  auto exit_1 = ops::internal::Exit(root.WithOpName("exit_1"), enter_1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+
+  // Nothing should be compiled.
+  EXPECT_EQ(0, clusters.size());
 }
 
 }  // namespace

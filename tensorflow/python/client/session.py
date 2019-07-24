@@ -648,6 +648,10 @@ class BaseSession(SessionInterface):
       try:
         self._target = compat.as_bytes(target)
       except TypeError:
+        if isinstance(target, config_pb2.ConfigProto):
+          raise TypeError('target must be a string, but got %s.'
+                          ' Did you do "Session(config)" instead of'
+                          ' "Session(config=config)"?' % type(target))
         raise TypeError('target must be a string, but got %s' % type(target))
     else:
       self._target = None

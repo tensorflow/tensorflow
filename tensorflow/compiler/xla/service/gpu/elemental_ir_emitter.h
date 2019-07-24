@@ -56,9 +56,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;
 
-  StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) override;
-
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
@@ -91,6 +88,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
+                                        llvm::Value* value) override;
 
   llvm::Value* EmitThreadId() override;
 

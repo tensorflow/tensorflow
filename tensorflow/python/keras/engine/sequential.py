@@ -106,6 +106,8 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      if not isinstance(layers, (list, tuple)):
+        layers = [layers]
       tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)
@@ -334,6 +336,14 @@ class Sequential(training.Model):
           'class_name': layer.__class__.__name__,
           'config': layer.get_config()
       })
+    # When constructed using an `InputLayer` the first non-input layer may not
+    # have the shape information to reconstruct `Sequential` as a graph network.
+    if (self._is_graph_network and layer_configs and
+        'batch_input_shape' not in layer_configs[0]['config'] and
+        isinstance(self._layers[0], input_layer.InputLayer)):
+      batch_input_shape = self._layers[0]._batch_input_shape
+      layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
+
     config = {
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)

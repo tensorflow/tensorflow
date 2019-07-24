@@ -1489,6 +1489,19 @@ tf.print('abc')
       _, unused_report, unused_errors, actual = self._upgrade(text)
       self.assertEqual(actual, expected)
 
+  def testStructure(self):
+    for (text, expected) in [
+        ("tf.data.experimental.DatasetStructure", "tf.data.DatasetSpec"),
+        ("tf.data.experimental.OptionalStructure", "tf.OptionalSpec"),
+        ("tf.data.experimental.RaggedTensorStructure", "tf.RaggedTensorSpec"),
+        ("tf.data.experimental.SparseTensorStructure", "tf.SparseTensorSpec"),
+        ("tf.data.experimental.Structure", "tf.TypeSpec"),
+        ("tf.data.experimental.TensorArrayStructure", "tf.TensorArraySpec"),
+        ("tf.data.experimental.TensorStructure", "tf.TensorSpec"),
+    ]:
+      _, unused_report, unused_errors, actual = self._upgrade(text)
+      self.assertEqual(actual, expected)
+
   def testMapAndBatch(self):
     suffix = ".data.experimental.map_and_batch_with_legacy_function(args)"
     text = "tf" + suffix
@@ -2022,6 +2035,22 @@ def _log_prob(self, x):
         "l1=l, l2=m, num_loss_partitions=n, num_inner_iterations=o)")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def test_contrib_to_addons_move(self):
+    small_mapping = {
+        "tf.contrib.layers.poincare_normalize":
+            "tfa.layers.PoincareNormalize",
+        "tf.contrib.layers.maxout":
+            "tfa.layers.Maxout",
+        "tf.contrib.layers.group_norm":
+            "tfa.layers.GroupNormalization",
+        "tf.contrib.layers.instance_norm":
+            "tfa.layers.InstanceNormalization",
+    }
+    for symbol, replacement in small_mapping.items():
+      text = "{}('stuff', *args, **kwargs)".format(symbol)
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn(replacement, report)
 
   def testXlaExperimental(self):
     text = "tf.xla.experimental.jit_scope(0)"

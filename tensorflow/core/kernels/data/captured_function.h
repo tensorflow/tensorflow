@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -93,7 +94,12 @@ class InstantiatedCapturedFunction {
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
+      CancellationManager* cancellation_manager,
       CapturedFunction* captured_func);
+
+  // Determines whether a rendezvous object should be created when running the
+  // instantiated function.
+  bool ShouldCreateRendezvous() const;
 
   friend class CapturedFunction;
 
@@ -101,6 +107,7 @@ class InstantiatedCapturedFunction {
   const FunctionLibraryRuntime::Handle f_handle_;
   const DataTypeVector ret_types_;
   std::function<void(std::function<void()>)> captured_runner_;
+  CancellationManager* cancellation_manager_;
   CapturedFunction* const captured_func_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);

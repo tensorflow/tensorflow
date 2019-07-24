@@ -69,6 +69,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
     ],
@@ -172,6 +173,8 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
+        "engine/training_v2.py",
+        "engine/training_v2_utils.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",
@@ -185,6 +188,7 @@ py_library(
         ":callbacks",
         ":callbacks_v1",
         ":constraints",
+        ":data_adapter",
         ":engine_utils",
         ":initializers",
         ":input_spec",
@@ -214,6 +218,18 @@ py_library(
 )
 
 py_library(
+    name = "data_adapter",
+    srcs = ["engine/data_adapter.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":engine_utils",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "input_spec",
     srcs = ["engine/input_spec.py"],
     srcs_version = "PY2AND3",
@@ -237,6 +253,8 @@ py_library(
         ":constraints",
         ":engine_utils",
         ":regularizers",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -256,7 +274,10 @@ py_library(
 
 py_library(
     name = "base_preprocessing_layer",
-    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs = [
+        "engine/base_preprocessing_layer.py",
+        "engine/base_preprocessing_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
@@ -456,6 +477,8 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
+        "layers/preprocessing/normalization.py",
+        "layers/preprocessing/normalization_v1.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
@@ -486,6 +509,17 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "preprocessing_test_utils",
+    srcs = ["layers/preprocessing/preprocessing_test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -536,7 +570,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 12,
+    shard_count = 16,
     tags = ["notsan"],
 )
 
@@ -562,6 +596,20 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "data_adapter_test",
+    size = "small",
+    srcs = ["engine/data_adapter_test.py"],
+    additional_deps = [
+        ":data_adapter",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -664,6 +712,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+)
+
+tf_py_test(
+    name = "temporal_sample_weights_correctness_test",
+    size = "medium",
+    srcs = ["temporal_sample_weights_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 12,
 )
 
 tf_py_test(
@@ -771,6 +831,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -895,6 +958,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "preprocessing_normalization_test",
+    size = "small",
+    srcs = ["layers/preprocessing/normalization_test.py"],
+    additional_deps = [
+        ":keras",
+        ":preprocessing_test_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    main = "normalization_test.py",
+)
+
+tf_py_test(
     name = "simplernn_test",
     size = "medium",
     srcs = ["layers/simplernn_test.py"],
@@ -989,7 +1065,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1004,7 +1080,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 8,
+    shard_count = 12,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -1158,7 +1234,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -1168,7 +1243,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = ["no_windows"],  # b/135752236
 )
 
@@ -1237,6 +1312,9 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1339,7 +1417,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    tags = ["notsan"],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1350,6 +1431,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1366,6 +1450,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
@@ -1381,6 +1466,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1396,7 +1484,10 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1419,7 +1510,7 @@ tf_py_test(
 
 tf_py_test(
     name = "feature_columns_integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/feature_columns_integration_test.py"],
     additional_deps = [
         ":keras",
@@ -1428,7 +1519,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
     ],
-    tags = ["notsan"],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1443,6 +1537,7 @@ tf_py_test(
     ],
     tags = [
         "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
@@ -1474,7 +1569,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1504,6 +1602,7 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no-internal-py3",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1518,7 +1617,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1532,6 +1634,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
 )
 
 tf_py_test(
@@ -1545,6 +1650,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "no_windows",
+    ],
 )
 
 tf_py_test(
@@ -1556,6 +1664,9 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1679,11 +1790,13 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )

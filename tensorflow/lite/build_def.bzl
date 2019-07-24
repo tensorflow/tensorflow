@@ -115,10 +115,12 @@ def tflite_jni_binary(
     linkopts = linkopts + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+            "-Wl,-install_name,@rpath/" + name,
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            "-Wl,-soname," + name,
         ],
     })
     native.cc_binary(
@@ -233,6 +235,7 @@ def generated_test_models():
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
+        "cast",
         "ceil",
         "concat",
         "constant",
@@ -327,6 +330,7 @@ def generated_test_models():
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_np_style",
         "sub",
         "tile",
         "topk",
@@ -352,14 +356,14 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
-
+    elif conversion_mode == "forward-compat":
+        return []
     return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-flex", ""]
+    return ["toco-flex", "forward-compat", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -401,11 +405,10 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """
     toco = "//tensorflow/lite/toco:toco"
     flags = ""
-    if conversion_mode:
-        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
-        # if conversion_mode == "pb2lite":
-        #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_converter_errors --run_with_flex"
+    if conversion_mode == "toco-flex":
+        flags += " --ignore_converter_errors --run_with_flex"
+    elif conversion_mode == "forward-compat":
+        flags += " --make_forward_compat_test"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
@@ -495,6 +498,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
+            python_version = "PY2",
             tags = [
                 "no_oss",
                 "no_windows",

@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
@@ -264,11 +265,39 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt.beta_1  # pylint: disable=pointless-statement
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
     # Test that attributes defined by OptimizerV2 subclasses are not exposed in
-    # LossScaleOptimizer.
-    with self.assertRaises(AttributeError):
+    # LossScaleOptimizer, and that the error message is sensible.
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'epsilon'"):
       opt.epsilon  # pylint: disable=pointless-statement
-    with self.assertRaises(AttributeError):
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'beta_1'"):
       opt.beta_1  # pylint: disable=pointless-statement
+
+  @test_util.run_in_graph_and_eager_modes
+  def testApplyGradientsGetsUnwrappedTensors(self):
+    # Tests that gradients passed to apply_gradients are not wrapped in a
+    # DistributionStrategy wrapper, such as PerReplica, but instead are raw
+    # Tensors. Optimizer subclasses that override apply_gradients() expect raw
+    # Tensors, even though the base Optimizer can handle PerReplica gradients.
+
+    outer_self = self
+
+    class MyOptimizer(gradient_descent.SGD):
+
+      def apply_gradients(self, grads_and_vars, name=None):
+        for grad, _ in grads_and_vars:
+          outer_self.assertIsInstance(grad, ops.Tensor)
+        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+
+    with create_mirrored_strategy().scope() as strategy:
+      var = variables.Variable([5.0])
+      opt = MyOptimizer(learning_rate=1.0)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=1)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      strategy.experimental_run(run_fn)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes

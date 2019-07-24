@@ -61,6 +61,11 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     return state.worker;
   }
 
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return wrapped_->GetEagerClientCache(eager_client_cache);
+  }
+
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {
     // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
   }

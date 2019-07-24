@@ -247,6 +247,18 @@ class Metric(Layer):
                  initializer=None,
                  dtype=None):
     """Adds state variable. Only for use by subclasses."""
+    from tensorflow.python.distribute import distribution_strategy_context as ds_context  # pylint:disable=g-import-not-at-top
+    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
+
+    if ds_context.has_strategy():
+      strategy = ds_context.get_strategy()
+    else:
+      strategy = None
+
+    # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
+    if distributed_training_utils.is_tpu_strategy(strategy):
+      synchronization = tf_variables.VariableSynchronization.ON_WRITE
+
     return super(Metric, self).add_weight(
         name=name,
         shape=shape,

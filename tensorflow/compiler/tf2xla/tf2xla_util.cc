@@ -504,8 +504,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
     if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() ==
-                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      TF_RET_CHECK(sharding.value().type() == xla::OpSharding::MAXIMAL);
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {
         core = core_annotation;
@@ -764,7 +763,7 @@ Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld) {
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
     } else if (n->type_string() == "While") {
       TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));

@@ -63,7 +63,7 @@ the same way with eager and graph execution.
   each replica are aggregated together before updating the model variables. This
   is in contrast to _asynchronous_, or _async_ training, where each replica
   updates the model variables independently. You may also have replicas
-  partitioned into gropus which are in sync within each group but async between
+  partitioned into groups which are in sync within each group but async between
   groups.
 * _Parameter servers_: These are machines that hold a single copy of
   parameters/variables, used by some strategies (right now just
@@ -109,6 +109,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -341,12 +342,13 @@ class InputReplicationMode(enum.Enum):
 class InputContext(object):
   """A class wrapping information needed by an input function.
 
-  This is a context class that is passed to the user's input fn and contains
-  information about the compute replicas and input pipelines. The number of
-  compute replicas (in sync training) helps compute per input pipeline batch
-  size from the desired global batch size. Input pipeline information can be
-  used to return a different subset of the input in each input pipeline (for
-  e.g. shard the input pipeline, use a different input source etc).
+  This is a context class that is passed to the user's input function and
+  contains information about the compute replicas and input pipelines. The
+  number of compute replicas (in sync training) helps compute the local batch
+  size from the desired global batch size for each replica. The input pipeline
+  information can be used to return a different subset of the input in each
+  replica (for e.g. shard the input pipeline, use a different input
+  source etc).
   """
 
   def __init__(self,
@@ -567,16 +569,26 @@ class Strategy(object):
           input_fn, replication_mode=replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a `tf.data.Dataset` for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
 
+    Note that you will likely need to use `experimental_distribute_dataset`
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
+
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
 
     Returns:
       A `tf.data.Dataset` representing `numpy_input`.
@@ -594,6 +606,32 @@ class Strategy(object):
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
+    The returned distributed dataset can be iterated over similar to how
+    regular datasets can.
+    NOTE: Currently, the user cannot add any more transformations to a
+    distributed dataset.
+
+    The following is an example:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", "/a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
+
+    We will assume that the input dataset is batched by the
+    global batch size. With this assumption, we will make a best effort to
+    divide each batch across all the replicas (one or more workers).
+
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
     ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
@@ -610,29 +648,16 @@ class Strategy(object):
     if this method of sharding is selected. In this case, consider using
     `experimental_distribute_datasets_from_function` instead.
 
-    You can disable dataset distribution using the `auto_shard` option in
-    `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the `auto_shard`
+    option in `tf.data.experimental.DistributeOptions`.
 
-    Within each host, we will also split the data among all the worker devices
-    (if more than one a present), and this will happen even if multi-worker
-    sharding is disabled using the method above.
+    Within each worker, we will also split the data among all the worker
+    devices (if more than one a present), and this will happen even if
+    multi-worker sharding is disabled using the method above.
 
-    The following is an example:
-
-    ```python
-    strategy = tf.distribute.MirroredStrategy()
-
-    # Create a dataset
-    dataset = dataset_ops.Dataset.TFRecordDataset([
-      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
-
-    # Distribute that dataset
-    dist_dataset = strategy.experimental_distribute_dataset(dataset)
-    # Iterate over the distributed dataset
-    for x in dist_dataset:
-      # process dataset elements
-      strategy.experimental_run_v2(train_step, args=(x,))
-    ```
+    If the above batch splitting and dataset sharding logic is undesirable,
+    please use `experimental_distribute_datasets_from_function` instead, which
+    does not do any automatic splitting or sharding.
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -647,8 +672,6 @@ class Strategy(object):
   def experimental_distribute_datasets_from_function(self, dataset_fn):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
-    Note: This API can only be used in eager mode.
-
     `dataset_fn` will be called once for each worker in the strategy. Each
     replica on that worker will dequeue one batch of inputs from the local
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
@@ -660,6 +683,9 @@ class Strategy(object):
     fallback behavior in `experimental_distribute_dataset`). In cases where the
     dataset is infinite, this sharding can be done by creating dataset replicas
     that differ only in their random seed.
+    `experimental_distribute_dataset` may also sometimes fail to split the
+    batch across replicas on a worker. In that case, this method can be used
+    where that limitation does not exist.
 
     The `dataset_fn` should take an `tf.distribute.InputContext` instance where
     information about batching and input replication can be accessed:
@@ -690,14 +716,11 @@ class Strategy(object):
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    if ops.executing_eagerly_outside_functions():
-      return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-          dataset_fn)
-    raise RuntimeError("`experimental_distribute_datasets_from_function` is "  # pylint: disable=g-doc-exception
-                       "only supported when eager execution is enabled.")
+    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+        dataset_fn)
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
-    """Runs ops in `fn` on each replica, with the given arguments.
+    """Run `fn` on each replica, with the given arguments.
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
@@ -997,16 +1020,27 @@ class StrategyV1(Strategy):
         input_fn, replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input, session=None):
-    """Makes a dataset for input provided via a numpy array.
+    """Makes a tf.data.Dataset for input provided via a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
     the input.
 
+    Note that you will likely need to use
+    tf.distribute.Strategy.experimental_distribute_dataset
+    with the returned dataset to further distribute it with the strategy.
+
+    Example:
+    ```
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    ```
+
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
       session: (TensorFlow v1.x graph execution only) A session used for
         initialization.
 
@@ -1539,6 +1573,7 @@ class StrategyExtendedV2(object):
 
   @property
   def experimental_require_static_shapes(self):
+    """Returns `True` if static shape is required; `False` otherwise."""
     return self._require_static_shapes
 
   @property
@@ -1569,6 +1604,8 @@ class StrategyExtendedV2(object):
     Args:
       var_list: The list of variables being optimized, needed with the
         default `tf.distribute.Strategy`.
+    Returns:
+      A sequence of devices for non-slot variables.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1637,7 +1674,9 @@ class StrategyExtendedV1(StrategyExtendedV2):
                                          iterator,
                                          iterations=1,
                                          initial_loop_values=None):
-    """Run `fn` with input from `iterator` for `iterations` times.
+    """DEPRECATED: please use `experimental_run_v2` instead.
+
+    Run `fn` with input from `iterator` for `iterations` times.
 
     This method can be used to run a step function for training a number of
     times using input from a dataset.
@@ -1797,8 +1836,9 @@ class StrategyExtendedV1(StrategyExtendedV2):
 class ReplicaContext(object):
   """`tf.distribute.Strategy` API when in a replica context.
 
-  To be used inside your replicated step function, such as in a
-  `tf.distribute.Strategy.experimental_run_v2` call.
+  You can use `tf.distribute.get_replica_context` to get an instance of
+  `ReplicaContext`. This should be inside your replicated step function, such
+  as in a `tf.distribute.Strategy.experimental_run_v2` call.
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
@@ -1830,8 +1870,8 @@ class ReplicaContext(object):
     """Merge args across replicas and run `merge_fn` in a cross-replica context.
 
     This allows communication and coordination when there are multiple calls
-    to a model function triggered by a call to
-    `strategy.experimental_run_v2(model_fn, ...)`.
+    to the step_fn triggered by a call to
+    `strategy.experimental_run_v2(step_fn, ...)`.
 
     See `tf.distribute.Strategy.experimental_run_v2` for an
     explanation.
@@ -1845,7 +1885,7 @@ class ReplicaContext(object):
     ```
 
     Args:
-      merge_fn: function that joins arguments from threads that are given as
+      merge_fn: Function that joins arguments from threads that are given as
         PerReplica. It accepts `tf.distribute.Strategy` object as
         the first argument.
       args: List or tuple with positional per-thread arguments for `merge_fn`.
@@ -1876,7 +1916,12 @@ class ReplicaContext(object):
 
   @property
   def replica_id_in_sync_group(self):
-    """Which replica is being defined, from 0 to `num_replicas_in_sync - 1`."""
+    """Returns the id of the replica being defined.
+
+    This identifies the replica that is part of a sync group. Currently we
+    assume that all sync groups contain the same number of replicas. The value
+    of the replica id can range from 0 to `num_replica_in_sync` - 1.
+    """
     require_replica_context(self)
     return self._replica_id_in_sync_group
 
@@ -1892,7 +1937,7 @@ class ReplicaContext(object):
     return (device_util.current(),)
 
   def all_reduce(self, reduce_op, value):
-    """All-reduces the given `Tensor` nest across replicas.
+    """All-reduces the given `value Tensor` nest across replicas.
 
     If `all_reduce` is called in any replica, it must be called in all replicas.
     The nested structure and `Tensor` shapes must be identical in all replicas.
@@ -1900,7 +1945,7 @@ class ReplicaContext(object):
     IMPORTANT: The ordering of communications must be identical in all replicas.
 
     Example with two replicas:
-      Replica 0 `value`: {'a': 1, 'b': [40,  1]}
+      Replica 0 `value`: {'a': 1, 'b': [40, 1]}
       Replica 1 `value`: {'a': 3, 'b': [ 2, 98]}
 
       If `reduce_op` == `SUM`:
@@ -1911,8 +1956,8 @@ class ReplicaContext(object):
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value: The nested structure of `Tensor`s to all-reduced.
-        The structure must be compatible with `tf.nest`.
+      value: The nested structure of `Tensor`s to all-reduce. The structure must
+        be compatible with `tf.nest`.
 
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
@@ -1948,7 +1993,8 @@ class ReplicaContext(object):
 
 def _batch_reduce_destination(x):
   """Returns the destinations for batch all-reduce."""
-  if isinstance(x, ops.Tensor):  # One device strategies.
+  if isinstance(x, ops.Tensor):
+    # If this is a one device strategy.
     return x.device
   else:
     return x
@@ -2032,6 +2078,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def _experimental_distribute_dataset(self, dataset):
     return dataset
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    return dataset_fn(InputContext())
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)
@@ -2168,3 +2217,84 @@ _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pyl
 _pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access
 _get_default_replica_mode = (
     distribution_strategy_context._get_default_replica_mode)  # pylint: disable=protected-access
+
+
+def create_mirrored_variable(  # pylint: disable=missing-docstring
+    strategy, device_map, logical_device, real_mirrored_creator, mirrored_cls,
+    sync_on_read_cls, *args, **kwargs):
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  collections = kwargs.pop("collections", None)
+  if collections is None:
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  synchronization = kwargs.get(
+      "synchronization", variable_scope.VariableSynchronization.ON_WRITE)
+
+  if synchronization == variable_scope.VariableSynchronization.NONE:
+    raise ValueError(
+        "`NONE` variable synchronization mode is not supported with `Mirrored` "
+        "distribution strategy. Please change the `synchronization` for "
+        "variable: " + kwargs["name"])
+  elif synchronization == variable_scope.VariableSynchronization.ON_READ:
+    is_sync_on_read = True
+  elif synchronization in (
+      variable_scope.VariableSynchronization.ON_WRITE,
+      variable_scope.VariableSynchronization.AUTO):
+    # `AUTO` synchronization defaults to `ON_WRITE`.
+    is_sync_on_read = False
+  else:
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
+
+  aggregation = kwargs.pop(
+      "aggregation", variable_scope.VariableAggregation.NONE)
+
+  if aggregation not in (
+      variable_scope.VariableAggregation.NONE,
+      variable_scope.VariableAggregation.SUM,
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_REPLICA):
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
+
+  # Ignore user-specified caching device, not needed for mirrored variables.
+  kwargs.pop("caching_device", None)
+
+  # TODO(josh11b,apassos): It would be better if variable initialization
+  # was never recorded on the tape instead of having to do this manually
+  # here.
+  with tape.stop_recording():
+    devices = device_map.logical_to_actual_devices(logical_device)
+    value_list = real_mirrored_creator(devices, *args, **kwargs)
+
+    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
+
+    result = var_cls(
+        strategy, device_map, value_list, aggregation,
+        logical_device=logical_device)
+
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
+  if not eager_context.executing_eagerly():
+    g = ops.get_default_graph()
+    # If "trainable" is True, next_creator() will add the member variables
+    # to the TRAINABLE_VARIABLES collection, so we manually remove
+    # them and replace with the MirroredVariable. We can't set
+    # "trainable" to False for next_creator() since that causes functions
+    # like implicit_gradients to skip those variables.
+    if kwargs.get("trainable", True):
+      collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+      for v in value_list:
+        if v in l:
+          l.remove(v)
+    g.add_to_collections(collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
+  return result

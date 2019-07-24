@@ -17,18 +17,45 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.TFRecordWriter")
 class TFRecordWriter(object):
-  """Writes data to a TFRecord file."""
+  """Writes data to a TFRecord file.
+
+  To write a `dataset` to a single TFRecord file:
+
+  ```python
+  dataset = ... # dataset to be written
+  writer = tf.data.experimental.TFRecordWriter(PATH)
+  writer.write(dataset)
+  ```
+
+  To shard a `dataset` across multiple TFRecord files:
+
+  ```python
+  dataset = ... # dataset to be written
+
+  def reduce_func(key, dataset):
+    filename = tf.strings.join([PATH_PREFIX, tf.strings.as_string(key)])
+    writer = tf.data.experimental.TFRecordWriter(filename)
+    writer.write(dataset.map(lambda _, x: x))
+    return tf.data.Dataset.from_tensors(filename)
+
+  dataset = dataset.enumerate()
+  dataset = dataset.apply(tf.data.experimental.group_by_window(
+    lambda i, _: i % NUM_SHARDS, reduce_func, tf.int64.max
+  ))
+  ```
+  """
 
   def __init__(self, filename, compression_type=None):
     self._filename = ops.convert_to_tensor(
@@ -51,11 +78,15 @@ class TFRecordWriter(object):
     if not isinstance(dataset, dataset_ops.DatasetV2):
       raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
     if not dataset_ops.get_structure(dataset).is_compatible_with(
-        structure.TensorStructure(dtypes.string, [])):
+        tensor_spec.TensorSpec([], dtypes.string)):
       raise TypeError(
           "`dataset` must produce scalar `DT_STRING` tensors whereas it "
           "produces shape {0} and types {1}".format(
               dataset_ops.get_legacy_output_shapes(dataset),
               dataset_ops.get_legacy_output_types(dataset)))
-    return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
-        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+    if compat.forward_compatible(2019, 8, 3):
+      return gen_experimental_dataset_ops.dataset_to_tf_record(
+          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+    else:
+      return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
+          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access

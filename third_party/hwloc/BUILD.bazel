@@ -40,17 +40,18 @@ _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
 }
 
+_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = dict(_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS)
+
+_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update({
+    "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
+})
+
 template_rule(
     name = "include_hwloc_autogen_config_h",
     src = "include/hwloc/autogen/config.h.in",
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": dict(
-            _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
-            **{
-                "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
-            }
-        ),
+        "@org_tensorflow//tensorflow:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
 )

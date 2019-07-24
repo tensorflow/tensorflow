@@ -41,8 +41,7 @@ ops = LazyLoader(
     "tensorflow.python.framework.ops")
 
 
-# TODO(b/133606651) Deprecate the tf.data.experimental.Structure endpoint.
-@tf_export("TypeSpec", "data.experimental.Structure")
+@tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 @six.add_metaclass(abc.ABCMeta)
 class TypeSpec(object):
   """Specifies a TensorFlow value type.
@@ -50,6 +49,13 @@ class TypeSpec(object):
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
   by TensorFlow APIs.  Concrete subclasses, such as `tf.TensorSpec` and
   `tf.RaggedTensorSpec`, are used to describe different value types.
+
+  For example, `tf.function`'s `input_signature` argument accepts a list
+  (or nested structure) of `TypeSpec`s.
+
+  Creating new subclasses of TypeSpec (outside of TensorFlow core) is not
+  currently supported.  In particular, we may make breaking changes to the
+  private methods and properties defined by this base class.
   """
   # === Subclassing ===
   #
@@ -225,20 +231,6 @@ class TypeSpec(object):
   def _flat_tensor_specs(self):
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
     return nest.flatten(self._component_specs, expand_composites=True)
-
-  # TODO(b/133606651) Remove this attribute once code in tf.data has been
-  # refactored to use _flat_tensor_specs instead.
-  @property
-  def _flat_shapes(self):
-    """The `tf.TensorShape`s for the tensor list encoding."""
-    return [spec.shape for spec in self._flat_tensor_specs]
-
-  # TODO(b/133606651) Remove this attribute once code in tf.data has been
-  # refactored to use _flat_tensor_specs instead.
-  @property
-  def _flat_types(self):
-    """The `tf.DType`s for the tensor list encoding."""
-    return [spec.dtype for spec in self._flat_tensor_specs]
 
   # === Serialization for types ===
 
@@ -511,7 +503,7 @@ def _type_spec_from_value(value):
   # type spec that captures the type accurately (unlike the `convert_to_tensor`
   # fallback).
   if isinstance(value, list) and value:
-    subspecs = [type_spec_from_value(v) for v in value]
+    subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
       merged_subspec = subspecs[0]
       try:
