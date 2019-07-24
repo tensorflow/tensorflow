@@ -75,6 +75,34 @@ class SymbolExposedTwiceError(Exception):
   pass
 
 
+def format_import(source_module_name, source_name, dest_name):
+  """Formats import statement.
+
+  Args:
+    source_module_name: (string) Source module to import from.
+    source_name: (string) Source symbol name to import.
+    dest_name: (string) Destination alias name.
+
+  Returns:
+    An import statement string.
+  """
+  if _LAZY_LOADING:
+    return "  '%s': ('%s', '%s')," % (dest_name, source_module_name,
+                                      source_name)
+  else:
+    if source_module_name:
+      if source_name == dest_name:
+        return 'from %s import %s' % (source_module_name, source_name)
+      else:
+        return 'from %s import %s as %s' % (source_module_name, source_name,
+                                            dest_name)
+    else:
+      if source_name == dest_name:
+        return 'import %s' % source_name
+      else:
+        return 'import %s as %s' % (source_name, dest_name)
+
+
 def get_canonical_import(import_set):
   """Obtain one single import from a set of possible sources of a symbol.
 
@@ -105,7 +133,7 @@ def get_canonical_import(import_set):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package, api_version, lazy_loading=_LAZY_LOADING):
+  def __init__(self, output_package, api_version):
     self._output_package = output_package
     # Maps API module to API symbol name to set of tuples of the form
     # (module name, priority).
@@ -117,9 +145,6 @@ class _ModuleInitCodeBuilder(object):
     # Names that start with underscore in the root module.
     self._underscore_names_in_root = []
     self._api_version = api_version
-    # Controls whether or not exported symbols are lazily loaded or statically
-    # imported.
-    self._lazy_loading = lazy_loading
 
   def _check_already_imported(self, symbol_id, api_name):
     if (api_name in self._dest_import_to_id and
@@ -146,7 +171,7 @@ class _ModuleInitCodeBuilder(object):
       SymbolExposedTwiceError: Raised when an import with the same
         dest_name has already been added to dest_module_name.
     """
-    import_str = self.format_import(source_module_name, source_name, dest_name)
+    import_str = format_import(source_module_name, source_name, dest_name)
 
     # Check if we are trying to expose two different symbols with same name.
     full_api_name = dest_name
@@ -186,7 +211,7 @@ class _ModuleInitCodeBuilder(object):
           submodule = module_split[submodule_index-1]
           parent_module += '.' + submodule if parent_module else submodule
         import_from = self._output_package
-        if self._lazy_loading:
+        if _LAZY_LOADING:
           import_from += '.' + '.'.join(module_split[:submodule_index + 1])
           self.add_import(
               symbol=None,
@@ -222,7 +247,7 @@ class _ModuleInitCodeBuilder(object):
           get_canonical_import(imports)
           for _, imports in dest_name_to_imports.items()
       ]
-      if self._lazy_loading:
+      if _LAZY_LOADING:
         module_text_map[
             dest_module] = _LAZY_LOADING_MODULE_TEXT_TEMPLATE % '\n'.join(
                 sorted(imports_list))
@@ -233,7 +258,7 @@ class _ModuleInitCodeBuilder(object):
     # from it using * import. Don't need this for lazy_loading because the
     # underscore symbols are already included in __all__ when passed in and
     # handled by TFModuleWrapper.
-    if not self._lazy_loading:
+    if not _LAZY_LOADING:
       underscore_names_str = ', '.join(
           '\'%s\'' % name for name in self._underscore_names_in_root)
 
@@ -250,10 +275,9 @@ __all__.extend([_s for _s in _names_with_underscore])
         if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
           deprecation = 'True'
       # Workaround to make sure not load lite from lite/__init__.py
-      if (not dest_module and 'lite' in self._module_imports
-          and self._lazy_loading):
+      if not dest_module and 'lite' in self._module_imports and _LAZY_LOADING:
         has_lite = 'True'
-      if self._lazy_loading:
+      if _LAZY_LOADING:
         public_apis_name = '_PUBLIC_APIS'
       else:
         public_apis_name = 'None'
@@ -261,33 +285,6 @@ __all__.extend([_s for _s in _names_with_underscore])
           dest_module, public_apis_name, deprecation, has_lite)
 
     return module_text_map, footer_text_map
-
-  def format_import(self, source_module_name, source_name, dest_name):
-    """Formats import statement.
-
-    Args:
-      source_module_name: (string) Source module to import from.
-      source_name: (string) Source symbol name to import.
-      dest_name: (string) Destination alias name.
-
-    Returns:
-      An import statement string.
-    """
-    if self._lazy_loading:
-      return "  '%s': ('%s', '%s')," % (dest_name, source_module_name,
-                                        source_name)
-    else:
-      if source_module_name:
-        if source_name == dest_name:
-          return 'from %s import %s' % (source_module_name, source_name)
-        else:
-          return 'from %s import %s as %s' % (source_module_name, source_name,
-                                              dest_name)
-      else:
-        if source_name == dest_name:
-          return 'import %s' % source_name
-        else:
-          return 'import %s as %s' % (source_name, dest_name)
 
 
 def _get_name_and_module(full_name):
@@ -371,8 +368,7 @@ def get_api_init_text(packages,
                       output_package,
                       api_name,
                       api_version,
-                      compat_api_versions=None,
-                      lazy_loading=_LAZY_LOADING):
+                      compat_api_versions=None):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -384,8 +380,6 @@ def get_api_init_text(packages,
     api_version: API version you want to generate (1 or 2).
     compat_api_versions: Additional API versions to generate under compat/
       directory.
-    lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
-      produced and if `False`, static imports are used.
 
   Returns:
     A dictionary where
@@ -395,8 +389,7 @@ def get_api_init_text(packages,
   """
   if compat_api_versions is None:
     compat_api_versions = []
-  module_code_builder = _ModuleInitCodeBuilder(
-      output_package, api_version, lazy_loading)
+  module_code_builder = _ModuleInitCodeBuilder(output_package, api_version)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -498,8 +491,7 @@ def get_module_docstring(module_name, package, api_name):
 
 def create_api_files(output_files, packages, root_init_template, output_dir,
                      output_package, api_name, api_version,
-                     compat_api_versions, compat_init_templates,
-                     lazy_loading=_LAZY_LOADING):
+                     compat_api_versions, compat_init_templates):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -517,8 +509,6 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       subdirectory.
     compat_init_templates: List of templates for top level compat init files
       in the same order as compat_api_versions.
-    lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
-      produced and if `False`, static imports are used.
 
   Raises:
     ValueError: if output_files list is missing a required file.
@@ -536,7 +526,7 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
 
   module_text_map, deprecation_footer_map = get_api_init_text(
       packages, output_package, api_name,
-      api_version, compat_api_versions, lazy_loading)
+      api_version, compat_api_versions)
 
   # Add imports to output files.
   missing_output_files = []
@@ -631,14 +621,6 @@ def main():
   parser.add_argument(
       '--output_package', default='tensorflow', type=str,
       help='Root output package.')
-  parser.add_argument(
-      '--loading', default='default', type=str,
-      choices=['lazy', 'static', 'default'],
-      help='Controls how the generated __init__.py file loads the exported '
-           'symbols. \'lazy\' means the symbols are loaded when first used. '
-           '\'static\' means all exported symbols are loaded in the '
-           '__init__.py file. \'default\' uses the value of the '
-           '_LAZY_LOADING constant in create_python_api.py.')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -653,23 +635,9 @@ def main():
   packages = args.packages.split(',')
   for package in packages:
     importlib.import_module(package)
-
-  # Determine if the modules shall be loaded lazily or statically.
-  if args.loading == 'default':
-    lazy_loading = _LAZY_LOADING
-  elif args.loading == 'lazy':
-    lazy_loading = True
-  elif args.loading == 'static':
-    lazy_loading = False
-  else:
-    # This should never happen (tm).
-    raise ValueError('Invalid value for --loading flag: %s. Must be one of '
-                     'lazy, static, default.' % args.loading)
-
   create_api_files(outputs, packages, args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
-                   args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading)
+                   args.compat_apiversions, args.compat_init_templates)
 
 
 if __name__ == '__main__':
