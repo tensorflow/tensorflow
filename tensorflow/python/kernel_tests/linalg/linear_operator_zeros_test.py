@@ -37,7 +37,7 @@ class LinearOperatorZerosTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return [
         "cholesky", "log_abs_det", "inverse", "solve", "solve_with_broadcast"]
 
