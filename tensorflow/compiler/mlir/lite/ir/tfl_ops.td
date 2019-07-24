@@ -134,9 +134,12 @@ class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
     : TFL_QuantizedType<"Uniform",
                         [8, zero_pt, smantissa, sexp, -128, 127], 1>;
 
-// 8-bits quantized types. The definitions can be used to specify tensor types.
+// General uniform quantized types. The definitions can be used to specify
+// operand's tensor types.
 def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
+def TFL_QUI32 : TFL_QuantizedType<"Uniform", [32], 0>;
+def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
 
 //===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
@@ -579,7 +582,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let arguments = (ins
     TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$input,
     TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, TFL_QI8, TFL_QUI8]>:$bias,
+    TFL_TensorOfOrNone<[F32, TFL_QI32, TFL_QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
     TFL_FullyConnectedOptionsWeightFormatAttr:$weights_format,
@@ -1094,6 +1097,24 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
 
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+}
+
+def TFL_LogisticOp: TFL_Op<"logistic", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    TFL_FixedResultScale<TFL_Int8UniformQuantizedType<-128, 390625, -8>>,
+    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 390625, -8>>]> {
+  let summary = "Logistic operator";
+
+  let description = [{
+    Computes element-wise Sigmoid of input
+  }];
+
+  let arguments = (ins TensorOf<[AnyFloat, TFL_QI8, TFL_QUI8]>:$x);
+
+  let results = (outs TensorOf<[AnyFloat, TFL_QI8, TFL_QUI8]>:$y);
 }
 
 def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1672,24 +1693,6 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, TFL_NoQuantizableResult]> {
   }]>;
 
   let hasOptions = 1;
-}
-
-def TFL_LogisticOp: TFL_Op<"logistic", [
-    NoSideEffect,
-    SameOperandsAndResultType,
-    // zero_point = 0
-    // scale = 1. / (max_value + 1)
-    TFL_FixedResultScale<TFL_Int8UniformQuantizedType<-128, 390625, -8>>,
-    TFL_FixedResultScale<TFL_UInt8UniformQuantizedType<0, 390625, -8>>]> {
-  let summary = "Logistic operator";
-
-  let description = [{
-    Computes element-wise Sigmoid of input
-  }];
-
-  let arguments = (ins TFL_FpTensor:$x);
-
-  let results = (outs TFL_FpTensor:$y);
 }
 
 // TODO(jpienaar): Flesh this out.
