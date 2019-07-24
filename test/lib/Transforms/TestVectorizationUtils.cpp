@@ -149,6 +149,7 @@ static NestedPattern patternTestSlicingOps() {
 
 void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
   auto f = getFunction();
+  outs << "\n" << f.getName();
 
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
@@ -164,6 +165,8 @@ void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
 
 void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
   auto f = getFunction();
+  outs << "\n" << f.getName();
+
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
@@ -178,6 +181,7 @@ void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
 
 void VectorizerTestPass::testSlicing(llvm::raw_ostream &outs) {
   auto f = getFunction();
+  outs << "\n" << f.getName();
 
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
