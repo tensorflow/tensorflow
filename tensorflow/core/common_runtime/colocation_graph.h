@@ -80,7 +80,7 @@ class Member {
   // not update this. Else returns true and updates this.
   bool MergeSupportedDevices(const Member& other);
 
-  Status AssignDevice(const Node& node, bool allow_soft_placement);
+  Status AssignDevice(const Node& node);
 
   // Limit the possible devices of this (should be a root) to the device
   // specifications in `devices`.
