@@ -154,8 +154,9 @@ class SliceTest(test.TestCase):
       a = constant_op.constant(inp, shape=input_shape, dtype=dtypes.float32)
 
       filter_shape = [2, 2, 2, 3, 3]
-      filters = np.random.rand(*filter_shape).astype("f") 
-      conv_t = nn_ops.conv3d(a, filter=filters, strides=[1, 1, 1, 1, 1], padding="SAME")
+      filters = np.random.rand(*filter_shape).astype("f")
+      conv_t = nn_ops.conv3d(a, filter=filters, strides=[1, 1, 1, 1, 1],
+                             padding="SAME")
       slice_t = array_ops.slice(conv_t, [0, 0, 0, 0, 0], [1, 2, 1, 2, 1])
       result = self.evaluate(slice_t)
 
