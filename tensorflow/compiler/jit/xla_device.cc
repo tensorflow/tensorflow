@@ -203,6 +203,7 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       device_ordinal_(options.device_ordinal),
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
+      intra_op_parallelism_threads_(session_options.config.intra_op_parallelism_threads()),
       use_multiple_streams_(options.use_multiple_streams),
       shape_representation_fn_(options.shape_representation_fn),
       allowed_devices_(options.allowed_devices) {
@@ -233,9 +234,13 @@ xla::LocalClient* XlaDevice::client() const {
   // don't want to do it until we get a chance to hook the platform up
   // to a simulator.
 
+  xla::LocalClientOptions options;
+  options.set_platform(platform_)
+      .set_allowed_devices(allowed_devices_)
+      .set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
   // TODO(b/78468222): This can fail, at least when the backend is GPU and
   // there is no GPU on the host.
-  return xla::ClientLibrary::GetOrCreateLocalClient(platform_, allowed_devices_)
+  return xla::ClientLibrary::GetOrCreateLocalClient(options)
       .ValueOrDie();
 }
 
