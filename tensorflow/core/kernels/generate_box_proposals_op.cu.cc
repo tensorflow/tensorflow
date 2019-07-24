@@ -51,13 +51,24 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <bool T>
-__device__ float legacy_op(float);
+__device__ float AddLegacyOffset(float);
 template <>
-__device__ float legacy_op<true>(float a) {
+__device__ float AddLegacyOffset<true>(float a) {
   return a + 1.;
 }
 template <>
-__device__ float legacy_op<false>(float a) {
+__device__ float AddLegacyOffset<false>(float a) {
+  return a;
+}
+
+template <bool T>
+__device__ float SubtractLegacyOffset(float);
+template <>
+__device__ float SubtractLegacyOffset<true>(float a) {
+  return a - 1.;
+}
+template <>
+__device__ float SubtractLegacyOffset<false>(float a) {
   return a;
 }
 // Decode d_bbox_deltas with respect to anchors into absolute coordinates,
@@ -71,10 +82,10 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
     const Cuda2DLaunchConfig config, const int* d_sorted_scores_keys,
     const float4* d_bbox_deltas, const float4* d_anchors, const int height,
     const int width, const int num_anchors, const float min_size,
-    const float* d_img_info_vec, const float bbox_xform_clip,
-    float4* d_out_boxes,
+    const float* d_img_info_vec,  // Input "image_info" to the op [N,5]
+    const float bbox_xform_clip, float4* d_out_boxes,
     const int prenms_nboxes,  // leading dimension of out_boxes
-    float* d_scores, char* d_boxes_keep_flags) {
+    char* d_boxes_keep_flags) {
   // constants to calculate offsets in to the input and output arrays.
   const int anchor_stride = height * width;              // Stride of Anchor
   const int height_stride = width * num_anchors;         // Stride of height
@@ -82,14 +93,15 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
   CUDA_AXIS_KERNEL_LOOP(image_index, config.virtual_thread_count.y, Y) {
     CUDA_AXIS_KERNEL_LOOP(ibox, config.virtual_thread_count.x, X) {
       // box_conv_index : # of the same box, but indexed in the
-      // scores from the conv layer, of shape (height,width,A) the num_images
-      // dimension was already removed box_conv_index = a*image_stride + h*width
+      // scores from the conv layer, of shape (height,width,num_anchors) the
+      // num_images dimension was already removed box_conv_index =
+      // a*image_stride + h*width
       // + w
       const int box_conv_index =
           d_sorted_scores_keys[image_index * image_stride + ibox];
 
       // We want to decompose box_conv_index in (h,w,a)
-      // such as box_conv_index = h*width*A + width*A + a
+      // such as box_conv_index = h*width*num_anchors + width*num_anchors + a
       // (avoiding modulos in the process)
       int remaining = box_conv_index;
       const int delta_height = height_stride;  // stride of height
@@ -109,7 +121,7 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
 
       // TODO use fast math when possible
 
-      // Deltas of shape (N,height,width,A4)
+      // Deltas of shape (N,height,width,num_anchors x 4)
       int deltas_idx = box_conv_index + image_index * image_stride;
       float4 deltas = d_bbox_deltas[deltas_idx];
       float dx = deltas.y;
@@ -121,35 +133,36 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
       dh = fmin(dh, bbox_xform_clip);
 
       // Applying the deltas
-      float width = legacy_op<T>(x2 - x1);
+      float width = AddLegacyOffset<T>(x2 - x1);
       const float ctr_x = x1 + 0.5f * width;
       const float pred_ctr_x = ctr_x + width * dx;  // TODO fuse madd
       const float pred_w = width * expf(dw);
       x1 = pred_ctr_x - 0.5f * pred_w;
-      x2 = -legacy_op<T>(-(pred_ctr_x + 0.5f * pred_w));
+      x2 = SubtractLegacyOffset<T>(pred_ctr_x + 0.5f * pred_w);
 
-      float height = legacy_op<T>(y2 - y1);
+      float height = AddLegacyOffset<T>(y2 - y1);
       const float ctr_y = y1 + 0.5f * height;
       const float pred_ctr_y = ctr_y + height * dy;
       const float pred_h = height * expf(dh);
       y1 = pred_ctr_y - 0.5f * pred_h;
-      y2 = -legacy_op<T>(-(pred_ctr_y + 0.5f * pred_h));  // -1 if legacy_op
+      y2 = SubtractLegacyOffset<T>(pred_ctr_y +
+                                   0.5f * pred_h);  // -1 if legacy_op
 
       // Clipping box to image
       const float img_height = d_img_info_vec[5 * image_index + 0];
       const float img_width = d_img_info_vec[5 * image_index + 1];
       const float min_size_scaled =
           min_size * d_img_info_vec[5 * image_index + 2];
-      x1 = fmax(fmin(x1, -legacy_op<T>(-img_width)), 0.0f);
-      y1 = fmax(fmin(y1, -legacy_op<T>(-img_height)), 0.0f);
-      x2 = fmax(fmin(x2, -legacy_op<T>(-img_width)), 0.0f);
-      y2 = fmax(fmin(y2, -legacy_op<T>(-img_height)), 0.0f);
+      x1 = fmax(fmin(x1, SubtractLegacyOffset<T>(img_width)), 0.0f);
+      y1 = fmax(fmin(y1, SubtractLegacyOffset<T>(img_height)), 0.0f);
+      x2 = fmax(fmin(x2, SubtractLegacyOffset<T>(img_width)), 0.0f);
+      y2 = fmax(fmin(y2, SubtractLegacyOffset<T>(img_height)), 0.0f);
 
       // Filter boxes
       // Removing boxes with one dim < min_size
       // (center of box is in image, because of previous step)
-      width = legacy_op<T>(x2 - x1);  // may have changed
-      height = legacy_op<T>(y2 - y1);
+      width = AddLegacyOffset<T>(x2 - x1);  // may have changed
+      height = AddLegacyOffset<T>(y2 - y1);
       bool keep_box = fmin(width, height) >= min_size_scaled;
 
       // We are not deleting the box right now even if !keep_box
@@ -161,12 +174,6 @@ __global__ void GeneratePreNMSUprightBoxesKernel(
 
       d_boxes_keep_flags[out_index] = keep_box;
       d_out_boxes[out_index] = {x1, y1, x2, y2};
-      // d_scores size: (num_images,KA)
-      // Set the score of the box to float minimum
-      if (!keep_box) {
-        d_scores[image_index * image_stride + ibox] =
-            std::numeric_limits<float>::min();  // for NMS
-      }
     }
   }
 }
@@ -297,7 +304,7 @@ Status AllocatePreNMSTempTensors(
 }
 
 // Initialize index and offset arrays.
-// num_images is the batch size, KA is the number of anchors
+// num_images is the batch size.
 __global__ void InitializeDataKernel(const Cuda2DLaunchConfig config,
                                      int* d_image_offsets,
                                      int* d_boxes_keys_iota) {
@@ -457,8 +464,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
           width, num_anchors, min_size, image_info.flat<float>().data(),
           bbox_xform_clip_default_,
           reinterpret_cast<float4*>(dev_boxes.flat<float>().data()),
-          nboxes_to_generate, dev_sorted_scores.flat<float>().data(),
-          (char*)dev_boxes_keep_flags.flat<int8>().data()));
+          nboxes_to_generate, (char*)dev_boxes_keep_flags.flat<int8>().data()));
     } else {
       TF_CHECK_OK(GpuLaunchKernel(
           GeneratePreNMSUprightBoxesKernel<false>, conf2d.block_count,
@@ -469,8 +475,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
           width, num_anchors, min_size, image_info.flat<float>().data(),
           bbox_xform_clip_default_,
           reinterpret_cast<float4*>(dev_boxes.flat<float>().data()),
-          nboxes_to_generate, dev_sorted_scores.flat<float>().data(),
-          (char*)dev_boxes_keep_flags.flat<int8>().data()));
+          nboxes_to_generate, (char*)dev_boxes_keep_flags.flat<int8>().data()));
     }
     const int nboxes_generated = nboxes_to_generate;
     const int roi_cols = box_dim;
