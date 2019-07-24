@@ -332,7 +332,6 @@ def build_toco_convert_protos(input_tensors,
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
-
   if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
     if not quantized_input_stats:
       raise ValueError("std_dev and mean must be defined when "
