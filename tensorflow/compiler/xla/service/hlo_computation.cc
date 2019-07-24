@@ -835,6 +835,14 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
+
+  // Like the metadata above, if the user didn't specify any sharding
+  // information on the new instruction we should copy the old sharding
+  // information (if any).
+  if (!new_instruction->has_sharding()) {
+    new_instruction->set_sharding(old_instruction->sharding_ptr());
+  }
+
   TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
