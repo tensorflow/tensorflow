@@ -61,7 +61,8 @@ def run_one_epoch(model,
                   steps_per_epoch=None,
                   mode=ModeKeys.TRAIN,
                   training_context=None,
-                  total_epochs=None):
+                  total_epochs=None,
+                  partical_batch_size=None):
   """Run the execution function with the data from iterator.
 
   Given the dataset iterator and execution function, get the data from iterator
@@ -81,15 +82,26 @@ def run_one_epoch(model,
     total_epochs: the total number of epochs that will be run.
       Used when throw error when the iterator unexpectedly
       reaches its end.
+    partical_batch_size: the size of the final batch if it is already known. It
+      will be used to scale the loss value for the final batch.
   Returns:
     The loss and metric value from the model.
   """
+  # Only use the sample to count if there is a partial batch at the end.
+  use_steps = not (partical_batch_size and batch_size and steps_per_epoch and
+                   steps_per_epoch == dataset_size)
+  num_samples = None if use_steps else batch_size * (steps_per_epoch -
+                                                     1) + partical_batch_size
+
   if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(
-        use_steps=True, steps=steps_per_epoch, batch_size=batch_size)
+        use_steps=use_steps,
+        steps=steps_per_epoch,
+        num_samples=num_samples,
+        batch_size=batch_size)
   else:
     aggregator = training_utils.MetricsAggregator(
-        use_steps=True, steps=steps_per_epoch)
+        use_steps=use_steps, steps=steps_per_epoch, num_samples=num_samples)
   callbacks = training_context.callbacks
   progbar = training_context.progbar
 
@@ -143,7 +155,14 @@ def run_one_epoch(model,
 
     if step == 0:
       aggregator.create(batch_outs)
-    aggregator.aggregate(batch_outs)
+
+    if use_steps:
+      aggregator.aggregate(batch_outs)
+    else:
+      aggregator.aggregate(
+          batch_outs,
+          batch_start=step * batch_size,
+          batch_end=min((step + 1) * batch_size, num_samples))
     cbks.make_logs(model, batch_logs, batch_outs, mode)
 
     training_context.callbacks._call_batch_hook(
@@ -286,7 +305,8 @@ class Loop(training_utils.TrainingLoop):
                 steps_per_epoch=steps_per_epoch,
                 mode=ModeKeys.TRAIN,
                 training_context=training_context,
-                total_epochs=epochs)
+                total_epochs=epochs,
+                partical_batch_size=training_data_adapter.partial_batch_size())
             cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
 
             # Evaluation
@@ -316,7 +336,9 @@ class Loop(training_utils.TrainingLoop):
                       steps_per_epoch=validation_steps,
                       mode=ModeKeys.TEST,
                       training_context=eval_context,
-                      total_epochs=1)
+                      total_epochs=1,
+                      partical_batch_size=validation_adapter.partial_batch_size(
+                      ))
                   cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TEST,
                                  prefix='val_')
 
@@ -389,7 +411,8 @@ class Loop(training_utils.TrainingLoop):
               steps_per_epoch=steps,
               mode=mode,
               training_context=training_context,
-              total_epochs=1)
+              total_epochs=1,
+              partical_batch_size=adapter.partial_batch_size())
           cbks.make_logs(model, epoch_logs, result, mode)
 
     if len(result) == 1:

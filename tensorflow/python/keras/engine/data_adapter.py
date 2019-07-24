@@ -152,6 +152,14 @@ class DataAdapter(object):
     """Whether the dataset has partial batch at the end."""
     raise NotImplementedError
 
+  @abc.abstractmethod
+  def partial_batch_size(self):
+    """The size of the final partial batch for dataset.
+
+    Will return None if has_partial_batch is False or batch_size is None.
+    """
+    raise NotImplementedError
+
 
 class TensorLikeDataAdapter(DataAdapter):
   """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
@@ -196,6 +204,11 @@ class TensorLikeDataAdapter(DataAdapter):
       self._size = 1
       self._batch_size = num_samples
       self._has_partial_batch = False
+    self._partial_batch_size = None
+    if self._has_partial_batch:
+      self._partial_batch_size = (
+          num_samples - (self._size - 1) * self._batch_size)
+
     self._dataset = dataset
 
   def get_dataset(self):
@@ -209,6 +222,9 @@ class TensorLikeDataAdapter(DataAdapter):
 
   def has_partial_batch(self):
     return self._has_partial_batch
+
+  def partial_batch_size(self):
+    return self._partial_batch_size
 
 
 class DatasetAdapter(DataAdapter):
@@ -242,6 +258,9 @@ class DatasetAdapter(DataAdapter):
 
   def has_partial_batch(self):
     return False
+
+  def partial_batch_size(self):
+    return None
 
 
 class GeneratorDataAdapter(DataAdapter):
@@ -288,6 +307,9 @@ class GeneratorDataAdapter(DataAdapter):
   def has_partial_batch(self):
     return False
 
+  def partial_batch_size(self):
+    return None
+
 
 class KerasSequenceAdapter(DataAdapter):
   """Adapter that handles `keras.utils.Sequence`."""
@@ -330,6 +352,9 @@ class KerasSequenceAdapter(DataAdapter):
 
   def has_partial_batch(self):
     return False
+
+  def partial_batch_size(self):
+    return None
 
 
 ALL_ADAPTER_CLS = [

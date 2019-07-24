@@ -102,6 +102,7 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
         self.numpy_input, self.numpy_target, batch_size=4)
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
+    self.assertEqual(adapter.partial_batch_size(), 2)
 
   def test_training_numpy(self):
     dataset = self.adapter_cls(
@@ -140,6 +141,7 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
         self.tensor_input, self.tensor_target, batch_size=4)
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
+    self.assertEqual(adapter.partial_batch_size(), 2)
 
 
 class DatasetAdapterTest(DataAdapterTestBase):
@@ -171,6 +173,7 @@ class DatasetAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.dataset_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class GeneratorDataAdapterTest(DataAdapterTestBase):
@@ -202,6 +205,7 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.generator_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
@@ -233,6 +237,7 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.sequence_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 if __name__ == '__main__':
