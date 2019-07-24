@@ -2,9 +2,13 @@
 #   Contains ops for tensor2tensor acceleration.
 
 # This should do 3 things:
-# * Compile ops/t2t_ops.cc and kernels/* into either a dynamic binary or a static binary
+# * Compile and link ops/t2t_ops.cc and kernels/* 
 # * Generate a python wrapper gen_t2t_ops.py out of ops/t2t_ops.cc [this exposes the op]
 # * Copy python/ops/t2t_ops.py into release [this registers the gradient of the op]
+# Unfortunately, the Bazel interface I have to use is essentially undocumented, 
+# and I couldn't find a way to do this in fewer than 5 calls
+# Ideally all C++/CUDA code should be statically linked into libtensorflow_framework.so, 
+# but I don't see a way to do that either. Instead it all goes into a separate _t2t_ops.so.
 
 licenses(["notice"])  # Apache 2.0
 
@@ -24,8 +28,6 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-
-# t2t_ops_op_lib
 
 
 tf_custom_op_library(
