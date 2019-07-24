@@ -1,5 +1,5 @@
 # MLIR project.
-set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/projects/mlir/include ) # --src-root
+set(MLIR_MAIN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include ) # --src-root
 set(MLIR_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include ) # --includedir
 set(MLIR_TABLEGEN_EXE mlir-tblgen)
 
