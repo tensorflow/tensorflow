@@ -419,7 +419,7 @@ class EagerRandomCartpoleEnv(object):
 def graph_demo_training():
   """Not used in the benchmark. Used to confirm a functional model."""
   with tf.Graph().as_default():
-    tf.set_random_seed(0)
+    tf.random.set_seed(0)
 
     network = GraphPolicyNetwork(hidden_size=5)
     network.build((1, 4))
