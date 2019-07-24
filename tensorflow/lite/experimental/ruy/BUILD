@@ -278,7 +278,7 @@ cc_library(
 cc_library(
     name = "pack",
     srcs = [
-        "pack.cc",
+        "pack_arm.cc",
     ],
     hdrs = [
         "pack.h",
