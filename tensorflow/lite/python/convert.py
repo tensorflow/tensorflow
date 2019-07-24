@@ -332,22 +332,34 @@ def build_toco_convert_protos(input_tensors,
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
-  for idx, input_tensor in enumerate(input_tensors):
-    input_array = model.input_arrays.add()
-    input_array.name = util.get_tensor_name(input_tensor)
-    input_array.data_type = util.convert_dtype_to_tflite_type(
-        input_tensor.dtype)
 
-    if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
-      if not quantized_input_stats:
-        raise ValueError("std_dev and mean must be defined when "
-                         "inference_input_type is QUANTIZED_UINT8.")
-      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
-    if input_shapes is None:
-      shape = input_tensor.shape
+  if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+    if not quantized_input_stats:
+      raise ValueError("std_dev and mean must be defined when "
+                       "inference_input_type is QUANTIZED_UINT8.")
     else:
-      shape = input_shapes[idx]
-    input_array.shape.dims.extend(map(int, shape))
+      for idx, input_tensor in enumerate(input_tensors):
+        input_array = model.input_arrays.add()
+        input_array.name = util.get_tensor_name(input_tensor)
+        input_array.data_type = util.convert_dtype_to_tflite_type(
+            input_tensor.dtype)
+        input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
+        if input_shapes is None:
+          shape = input_tensor.shape
+        else:
+          shape = input_shapes[idx]
+        input_array.shape.dims.extend(map(int, shape))
+  else:
+    for idx, input_tensor in enumerate(input_tensors):
+      input_array = model.input_arrays.add()
+      input_array.name = util.get_tensor_name(input_tensor)
+      input_array.data_type = util.convert_dtype_to_tflite_type(
+          input_tensor.dtype)
+      if input_shapes is None:
+        shape = input_tensor.shape
+      else:
+        shape = input_shapes[idx]
+      input_array.shape.dims.extend(map(int, shape))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
