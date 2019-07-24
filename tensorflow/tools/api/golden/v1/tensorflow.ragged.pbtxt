@@ -40,4 +40,8 @@ tf_module {
     name: "stack"
     argspec: "args=[\'values\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
+  member_method {
+    name: "stack_dynamic_partitions"
+    argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
 }

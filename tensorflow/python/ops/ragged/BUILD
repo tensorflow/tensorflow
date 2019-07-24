@@ -62,6 +62,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
     ],
@@ -1044,6 +1045,23 @@ py_test(
         ":ragged_conversion_ops",
         ":ragged_factory_ops",
         ":ragged_squeeze_op",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_dynamic_partition_op_test",
+    srcs = ["ragged_dynamic_partition_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
