@@ -49,9 +49,14 @@ remote_config_workspace()
 # Apple and Swift rules.
 http_archive(
     name = "build_bazel_rules_apple",
-    sha256 = "23792cd999f97fc97284d1c44cb1324bfdd0bc54aa68ad513fa3705aca3b1f9e",
-    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.15.0/rules_apple.0.15.0.tar.gz"],
+    sha256 = "6efdde60c91724a2be7f89b0c0a64f01138a45e63ba5add2dca2645d981d23a1",
+    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.17.2/rules_apple.0.17.2.tar.gz"],
 )  # https://github.com/bazelbuild/rules_apple/releases
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "96a86afcbdab215f8363e65a10cf023b752e90b23abf02272c4fc668fcb70311",
+    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.11.1/rules_swift.0.11.1.tar.gz"],
+)  # https://github.com/bazelbuild/rules_swift/releases
 http_archive(
     name = "build_bazel_apple_support",
     sha256 = "7356dbd44dea71570a929d1d4731e870622151a5f27164d966dda97305f33471",
@@ -62,11 +67,6 @@ http_archive(
     sha256 = "2ef429f5d7ce7111263289644d233707dba35e39696377ebab8b0bc701f7818e",
     urls = ["https://github.com/bazelbuild/bazel-skylib/releases/download/0.8.0/bazel-skylib.0.8.0.tar.gz"],
 )  # https://github.com/bazelbuild/bazel-skylib/releases
-http_archive(
-    name = "build_bazel_rules_swift",
-    sha256 = "9efe9699e9765e6b4a5e063e4a08f6b163cccaf0443f775d935baf5c3cd6ed0e",
-    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.9.0/rules_swift.0.9.0.tar.gz"],
-)  # https://github.com/bazelbuild/rules_swift/releases
 http_archive(
     name = "com_github_apple_swift_swift_protobuf",
     type = "zip",
