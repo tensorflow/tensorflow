@@ -38,7 +38,7 @@ out[i, j, k] = 0                   if rng[c_i, c_j, c_k] < threshold
 
 where c_i=i or c_i=0, etc. depending on whether the corresponding dimension of rng has size 1; scale = 1/(1-threshold)
 
-in: a floating-point tensor (float16 and float32 tensors of 2 or 3 dimensions supported)
+in: a floating-point tensor (float16 and float32 tensors of 2 to 4 dimensions supported)
 rng: a floating-point tensor with the same number of dimensions as 'in';
    each dimension must either match 'in' or be equal to 1
 threshold: a scalar

@@ -2,8 +2,6 @@ import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(50)
 
 import numpy as np
-#from tensorflow.python.ops import gen_math_ops
-#from tensorflow.contrib import t2t
 from tensorflow.contrib.t2t.python.ops import t2t_ops
 from tensorflow.contrib.t2t.python.ops import gen_t2t_ops
 from tensorflow.python.framework import ops
@@ -26,8 +24,6 @@ def testInner(v):
 	eps=np.random.random()
 	scale=np.random.rand(v.shape[-1])
 	bias=np.random.rand(v.shape[-1])
-	#print('scale', scale)
-	#print('bias', bias)
 	intl=tf.convert_to_tensor(tf.random.normal(v.shape, seed=0))
 	result = gen_t2t_ops.custom_l2_norm(v, eps, scale, bias)
 	intl2=tf.convert_to_tensor(tf.random.normal(v.shape, seed=0))
@@ -35,7 +31,6 @@ def testInner(v):
 	grad_ref=None
 	grad_test=None
 	grad_ref = tf.gradients(ref, v, grad_ys=tf.cast(intl,v.dtype))
-	#print("Eps is", eps)
 	grad_test = tf.gradients(result, v, grad_ys=tf.cast(intl2,v.dtype))
 	return result, ref, grad_test, grad_ref
 
@@ -57,7 +52,6 @@ def testInnerDropout(sh):
 	grad_ref=None
 	grad_test=None
 	grad_ref = tf.gradients(ref, v1, grad_ys=tf.cast(intl,v1.dtype))
-	#print("Eps is", eps)
 	grad_test = tf.gradients(test, v1, grad_ys=tf.cast(intl2,v1.dtype))
 	return test, ref, grad_test, grad_ref
 
@@ -70,7 +64,7 @@ v5 = np.random.rand(13,24,18)
 v6 = np.random.rand(218,121)
 v7 = np.random.rand(19,55,600)
 
-"""
+
 class CustomL2Test(tf.test.TestCase):
 	def doTest(self, v):
 		for dev in range(2):
@@ -98,26 +92,23 @@ class CustomL2Test(tf.test.TestCase):
 		self.doTest(v6)
 	def test7(self):
 		self.doTest(v7)
-"""
 
 class CustomDropoutTest(tf.test.TestCase):
 	def test1(self):
-		#config = tf.ConfigProto(allow_soft_placement=False)
-		for dev in [1]:#range(2):
+		for dev in range(2):
 			with self.session(force_gpu=(dev==1)):
 				for series in range(5):
-					for n in range(50):
-						#shape=[np.random.randint(1,2000),np.random.randint(1,100),np.random.randint(1,100)] if toss() else [np.random.randint(1,2000),np.random.randint(1,100)]
-						if series==0: # test Functor3_v2
+					for n in range(5):
+						if series==0: 
 							shape=[np.random.randint(1,200),np.random.randint(1,10),np.random.randint(1,10)] 
 							np.random.shuffle(shape)
-						elif series==1: #test Functor2
+						elif series==1: 
 							shape=[np.random.randint(1,1000),np.random.randint(1,10)]
 							np.random.shuffle(shape)
-						elif series==2: # test Functor3->Functor2 fallback
+						elif series==2: 
 							shape=[1, np.random.randint(1,200),np.random.randint(1,200)]
-						elif series==3: #test Functor3
-							shape=[np.random.randint(1,200),np.random.randint(1,10),np.random.randint(1024,3072)] 
+						elif series==3:
+							shape=[np.random.randint(1,20),np.random.randint(1,10),np.random.randint(1024,3072)] 
 							if n<2:
 								shape=[70,49,2048]
 						else:

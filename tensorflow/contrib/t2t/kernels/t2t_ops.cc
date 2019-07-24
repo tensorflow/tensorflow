@@ -6,7 +6,7 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-typedef float CT; // cast everthing up to float for internal calculations, for extra precision
+typedef float CT; // cast everything up to float for internal calculations, for extra precision
 
 template <typename T, typename U>
 struct CustomL2NormFunctor<CPUDevice, T, U> {
@@ -30,8 +30,6 @@ struct CustomL2NormFunctor<CPUDevice, T, U> {
         CT mean = sum*averager;
         CT sigma = sumsq*averager;
         sigma = 1./sqrt(sigma+eps);
-//        temp[i*2+0] = scale*sigma;
-//        temp[i*2+1] = bias-mean*scale*sigma;
         temp[i*2+0] = (CT)mean;
         temp[i*2+1] = (CT)sigma;
       }
@@ -59,9 +57,6 @@ struct CustomL2NormGradFunctor<CPUDevice, T, U> {
     const U* _eps, const U* _bias, const U* _scale)
     {
       float eps = *_eps;
-      //float bias = *_bias;
-      //float scale = *_scale;
-
       float a = 1./ k;
       for (uint64_t i = 0; i < N; i++) {
         CT sum=0, sumsq=0;
@@ -76,27 +71,9 @@ struct CustomL2NormGradFunctor<CPUDevice, T, U> {
         CT mean = sum*a;
         CT sigma = sumsq*a;
         sigma = 1./sqrt(sigma+eps);
-        //T c1 = scale*sigma;
-        //T c2 = bias-mean*scale*sigma;
-        //temp[i*2+0] = mean;
-        //temp[i*2+1] = sigma;
-
-        //T c3 = a*(c1*c1*c1)/(scale*scale);
         T* op = out+i*k;
         const T* ip = in+i*k;
         const T* ogp = outgrad+i*k;
-/*
-        T s=0;
-        for(int y=0 ;y<k; y++)
-          s += ogp[y];
-
-        for(int y=0; y<k; y++)
-          op[y] = ogp[y] * c1 - s*c1*a;
-
-        for(int y=0; y<k; y++)
-          for(uint64_t z = 0; z<k; z++)
-            op[y] -= ogp[z] * c3 * (ip[y]-mean) * (ip[z]-mean);
-*/
         CT s1 = 0;
         CT s2 = 0;
         for(int y=0; y<k; y++)
@@ -347,8 +324,6 @@ DO_REGISTER_ALL(DEVICE_CPU, CPUDevice);
 
 REGISTER_KERNEL_BUILDER(Name("CustomDropout").Device(DEVICE_CPU).TypeConstraint<float>("T"), CustomDropoutOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("CustomDropout").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"), CustomDropoutOp<CPUDevice, Eigen::half>);
-//REGISTER_KERNEL_BUILDER(Name("CustomDropoutGrad").Device(DEVICE_CPU).TypeConstraint<float>("T"), CustomDropoutGradOp<CPUDevice, float>);
-//REGISTER_KERNEL_BUILDER(Name("CustomDropoutGrad").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"), CustomDropoutGradOp<CPUDevice, Eigen::half>);
 
 #ifdef GOOGLE_CUDA
 
