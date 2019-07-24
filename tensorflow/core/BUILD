@@ -626,38 +626,6 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-cc_library(
-    name = "platform_unbounded_work_queue",
-    srcs = tf_platform_srcs([
-        "unbounded_work_queue.cc",
-    ]) + tf_platform_hdrs([
-        "unbounded_work_queue.h",
-    ]),
-    hdrs = ["platform/unbounded_work_queue.h"],
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":lib",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_unbounded_work_queue_test",
-    srcs = ["platform/unbounded_work_queue_test.cc"],
-    deps = [
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":platform_unbounded_work_queue",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
 # Headers that are not exported as part of ":lib".
 filegroup(
     name = "platform_other_internal_hdrs",

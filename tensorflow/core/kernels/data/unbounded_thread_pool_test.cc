@@ -23,6 +23,59 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+TEST(UnboundedThreadPool, SingleThread) {
+  UnboundedThreadPool pool(Env::Default(), "test");
+  auto thread_factory = pool.get_thread_factory();
+
+  // Create a thread that updates a variable, and ensure that it runs to
+  // completion.
+  std::atomic<int> i(0);
+  auto thread = thread_factory->StartThread("", [&i]() { ++i; });
+  thread.reset();
+
+  EXPECT_GE(pool.size(), 1);
+  EXPECT_EQ(1, i);
+}
+
+TEST(UnboundedThreadPool, MultipleThreads) {
+  UnboundedThreadPool pool(Env::Default(), "test");
+  auto thread_factory = pool.get_thread_factory();
+
+  // Create ten threads that update a variable, and ensure that they all run
+  // to completion.
+  std::vector<std::unique_ptr<Thread>> threads;
+  const int kNumThreadsToCreate = 10;
+  std::atomic<int> i(0);
+  for (int j = 0; j < kNumThreadsToCreate; ++j) {
+    threads.push_back(thread_factory->StartThread("", [&i]() { ++i; }));
+  }
+  threads.clear();
+
+  EXPECT_GE(pool.size(), 1);
+  EXPECT_EQ(i, kNumThreadsToCreate);
+}
+
+TEST(UnboundedThreadPool, MultipleThreadsSleepingRandomly) {
+  UnboundedThreadPool pool(Env::Default(), "test");
+  auto thread_factory = pool.get_thread_factory();
+
+  // Create 1000 threads that sleep for a random period of time then update a
+  // variable, and ensure that they all run to completion.
+  std::vector<std::unique_ptr<Thread>> threads;
+  const int kNumThreadsToCreate = 1000;
+  std::atomic<int> i(0);
+  for (int j = 0; j < kNumThreadsToCreate; ++j) {
+    threads.push_back(thread_factory->StartThread("", [&i]() {
+      Env::Default()->SleepForMicroseconds(random::New64() % 10);
+      ++i;
+    }));
+  }
+  threads.clear();
+
+  EXPECT_GE(pool.size(), 1);
+  EXPECT_EQ(i, kNumThreadsToCreate);
+}
+
 TEST(UnboundedThreadPool, ConcurrentThreadCreation) {
   UnboundedThreadPool pool(Env::Default(), "test");
   auto thread_factory = pool.get_thread_factory();
@@ -44,6 +97,7 @@ TEST(UnboundedThreadPool, ConcurrentThreadCreation) {
   }
   threads.clear();
 
+  EXPECT_GE(pool.size(), 1);
   EXPECT_EQ(i, kNumThreadsToCreate * kNumThreadsToCreate);
 }
 
@@ -54,7 +108,9 @@ TEST(UnboundedThreadPool, MultipleBlockingThreads) {
   std::vector<std::unique_ptr<Thread>> threads;
 
   // Create multiple waves (with increasing sizes) of threads that all block
-  // before returning, and ensure that we terminate correctly.
+  // before returning, and
+  // ensure that we create the appropriate number of threads and terminate
+  // correctly.
   std::vector<int> round_sizes = {5, 10, 15, 20};
 
   for (const int round_size : round_sizes) {
@@ -73,6 +129,10 @@ TEST(UnboundedThreadPool, MultipleBlockingThreads) {
     // wave is increasing, we should have at least that number of threads in the
     // pool.
     bc.Wait();
+    // NOTE: There is a benign race between a new round starting and the
+    // physical threads from the previous round returning to the pool, so we may
+    // create more threads than the round_size.
+    EXPECT_GE(pool.size(), round_size);
     n.Notify();
     threads.clear();
   }

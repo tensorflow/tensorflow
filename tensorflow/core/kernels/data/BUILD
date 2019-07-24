@@ -180,7 +180,6 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:platform_unbounded_work_queue",
         "@com_google_absl//absl/memory",
     ],
 )
