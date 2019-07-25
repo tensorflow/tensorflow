@@ -487,6 +487,25 @@ LLVM_NODISCARD LogicalResult applyFullConversion(
 LLVM_NODISCARD LogicalResult applyFullConversion(
     Operation *op, ConversionTarget &target,
     OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+
+/// Apply an analysis conversion on the given operations, and all nested
+/// operations. This method analyzes which operations would be successfully
+/// converted to the target if a conversion was applied. All operations that
+/// were found to be legalizable to the given 'target' are placed within the
+/// provided 'convertedOps' set; note that no actual rewrites are applied to the
+/// operations on success and only pre-existing operations are added to the set.
+/// This method only returns failure if there are unreachable blocks in any of
+/// the regions nested within 'ops', or if a type conversion failed. If
+/// 'converter' is provided, the signatures of blocks and regions are also
+/// considered for conversion.
+LLVM_NODISCARD LogicalResult applyAnalysisConversion(
+    ArrayRef<Operation *> ops, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
+    TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult applyAnalysisConversion(
+    Operation *op, ConversionTarget &target,
+    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
+    TypeConverter *converter = nullptr);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_DIALECTCONVERSION_H_

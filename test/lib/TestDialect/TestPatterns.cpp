@@ -184,6 +184,11 @@ struct TestTypeConverter : public TypeConverter {
 
 struct TestLegalizePatternDriver
     : public ModulePass<TestLegalizePatternDriver> {
+  /// The mode of conversion to use with the driver.
+  enum class ConversionMode { Analysis, Partial };
+
+  TestLegalizePatternDriver(ConversionMode mode) : mode(mode) {}
+
   void runOnModule() override {
     TestTypeConverter converter;
     mlir::OwningRewritePatternList patterns;
@@ -205,12 +210,44 @@ struct TestLegalizePatternDriver
     });
     target.addDynamicallyLegalOp<FuncOp>(
         [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-    (void)applyPartialConversion(getModule(), target, std::move(patterns),
-                                 &converter);
+
+    // Handle a partial conversion.
+    if (mode == ConversionMode::Partial) {
+      (void)applyPartialConversion(getModule(), target, std::move(patterns),
+                                   &converter);
+      return;
+    }
+
+    // Otherwise, handle an analysis conversion.
+    assert(mode == ConversionMode::Analysis);
+
+    // Analyze the convertible operations.
+    DenseSet<Operation *> legalizedOps;
+    if (failed(applyAnalysisConversion(getModule(), target, std::move(patterns),
+                                       legalizedOps, &converter)))
+      return signalPassFailure();
+
+    // Emit remarks for each legalizable operation.
+    for (auto *op : legalizedOps)
+      op->emitRemark() << "op '" << op->getName() << "' is legalizable";
   }
+
+  /// The mode of conversion to use.
+  ConversionMode mode;
 };
 } // end anonymous namespace
 
-static mlir::PassRegistration<TestLegalizePatternDriver>
-    legalizer_pass("test-legalize-patterns",
-                   "Run test dialect legalization patterns");
+static llvm::cl::opt<TestLegalizePatternDriver::ConversionMode>
+    legalizerConversionMode(
+        "test-legalize-mode",
+        llvm::cl::desc("The legalization mode to use with the test driver"),
+        llvm::cl::init(TestLegalizePatternDriver::ConversionMode::Partial),
+        llvm::cl::values(
+            clEnumValN(TestLegalizePatternDriver::ConversionMode::Analysis,
+                       "analysis", "Perform an analysis conversion"),
+            clEnumValN(TestLegalizePatternDriver::ConversionMode::Partial,
+                       "partial", "Perform a partial conversion")));
+
+static mlir::PassRegistration<TestLegalizePatternDriver> legalizer_pass(
+    "test-legalize-patterns", "Run test dialect legalization patterns",
+    [] { return new TestLegalizePatternDriver(legalizerConversionMode); });
