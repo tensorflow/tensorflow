@@ -96,6 +96,7 @@ def SPV_OC_OpFunctionEnd       : I32EnumAttrCase<"OpFunctionEnd", 56>;
 def SPV_OC_OpVariable          : I32EnumAttrCase<"OpVariable", 59>;
 def SPV_OC_OpLoad              : I32EnumAttrCase<"OpLoad", 61>;
 def SPV_OC_OpStore             : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpAccessChain       : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate          : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpCompositeExtract  : I32EnumAttrCase<"OpCompositeExtract", 81>;
 def SPV_OC_OpFMul              : I32EnumAttrCase<"OpFMul", 133>;
@@ -110,7 +111,8 @@ def SPV_OpcodeAttr :
       SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
       SPV_OC_OpConstantNull, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
-      SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpAccessChain, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
+      SPV_OC_OpFMul, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";

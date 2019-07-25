@@ -43,6 +43,64 @@ include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 
 // -----
 
+def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
+  let summary = [{
+    Create a pointer into a composite object that can be used with OpLoad
+    and OpStore.
+  }];
+
+  let description = [{
+    Result Type must be an OpTypePointer. Its Type operand must be the type
+    reached by walking the Base’s type hierarchy down to the last provided
+    index in Indexes, and its Storage Class operand must be the same as the
+    Storage Class of Base.
+
+    Base must be a pointer, pointing to the base of a composite object.
+
+    Indexes walk the type hierarchy to the desired depth, potentially down
+    to scalar granularity. The first index in Indexes will select the top-
+    level member/element/component/element of the base composite. All
+    composite constituents use zero-based numbering, as described by their
+    OpType… instruction. The second index will apply similarly to that
+    result, and so on. Once any non-composite type is reached, there must be
+    no remaining (unused) indexes.
+
+     Each index in Indexes
+    - must be a scalar integer type,
+    - is treated as a signed count, and
+    - must be an OpConstant when indexing into a structure.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    access-chain-op ::= ssa-id `=` `spv.AccessChain` ssa-use
+                        `[` ssa-use (',' ssa-use)* `]`
+                        `:` pointer-type
+    ```
+
+    For example:
+
+    ```
+    %0 = "spv.constant"() { value = 1: i32} : () -> i32
+    %1 = spv.Variable : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Function>
+    %2 = spv.AccessChain %1[%0] : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Function>
+    %3 = spv.Load "Function" %2 ["Volatile"] : !spv.array<4xf32>
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_AnyPtr:$base_ptr,
+    Variadic<SPV_Integer>:$indices
+  );
+
+  let results = (outs
+    SPV_AnyPtr:$component_ptr
+  );
+
+  let autogenSerialization = 0;
+}
+
+// -----
+
 def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
   let summary = "Extract a part of a composite object.";
 
