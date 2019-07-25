@@ -29,12 +29,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
+from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
 from tensorflow.python.platform import googletest
 
 
@@ -1546,6 +1548,162 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32,
           output_ragged_rank=1,
           input_ragged_rank=1)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
+
+  def assertAllTensorsEqual(self, list1, list2):
+    self.assertLen(list1, len(list2))
+    for (t1, t2) in zip(list1, list2):
+      self.assertAllEqual(t1, t2)
+
+  def testConstruction(self):
+    spec1 = RaggedTensorSpec(ragged_rank=1)
+    self.assertEqual(spec1._shape.rank, None)
+    self.assertEqual(spec1._dtype, dtypes.float32)
+    self.assertEqual(spec1._row_splits_dtype, dtypes.int64)
+    self.assertEqual(spec1._ragged_rank, 1)
+
+    spec2 = RaggedTensorSpec(shape=[None, None, None])
+    self.assertEqual(spec2._shape.as_list(), [None, None, None])
+    self.assertEqual(spec2._dtype, dtypes.float32)
+    self.assertEqual(spec2._row_splits_dtype, dtypes.int64)
+    self.assertEqual(spec2._ragged_rank, 2)
+
+    with self.assertRaisesRegexp(ValueError, 'Must specify ragged_rank'):
+      RaggedTensorSpec()
+    with self.assertRaisesRegexp(TypeError, 'ragged_rank must be an int'):
+      RaggedTensorSpec(ragged_rank=constant_op.constant(1))
+    with self.assertRaisesRegexp(ValueError,
+                                 'ragged_rank must be less than rank'):
+      RaggedTensorSpec(ragged_rank=2, shape=[None, None])
+
+  def testValueType(self):
+    spec1 = RaggedTensorSpec(ragged_rank=1)
+    self.assertEqual(spec1.value_type, RaggedTensor)
+    spec2 = RaggedTensorSpec(ragged_rank=0)
+    self.assertEqual(spec2.value_type, ops.Tensor)
+
+  @parameterized.parameters([
+      (RaggedTensorSpec(ragged_rank=1),
+       (tensor_shape.TensorShape(None), dtypes.float32, 1, dtypes.int64)),
+      (RaggedTensorSpec(shape=[5, None, None]),
+       (tensor_shape.TensorShape([5, None, None]), dtypes.float32,
+        2, dtypes.int64)),
+      (RaggedTensorSpec(shape=[5, None, None], dtype=dtypes.int32),
+       (tensor_shape.TensorShape([5, None, None]), dtypes.int32, 2,
+        dtypes.int64)),
+      (RaggedTensorSpec(ragged_rank=1, row_splits_dtype=dtypes.int32),
+       (tensor_shape.TensorShape(None), dtypes.float32, 1, dtypes.int32)),
+  ])  # pyformat: disable
+  def testSerialize(self, rt_spec, expected):
+    serialization = rt_spec._serialize()
+    # TensorShape has an unconventional definition of equality, so we can't use
+    # assertEqual directly here.  But repr() is deterministic and lossless for
+    # the expected values, so we can use that instead.
+    self.assertEqual(repr(serialization), repr(expected))
+
+  @parameterized.parameters([
+      (RaggedTensorSpec(ragged_rank=0, shape=[5, 3]), [
+          tensor_spec.TensorSpec([5, 3], dtypes.float32),
+      ]),
+      (RaggedTensorSpec(ragged_rank=1), [
+          tensor_spec.TensorSpec(None, dtypes.float32),
+          tensor_spec.TensorSpec([None], dtypes.int64)
+      ]),
+      (RaggedTensorSpec(ragged_rank=1, row_splits_dtype=dtypes.int32), [
+          tensor_spec.TensorSpec(None, dtypes.float32),
+          tensor_spec.TensorSpec([None], dtypes.int32),
+      ]),
+      (RaggedTensorSpec(ragged_rank=2), [
+          tensor_spec.TensorSpec(None, dtypes.float32),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+      ]),
+      (RaggedTensorSpec(shape=[5, None, None], dtype=dtypes.string), [
+          tensor_spec.TensorSpec([None], dtypes.string),
+          tensor_spec.TensorSpec([6], dtypes.int64),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+      ]),
+  ])
+  def testComponentSpecs(self, rt_spec, expected):
+    self.assertEqual(rt_spec._component_specs, expected)
+
+  @parameterized.parameters([
+      {
+          'rt_spec': RaggedTensorSpec(ragged_rank=0),
+          'rt': [1.0, 2.0, 3.0],
+          'components': [[1.0, 2.0, 3.0]]
+      },
+      {
+          'rt_spec': RaggedTensorSpec(ragged_rank=1),
+          'rt': [[1.0, 2.0], [3.0]],
+          'components': [[1.0, 2.0, 3.0], [0, 2, 3]]
+      },
+      {
+          'rt_spec': RaggedTensorSpec(shape=[2, None, None]),
+          'rt': [[[1.0, 2.0], [3.0]], [[], [4.0]]],
+          'components': [[1.0, 2.0, 3.0, 4.0], [0, 2, 4], [0, 2, 3, 3, 4]]
+      },
+  ])
+  def testToFromComponents(self, rt_spec, rt, components):
+    rt = ragged_factory_ops.constant(rt)
+    actual_components = rt_spec._to_components(rt)
+    self.assertAllTensorsEqual(actual_components, components)
+    rt_reconstructed = rt_spec._from_components(actual_components)
+    self.assertAllEqual(rt, rt_reconstructed)
+
+  @parameterized.parameters([
+      RaggedTensorSpec(ragged_rank=0, shape=[5, 3]),
+      RaggedTensorSpec(ragged_rank=1),
+      RaggedTensorSpec(ragged_rank=1, row_splits_dtype=dtypes.int32),
+      RaggedTensorSpec(ragged_rank=2, dtype=dtypes.string),
+      RaggedTensorSpec(shape=[5, None, None]),
+  ])
+  def testFlatTensorSpecs(self, rt_spec):
+    self.assertEqual(rt_spec._flat_tensor_specs,
+                     [tensor_spec.TensorSpec(None, dtypes.variant)])
+
+  @parameterized.parameters([
+      {
+          'rt_spec': RaggedTensorSpec(ragged_rank=1),
+          'rt': [[1.0, 2.0], [3.0]]
+      },
+      {
+          'rt_spec': RaggedTensorSpec(shape=[2, None, None]),
+          'rt': [[[1.0, 2.0], [3.0]], [[], [4.0]]]
+      },
+  ])
+  def testToFromTensorList(self, rt_spec, rt):
+    rt = ragged_factory_ops.constant(rt)
+    tensor_list = rt_spec._to_tensor_list(rt)
+    rt_reconstructed = rt_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(rt, rt_reconstructed)
+
+  @parameterized.parameters([
+      (RaggedTensorSpec([2, None], dtypes.float32, 1), 32,
+       RaggedTensorSpec([32, 2, None], dtypes.float32, 2)),
+      (RaggedTensorSpec([4, None], dtypes.float32, 1), None,
+       RaggedTensorSpec([None, 4, None], dtypes.float32, 2)),
+      (RaggedTensorSpec([2], dtypes.float32,
+                        -1), 32, RaggedTensorSpec([32, 2], dtypes.float32, 0)),
+  ])
+  def testBatch(self, spec, batch_size, expected):
+    self.assertEqual(spec._batch(batch_size), expected)
+
+  @parameterized.parameters([
+      (RaggedTensorSpec([32, None, None], dtypes.float32, 2),
+       RaggedTensorSpec([None, None], dtypes.float32, 1)),
+      (RaggedTensorSpec([None, None, None], dtypes.float32, 2),
+       RaggedTensorSpec([None, None], dtypes.float32, 1)),
+      (RaggedTensorSpec([32, 2], dtypes.float32, 0),
+       RaggedTensorSpec([2], dtypes.float32, -1)),
+  ])  # pyformat: disable
+  def testUnbatch(self, spec, expected):
+    self.assertEqual(spec._unbatch(), expected)
+
 
 if __name__ == '__main__':
   googletest.main()

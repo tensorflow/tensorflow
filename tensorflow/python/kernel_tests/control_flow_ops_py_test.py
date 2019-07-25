@@ -432,8 +432,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlices(self):
     with self.cached_session():
-      values = constant_op.constant(10)
-      indices = constant_op.constant(0)
+      values = constant_op.constant([10])
+      indices = constant_op.constant([0])
       x = ops.IndexedSlices(values, indices)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices)
@@ -442,14 +442,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       val = r.values
       ind = r.indices
-    self.assertAllEqual(11, val)
-    self.assertAllEqual(0, ind)
+    self.assertAllEqual([11], val)
+    self.assertAllEqual([0], ind)
 
   def testCondMismatchedIndexedSlices(self):
     @def_function.function
     def foo():
-      values = constant_op.constant(10)
-      indices = constant_op.constant(0)
+      values = constant_op.constant([10])
+      indices = constant_op.constant([0])
       x = ops.IndexedSlices(values, indices)
       with self.assertRaisesRegexp(
           TypeError, "Cannot reconcile tf.cond 0-th outputs"):
@@ -518,9 +518,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
-      values = constant_op.constant(10)
-      i_32 = ops.convert_to_tensor(0, name="one", dtype=dtypes.int32)
-      i_64 = ops.convert_to_tensor(0, name="one", dtype=dtypes.int64)
+      values = constant_op.constant([10])
+      i_32 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int32)
+      i_64 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int64)
       x = ops.IndexedSlices(values, i_32)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), i_32)
@@ -529,8 +529,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       val = r.values
       ind = r.indices
-    self.assertAllEqual(11, val)
-    self.assertAllEqual(0, ind)
+    self.assertAllEqual([11], val)
+    self.assertAllEqual([0], ind)
     self.assertTrue(ind.dtype == np.int64)
 
   @test_util.run_v1_only("b/120545219")
