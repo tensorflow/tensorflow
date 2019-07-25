@@ -202,15 +202,15 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   block_map->large_blocks[Side::kRhs] = missc;
 }
 
-void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
-                          const SidePair<int>& block, int* start, int* end) {
+void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
+                          int* start, int* end) {
   gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
-  const int b = block[side];
-  *start =
-      b * block_map.small_block_dims[side] +
-      std::min(b, block_map.large_blocks[side]) * block_map.kernel_dims[side];
-  *end = *start + block_map.small_block_dims[side] +
-         (b < block_map.large_blocks[side] ? block_map.kernel_dims[side] : 0);
+  *start = block * block_map.small_block_dims[side] +
+           std::min(block, block_map.large_blocks[side]) *
+               block_map.kernel_dims[side];
+  *end =
+      *start + block_map.small_block_dims[side] +
+      (block < block_map.large_blocks[side] ? block_map.kernel_dims[side] : 0);
 
   RUY_DCHECK_EQ(0, *start % block_map.kernel_dims[side]);
   RUY_DCHECK_EQ(0, *end % block_map.kernel_dims[side]);
@@ -222,7 +222,7 @@ void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
 void GetBlockMatrixCoords(const BlockMap& block_map, const SidePair<int>& block,
                           SidePair<int>* start, SidePair<int>* end) {
   for (Side side : {Side::kLhs, Side::kRhs}) {
-    GetBlockMatrixCoords(side, block_map, block, &(*start)[side],
+    GetBlockMatrixCoords(side, block_map, block[side], &(*start)[side],
                          &(*end)[side]);
   }
 }

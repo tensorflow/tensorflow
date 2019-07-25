@@ -115,8 +115,8 @@ void GetBlockByIndex(const BlockMap& block_map, int index,
 // position in the matrix that the BlockMap refers to in the dimension
 // referred to by `side`: along rows if side==kLhs, along columns if
 // side==kRhs.
-void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
-                          const SidePair<int>& block, int* start, int* end);
+void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
+                          int* start, int* end);
 
 // Given a block position in the grid, returns its actual
 // position in the matrix that the BlockMap refers to in terms of

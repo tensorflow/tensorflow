@@ -195,7 +195,6 @@ cc_library(
     deps = [
         ":block_map",
         ":check_macros",
-        ":common",
         ":side_pair",
         ":time",
     ],
