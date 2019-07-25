@@ -23,7 +23,7 @@ limitations under the License.
 namespace ruy {
 
 void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
-                     std::uint16_t* block_r, std::uint16_t* block_c) {
+                     SidePair<std::uint16_t>* block) {
   gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
   std::uint16_t rectr =
       index & ((1 << block_map.rows_rectangularness_log2) - 1);
@@ -60,8 +60,8 @@ void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
   bc = (bc << block_map.cols_rectangularness_log2) + rectc;
 
   // Store
-  *block_r = br;
-  *block_c = bc;
+  (*block)[Side::kLhs] = br;
+  (*block)[Side::kRhs] = bc;
 }
 
 namespace {
@@ -208,9 +208,12 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   block_map->missc = missc;
 }
 
-void GetBlockMatrixCoords(const BlockMap& block_map, std::uint16_t block_r,
-                          std::uint16_t block_c, int* start_r, int* start_c,
-                          int* end_r, int* end_c) {
+void GetBlockMatrixCoords(const BlockMap& block_map,
+                          const SidePair<std::uint16_t>& block,
+                          SidePair<int>* start, SidePair<int>* end) {
+  std::uint16_t block_r = block[Side::kLhs];
+  std::uint16_t block_c = block[Side::kRhs];
+
   gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
   int sr = block_r * block_map.smallr +
            std::min(block_r, block_map.missr) * block_map.kernel_rows;
@@ -230,17 +233,17 @@ void GetBlockMatrixCoords(const BlockMap& block_map, std::uint16_t block_r,
   sc = std::max(0, ec - round_up_pot(ec - sc, block_map.kernel_cols));
   sr = std::max(0, er - round_up_pot(er - sr, block_map.kernel_rows));
 
-  *start_c = sc;
-  *end_c = ec;
-  *start_r = sr;
-  *end_r = er;
-
   RUY_DCHECK_LE(ec, block_map.cols);
   RUY_DCHECK_LE(er, block_map.rows);
   RUY_DCHECK_LT(sc, ec);
   RUY_DCHECK_LT(sr, er);
   RUY_DCHECK_GE(sc, 0);
   RUY_DCHECK_GE(sr, 0);
+
+  (*start)[Side::kLhs] = sr;
+  (*end)[Side::kLhs] = er;
+  (*start)[Side::kRhs] = sc;
+  (*end)[Side::kRhs] = ec;
 }
 
 }  // namespace ruy

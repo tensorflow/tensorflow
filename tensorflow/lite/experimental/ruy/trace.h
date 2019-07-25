@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/experimental/ruy/block_map.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
 
@@ -47,8 +48,7 @@ void TraceRecordThreadLoopStart(std::uint32_t thread_id, Trace* trace);
 void TraceRecordBlockReserved(std::uint32_t thread_id, std::uint32_t block_id,
                               Trace* trace);
 void TraceRecordBlockCoordsComputed(std::uint32_t block_id, Trace* trace);
-void TraceRecordBlockPackedLhs(std::uint32_t block_id, Trace* trace);
-void TraceRecordBlockPackedRhs(std::uint32_t block_id, Trace* trace);
+void TraceRecordBlockPacked(Side side, std::uint32_t block_id, Trace* trace);
 void TraceRecordBlockFinished(std::uint32_t block_id, Trace* trace);
 void TraceRecordThreadEnd(std::uint32_t thread_id, Trace* trace);
 void TraceRecordStart(Trace* trace);
@@ -66,8 +66,7 @@ inline void TraceRecordThreadStart(std::uint32_t, Trace*) {}
 inline void TraceRecordThreadLoopStart(std::uint32_t, Trace*) {}
 inline void TraceRecordBlockReserved(std::uint32_t, std::uint32_t, Trace*) {}
 inline void TraceRecordBlockCoordsComputed(std::uint32_t, Trace*) {}
-inline void TraceRecordBlockPackedLhs(std::uint32_t, Trace*) {}
-inline void TraceRecordBlockPackedRhs(std::uint32_t, Trace*) {}
+inline void TraceRecordBlockPacked(Side, std::uint32_t, Trace*) {}
 inline void TraceRecordBlockFinished(std::uint32_t, Trace*) {}
 inline void TraceRecordThreadEnd(std::uint32_t, Trace*) {}
 inline void TraceRecordStart(Trace*) {}

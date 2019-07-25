@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 namespace ruy {
 
 enum class BlockMapTraversalOrder {
@@ -114,28 +115,24 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
                   int cache_friendly_traversal_threshold, BlockMap* block_map);
 
-// Maps an integer index to a (block_r, block_c) block position in the grid.
+// Maps an integer index to a block position in the grid.
 void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
-                     std::uint16_t* block_r, std::uint16_t* block_c);
+                     SidePair<std::uint16_t>* block);
 
-// Given a (block_r, block_c) block position in the grid, returns its actual
+// Given a block position in the grid, returns its actual
 // position in the matrix that the BlockMap refers to in terms of
-// actual row/column indices: starting at row start_r and column start_c,
-// ending at row (end_r - 1) and column (end_c - 1).
-void GetBlockMatrixCoords(const BlockMap& block_map, std::uint16_t block_r,
-                          std::uint16_t block_c, int* start_r, int* start_c,
-                          int* end_r, int* end_c);
+// actual row/column indices.
+void GetBlockMatrixCoords(const BlockMap& block_map,
+                          const SidePair<std::uint16_t>& block,
+                          SidePair<int>* start, SidePair<int>* end);
 
-// Returns the number of grid subdivisions along the rows dimension.
-inline std::uint16_t NumBlocksOfRows(const BlockMap& block_map) {
-  return 1 << (block_map.num_blocks_base_log2 +
-               block_map.rows_rectangularness_log2);
-}
-
-// Returns the number of grid subdivisions along the columns dimension.
-inline std::uint16_t NumBlocksOfCols(const BlockMap& block_map) {
-  return 1 << (block_map.num_blocks_base_log2 +
-               block_map.cols_rectangularness_log2);
+// Returns the number of grid subdivisions along the rows dimension (if
+// side == kLhs) or columns dimension (if side == kRhs).
+inline std::uint16_t NumBlocksPerSide(Side side, const BlockMap& block_map) {
+  int rectangularness_log2 = side == Side::kLhs
+                                 ? block_map.rows_rectangularness_log2
+                                 : block_map.cols_rectangularness_log2;
+  return 1 << (block_map.num_blocks_base_log2 + rectangularness_log2);
 }
 
 // Returns the overall number of blocks in

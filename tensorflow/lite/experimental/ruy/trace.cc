@@ -35,8 +35,7 @@ struct BlockTraceEntry {
   std::uint32_t thread_id = 0;
   TimePoint time_reserved;
   TimePoint time_computed_coords;
-  TimePoint time_packed_lhs;
-  TimePoint time_packed_rhs;
+  SidePair<TimePoint> time_packed;
   TimePoint time_finished;
 };
 
@@ -135,8 +134,10 @@ struct ProcessedTrace {
       Add(Event::kBlockReserved, entry.thread_id, i, entry.time_reserved);
       Add(Event::kBlockComputedCoords, entry.thread_id, i,
           entry.time_computed_coords);
-      Add(Event::kBlockPackedLhs, entry.thread_id, i, entry.time_packed_lhs);
-      Add(Event::kBlockPackedRhs, entry.thread_id, i, entry.time_packed_rhs);
+      Add(Event::kBlockPackedLhs, entry.thread_id, i,
+          entry.time_packed[Side::kLhs]);
+      Add(Event::kBlockPackedRhs, entry.thread_id, i,
+          entry.time_packed[Side::kRhs]);
       Add(Event::kBlockFinished, entry.thread_id, i, entry.time_finished);
     }
     std::sort(entries.begin(), entries.end(),
@@ -307,21 +308,13 @@ void TraceRecordBlockCoordsComputed(std::uint32_t block_id, Trace* trace) {
   }
 }
 
-void TraceRecordBlockPackedLhs(std::uint32_t block_id, Trace* trace) {
+void TraceRecordBlockPacked(Side side, std::uint32_t block_id, Trace* trace) {
   if (trace) {
     RUY_DCHECK(trace->life_stage ==
                Trace::LifeStage::kRecordingBlockAndThreadFields);
     TimePoint now = Clock::now();
-    relaxed_atomic_store(&trace->block_entries[block_id].time_packed_lhs, now);
-  }
-}
-
-void TraceRecordBlockPackedRhs(std::uint32_t block_id, Trace* trace) {
-  if (trace) {
-    RUY_DCHECK(trace->life_stage ==
-               Trace::LifeStage::kRecordingBlockAndThreadFields);
-    TimePoint now = Clock::now();
-    relaxed_atomic_store(&trace->block_entries[block_id].time_packed_rhs, now);
+    relaxed_atomic_store(&trace->block_entries[block_id].time_packed[side],
+                         now);
   }
 }
 

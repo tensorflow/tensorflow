@@ -492,11 +492,6 @@ void RunPack(Tuning tuning, const DMatrix& src_matrix, PMatrix* packed_matrix,
       tuning, src, &packed, start_col, end_col);
 }
 
-// The signature of RunPack is the same, regardless of its template parameters.
-using RunPackFn = decltype(
-    RunPack<Path::kStandardCpp, FixedKernelLayout<Order::kColMajor, 1, 1>,
-            std::int8_t, std::int8_t>);
-
 }  // namespace ruy
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_H_
