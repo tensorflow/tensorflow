@@ -3,7 +3,7 @@
 # This test is intended to verify the tensor_content field on import of an empty
 # tensor.
 # CHECK:  tf.Const
-# CHECK-SAME: value = opaque<"tf", "0x746674656E736F722464747970653A2044545F464C4F41542074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D">
+# CHECK-SAME: value = dense<0.000000e+00>
 
 node {
   name: "Const"

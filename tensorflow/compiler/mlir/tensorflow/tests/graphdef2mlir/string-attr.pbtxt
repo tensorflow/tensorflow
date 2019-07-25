@@ -42,6 +42,6 @@ versions {
 }
 
 # CHECK: func @main() {
-# CHECK-NEXT: %0:2 = "_tf.Const"() {_output_shapes = ["tfshape$dim { size: 3 }"], device = "", dtype = "tfdtype$DT_STRING", name = "save/SaveV2/shape_and_slices", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B2073697A653A2033207D207D20737472696E675F76616C3A20222220737472696E675F76616C3A20222220737472696E675F76616C3A202222"> : tensor<3x!tf.string>} : () -> (tensor<3x!tf.string>, !_tf.control)
+# CHECK-NEXT: %0:2 = "_tf.Const"() {_output_shapes = ["tfshape$dim { size: 3 }"], device = "", dtype = "tfdtype$DT_STRING", name = "save/SaveV2/shape_and_slices", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B2073697A653A2033207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C30303022"> : tensor<3x!tf.string>} : () -> (tensor<3x!tf.string>, !_tf.control)
 # CHECK-NEXT: return
 # CHECK-NEXT: }
