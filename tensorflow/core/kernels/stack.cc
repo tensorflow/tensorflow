@@ -103,47 +103,48 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
-  void MarkAsSwapped(TensorAndAllocation* value, Tensor* cpu_tensor) {
+  void MarkAsSwappedOut(size_t index, const Tensor* cpu_tensor) {
     mutex_lock l(mu_);
-    value->tensor = *cpu_tensor;
-    value->swapped_to_cpu = true;
+    stack_[index].value.tensor = *cpu_tensor;
+    stack_[index].value.swapped_to_cpu = true;
   }
 
-  void MarkAsUnswapped(TensorAndAllocation* value, Tensor* device_tensor) {
+  void MarkAsSwappedIn(size_t index, const Tensor* device_tensor) {
     mutex_lock l(mu_);
-    value->tensor = *device_tensor;
-    value->swapped_to_cpu = false;
+    stack_[index].value.tensor = *device_tensor;
+    stack_[index].value.swapped_to_cpu = false;
   }
 
-  bool GetTensorToSwapOut(int kCopyThreshold, TensorAndAllocation** value) {
+  bool GetTensorToSwapOut(int kCopyThreshold, TensorAndAllocation* value,
+                          size_t* index) {
     mutex_lock l(mu_);
     while (!unswapped_lru_.empty()) {
-      size_t index = unswapped_lru_.front();
+      *index = unswapped_lru_.front();
       unswapped_lru_.pop_front();
-      stack_[index].unswap_iter.reset();
+      stack_[*index].unswap_iter.reset();
       // We don't swap the first tensor on the stack and any subsequent tensors
       // that share the buffer with the first tensor.
-      const Tensor& tensor = stack_[index].value.tensor;
+      const Tensor& tensor = stack_[*index].value.tensor;
       const Tensor& first = stack_.front().value.tensor;
       if (tensor.TotalBytes() <= kCopyThreshold ||
           tensor.SharesBufferWith(first)) {
         continue;
       }
-      swapped_mru_.push_back(index);
-      stack_[index].swap_iter = std::prev(swapped_mru_.end());
-      *value = &(stack_[index].value);
+      swapped_mru_.push_back(*index);
+      stack_[*index].swap_iter = std::prev(swapped_mru_.end());
+      *value = stack_[*index].value;
       return true;
     }
     return false;  // nothing to swap out
   }
 
-  bool GetTensorToSwapIn(TensorAndAllocation** value, size_t* index) {
+  bool GetTensorToSwapIn(TensorAndAllocation* value, size_t* index) {
     mutex_lock l(mu_);
     while (!swapped_mru_.empty()) {
       *index = swapped_mru_.back();
       swapped_mru_.pop_back();
       stack_[*index].swap_iter.reset();
-      *value = &(stack_[*index].value);
+      *value = stack_[*index].value;
       is_swapping_ins_[*index] = true;
       return true;
     }
@@ -335,8 +336,10 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   }
 
   // Obtain the oldest unswapped TensorAndAllocation.
-  Stack::TensorAndAllocation* to_swap_out = nullptr;
-  if (!stack->GetTensorToSwapOut(kCopyThreshold, &to_swap_out)) {
+  Stack::TensorAndAllocation to_swap_out;
+  size_t to_swap_out_index;
+  if (!stack->GetTensorToSwapOut(kCopyThreshold, &to_swap_out,
+                                 &to_swap_out_index)) {
     done();
     return;
   }
@@ -347,13 +350,13 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   host_alloc_attrs.set_gpu_compatible(true);
   host_alloc_attrs.set_on_host(true);
   Allocator* cpu_allocator = device->GetAllocator(host_alloc_attrs);
-  Tensor* cpu_tensor = new Tensor(cpu_allocator, (to_swap_out->tensor).dtype(),
-                                  (to_swap_out->tensor).shape());
+  Tensor* cpu_tensor = new Tensor(cpu_allocator, to_swap_out.tensor.dtype(),
+                                  to_swap_out.tensor.shape());
   device_ctxt->CopyDeviceTensorToCPU(
-      &(to_swap_out->tensor), "StackPush", device, cpu_tensor,
-      [stack, to_swap_out, cpu_tensor, done](const Status& s) {
+      &(to_swap_out.tensor), "StackPush", device, cpu_tensor,
+      [stack, cpu_tensor, to_swap_out_index, done](const Status& s) {
         if (s.ok()) {
-          stack->MarkAsSwapped(to_swap_out, cpu_tensor);
+          stack->MarkAsSwappedOut(to_swap_out_index, cpu_tensor);
         }
         done();
         delete cpu_tensor;
@@ -416,20 +419,19 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   }
 
   // Obtain the most recent swapped TensorAndAllocation.
-  Stack::TensorAndAllocation* to_swap_in = nullptr;
+  Stack::TensorAndAllocation to_swap_in;
   size_t to_swap_in_index;
   if (!stack->GetTensorToSwapIn(&to_swap_in, &to_swap_in_index)) {
     return;
   }
 
-  Tensor* device_tensor =
-      new Tensor(gpu_allocator, (to_swap_in->tensor).dtype(),
-                 (to_swap_in->tensor).shape());
+  Tensor* device_tensor = new Tensor(gpu_allocator, to_swap_in.tensor.dtype(),
+                                     to_swap_in.tensor.shape());
   device_ctxt->CopyCPUTensorToDevice(
-      &(to_swap_in->tensor), device, device_tensor,
-      [stack, to_swap_in, device_tensor, to_swap_in_index](const Status& s) {
+      &(to_swap_in.tensor), device, device_tensor,
+      [stack, device_tensor, to_swap_in_index](const Status& s) {
         if (s.ok()) {
-          stack->MarkAsUnswapped(to_swap_in, device_tensor);
+          stack->MarkAsSwappedIn(to_swap_in_index, device_tensor);
         }
         delete device_tensor;
         stack->FinishSwappingIn(to_swap_in_index);
