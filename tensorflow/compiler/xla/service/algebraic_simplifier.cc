@@ -2384,9 +2384,11 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * slice,
         MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        pad->shape(), slice->mutable_shape()));
 
     // Verify that the slice shape matches the pad shape.
-    TF_RET_CHECK(ShapeUtil::Compatible(slice->shape(), pad->shape()));
+    TF_RET_CHECK(ShapeUtil::Equal(slice->shape(), pad->shape()));
 
     return ReplaceInstruction(pad, slice);
   }

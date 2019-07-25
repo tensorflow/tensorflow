@@ -5543,5 +5543,25 @@ TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
               GmockMatch(m::Remainder(m::Parameter(), m::Parameter())));
 }
 
+TEST_F(AlgebraicSimplifierTest, SlicePadLayout) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %param.0 = f32[128,9,9,1024]{0,3,2,1} parameter(0)
+      %param.1 = f32[] parameter(1)
+      %slice = f32[128,9,9,1024]{0,3,2,1} slice(%param.0),
+        slice={[0:128], [0:9], [0:9], [0:1024]}
+      ROOT %pad = f32[128,8,9,1024]{0,3,2,1} pad(%slice, %param.1),
+        padding=0_0x-1_0x0_0x0_0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  const Shape root_shape = m->entry_computation()->root_instruction()->shape();
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice().WithShapeEqualTo(&root_shape)));
+}
+
 }  // namespace
 }  // namespace xla
