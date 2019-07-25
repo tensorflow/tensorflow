@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 // See documentation in ../../ops/experimental_dataset_ops.cc for a high-level
 // description of the following op.
@@ -55,6 +56,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

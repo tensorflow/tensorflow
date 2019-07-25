@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
@@ -429,5 +430,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByReducerDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByReducerDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

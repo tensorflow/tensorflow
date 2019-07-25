@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
@@ -211,5 +212,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("TakeWhileDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalTakeWhileDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

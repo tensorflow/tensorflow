@@ -16,6 +16,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "auto_shard_dataset";
@@ -279,5 +280,6 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
 }
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

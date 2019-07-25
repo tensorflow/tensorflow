@@ -16,6 +16,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "parallel_interleave_dataset";
@@ -851,5 +852,6 @@ TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
 }
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
