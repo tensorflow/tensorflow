@@ -49,9 +49,6 @@ limitations under the License.
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
-%rename("%s") TFE_NewProfilerContext;
-%rename("%s") TFE_ProfilerContextSetEagerContext;
-%rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
 %rename("%s") TFE_ProfilerClientMonitor;

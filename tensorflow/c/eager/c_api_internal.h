@@ -130,14 +130,8 @@ struct TFE_Op {
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
-struct TFE_ProfilerContext {
-  tensorflow::ProfilerContext profiler_context;
-};
-
 struct TFE_Profiler {
-  explicit TFE_Profiler(TFE_ProfilerContext* ctx) {
-    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
-  }
+  explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
