@@ -227,8 +227,9 @@ public:
   /// Parse a float attribute.
   Attribute parseFloatAttr(Type type, bool isNegative);
 
-  /// Parse an integer attribute.
-  Attribute parseIntegerAttr(Type type, bool isSigned);
+  /// Parse a decimal or a hexadecimal literal, which can be either an integer
+  /// or a float attribute.
+  Attribute parseDecOrHexAttr(Type type, bool isNegative);
 
   /// Parse an opaque elements attribute.
   Attribute parseOpaqueElementsAttr();
@@ -998,11 +999,11 @@ Attribute Parser::parseAttribute(Type type) {
   case Token::floatliteral:
     return parseFloatAttr(type, /*isNegative=*/false);
   case Token::integer:
-    return parseIntegerAttr(type, /*isSigned=*/false);
+    return parseDecOrHexAttr(type, /*isNegative=*/false);
   case Token::minus: {
     consumeToken(Token::minus);
     if (getToken().is(Token::integer))
-      return parseIntegerAttr(type, /*isSigned=*/true);
+      return parseDecOrHexAttr(type, /*isNegative=*/true);
     if (getToken().is(Token::floatliteral))
       return parseFloatAttr(type, /*isNegative=*/true);
 
@@ -1151,12 +1152,17 @@ Attribute Parser::parseFloatAttr(Type type, bool isNegative) {
   return FloatAttr::get(type, isNegative ? -val.getValue() : val.getValue());
 }
 
-/// Parse an integer attribute.
-Attribute Parser::parseIntegerAttr(Type type, bool isSigned) {
+/// Parse a decimal or a hexadecimal literal, which can be either an integer
+/// or a float attribute.
+Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
   auto val = getToken().getUInt64IntegerValue();
-  if (!val.hasValue() ||
-      (isSigned ? (int64_t)-val.getValue() >= 0 : (int64_t)val.getValue() < 0))
+  if (!val.hasValue())
     return (emitError("integer constant out of range for attribute"), nullptr);
+
+  // Remember if the literal is hexadecimal.
+  StringRef spelling = getToken().getSpelling();
+  bool isHex = spelling.size() > 1 && spelling[1] == 'x';
+
   consumeToken(Token::integer);
   if (!type) {
     // Default to i64 if not type is specified.
@@ -1165,14 +1171,47 @@ Attribute Parser::parseIntegerAttr(Type type, bool isSigned) {
     else if (!(type = parseType()))
       return nullptr;
   }
-  if (!type.isIntOrIndex())
-    return (emitError("integer value not valid for specified type"), nullptr);
 
+  // Hexadecimal representation of float literals is not supported for bfloat16.
+  // When supported, the literal should be unsigned.
+  auto floatType = type.dyn_cast<FloatType>();
+  if (floatType && !type.isBF16()) {
+    if (isNegative) {
+      emitError("hexadecimal float literal should not have a leading minus");
+      return nullptr;
+    }
+    if (!isHex) {
+      emitError("unexpected decimal integer literal for a float attribute")
+              .attachNote()
+          << "add a trailing dot to make the literal a float";
+      return nullptr;
+    }
+
+    // Construct a float attribute bitwise equivalent to the integer literal.
+    int width = type.getIntOrFloatBitWidth();
+    APInt apInt(width, *val, isNegative);
+    if (apInt != *val) {
+      emitError("hexadecimal float constant out of range for attribute");
+      return nullptr;
+    }
+    APFloat apFloat(floatType.getFloatSemantics(), apInt);
+    return builder.getFloatAttr(type, apFloat);
+  }
+
+  if (!type.isIntOrIndex())
+    return (emitError("integer literal not valid for specified type"), nullptr);
+
+  // Parse the integer literal.
   int width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
-  APInt apInt(width, *val, isSigned);
+  APInt apInt(width, *val, isNegative);
   if (apInt != *val)
     return (emitError("integer constant out of range for attribute"), nullptr);
-  return builder.getIntegerAttr(type, isSigned ? -apInt : apInt);
+
+  // Otherwise construct an integer attribute.
+  if (isNegative ? (int64_t)-val.getValue() >= 0 : (int64_t)val.getValue() < 0)
+    return (emitError("integer constant out of range for attribute"), nullptr);
+
+  return builder.getIntegerAttr(type, isNegative ? -apInt : apInt);
 }
 
 /// Parse an opaque elements attribute.
