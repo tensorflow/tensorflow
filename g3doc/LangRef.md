@@ -840,26 +840,10 @@ Syntax:
 
 ``` {.ebnf}
 float-attribute ::= float-literal (`:` float-type)?
-                  | hexadecimal-literal `:` float-type
 ```
 
 A float attribute is a literal attribute that represents a floating point value
-of the specified [float type](#floating-point-types). It can be represented in
-the hexadecimal form where the hexadecimal value is interpreted as bits of the
-underlying binary representation. This form is useful for representing infinity
-and NaN floating point values. To avoid confusion with integer attributes,
-hexadecimal literals _must_ be followed by a float type to define a float
-attribute.
-
-Examples:
-
-``` {.mlir}
-42.0         // float attribute defaults to f64 type
-42.0 : f32   // float attribute of f32 type
-0x7C00 : f16 // positive infinity
-0x7CFF : f16 // NaN (one of possible values)
-42 : f32     // Error: expected integer type
-```
+of the specified [float type](#floating-point-types).
 
 #### String Attribute
 

@@ -478,12 +478,8 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
     }
   }
 
-  // Print special values in hexadecimal format.  The sign bit should be
-  // included in the literal.
   SmallVector<char, 16> str;
-  APInt apInt = apValue.bitcastToAPInt();
-  apInt.toString(str, /*Radix=*/16, /*Signed=*/false,
-                 /*formatAsCLiteral=*/true);
+  apValue.toString(str);
   os << str;
 }
 
