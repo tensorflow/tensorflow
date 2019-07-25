@@ -170,11 +170,6 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 
   int num_blocks_base_log2 = size_floor_log2 - l1_size_log2;
   RUY_DCHECK_GE(num_blocks_base_log2, 0);
-  if (num_blocks_base_log2 == 0) {
-    if ((rows % kernel_rows) || (cols % kernel_cols)) {
-      num_blocks_base_log2 = 1;
-    }
-  }
 
   int rows_rounded_up = round_up_pot(rows, kernel_rows);
   int cols_rounded_up = round_up_pot(cols, kernel_cols);
