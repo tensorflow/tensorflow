@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -207,7 +208,8 @@ def model_iteration(model,
     val_samples_or_steps = validation_steps
   else:
     # Get num samples for printing.
-    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+    val_samples_or_steps = val_inputs and nest.flatten(
+        val_inputs)[0].shape[0] or None
 
   if mode == ModeKeys.TRAIN and verbose:
     _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
