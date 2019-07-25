@@ -555,7 +555,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path,
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
-  return std::move(result);
+  return result;
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
