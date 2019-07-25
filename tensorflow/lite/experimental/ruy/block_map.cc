@@ -167,18 +167,14 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                         ceil_log2(std::max(lhs_scalar_size, rhs_scalar_size)));
   l1_size_log2 = std::max(l1_size_log2, kernel_width_log2);
   l1_size_log2 = std::min(l1_size_log2, size_floor_log2);
-  l1_size_log2 = std::max(l1_size_log2, size_floor_log2 - 8);
 
   int num_blocks_base_log2 = size_floor_log2 - l1_size_log2;
   RUY_DCHECK_GE(num_blocks_base_log2, 0);
-  RUY_DCHECK_LE(num_blocks_base_log2, 8);
   if (num_blocks_base_log2 == 0) {
     if ((rows % kernel_rows) || (cols % kernel_cols)) {
       num_blocks_base_log2 = 1;
     }
   }
-  RUY_DCHECK_LE(num_blocks_base_log2 + rows_rectangularness_log2, 16);
-  RUY_DCHECK_LE(num_blocks_base_log2 + cols_rectangularness_log2, 16);
 
   int rows_rounded_up = round_up_pot(rows, kernel_rows);
   int cols_rounded_up = round_up_pot(cols, kernel_cols);
