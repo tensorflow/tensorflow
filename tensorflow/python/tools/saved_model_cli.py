@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import collections
 import os
 import re
 import sys
@@ -45,7 +46,6 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.util import nest
 
 # Set of ops to blacklist.
 _OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
@@ -173,7 +173,7 @@ def _show_defined_functions(saved_model_dir):
   with ops_lib.Graph().as_default():
     trackable_object = load.load(saved_model_dir)
 
-  print('Defined Functions:')
+  print('\nDefined Functions:')
   functions = save._AugmentedGraphView(
       trackable_object).list_functions(trackable_object)
   for name, function in functions.items():
@@ -181,11 +181,12 @@ def _show_defined_functions(saved_model_dir):
     for index, concrete_functions in enumerate(
             function._list_all_concrete_functions_for_serialization(), 1):
       args, kwargs = concrete_functions.structured_input_signature
-      print('  Option #%d' % index)
-      print('    Callable with:')
-      _print_args(args, indent=3)
+      print('    Option #%d' % index)
+      print('      Callable with:')
+      _print_args(args, indent=4)
       if kwargs:
-        _print_args(kwargs, "Named Argument", indent=3)
+        _print_args(kwargs, "Named Argument", indent=4)
+    print()
 
 
 def _print_args(arguments, argument_type="Argument", indent=0):
@@ -205,27 +206,26 @@ def _print_args(arguments, argument_type="Argument", indent=0):
   def in_print(s, end='\n'):
     print(indent_str + s, end=end)
 
-  def is_nested(args):
-    return nest.is_nested(args) and not isinstance(args, dict)
-  if nest.is_nested(arguments):
-    for index, element in enumerate(arguments, 1):
-      if indent == 3:
-        in_print('%s #%d' % (argument_type, index))
-      if isinstance(element, tensor_spec.TensorSpec):
-        print((indent + 1) * '  ' + '%s: %s'%(element.name, repr(element)))
-      elif is_nested(element):
-        in_print('  DType: %s' % type(element).__name__)
-        in_print('  Values: [', end='')
-        _print_args(element, indent + 1)
-        in_print('  ]')
-      elif isinstance(element, dict):
-        in_print('  {', end='')
-        for (key, value) in element.items():
-            print('\'%s\': %s' % (str(key), _may_be_add_quotes(value)), end=', ')
-        print('\b\b}')
-      else:
-        in_print('  DType: %s' % type(element).__name__)
-        in_print('  Value: %s' % str(element))
+  for index, element in enumerate(arguments, 1):
+    if indent == 4:
+      in_print('%s #%d' % (argument_type, index))
+    if isinstance(element, tensor_spec.TensorSpec):
+      print((indent + 1) * '  ' + '%s: %s'%(element.name, repr(element)))
+    elif isinstance(element, collections.Iterable) and not isinstance(element, dict):
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: [', end='')
+      for value in element:
+          print('%s' %  _may_be_add_quotes(value), end=', ')
+      print('\b\b]')
+    elif isinstance(element, dict):
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: {', end='')
+      for (key, value) in element.items():
+          print('\'%s\': %s' % (str(key), _may_be_add_quotes(value)), end=', ')
+      print('\b\b}')
+    else:
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: %s' % str(element))
 
 def _print_tensor_info(tensor_info, indent=0):
   """Prints details of the given tensor_info.
