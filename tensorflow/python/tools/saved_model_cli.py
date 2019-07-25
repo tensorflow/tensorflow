@@ -180,7 +180,7 @@ def _show_defined_functions(saved_model_dir):
     print('  Function Name: \'%s\'' % name)
     for index, concrete_functions in enumerate(
             function._list_all_concrete_functions_for_serialization(), 1):
-      args, kwargs = (concrete_functions.structured_input_signature)
+      args, kwargs = concrete_functions.structured_input_signature
       print('  Option #%d' % index)
       print('    Callable with:')
       _print_args(args, indent=3)
