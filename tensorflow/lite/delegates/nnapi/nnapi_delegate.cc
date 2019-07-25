@@ -252,16 +252,33 @@ static size_t getNumPaddingBytes(size_t byte_size) {
   return num_padding_bytes;
 }
 
+std::string SimpleJoin(const std::vector<const char*>& elements,
+                       const char* separator) {
+  // Note that we avoid use of sstream to avoid binary size bloat.
+  std::string joined_elements;
+  for (auto it = elements.begin(); it != elements.end(); ++it) {
+    if (separator && it != elements.begin()) {
+      joined_elements += separator;
+    }
+    if (*it) {
+      joined_elements += *it;
+    }
+  }
+  return joined_elements;
+}
+
 // Return NNAPI device handle with the provided null-terminated device name. If
 // no matching device could be found, nullptr will be returned.
-ANeuralNetworksDevice* GetDeviceHandle(const char* device_name_ptr) {
+ANeuralNetworksDevice* GetDeviceHandle(TfLiteContext* context,
+                                       const char* device_name_ptr) {
   if (!device_name_ptr) return nullptr;
   ANeuralNetworksDevice* device_handle = nullptr;
   std::string device_name(device_name_ptr);
-  uint32_t numDevices = 0;
-  NnApiImplementation()->ANeuralNetworks_getDeviceCount(&numDevices);
+  uint32_t num_devices = 0;
+  NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
 
-  for (uint32_t i = 0; i < numDevices; i++) {
+  std::vector<const char*> device_names;
+  for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* buffer = nullptr;
     NnApiImplementation()->ANeuralNetworks_getDevice(i, &device);
@@ -270,6 +287,14 @@ ANeuralNetworksDevice* GetDeviceHandle(const char* device_name_ptr) {
       device_handle = device;
       break;
     }
+    device_names.push_back(buffer);
+  }
+  if (!device_handle) {
+    context->ReportError(context,
+                         "Could not find the specified NNAPI accelerator: %s. "
+                         "Must be one of: {%s}.",
+                         device_name_ptr,
+                         SimpleJoin(device_names, ",").c_str());
   }
   return device_handle;
 }
@@ -2502,11 +2527,8 @@ class NNAPIDelegateKernel {
     // user specified an acclelerator to use.
     if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
         device_name_ptr != nullptr) {
-      nnapi_device_ = GetDeviceHandle(device_name_ptr);
+      nnapi_device_ = GetDeviceHandle(context, device_name_ptr);
       if (nnapi_device_ == nullptr) {
-        context->ReportError(context,
-                             "Could not find the specified accelerator: %s.",
-                             device_name_ptr);
         return kTfLiteError;
       }
     }
@@ -3279,11 +3301,8 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     // Check if user specified an acclelerator to use.
     const char* device_name_ptr = GetOptions(delegate).accelerator_name;
     if (device_name_ptr) {
-      if (!GetDeviceHandle(device_name_ptr)) {
+      if (!GetDeviceHandle(context, device_name_ptr)) {
         // If the selected accelerator cannot be found, NNAPI will not be used.
-        context->ReportError(context,
-                             "Could not find the specified accelerator: %s.",
-                             device_name_ptr);
         return kTfLiteOk;
       }
     } else {
