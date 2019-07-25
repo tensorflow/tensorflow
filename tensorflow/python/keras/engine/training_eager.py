@@ -246,14 +246,14 @@ def _process_single_batch(model,
       if trainable_weights:
         # TODO(tanzheny) b/132690565: Provide mechanism for user to override
         # model.train_on_batch.
-        if isinstance(model.optimizer,
-                      list) and not hasattr(model, '_backwards'):
-          raise ValueError('The `optimizer` in `compile` should be a single '
-                           'optimizer.')
-        grads = tape.gradient(scaled_total_loss, trainable_weights)
-        if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-          grads = model.optimizer.get_unscaled_gradients(grads)
-        model.optimizer.apply_gradients(zip(grads, trainable_weights))
+        if hasattr(model, '_backwards'):
+          model._backwards(tape, scaled_total_loss)
+        else:
+          grads = tape.gradient(scaled_total_loss, trainable_weights)
+          if isinstance(model.optimizer,
+                        loss_scale_optimizer.LossScaleOptimizer):
+            grads = model.optimizer.get_unscaled_gradients(grads)
+          model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
