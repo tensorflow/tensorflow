@@ -25,6 +25,7 @@ import inspect
 
 import six
 
+from tensorflow.data import Dataset
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.framework import constant_op
@@ -242,7 +243,21 @@ def _py_range(start_or_stop, stop, step):
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
+def enumerate_(s, start=0):
+  if isinstance(s, Dataset):
+    return _tf_dataset_enumerate(s, start)
+  return _py_enumerate(s, start)
+
+
+def _tf_dataset_enumerate(s, start=0):
+  return s.enumerate(start)
+
+
+def _py_enumerate(s, start=0):
+  return enumerate(s, start)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -256,4 +271,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'range': range_,
     # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
+    'enumerate': enumerate_,
 }
