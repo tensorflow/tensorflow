@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -29,14 +29,28 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
+#endif
+
+#if TENSORFLOW_USE_ROCM
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
 #endif
 
 namespace xla {
@@ -62,14 +76,14 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return true;
 #else
   return false;
 #endif
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -554,7 +568,7 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
 
 Status Rendezvous::DoAllReduce(ParticipantData participant, ncclComm_t comm) {
   se::StreamExecutor* executor = participant.stream->parent();
-  se::cuda::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
   cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
       participant.stream->implementation()->GpuStreamMemberHack());
   VLOG(3) << "Using stream pointer: " << cu_stream
@@ -755,7 +769,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer) {}
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace gpu
 }  // namespace xla

@@ -356,7 +356,6 @@ tf_cuda_library(
     name = "nccl_all_reduce_thunk",
     srcs = ["nccl_all_reduce_thunk.cc"],
     hdrs = ["nccl_all_reduce_thunk.h"],
-    tags = ["no_rocm"],
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
@@ -373,6 +372,8 @@ tf_cuda_library(
         "@local_config_nccl//:nccl",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rccl",
     ]),
 )
 
