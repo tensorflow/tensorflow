@@ -587,13 +587,7 @@ void ResizeNearestNeighborOp::Compile(XlaOpKernelContext* ctx) {
   GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
 }
 
-REGISTER_XLA_OP(Name("ResizeNearestNeighbor")
-                    .Device(DEVICE_CPU_XLA_JIT)
-                    .CompileTimeConstantInput("size"),
-                ResizeNearestNeighborOp);
-REGISTER_XLA_OP(Name("ResizeNearestNeighbor")
-                    .Device(DEVICE_XLA_CPU)
-                    .CompileTimeConstantInput("size"),
+REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
                 ResizeNearestNeighborOp);
 
 ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
@@ -610,13 +604,7 @@ void ResizeBilinearOp::Compile(XlaOpKernelContext* ctx) {
   GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
 }
 
-REGISTER_XLA_OP(Name("ResizeBilinear")
-                    .Device(DEVICE_CPU_XLA_JIT)
-                    .CompileTimeConstantInput("size"),
-                ResizeBilinearOp);
-REGISTER_XLA_OP(Name("ResizeBilinear")
-                    .Device(DEVICE_XLA_CPU)
-                    .CompileTimeConstantInput("size"),
+REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
                 ResizeBilinearOp);
 
 ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
@@ -710,7 +698,6 @@ void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
   ctx->SetOutput(0, output);
 }
 
-REGISTER_XLA_OP(Name("ResizeBilinearGrad").Device(DEVICE_CPU_XLA_JIT), ResizeBilinearGradOp);
-REGISTER_XLA_OP(Name("ResizeBilinearGrad").Device(DEVICE_XLA_CPU), ResizeBilinearGradOp);
+REGISTER_XLA_OP(Name("ResizeBilinearGrad"), ResizeBilinearGradOp);
 
 }  // namespace tensorflow
