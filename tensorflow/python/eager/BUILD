@@ -192,6 +192,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
