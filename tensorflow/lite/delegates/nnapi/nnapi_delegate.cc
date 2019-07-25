@@ -141,6 +141,7 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
       }
       return false;
     }
+    case kTfLiteBuiltinBatchToSpaceNd:
     case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
@@ -1501,6 +1502,18 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_SPACE_TO_BATCH_ND>;
         }
         break;
+      case kTfLiteBuiltinBatchToSpaceNd:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI11) {
+          auto crops = context->tensors[node->inputs->data[2]];
+          auto crops_data = crops.data.i32;
+          // Check if all crops are 0.
+          if (!crops_data || crops.bytes != 16 || crops_data[0] != 0 ||
+              crops_data[1] != 0 || crops_data[2] != 0 || crops_data[3] != 0) {
+            return nullptr;
+          }
+          return BasicMappingFn<ANEURALNETWORKS_BATCH_TO_SPACE_ND>;
+        }
+        break;
       case kTfLiteBuiltinStridedSlice:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI11) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -2635,6 +2648,11 @@ class NNAPIDelegateKernel {
         } else if (reg->builtin_code == kTfLiteBuiltinExpandDims &&
                    input_pos == 1) {
           // The axis param is added during Map
+          continue;
+        } else if (reg->builtin_code == kTfLiteBuiltinBatchToSpaceNd &&
+                   input_pos == 2) {
+          // NNAPI does not support crops.
+          // The Map fucntion will check if all crops are zero.
           continue;
         } else if (reg->builtin_code == kTfLiteBuiltinArgMin ||
                    reg->builtin_code == kTfLiteBuiltinArgMax) {
