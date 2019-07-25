@@ -193,9 +193,6 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase):
     self.assertAllEqual(expected_output, output)
 
   def test_training_internal_ragged_tensors(self):
-    if testing_utils.should_run_distributed():
-      # Training loop stall without clear reason.
-      self.skipTest("b/137397816")
     # Create a model that implements y=Mx. This is easy to learn and will
     # demonstrate appropriate gradient passing. (We have to use RaggedTensors
     # for this test, as ToSparse() doesn't support gradient propagation through

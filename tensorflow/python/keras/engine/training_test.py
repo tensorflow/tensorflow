@@ -791,8 +791,6 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_training_on_sparse_data_with_dense_placeholders(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     # TODO(kaftan) Test seems to not work, file ticket
     if testing_utils.should_run_eagerly() and context.executing_eagerly():
       self.skipTest('Skipping running model eagerly.')
@@ -991,8 +989,6 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_mismatched_output_shape_and_target_shape(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = keras.Sequential([
         keras.layers.Dense(2, input_shape=(3, 4)),
         keras.layers.Dense(5),
@@ -1549,8 +1545,6 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_invalid_steps_per_epoch_usage(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     x = keras.layers.Input(shape=(1,))
     y = keras.layers.Dense(1)(x)
 
@@ -1820,8 +1814,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   def test_fit_with_incorrect_weights(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -1855,8 +1847,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_class_weight_invalid_use_case(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 5
     train_samples = 1000
     test_samples = 1000
@@ -1939,9 +1929,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_default_sample_weight(self):
     """Verifies that fit works without having to set sample_weight."""
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
-
     num_classes = 5
     input_dim = 5
     timesteps = 3
@@ -3043,8 +3030,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_invalid_metrics(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     num_classes = 5
     input_dim = 5
 
@@ -3175,8 +3160,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_in_model_call(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
 
     class TestModel(keras.Model):
 
@@ -3338,8 +3321,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_multiple_add_metric_calls(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
 
     class TestModel(keras.Model):
 
