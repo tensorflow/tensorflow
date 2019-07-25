@@ -293,6 +293,12 @@ def update_confusion_matrix_variables(variables_to_update,
         'Invalid keys: {}. Valid variable key options are: "{}"'.format(
             invalid_keys, list(ConfusionMatrix)))
 
+  if top_k is not None:
+    y_pred = _filter_top_k(y_pred, top_k)
+  if class_id is not None:
+    y_true = y_true[..., class_id]
+    y_pred = y_pred[..., class_id]
+
   with ops.control_dependencies([
       check_ops.assert_greater_equal(
           y_pred,
@@ -310,12 +316,6 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true, sample_weight = (
           tf_losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
-
-  if top_k is not None:
-    y_pred = _filter_top_k(y_pred, top_k)
-  if class_id is not None:
-    y_true = y_true[..., class_id]
-    y_pred = y_pred[..., class_id]
 
   thresholds = to_list(thresholds)
   num_thresholds = len(thresholds)
