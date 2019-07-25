@@ -26,14 +26,14 @@ void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
                      SidePair<std::uint16_t>* block) {
   gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
   std::uint16_t rectr =
-      index & ((1 << block_map.rows_rectangularness_log2) - 1);
+      index & ((1 << block_map.rectangularness_log2[Side::kLhs]) - 1);
   std::uint16_t rectc =
-      index & ((1 << block_map.cols_rectangularness_log2) - 1);
+      index & ((1 << block_map.rectangularness_log2[Side::kRhs]) - 1);
 
-  std::uint16_t n1 = index >> (block_map.rows_rectangularness_log2 +
-                               block_map.cols_rectangularness_log2);
-  RUY_DCHECK_EQ(index, (n1 << (block_map.rows_rectangularness_log2 +
-                               block_map.cols_rectangularness_log2)) +
+  std::uint16_t n1 = index >> (block_map.rectangularness_log2[Side::kLhs] +
+                               block_map.rectangularness_log2[Side::kRhs]);
+  RUY_DCHECK_EQ(index, (n1 << (block_map.rectangularness_log2[Side::kLhs] +
+                               block_map.rectangularness_log2[Side::kRhs])) +
                            rectr + rectc);
 
   std::uint16_t br, bc;
@@ -56,8 +56,8 @@ void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
     }
   }
 
-  br = (br << block_map.rows_rectangularness_log2) + rectr;
-  bc = (bc << block_map.cols_rectangularness_log2) + rectc;
+  br = (br << block_map.rectangularness_log2[Side::kLhs]) + rectr;
+  bc = (bc << block_map.rectangularness_log2[Side::kRhs]) + rectc;
 
   // Store
   (*block)[Side::kLhs] = br;
@@ -195,55 +195,44 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                    kernel_cols) /
       kernel_cols;
 
-  block_map->rows = rows;
-  block_map->cols = cols;
-  block_map->kernel_rows = kernel_rows;
-  block_map->kernel_cols = kernel_cols;
+  block_map->dims[Side::kLhs] = rows;
+  block_map->dims[Side::kRhs] = cols;
+  block_map->kernel_dims[Side::kLhs] = kernel_rows;
+  block_map->kernel_dims[Side::kRhs] = kernel_cols;
   block_map->num_blocks_base_log2 = num_blocks_base_log2;
-  block_map->rows_rectangularness_log2 = rows_rectangularness_log2;
-  block_map->cols_rectangularness_log2 = cols_rectangularness_log2;
-  block_map->smallr = smallr;
-  block_map->smallc = smallc;
-  block_map->missr = missr;
-  block_map->missc = missc;
+  block_map->rectangularness_log2[Side::kLhs] = rows_rectangularness_log2;
+  block_map->rectangularness_log2[Side::kRhs] = cols_rectangularness_log2;
+  block_map->small_block_dims[Side::kLhs] = smallr;
+  block_map->small_block_dims[Side::kRhs] = smallc;
+  block_map->large_blocks[Side::kLhs] = missr;
+  block_map->large_blocks[Side::kRhs] = missc;
+}
+
+void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
+                          const SidePair<std::uint16_t>& block, int* start,
+                          int* end) {
+  gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
+  const std::uint16_t b = block[side];
+  *start =
+      b * block_map.small_block_dims[side] +
+      std::min(b, block_map.large_blocks[side]) * block_map.kernel_dims[side];
+  *end = *start + block_map.small_block_dims[side] +
+         (b < block_map.large_blocks[side] ? block_map.kernel_dims[side] : 0);
+
+  RUY_DCHECK_EQ(0, *start % block_map.kernel_dims[side]);
+  RUY_DCHECK_EQ(0, *end % block_map.kernel_dims[side]);
+  RUY_DCHECK_LE(*end, block_map.dims[side]);
+  RUY_DCHECK_LT(*start, *end);
+  RUY_DCHECK_GE(*start, 0);
 }
 
 void GetBlockMatrixCoords(const BlockMap& block_map,
                           const SidePair<std::uint16_t>& block,
                           SidePair<int>* start, SidePair<int>* end) {
-  std::uint16_t block_r = block[Side::kLhs];
-  std::uint16_t block_c = block[Side::kRhs];
-
-  gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
-  int sr = block_r * block_map.smallr +
-           std::min(block_r, block_map.missr) * block_map.kernel_rows;
-  int er = sr + block_map.smallr +
-           (block_r < block_map.missr) * block_map.kernel_rows;
-  int sc = block_c * block_map.smallc +
-           std::min(block_c, block_map.missc) * block_map.kernel_cols;
-  int ec = sc + block_map.smallc +
-           (block_c < block_map.missc) * block_map.kernel_cols;
-  sc = round_down_pot(sc, block_map.kernel_cols);
-  ec = round_down_pot(ec, block_map.kernel_cols);
-  sr = round_down_pot(sr, block_map.kernel_rows);
-  er = round_down_pot(er, block_map.kernel_rows);
-
-  ec = std::min(ec, block_map.cols);
-  er = std::min(er, block_map.rows);
-  sc = std::max(0, ec - round_up_pot(ec - sc, block_map.kernel_cols));
-  sr = std::max(0, er - round_up_pot(er - sr, block_map.kernel_rows));
-
-  RUY_DCHECK_LE(ec, block_map.cols);
-  RUY_DCHECK_LE(er, block_map.rows);
-  RUY_DCHECK_LT(sc, ec);
-  RUY_DCHECK_LT(sr, er);
-  RUY_DCHECK_GE(sc, 0);
-  RUY_DCHECK_GE(sr, 0);
-
-  (*start)[Side::kLhs] = sr;
-  (*end)[Side::kLhs] = er;
-  (*start)[Side::kRhs] = sc;
-  (*end)[Side::kRhs] = ec;
+  for (Side side : {Side::kLhs, Side::kRhs}) {
+    GetBlockMatrixCoords(side, block_map, block, &(*start)[side],
+                         &(*end)[side]);
+  }
 }
 
 }  // namespace ruy
