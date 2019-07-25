@@ -166,11 +166,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
 
+    sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
       _, _ = sequence_input_layer({'aaa': sparse_input})
 
   @test_util.run_in_graph_and_eager_modes
