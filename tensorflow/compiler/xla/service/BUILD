@@ -4247,3 +4247,18 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:prng",
     ],
 )
+
+cc_library(
+    name = "slow_operation_alarm",
+    srcs = ["slow_operation_alarm.cc"],
+    hdrs = ["slow_operation_alarm.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
