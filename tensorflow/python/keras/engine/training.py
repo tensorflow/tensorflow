@@ -146,6 +146,7 @@ class Model(network.Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
+    self._compile_time_distribution_strategy = None
 
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
@@ -161,8 +162,10 @@ class Model(network.Network):
     Returns:
         A flat list of Numpy arrays.
     """
-    if self._distribution_strategy:
-      with self._distribution_strategy.scope():
+    strategy = (self._distribution_strategy or
+                self._compile_time_distribution_strategy)
+    if strategy:
+      with strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
 
@@ -249,6 +252,9 @@ class Model(network.Network):
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
       self._run_distributed = False
+
+    self._compile_time_distribution_strategy = (
+        distribution_strategy_context.get_strategy())
 
     if distribute is not None:
       if tf2.enabled() or self._run_distributed:

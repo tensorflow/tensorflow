@@ -155,7 +155,7 @@ def run_one_epoch(model,
       batch_outs = [batch_outs]
     if strategy:
       batch_outs = dist_utils._per_replica_aggregate_batch(
-          batch_outs, model, mode)
+          strategy, batch_outs, model, mode)
 
     if step == 0:
       aggregator.create(batch_outs)
@@ -448,25 +448,13 @@ class Loop(training_utils.TrainingLoop):
 
 def _get_distribution_strategy(model):
   """Get the model's distribution strategy."""
-  if model._distribution_strategy:
-    return model._distribution_strategy
+  if model._compile_time_distribution_strategy:
+    strategy = model._compile_time_distribution_strategy
   else:
-    # Use the default strategy if no strategy was present at compile.
-    # Validate there is no actual strategy scope active at execution
-    # time.
+    # Grab the active strategy if the model was never compiled
+    # but it is now predicting.
     strategy = distribution_strategy_context.get_strategy()
-    if distribution_strategy_context.has_strategy():
-      raise ValueError(
-          'Model was compiled without any active distribution strategy, '
-          'but there is an execution-time distribution '
-          'strategy scope of (%s). '
-          'Try to make sure your code looks similar to the following.\n'
-          'with strategy.scope():\n'
-          '  model=_create_model()\n'
-          '  model.compile(...)\n'
-          '  model.fit(...)'% strategy)
-
-    return strategy
+  return strategy
 
 
 def _process_training_inputs(model, x, y, batch_size=None,
