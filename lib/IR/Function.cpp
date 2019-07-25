@@ -74,171 +74,18 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
 }
 
 /// Parsing/Printing methods.
-static ParseResult
-parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
-                  SmallVectorImpl<OpAsmParser::OperandType> &argNames,
-                  SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
-  if (parser->parseLParen())
-    return failure();
-
-  // The argument list either has to consistently have ssa-id's followed by
-  // types, or just be a type list.  It isn't ok to sometimes have SSA ID's and
-  // sometimes not.
-  auto parseArgument = [&]() -> ParseResult {
-    llvm::SMLoc loc = parser->getCurrentLocation();
-
-    // Parse argument name if present.
-    OpAsmParser::OperandType argument;
-    Type argumentType;
-    if (succeeded(parser->parseOptionalRegionArgument(argument)) &&
-        !argument.name.empty()) {
-      // Reject this if the preceding argument was missing a name.
-      if (argNames.empty() && !argTypes.empty())
-        return parser->emitError(loc,
-                                 "expected type instead of SSA identifier");
-      argNames.push_back(argument);
-
-      if (parser->parseColonType(argumentType))
-        return failure();
-    } else if (!argNames.empty()) {
-      // Reject this if the preceding argument had a name.
-      return parser->emitError(loc, "expected SSA identifier");
-    } else if (parser->parseType(argumentType)) {
-      return failure();
-    }
-
-    // Add the argument type.
-    argTypes.push_back(argumentType);
-
-    // Parse any argument attributes.
-    SmallVector<NamedAttribute, 2> attrs;
-    if (parser->parseOptionalAttributeDict(attrs))
-      return failure();
-    argAttrs.push_back(attrs);
-    return success();
-  };
-
-  // Parse the function arguments.
-  if (parser->parseOptionalRParen()) {
-    do {
-      if (parseArgument())
-        return failure();
-    } while (succeeded(parser->parseOptionalComma()));
-    parser->parseRParen();
-  }
-
-  return success();
-}
-
-/// Parse a function signature, starting with a name and including the
-/// parameter list.
-static ParseResult parseFunctionSignature(
-    OpAsmParser *parser, FunctionType &type,
-    SmallVectorImpl<OpAsmParser::OperandType> &argNames,
-    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
-  SmallVector<Type, 4> argTypes;
-  if (parseArgumentList(parser, argTypes, argNames, argAttrs))
-    return failure();
-
-  // Parse the return types if present.
-  SmallVector<Type, 4> results;
-  if (parser->parseOptionalArrowTypeList(results))
-    return failure();
-  type = parser->getBuilder().getFunctionType(argTypes, results);
-  return success();
-}
 
 ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
-  FunctionType type;
-  SmallVector<OpAsmParser::OperandType, 4> entryArgs;
-  SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
-  auto &builder = parser->getBuilder();
-
-  // Parse the name as a symbol reference attribute.
-  SymbolRefAttr nameAttr;
-  if (parser->parseAttribute(nameAttr, SymbolTable::getSymbolAttrName(),
-                             result->attributes))
-    return failure();
-  // Convert the parsed function attr into a string attr.
-  result->attributes.back().second = builder.getStringAttr(nameAttr.getValue());
-
-  // Parse the function signature.
-  if (parseFunctionSignature(parser, type, entryArgs, argAttrs))
-    return failure();
-  result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
-
-  // If function attributes are present, parse them.
-  if (succeeded(parser->parseOptionalKeyword("attributes")))
-    if (parser->parseOptionalAttributeDict(result->attributes))
-      return failure();
-
-  // Add the attributes to the function arguments.
-  SmallString<8> argAttrName;
-  for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-    if (!argAttrs[i].empty())
-      result->addAttribute(getArgAttrName(i, argAttrName),
-                           builder.getDictionaryAttr(argAttrs[i]));
-
-  // Parse the optional function body.
-  auto *body = result->addRegion();
-  if (parser->parseOptionalRegion(
-          *body, entryArgs, entryArgs.empty() ? llvm::None : type.getInputs()))
-    return failure();
-
-  return success();
-}
-
-static void printFunctionSignature(OpAsmPrinter *p, FuncOp op) {
-  *p << '(';
-
-  auto fnType = op.getType();
-  bool isExternal = op.isExternal();
-  for (unsigned i = 0, e = op.getNumArguments(); i != e; ++i) {
-    if (i > 0)
-      *p << ", ";
-
-    // If this is an external function, don't print argument labels.
-    if (!isExternal) {
-      p->printOperand(op.getArgument(i));
-      *p << ": ";
-    }
-
-    // Print the type followed by any argument attributes.
-    p->printType(fnType.getInput(i));
-    p->printOptionalAttrDict(op.getArgAttrs(i));
-  }
-  *p << ')';
-  p->printOptionalArrowTypeList(fnType.getResults());
+  return impl::parseFunctionLikeOp(
+      parser, result,
+      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results) {
+        return builder.getFunctionType(argTypes, results);
+      });
 }
 
 void FuncOp::print(OpAsmPrinter *p) {
-  *p << "func @" << getName();
-
-  // Print the signature.
-  printFunctionSignature(p, *this);
-
-  // Print out function attributes, if present.
-  SmallVector<StringRef, 2> ignoredAttrs = {SymbolTable::getSymbolAttrName(),
-                                            getTypeAttrName()};
-
-  // Ignore any argument attributes.
-  std::vector<SmallString<8>> argAttrStorage;
-  SmallString<8> argAttrName;
-  for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
-    if (getAttr(getArgAttrName(i, argAttrName)))
-      argAttrStorage.emplace_back(argAttrName);
-  ignoredAttrs.append(argAttrStorage.begin(), argAttrStorage.end());
-
-  auto attrs = getAttrs();
-  if (attrs.size() > ignoredAttrs.size()) {
-    *p << "\n  attributes ";
-    p->printOptionalAttrDict(attrs, ignoredAttrs);
-  }
-
-  // Print the body if this is not an external function.
-  if (!isExternal())
-    p->printRegion(getBody(), /*printEntryBlockArgs=*/false,
-                   /*printBlockTerminators=*/true);
+  FunctionType fnType = getType();
+  impl::printFunctionLikeOp(p, *this, fnType.getInputs(), fnType.getResults());
 }
 
 LogicalResult FuncOp::verify() {

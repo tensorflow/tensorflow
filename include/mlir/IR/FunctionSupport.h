@@ -28,6 +28,52 @@
 #include "llvm/ADT/SmallString.h"
 
 namespace mlir {
+
+namespace impl {
+/// Return the name of the attribute used for function types.
+inline StringRef getTypeAttrName() { return "type"; }
+
+/// Return the name of the attribute used for function arguments.
+inline StringRef getArgAttrName(unsigned arg, SmallVectorImpl<char> &out) {
+  out.clear();
+  return ("arg" + Twine(arg)).toStringRef(out);
+}
+
+/// Returns the dictionary attribute corresponding to the argument at 'index'.
+/// If there are no argument attributes at 'index', a null attribute is
+/// returned.
+inline DictionaryAttr getArgAttrDict(Operation *op, unsigned index) {
+  SmallString<8> nameOut;
+  return op->getAttrOfType<DictionaryAttr>(getArgAttrName(index, nameOut));
+}
+
+/// Return all of the attributes for the argument at 'index'.
+inline ArrayRef<NamedAttribute> getArgAttrs(Operation *op, unsigned index) {
+  auto argDict = getArgAttrDict(op, index);
+  return argDict ? argDict.getValue() : llvm::None;
+}
+
+/// Callback type for `parseFunctionLikeOp`, the callback should produce the
+/// type that will be associated with a function-like operation from lists of
+/// function arguments and results.
+using FuncTypeBuilder =
+    llvm::function_ref<Type(Builder &, ArrayRef<Type>, ArrayRef<Type>)>;
+
+/// Parser implementation for function-like operations.  Uses
+/// `funcTypeBuilder` to construct the custom function type given lists of
+/// input and output types.  If the builder returns a null type, `result` will
+/// not contain the `type` attribute.  The caller can then either add the type
+/// or use op's verifier to report errors.
+ParseResult parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
+                                FuncTypeBuilder funcTypeBuilder);
+
+/// Printer implementation for function-like operations.  Accepts lists of
+/// argument and result types to use while printing.
+void printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
+                         ArrayRef<Type> argTypes, ArrayRef<Type> results);
+
+} // namespace impl
+
 namespace OpTrait {
 
 /// This trait provides APIs for Ops that behave like functions.  In particular:
@@ -117,7 +163,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Return the name of the attribute used for function types.
-  static StringRef getTypeAttrName() { return "type"; }
+  static StringRef getTypeAttrName() { return ::mlir::impl::getTypeAttrName(); }
 
   TypeAttr getTypeAttr() {
     return this->getOperation()->template getAttrOfType<TypeAttr>(
@@ -165,8 +211,7 @@ public:
 
   /// Return all of the attributes for the argument at 'index'.
   ArrayRef<NamedAttribute> getArgAttrs(unsigned index) {
-    auto argDict = getArgAttrDict(index);
-    return argDict ? argDict.getValue() : llvm::None;
+    return ::mlir::impl::getArgAttrs(this->getOperation(), index);
   }
 
   /// Return all argument attributes of this function.
@@ -219,16 +264,16 @@ public:
 protected:
   /// Returns the attribute entry name for the set of argument attributes at
   /// index 'arg'.
-  static StringRef getArgAttrName(unsigned arg, SmallVectorImpl<char> &out);
+  static StringRef getArgAttrName(unsigned arg, SmallVectorImpl<char> &out) {
+    return ::mlir::impl::getArgAttrName(arg, out);
+  }
 
   /// Returns the dictionary attribute corresponding to the argument at 'index'.
   /// If there are no argument attributes at 'index', a null attribute is
   /// returned.
   DictionaryAttr getArgAttrDict(unsigned index) {
     assert(index < getNumArguments() && "invalid argument number");
-    SmallString<8> nameOut;
-    return this->getOperation()->template getAttrOfType<DictionaryAttr>(
-        getArgAttrName(index, nameOut));
+    return ::mlir::impl::getArgAttrDict(this->getOperation(), index);
   }
 
   /// Hook for concrete classes to verify that the type attribute respects
@@ -336,16 +381,6 @@ FunctionLike<ConcreteType>::removeArgAttr(unsigned index, Identifier name) {
   if (result == NamedAttributeList::RemoveResult::Removed)
     setArgAttrs(index, attrList);
   return result;
-}
-
-/// Returns the attribute entry name for the set of argument attributes at index
-/// 'arg'.
-template <typename ConcreteType>
-StringRef
-FunctionLike<ConcreteType>::getArgAttrName(unsigned arg,
-                                           SmallVectorImpl<char> &out) {
-  out.clear();
-  return ("arg" + Twine(arg)).toStringRef(out);
 }
 
 } // end namespace OpTrait
