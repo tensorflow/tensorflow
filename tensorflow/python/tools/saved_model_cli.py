@@ -207,7 +207,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
 
   def is_nested(args):
     return nest.is_nested(args) and not isinstance(args, dict)
-  if is_nested(arguments):
+  if nest.is_nested(arguments):
     for index, element in enumerate(arguments, 1):
       if indent == 3:
         in_print('%s #%d' % (argument_type, index))
