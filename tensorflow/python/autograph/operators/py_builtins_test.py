@@ -137,6 +137,11 @@ class PyBuiltinsTest(test.TestCase):
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
 
+  def test_enumerate(self):
+    self.assertListEqual(list(py_builtins.enumerate_([3,2,1])), [(0, 3), (1, 2), (2, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([3,2,1], 5)), [(5, 3), (6, 2), (7, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
+
   def test_eval_in_original_context(self):
 
     def caller_1(lvl_delta):
