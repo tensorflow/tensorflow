@@ -118,8 +118,8 @@ struct EngineInfo {
   bool use_calibration;
 };
 
-// Constructs a graphdef from the segment in the given graph. Adds placeholder
-// nodes for input edges (InputPH_*) and identity nodes for output edges
+// Constructs a graphdef from the segment in the given graph. Adds _Arg
+// nodes for input edges (InputPH_*) and _Retval nodes for output edges
 // (OutputPH_*). This function needs to be called before TensorRT nodes
 // inserted in order to correctly get sizes from the original graph.
 //

@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -47,6 +48,7 @@ using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
+
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
@@ -65,9 +67,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
     const string func_name = "myop_native_segment";
     Graph* graph = s.graph();
     Graph segment_graph(graph->flib_def());
-    TF_ASSERT_OK(convert::ModifyGraphForFunctionDef(
-        graph, graph_def, &segment_graph));
-    TF_ASSERT_OK(convert::RegisterModifiedGraphToFunctionLibrary(&segment_graph, graph,
+    TF_ASSERT_OK(convert::ConvertSegmentToGraph(graph_def, &segment_graph));
+    TF_ASSERT_OK(convert::RegisterGraphToFunctionLibrary(&segment_graph, graph,
         flib_def_->ToProto(), "myop"));
     
     PartialTensorShape shape({-1, -1});

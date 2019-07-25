@@ -534,14 +534,11 @@ Status CreateTRTNode(const ConversionParams& params,
   return Status::OK();
 }
 
-// Function to construct a funcdef from the segment and add it to the graph.
-Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
-                                 Graph* segment_graph) {
+Status ConvertSegmentToGraph(const GraphDef& segment, Graph* segment_graph) {
   // segment_graph is a graph for the segment, to be modified by this function
   // graph is the input graph to be optimized by TRT.
   GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
-  /*
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : segment_graph->op_nodes()) {
@@ -616,13 +613,13 @@ Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
     }
     segment_graph->RemoveNode(node);
   }
-  */
   return Status::OK();
 }
 
-Status RegisterModifiedGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
-                                              FunctionDefLibrary fdeflib,
-                                              const string& engine_name) {
+ 
+Status RegisterGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
+                                      FunctionDefLibrary fdeflib,
+                                      const string& engine_name) {
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       *segment_graph, StrCat(engine_name, "_native_segment"), native_segment));
@@ -639,6 +636,16 @@ Status RegisterModifiedGraphToFunctionLibrary(Graph* segment_graph, Graph* graph
   VLOG(1) << "Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
   return Status::OK();
+}
+
+Status RegisterSegmentToFunctionLibrary(Graph* graph, const GraphDef& segment,
+                                        Graph* segment_graph,
+                                        string engine_name) {
+  GraphConstructorOptions gcopts;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
+  FunctionDefLibrary fdeflib;
+  return RegisterGraphToFunctionLibrary(segment_graph, graph, fdeflib,
+                                                  engine_name);
 }
 
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
@@ -760,19 +767,10 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     curr_engine.maximum_cached_engines = params.max_cached_engines;
 
     Graph segment_graph(flib);
-    status = ModifyGraphForFunctionDef(&graph, curr_engine.segment_graph_def,
-                                       &segment_graph);
+    status = RegisterSegmentToFunctionLibrary(&graph,
+        curr_engine.segment_graph_def, &segment_graph, curr_engine.engine_name);
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to modify graph as a function " << t << ": "
-                   << status;
-      continue;
-    }
-    FunctionDefLibrary fdeflib;
-    status = RegisterModifiedGraphToFunctionLibrary(&segment_graph, &graph, fdeflib,
-                                                    curr_engine.engine_name);
-
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef as a function " << t
+      LOG(WARNING) << "Failed to register segment graphdef to the library " << t
                    << ": " << status;
       continue;
     }

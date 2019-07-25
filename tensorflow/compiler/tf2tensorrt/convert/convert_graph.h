@@ -56,16 +56,21 @@ Status ConvertAfterShapes(const ConversionParams& params);
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
-// Method to replace Placeholder and identity nodes with Arg and Retval.
-// graph is the full graph, while segment_graph is only the segment.
-Status ModifyGraphForFunctionDef(Graph* graph, const GraphDef& segment,
-                                 Graph* segment_graph);
+// Method to register a segment to the function library. The graph
+// should contain _Arg/_Retval nodes.
+Status RegisterSegmentToFunctionLibrary(Graph* graph, const GraphDef& segment,
+                                        Graph* segment_graph,
+                                        string engine_name);
 
-// Method that registers the segment graph to a function library.
+// Helper method that registers the segment graph to the given function library.
 // graph is the full graph, while segment_graph is only the segment.
-Status RegisterModifiedGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
-                                              FunctionDefLibrary fdeflib,
-                                              const string& engine_name);
+Status RegisterGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
+                                      FunctionDefLibrary fdeflib,
+                                      const string& engine_name);
+// Converts a segment graphdef to a graph, replacing input and output ops to
+// Arg and Retval respectively. Used in testing.
+Status ConvertSegmentToGraph(const GraphDef& segment, Graph* segment_graph);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
