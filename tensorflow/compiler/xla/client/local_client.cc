@@ -196,16 +196,15 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const absl::Span<const ShapedBuffer* const> arguments) {
-  HloSnapshot snapshot;
-  *snapshot.mutable_hlo() = *executable_->hlo_proto();
-  snapshot.set_execution_platform(backend_->platform()->Name());
-  TF_RETURN_IF_ERROR(RecordArguments(arguments, &snapshot));
+  executable_->hlo_snapshot()->set_execution_platform(
+      backend_->platform()->Name());
+  TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->hlo_snapshot()));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(RecordResult(&result, &snapshot));
-  DumpHloSnapshotIfEnabled(executable_->module(), snapshot);
+  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->hlo_snapshot()));
+  DumpHloSnapshotIfEnabled(executable_->module(), *executable_->hlo_snapshot());
   return std::move(result);
 }
 
