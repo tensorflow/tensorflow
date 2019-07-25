@@ -212,7 +212,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
       if indent == 3:
         in_print('%s #%d' % (argument_type, index))
       if isinstance(element, tensor_spec.TensorSpec):
-        _print_tensor_spec(element, indent)
+        print((indent + 1) * '  ' + '%s: %s'%(element.name, repr(element)))
       elif is_nested(element):
         in_print('  DType: %s' % type(element).__name__)
         in_print('  Values: [', end='')
@@ -232,26 +232,6 @@ def _print_args(arguments, argument_type="Argument", indent=0):
       else:
         in_print('  DType: %s' % type(element).__name__)
         in_print('  Value: %s' % str(element))
-
-
-def _print_tensor_spec(tensor_spec, indent=0):
-  """Prints details of the given tensor_spec.
-
-     Args:
-       tensor_spec: TensorSpec object to be printed.
-       indent: How far (in increments of 2 spaces) to indent each line output
-  """
-  indent_str = '  ' * indent
-
-  def in_print(s):
-    print(indent_str + s)
-  in_print(
-      '  %s: Tensor(shape=%s, dtype=%s, name=\'%s\')' %
-      (tensor_spec.name,
-       tensor_spec.shape,
-       tensor_spec.dtype.name,
-       tensor_spec.name))
-
 
 def _print_tensor_info(tensor_info, indent=0):
   """Prints details of the given tensor_info.
