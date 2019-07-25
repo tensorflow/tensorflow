@@ -215,6 +215,25 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
             lockfile_created_(false),
             iteration_completed_(false) {}
 
+      ~FileWriterIterator() {
+        if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+          std::vector<string> cache_files;
+          Status s = dataset()->env_->GetMatchingPaths(
+              strings::StrCat(filename_, "*"), &cache_files);
+          if (!s.ok()) {
+            LOG(WARNING) << "Failed to get matching files on " << filename_
+                         << "* : " << s.ToString();
+          }
+          for (const string& path : cache_files) {
+            s = dataset()->env_->DeleteFile(path);
+            if (!s.ok()) {
+              LOG(WARNING) << "Failed to delete " << path << " : "
+                           << s.ToString();
+            }
+          }
+        }
+      }
+
       Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
@@ -275,6 +294,9 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(kCurIndex), cur_index_));
+
         if (iteration_completed_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name(kIterationCompleted), ""));
@@ -301,8 +323,6 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           lockfile_created_ = false;
         }
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCurIndex), cur_index_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kShardId), shard_id_));
         return Status::OK();
       }
@@ -310,12 +330,6 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name(kIterationCompleted))) {
-          iteration_completed_ = true;
-          return Status::OK();
-        }
-
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         int64 temp;
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
@@ -326,6 +340,14 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
             return errors::Internal("Invalid value for cur_index ", temp);
           }
         }
+
+        if (reader->Contains(full_name(kIterationCompleted))) {
+          iteration_completed_ = true;
+          return Status::OK();
+        }
+
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
@@ -409,7 +431,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         // Merge all the bundles.
         // Currently there are `shard_id_ + 1` bundles, one for each
         // checkpoint. Each bundle has prefix <filename>_<id> where `id` is an
-        // integer starting at 0 an incremented by 1 for each new checkpoint.
+        // integer starting at 0 and incremented by 1 for each new checkpoint.
         // We merge all these bundles into a bundle with prefix <filename> so
         // that the next call to `MakeIterator` can build a
         // `FileReaderIterator`.
