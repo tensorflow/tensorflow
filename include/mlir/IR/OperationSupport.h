@@ -287,6 +287,11 @@ public:
     attributes.push_back({name, attr});
   }
 
+  /// Add an array of named attributes.
+  void addAttributes(ArrayRef<NamedAttribute> newAttributes) {
+    attributes.append(newAttributes.begin(), newAttributes.end());
+  }
+
   void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
     successors.push_back(successor);
     // Insert a sentinal operand to mark a barrier between successor operands.
