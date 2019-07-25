@@ -417,7 +417,7 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   ratio_l = target_probs / init_probs
 
   # Replace NaNs with 0s.
-  ratio_l = array_ops.where(
+  ratio_l = array_ops.where_v2(
       math_ops.is_nan(ratio_l), array_ops.zeros_like(ratio_l), ratio_l)
 
   # Calculate list of acceptance probabilities.
