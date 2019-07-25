@@ -294,9 +294,9 @@ public:
 
   /// Create an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpTy create(Location location, Args... args) {
+  OpTy create(Location location, Args&&... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, &state, std::forward<Args>(args)...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
