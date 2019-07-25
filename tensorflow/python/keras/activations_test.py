@@ -75,8 +75,8 @@ class KerasActivationsTest(test.TestCase):
     expected = _ref_softmax(test_values[0])
     self.assertAllClose(result[0], expected, rtol=1e-05)
 
+    x = keras.backend.placeholder(ndim=1)
     with self.assertRaises(ValueError):
-      x = keras.backend.placeholder(ndim=1)
       keras.activations.softmax(x)
 
   def test_temporal_softmax(self):
@@ -149,8 +149,8 @@ class KerasActivationsTest(test.TestCase):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.hard_sigmoid(x)])
     test_values = np.random.random((2, 5))
-    result = f([test_values])[0]
     expected = hard_sigmoid(test_values)
+    result = f([test_values])[0]
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_relu(self):
