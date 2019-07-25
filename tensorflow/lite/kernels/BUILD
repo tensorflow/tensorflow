@@ -494,6 +494,36 @@ cc_library(
 )
 
 cc_library(
+    name = "variable_op_kernels",
+    srcs = [
+        "assign_variable.cc",
+        "read_variable.cc",
+    ],
+    deps = [
+        ":kernel_util",
+        ":op_macros",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:tensor",
+    ],
+)
+
+cc_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = [
+        "variable_ops_test.cc",
+    ],
+    deps = [
+        ":test_main",
+        ":test_util",
+        ":variable_op_kernels",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "custom_ops",
     srcs = ["rfft2d.cc"],
     hdrs = ["custom_ops_register.h"],
