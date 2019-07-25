@@ -265,7 +265,10 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/135640736: MatrixInverse performance issues.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
-         node.type_string() == "MatrixInverse";
+         node.type_string() == "MatrixInverse" ||
+         node.type_string() == "ResizeNearestNeighbor" ||
+         node.type_string() == "ResizeBilinear" ||
+         node.type_string() == "ResizeBilinearGrad";
 }
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
