@@ -200,7 +200,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
 
   def _may_be_add_quotes(value):
     is_quotes = '\'' * isinstance(value, str)
-    return is_quotes + value + is_quotes
+    return is_quotes + str(value) + is_quotes
 
   def in_print(s, end='\n'):
     print(indent_str + s, end=end)
@@ -221,14 +221,14 @@ def _print_args(arguments, argument_type="Argument", indent=0):
       elif isinstance(element, dict):
         in_print('  DType: %s' % type(element).__name__)
         in_print('  Values:  {', end='')
-        for key, value in element.items():
+        for (key, value) in element.items():
           if is_nested(element):
-            in_print('      \'%s\': [' % str(key), end='')
+            in_print('\n      \'%s\': [' % str(key), end='')
             _print_args(element, indent + 1)
             in_print('        ]')
           else:
-            in_print('      \'%s\': %s' % (str(key), _may_be_add_quotes(value)), end='')
-        in_print('      }')
+            print('\'%s\': %s' % (str(key), _may_be_add_quotes(value)), end=', ')
+        print('\b\b}')
       else:
         in_print('  DType: %s' % type(element).__name__)
         in_print('  Value: %s' % str(element))
