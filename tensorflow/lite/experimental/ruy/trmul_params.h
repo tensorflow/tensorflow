@@ -31,9 +31,8 @@ using RunPackFn = void(Tuning, const DMatrix&, PMatrix*, int, int);
 struct TrMulParams {
   TrMulParams() : run_pack{nullptr, nullptr}, is_prepacked{false, false} {}
   // Helper functions for invoking the function pointers.
-  void RunPack(Side side, Tuning tuning, const SidePair<int>& start,
-               const SidePair<int>& end) {
-    run_pack[side](tuning, src[side], &packed[side], start[side], end[side]);
+  void RunPack(Side side, Tuning tuning, int start, int end) {
+    run_pack[side](tuning, src[side], &packed[side], start, end);
   }
   void RunKernel(Tuning tuning, const SidePair<int>& start,
                  const SidePair<int>& end) {

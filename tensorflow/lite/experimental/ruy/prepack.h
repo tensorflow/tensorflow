@@ -60,7 +60,7 @@ void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
       prepacked[side]->sums = alloc_fn(prepacked[side]->sums_size);
       params.packed[side].data = prepacked[side]->data;
       params.packed[side].sums = prepacked[side]->sums;
-      params.RunPack(side, tuning, origin, rounded_dims);
+      params.RunPack(side, tuning, origin[side], rounded_dims[side]);
     }
   }
 }
