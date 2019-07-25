@@ -19,7 +19,7 @@ on the `XLA_CPU` or `XLA_GPU` TensorFlow devices. Placing operators directly on
 a TensorFlow XLA device forces the operator to run on that device and is mainly
 used for testing.
 
-> Note: The XLA CPU backend supports intra-op parallelism (i.e. it can shard a
+> Note: The XLA CPU backend supports intra-op parallelism (i.e. it can shared a
 > single operation across multiple cores) but it does not support inter-op
 > parallelism (i.e. it cannot execute independent operations concurrently across
 > multiple cores).  The XLA GPU backend is competitive with the standard
