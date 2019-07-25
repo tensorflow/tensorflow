@@ -245,6 +245,12 @@ def _process_single_batch(model,
     if training:
       trainable_weights = model._unique_trainable_weights
       if trainable_weights:
+        # TODO(tanzheny) b/132690565: Provide mechanism for user to override
+        # model.train_on_batch.
+        if isinstance(model.optimizer,
+                      list) and not hasattr(model, '_backwards'):
+          raise ValueError('The `optimizer` in `compile` should be a single '
+                           'optimizer.')
         grads = tape.gradient(scaled_total_loss, trainable_weights)
         if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
           grads = model.optimizer.get_unscaled_gradients(grads)

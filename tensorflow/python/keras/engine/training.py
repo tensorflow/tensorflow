@@ -177,7 +177,7 @@ class Model(network.Network):
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
-              optimizer,
+              optimizer='rmsprop',
               loss=None,
               metrics=None,
               loss_weights=None,
@@ -274,7 +274,10 @@ class Model(network.Network):
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    self.optimizer = optimizers.get(optimizer)
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+    else:
+      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -2023,6 +2026,9 @@ class Model(network.Network):
   def _make_train_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     self._check_trainable_weights_consistency()
+    if isinstance(self.optimizer, list):
+      raise ValueError('The `optimizer` in `compile` should be a single '
+                       'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
