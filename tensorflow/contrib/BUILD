@@ -98,6 +98,7 @@ py_library(
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/stateless",
         "//tensorflow/contrib/summary:summary",
+        "//tensorflow/contrib/t2t:t2t_py",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
@@ -172,6 +173,7 @@ cc_library(
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_kernels",
         "//tensorflow/contrib/rnn:all_kernels",
         "//tensorflow/contrib/seq2seq:beam_search_ops_kernels",
+        "//tensorflow/contrib/t2t:t2t_ops_kernels",
         "//tensorflow/contrib/tensor_forest:model_ops_kernels",
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
@@ -215,6 +217,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:model_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
+        "//tensorflow/contrib/t2t:t2t_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
     ] + select({
         "//tensorflow:android": [],
