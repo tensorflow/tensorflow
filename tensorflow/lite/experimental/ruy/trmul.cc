@@ -237,7 +237,7 @@ void TrMul(TrMulParams* params, Context* context) {
       const int size = NumBlocksPerSide(side, block_map);
       allocator->Allocate(size, &packed[side]);
       for (int i = 0; i < size; i++) {
-        packed[side][i].store(false, std::memory_order_release);
+        packed[side][i].store(false, std::memory_order_relaxed);
       }
     }
   }
