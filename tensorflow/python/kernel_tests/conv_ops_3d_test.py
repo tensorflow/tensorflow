@@ -335,7 +335,7 @@ class Conv3DTest(test.TestCase):
       conv = nn_ops.conv3d(
           input_tensor,
           filter_tensor,
-          [1, 1, 1, 1, 1],
+          strides=[1, 1, 1, 1, 1],
           dilations=[1, 1, 1, 1, 1],
           padding='SAME',
           data_format='NDHWC',
