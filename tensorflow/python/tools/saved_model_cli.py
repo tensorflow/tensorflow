@@ -219,14 +219,8 @@ def _print_args(arguments, argument_type="Argument", indent=0):
         _print_args(element, indent + 1)
         in_print('  ]')
       elif isinstance(element, dict):
-        in_print('  DType: %s' % type(element).__name__)
-        in_print('  Values:  {', end='')
+        in_print('  {', end='')
         for (key, value) in element.items():
-          if is_nested(element):
-            in_print('\n      \'%s\': [' % str(key), end='')
-            _print_args(element, indent + 1)
-            in_print('        ]')
-          else:
             print('\'%s\': %s' % (str(key), _may_be_add_quotes(value)), end=', ')
         print('\b\b}')
       else:
