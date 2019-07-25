@@ -2243,7 +2243,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   for (int i = 0; i < execution_plan->size; ++i) {
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
-    auto status = GetNodeAndRegistration(context, i, &node, &registration);
+    auto status = GetNodeAndRegistration(context, execution_plan->data[i], &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
       TfLiteIntArrayFree(subgraph);
@@ -2270,7 +2270,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
           inputs->data[j] = node_map[inputs->data[j]];
         }
       }
-      if (errors.empty()) subgraph->data[subgraph->size++] = i;
+      if (errors.empty()) subgraph->data[subgraph->size++] = execution_plan->data[i];
     } else {
       errors.insert(GetOpNameByRegistration(registration) + ": " +
                     status.error_message());
