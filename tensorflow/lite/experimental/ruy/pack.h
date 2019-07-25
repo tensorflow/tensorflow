@@ -147,10 +147,10 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
           packed_val = packed_matrix->zero_point;
         }
         accum += packed_val;
-        relaxed_atomic_store(ElementPtr(packed_matrix, row, col), packed_val);
+        *ElementPtr(packed_matrix, row, col) = packed_val;
       }
       if (sums) {
-        relaxed_atomic_store(sums + col, accum);
+        sums[col] = accum;
       }
     }
   }
