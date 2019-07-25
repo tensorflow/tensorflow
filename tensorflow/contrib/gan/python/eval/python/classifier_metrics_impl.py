@@ -74,7 +74,7 @@ __all__ = [
     'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
 
-INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
+INCEPTION_URL = 'https://storage.googleapis.com/download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
 INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
 INCEPTION_INPUT = 'Mul:0'
 INCEPTION_OUTPUT = 'logits:0'
@@ -123,7 +123,7 @@ def preprocess_image(images,
   """Prepare a batch of images for evaluation.
 
   This is the preprocessing portion of the graph from
-  http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz.
+  https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz.
 
   Note that it expects Tensors in [0, 255]. This function maps pixel values to
   [-1, 1] and resizes to match the InceptionV1 network.

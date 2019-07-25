@@ -221,7 +221,7 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
 
   let description = [{
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     This is defined in TensorFlow as:
 
@@ -302,7 +302,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge", [NoSideEffect, ControlOperandsAf
 
   let description = [{
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     This is defined in TensorFlow as:
 
@@ -339,7 +339,7 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
 
   let description = [{
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     Each tensor needs its own tf_executor.Enter to be made available inside a
     while loop.
@@ -390,7 +390,7 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source", [No
     of a while loop. Each loop variable needs its own NextIteration op.
 
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     In the TF executor dialect, the NextIteration op is broken into
     tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
@@ -447,7 +447,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink"> {
     of a while loop. Each loop variable needs its own NextIteration op.
 
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     In the TF executor dialect, the NextIteration op is broken into
     tf_executor.NextIteration.sink and tf_executor.NextIteration.source because
@@ -507,7 +507,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
 
   let description = [{
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     This is defined in Tensorflow as:
 
@@ -579,7 +579,7 @@ def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond", [NoSideEffect]> {
 
   let description = [{
     More details can be found in Tensorflow Control Flow white paper:
-    http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+    https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 
     This is defined in Tensorflow as:
 
