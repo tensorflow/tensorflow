@@ -82,6 +82,9 @@ from tensorflow.python.keras.layers.core import ActivityRegularization
 from tensorflow.python.keras.layers.dense_attention import AdditiveAttention
 from tensorflow.python.keras.layers.dense_attention import Attention
 
+# Dense layers for sparse inputs.
+from tensorflow.python.keras.layers.dense_sparse_inputs import DenseLayerForSparse
+
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
