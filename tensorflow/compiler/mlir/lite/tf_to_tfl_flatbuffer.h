@@ -46,7 +46,7 @@ LoadFromGraphdefOrMlirSource(
 // attribute "tf.quantize" by the importer module.
 // TODO(fengliuai): switch to the cmd flag once the flags are moved to this
 // file with main method.
-bool ShouldRunQuantizePasses(mlir::Module m);
+bool ShouldRunQuantizePasses(mlir::ModuleOp m);
 
 // Add the MLIR passes that convert TF control flow dialect to TF Lite dialect
 // to a MLIR `pass_manager`. These passes first raise the control flow in the TF
@@ -69,7 +69,7 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
 // main function, Quantization is applied. If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFControlFlowToTFLOrFlatbuffer(
-    mlir::Module module, bool export_to_mlir, bool emit_builtin_tflite_ops,
+    mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, std::string* result);
 }  // namespace tensorflow

@@ -547,7 +547,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
   a bit of Python.
   """
 
-  def decorator(self, **kwargs):
+  def decorator(self, *args, **kwargs):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
@@ -558,7 +558,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       # tests that fail with 1 warmup run, and pass with 2, on various versions
       # of python2.7.x.
       for _ in range(2):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -567,7 +567,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
             for collection in ops.get_default_graph().collections
         }
       for _ in range(3):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       # Note that gc.get_objects misses anything that isn't subject to garbage
       # collection (C types). Collections are a common source of leaks, so we
       # test for collection sizes explicitly.
@@ -1367,6 +1367,21 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
     cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
       CUDA compute capability required, or None if no requirement.
+
+  Note that the keyword arg name "cuda_only" is misleading (since routine will
+  return true when a GPU device is available irrespective of whether TF was
+  built with CUDA support or ROCm support. However no changes here because
+
+  ++ Changing the name "cuda_only" to something more generic would break
+     backward compatibility
+
+  ++ Adding an equivalent "rocm_only" would require the implementation check
+     the build type. This in turn would require doing the same for CUDA and thus
+     potentially break backward compatibility
+
+  ++ Adding a new "cuda_or_rocm_only" would not break backward compatibility,
+     but would require most (if not all) callers to update the call to use
+     "cuda_or_rocm_only" instead of "cuda_only"
 
   Returns:
     True if a GPU device of the requested kind is available.

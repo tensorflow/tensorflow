@@ -149,11 +149,10 @@ def _ndtr(x):
       0.5 * np.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
-  y = array_ops.where(math_ops.less(z, half_sqrt_2),
-                      1. + math_ops.erf(w),
-                      array_ops.where(math_ops.greater(w, 0.),
-                                      2. - math_ops.erfc(z),
-                                      math_ops.erfc(z)))
+  y = array_ops.where_v2(
+      math_ops.less(z, half_sqrt_2), 1. + math_ops.erf(w),
+      array_ops.where_v2(
+          math_ops.greater(w, 0.), 2. - math_ops.erfc(z), math_ops.erfc(z)))
   return 0.5 * y
 
 
@@ -250,11 +249,11 @@ def _ndtri(p):
       return array_ops.zeros_like(var)
     return coeffs[0] + _create_polynomial(var, coeffs[1:]) * var
 
-  maybe_complement_p = array_ops.where(p > -np.expm1(-2.), 1. - p, p)
+  maybe_complement_p = array_ops.where_v2(p > -np.expm1(-2.), 1. - p, p)
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  sanitized_mcp = array_ops.where(
+  sanitized_mcp = array_ops.where_v2(
       maybe_complement_p <= 0.,
       array_ops.fill(array_ops.shape(p), np.array(0.5, p.dtype.as_numpy_dtype)),
       maybe_complement_p)
@@ -280,15 +279,15 @@ def _ndtri(p):
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
-  x = array_ops.where(sanitized_mcp > np.exp(-2.),
-                      x_for_big_p,
-                      array_ops.where(z >= 8.0, x_for_small_p, x_otherwise))
+  x = array_ops.where_v2(
+      sanitized_mcp > np.exp(-2.), x_for_big_p,
+      array_ops.where_v2(z >= 8.0, x_for_small_p, x_otherwise))
 
-  x = array_ops.where(p > 1. - np.exp(-2.), x, -x)
+  x = array_ops.where_v2(p > 1. - np.exp(-2.), x, -x)
   infinity_scalar = constant_op.constant(np.inf, dtype=p.dtype)
   infinity = array_ops.fill(array_ops.shape(p), infinity_scalar)
-  x_nan_replaced = array_ops.where(
-      p <= 0.0, -infinity, array_ops.where(p >= 1.0, infinity, x))
+  x_nan_replaced = array_ops.where_v2(p <= 0.0, -infinity,
+                                      array_ops.where_v2(p >= 1.0, infinity, x))
   return x_nan_replaced
 
 
@@ -375,13 +374,13 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
     #   regardless of whether dy is finite. Note that the minimum is a NOP if
     #   the branch is chosen.
-    return array_ops.where(
+    return array_ops.where_v2(
         math_ops.greater(x, upper_segment),
         -_ndtr(-x),  # log(1-x) ~= -x, x << 1
-        array_ops.where(math_ops.greater(x, lower_segment),
-                        math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
-                        _log_ndtr_lower(math_ops.minimum(x, lower_segment),
-                                        series_order)))
+        array_ops.where_v2(
+            math_ops.greater(x, lower_segment),
+            math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
+            _log_ndtr_lower(math_ops.minimum(x, lower_segment), series_order)))
 
 
 def _log_ndtr_lower(x, series_order):
@@ -484,4 +483,4 @@ def log_cdf_laplace(x, name="log_cdf_laplace"):
     # internally by log1p, rather than being done explicitly here.
     upper_solution = math_ops.log1p(-0.5 * safe_exp_neg_x)
 
-    return array_ops.where(x < 0., lower_solution, upper_solution)
+    return array_ops.where_v2(x < 0., lower_solution, upper_solution)

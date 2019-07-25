@@ -1129,9 +1129,23 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
+_NON_AUTOPACKABLE_TYPES = set(np.core.numerictypes.ScalarType)
+_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
+
+
+def _should_not_autopack(v):
+  # The condition we really want is
+  #    ops.is_dense_tensor_like(...)
+  # but it is >5x slower due to abc.ABCMeta.__instancecheck__.
+  # pylint: disable=unidiomatic-typecheck
+  # TODO(slebedev): add nest.all?
+  return all(type(elem) in _NON_AUTOPACKABLE_TYPES for elem in nest.flatten(v))
+  # pylint: enable=unidiomatic-typecheck
+
+
 def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
   """Tensor conversion function that automatically packs arguments."""
-  if as_ref:
+  if as_ref or _should_not_autopack(v):
     return NotImplemented
   inferred_dtype = _get_dtype_from_nested_lists(v)
   if inferred_dtype is None:
@@ -1293,8 +1307,7 @@ def concat(values, axis, name="concat"):
     with ops.name_scope(name) as scope:
       ops.convert_to_tensor(
           axis, name="concat_dim",
-          dtype=dtypes.int32).get_shape().assert_is_compatible_with(
-              tensor_shape.scalar())
+          dtype=dtypes.int32).get_shape().assert_has_rank(0)
       return identity(values[0], name=scope)
   return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 
@@ -1939,7 +1952,7 @@ def matrix_diag(diagonal,
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2051,7 +2064,7 @@ def matrix_diag_part(
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2158,7 +2171,7 @@ def matrix_set_diag(
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
 
@@ -3588,7 +3601,7 @@ def where(condition, x=None, y=None, name=None):
 
   If both non-None, `x` and `y` must have the same shape.
   The `condition` tensor must be a scalar if `x` and `y` are scalar.
-  If `x` and `y` are vectors of higher rank, then `condition` must be either a
+  If `x` and `y` are tensors of higher rank, then `condition` must be either a
   vector with size matching the first dimension of `x`, or must have the same
   shape as `x`.
 
@@ -3807,7 +3820,7 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if compat.forward_compatible(2019, 7, 10):
+  if compat.forward_compatible(2019, 8, 10):
     if axis is None:
       axis = batch_dims
     if axis != 0:

@@ -68,7 +68,10 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(layer)
     model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
@@ -128,7 +131,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_masking_with_stacking_LSTM(self):
@@ -142,7 +146,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_LSTM(self):
@@ -170,9 +175,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     assert initial_state[0] in layer._inbound_nodes[0].input_tensors
 
     model = keras.models.Model([inputs] + initial_state, output)
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=adam.AdamOptimizer(),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=adam.AdamOptimizer(),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = np.random.random((num_samples, timesteps, embedding_dim))
     initial_state = [np.random.random((num_samples, units))
@@ -196,9 +203,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     output = layer(inputs, initial_state=initial_state)
 
     model = keras.models.Model(inputs, output)
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=adam.AdamOptimizer(),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=adam.AdamOptimizer(),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = np.random.random((num_samples, timesteps, embedding_dim))
     targets = np.random.random((num_samples, units))
@@ -250,7 +259,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     inputs = np.random.random((num_samples, timesteps, embedding_dim))
     initial_state = [np.random.random((num_samples, units))
@@ -310,9 +320,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     assert initial_state[0] in layer._inbound_nodes[0].input_tensors
 
     model = keras.models.Model(inputs, output)
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=adam.AdamOptimizer(),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=adam.AdamOptimizer(),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     main_inputs = np.random.random((num_samples, timesteps, embedding_dim))
     initial_state = [np.random.random((num_samples, units))
@@ -358,8 +370,11 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

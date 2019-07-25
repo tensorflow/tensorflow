@@ -36,7 +36,7 @@ TEST(Preprocessor, CornerCases) {
 
 TEST(Preprocessor, Value) {
   ParameterAccessor accessor(true);
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"var", int32_t(1)}));
+  ASSERT_TRUE(accessor.AddParameter({"var", int32_t(1)}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var", &result), RewriteStatus::SUCCESS);
   ASSERT_EQ(result, "1");
@@ -44,7 +44,7 @@ TEST(Preprocessor, Value) {
 
 TEST(Preprocessor, ValueVec) {
   ParameterAccessor accessor(true);
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"var", int2(1, 2)}));
+  ASSERT_TRUE(accessor.AddParameter({"var", int2(1, 2)}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var", &result), RewriteStatus::SUCCESS);
   ASSERT_EQ(result, "ivec2(1,2)");
@@ -52,8 +52,7 @@ TEST(Preprocessor, ValueVec) {
 
 TEST(Preprocessor, Field) {
   ParameterAccessor accessor(true);
-  ASSERT_TRUE(
-      accessor.AddParameter(UniformParameter{"var", float2(1.0, 2.1234567)}));
+  ASSERT_TRUE(accessor.AddParameter({"var", float2(1.0, 2.1234567)}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var.y", &result), RewriteStatus::SUCCESS);
   ASSERT_EQ(result, "2.123456717f");
@@ -61,8 +60,8 @@ TEST(Preprocessor, Field) {
 
 TEST(Preprocessor, FieldFail) {
   ParameterAccessor accessor(true);
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"var", 1.0f}));
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"vec", float2(1.0, 1.0)}));
+  ASSERT_TRUE(accessor.AddParameter({"var", 1.0f}));
+  ASSERT_TRUE(accessor.AddParameter({"vec", float2(1.0, 1.0)}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var.y", &result), RewriteStatus::ERROR);
   ASSERT_EQ(result, "INVALID_ACCESS_BY_FIELD");
@@ -76,7 +75,7 @@ TEST(Preprocessor, Variable) {
   ParameterAccessor accessor(true);
   std::vector<int2> v;
   v.push_back(int2(1, 2));
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"var", v}));
+  ASSERT_TRUE(accessor.AddParameter({"var", v}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var[i].y", &result), RewriteStatus::SUCCESS);
   ASSERT_EQ(result, "var[i].y");
@@ -86,7 +85,7 @@ TEST(Preprocessor, Variable) {
 
 TEST(Preprocessor, InlineVariableFail) {
   ParameterAccessor accessor(true);
-  ASSERT_TRUE(accessor.AddParameter(UniformParameter{"var", 1}));
+  ASSERT_TRUE(accessor.AddParameter({"var", 1}));
   std::string result;
   EXPECT_EQ(accessor.Rewrite("var[i]", &result), RewriteStatus::ERROR);
   ASSERT_EQ(result, "INVALID_ACCESS_BY_INDEX");

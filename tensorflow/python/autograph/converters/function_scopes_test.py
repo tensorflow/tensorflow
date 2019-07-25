@@ -55,7 +55,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       return tf.constant(1)
 
     with self.converted(test_fn, function_scopes, {},
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       result_op = result.test_fn()
       self.assertIn('test_fn/', result_op.op.name)
       self.assertIn('First sentence.', result.test_fn.__doc__)
@@ -72,7 +72,8 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       l += 1
       return l, inner_fn(l)
 
-    with self.converted(test_fn, function_scopes, {}, ops.name_scope) as result:
+    with self.converted(test_fn, function_scopes, {},
+                        (ops.name_scope,)) as result:
       first, second = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)
@@ -95,7 +96,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
     node, ctx = self.prepare(TestClass, ns)
     node = function_scopes.transform(node, ctx)
 
-    with self.compiled(node, {}, ops.name_scope) as result:
+    with self.compiled(node, {}, (ops.name_scope,)) as result:
       first, second = result.TestClass().test_fn(constant_op.constant(1))
       self.assertIn('TestClass/test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)

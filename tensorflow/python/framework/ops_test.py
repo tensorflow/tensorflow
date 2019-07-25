@@ -30,6 +30,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -135,7 +136,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       b = array_ops.ones([])
       c = a + b
-      self.assertEqual(tensor_shape.scalar(), c.shape)
+      self.assertEqual(tensor_shape.TensorShape([]), c.shape)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionError(self):
@@ -782,7 +783,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "Identity")
     self.assertEqual(len(op.outputs), 1)
-    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+    self.assertEqual(op.outputs[0].shape, tensor_shape.TensorShape([2, 3]))
 
   def testUniqueName(self):
     g = ops.Graph()
@@ -2927,6 +2928,18 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     with ops.colocate_with(a.op):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+
+  def testColocateWithVariableInFunction(self):
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def f():
+      with ops.colocate_with(v):
+        return array_ops.ones([], name="output")
+
+    f()
+    graph_def = f.get_concrete_function().graph.as_graph_def()
+    wrap_function.function_from_graph_def(graph_def, [], ["output"])
 
 
 class DeprecatedTest(test_util.TensorFlowTestCase):

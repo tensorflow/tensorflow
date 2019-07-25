@@ -26,27 +26,20 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-
-// TODO(zhifengc): We need to consolidate (full/partial) device name
-// parsing into one place.
-//
-// Parses and returns the local device part (e.g., cpu:0, gpu:4).
-string GetLocalDeviceName(StringPiece fullname) {
-  auto pos = fullname.rfind('/');
-  CHECK_NE(pos, StringPiece::npos);
-  fullname.remove_prefix(pos + 1);
-  return string(fullname);
-}
 
 class RemoteDevice : public Device {
  public:
   RemoteDevice(Env* env, const DeviceAttributes& da)
-      : Device(env, da), local_dev_name_(GetLocalDeviceName(da.name())) {}
+      : Device(env, da),
+        local_dev_name_(DeviceNameUtils::LocalName(da.name())) {}
 
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
+
+  bool IsLocal() const override { return false; }
 
  private:
   const string local_dev_name_;

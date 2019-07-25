@@ -207,3 +207,12 @@ if (interpreter->Invoke() != kTfLiteOk) return;
 * For performance [best practices](https://www.tensorflow.org/lite/performance/best_practices), do not hesitate to re-train your classifier with
   mobile-optimized network architecture.  That is a significant part of
   optimization for on-device inference.
+
+## Publication
+
+*   [On-Device Neural Net Inference with Mobile GPUs](https://arxiv.org/abs/1907.01989)
+    *   Juhyun Lee, Nikolay Chirkov, Ekaterina Ignasheva, Yury Pisarchyk, Mogan
+        Shieh, Fabio Riccardi, Raman Sarokin, Andrei Kulik, and Matthias
+        Grundmann
+    *   CVPR Workshop
+        [Efficient Deep Learning for Computer Vision (ECV2019)](https://sites.google.com/corp/view/ecv2019)

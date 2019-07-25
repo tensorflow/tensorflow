@@ -64,7 +64,7 @@ def main(_):
 
   config.graph_options.optimizer_options.global_jit_level = jit_level
   run_metadata = tf.RunMetadata()
-  sess = tf.Session(config=config)
+  sess = tf.compat.v1.Session(config=config)
   tf.global_variables_initializer().run(session=sess)
   # Train
   train_loops = 1000

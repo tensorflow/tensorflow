@@ -98,10 +98,6 @@ class LocalBackend(Backend):
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.PyLocalBuffer.from_python_values(pyvals_and_devices,
-                                                 self.client)
-
   def make_tuple(self, c_buffers, device_ordinal):
     return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
 
@@ -112,6 +108,7 @@ class LocalBackend(Backend):
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
+    options.debug_options.xla_cpu_fast_math_honor_division = True
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,

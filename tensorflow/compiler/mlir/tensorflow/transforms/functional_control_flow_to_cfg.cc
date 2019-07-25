@@ -18,11 +18,13 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
@@ -68,7 +70,7 @@ static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
 // that is compatible for tensor cast.
 //
 static Operation* CallFn(Location loc,
-                         const std::function<Value*(int)>& get_arg, Function fn,
+                         const std::function<Value*(int)>& get_arg, FuncOp fn,
                          OpBuilder* builder) {
   FunctionType fn_type = fn.getType();
   llvm::SmallVector<Value*, 4> operands;
@@ -141,19 +143,19 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
 //
 // This returns true on failure.
 //
-static bool LowerIfOp(IfOp op) {
+static LogicalResult LowerIfOp(IfOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
 
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value* cond_i1 = LowerCondition(loc, op.getCondition(), &builder);
-  if (!cond_i1) return true;
+  Value* cond_i1 = LowerCondition(loc, op.cond(), &builder);
+  if (!cond_i1) return failure();
 
-  auto module = op_inst->getFunction().getModule();
-  auto then_fn = module.getNamedFunction(op.getThen());
-  auto else_fn = module.getNamedFunction(op.getElse());
+  auto module = op_inst->getParentOfType<ModuleOp>();
+  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
+  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
 
   // Split the basic block before the 'if'.  The new dest will be our merge
   // point.
@@ -193,7 +195,7 @@ static bool LowerIfOp(IfOp op) {
 
   // Finally, delete the op in question.
   op_inst->erase();
-  return false;
+  return success();
 }
 
 // Given a functional WhileOp, transforms the enclosing code to eliminate it
@@ -202,15 +204,15 @@ static bool LowerIfOp(IfOp op) {
 //
 // This returns true on failure.
 //
-static bool LowerWhileOp(WhileOp op) {
+static LogicalResult LowerWhileOp(WhileOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
 
   OpBuilder builder(op_inst);
 
-  auto module = op_inst->getFunction().getModule();
-  auto cond_fn = module.getNamedFunction(op.getCond());
-  auto body_fn = module.getNamedFunction(op.getBody());
+  auto module = op_inst->getParentOfType<ModuleOp>();
+  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
+  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
 
   // Split the block containing the While op into two blocks.  One containing
   // operations before the While op and other containing the rest.  Create two
@@ -286,7 +288,7 @@ static bool LowerWhileOp(WhileOp op) {
   ReplaceOpResultWithBlockArgs(loc, op_inst, orig_block_tail, &builder);
   op_inst->erase();
 
-  return false;
+  return success();
 }
 
 void FunctionalControlFlowToCFG::runOnFunction() {
@@ -299,12 +301,28 @@ void FunctionalControlFlowToCFG::runOnFunction() {
       // subsequent blocks.
       //
       // TODO: Use PatternRewriter to eliminate these function control flow ops.
+      auto has_variant_operand = [](Operation* op) {
+        auto is_variant = [](Type ty) {
+          return getElementTypeOrSelf(ty).getKind() == TensorFlowTypes::VARIANT;
+        };
+
+        if (llvm::none_of(op->getOperandTypes(), is_variant)) return false;
+
+        op->emitOpError() << "does not yet support operands of type variant "
+                             "for conversion to CFG";
+        return true;
+      };
+
       if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
-        if (LowerIfOp(if_op)) return signalPassFailure();
+        if (has_variant_operand(&op) || failed(LowerIfOp(if_op))) {
+          return signalPassFailure();
+        }
         break;
       }
       if (WhileOp while_op = llvm::dyn_cast<WhileOp>(op)) {
-        if (LowerWhileOp(while_op)) return signalPassFailure();
+        if (has_variant_operand(&op) || failed(LowerWhileOp(while_op))) {
+          return signalPassFailure();
+        }
         break;
       }
     }

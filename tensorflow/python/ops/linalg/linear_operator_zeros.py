@@ -196,6 +196,10 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
           is_square=is_square,
           name=name)
 
+      linear_operator_util.assert_not_ref_type(num_rows, "num_rows")
+      linear_operator_util.assert_not_ref_type(num_columns, "num_columns")
+      linear_operator_util.assert_not_ref_type(batch_shape, "batch_shape")
+
       self._num_rows = linear_operator_util.shape_tensor(
           num_rows, name="num_rows")
       self._num_rows_static = tensor_util.constant_value(self._num_rows)

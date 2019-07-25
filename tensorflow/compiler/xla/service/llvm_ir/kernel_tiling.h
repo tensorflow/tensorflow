@@ -125,10 +125,7 @@ class KernelMappingScheme {
     return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
   }
 
-  int64 GetTileSizeForDimension(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    return tile_sizes_[d];
-  }
+  int64 GetTileSizeForDimension(int d) const { return tile_sizes_.at(d); }
   int64 GetTileSizeForDimensionX() const {
     return GetTileSizeForDimension(DimX);
   }
@@ -138,8 +135,7 @@ class KernelMappingScheme {
 
   absl::Span<const int64> GetBlockSizes() const { return block_sizes_; }
   int64 GetTileBlockSizeForDimension(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    return dims_in_blocks_[d];
+    return dims_in_blocks_.at(d);
   }
 
   int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
@@ -181,19 +177,19 @@ class KernelMappingScheme {
  private:
   llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
-  std::vector<int64> dims_in_elems_;
+  std::array<int64, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  std::vector<int64> tile_sizes_;
+  std::array<int64, 3> tile_sizes_;
   // The number of tiles in each dimension. It is computed from dims_in_elem_
   // and tile_sizes_.
-  std::vector<int64> dims_in_tiles_;
+  std::array<int64, 3> dims_in_tiles_;
 
   // The number of tiles for each dimension of a tile block.
-  std::vector<int64> block_sizes_;
+  std::array<int64, 3> block_sizes_;
   // The number of blocks in each dimension of a tile block. It is computed from
   // dims_in_tile_ and block_sizes_.
-  std::vector<int64> dims_in_blocks_;
+  std::array<int64, 3> dims_in_blocks_;
 
   // Number of threads used to process elements in the X direction of a tile.
   int64 num_threads_x_;

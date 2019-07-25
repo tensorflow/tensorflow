@@ -34,6 +34,12 @@ limitations under the License.
 %unignore tensorflow::swig::IsTensor;
 %noexception tensorflow::swig::IsTensor;
 
+%unignore tensorflow::swig::IsResourceVariable;
+%noexception tensorflow::swig::IsResourceVariable;
+
+%unignore tensorflow::swig::IsVariable;
+%noexception tensorflow::swig::IsVariable;
+
 %feature("docstring") tensorflow::swig::IsSequence
 """Returns true if its input is a collections.Sequence (except strings).
 

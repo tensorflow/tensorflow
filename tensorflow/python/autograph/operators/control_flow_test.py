@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -49,6 +50,39 @@ class ForLoopTest(test.TestCase):
           set_state=lambda _: None,
           init_vars=(0,))
       self.assertEqual(self.evaluate(s), (1234,))
+
+  def test_range_tensor(self):
+    with ops.Graph().as_default():
+      s = control_flow.for_stmt(
+          math_ops.range(5),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 10 + i,),
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=(0,))
+      self.assertEqual(self.evaluate(s), (1234,))
+
+  def test_range_tensor_explicit_limit_delta(self):
+    with ops.Graph().as_default():
+      s = control_flow.for_stmt(
+          math_ops.range(-17, -3, 5),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 100 + i,),
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=(0,))
+      self.assertEqual(self.evaluate(s), (-171207,))
+
+  def test_range_tensor_negative_delta(self):
+    with ops.Graph().as_default():
+      s = control_flow.for_stmt(
+          math_ops.range(17, 3, -5),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 100 + i,),
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=(0,))
+      self.assertEqual(self.evaluate(s), (171207,))
 
   def test_tensor_with_extra_test_only_python_state(self):
     class MutableObject(object):

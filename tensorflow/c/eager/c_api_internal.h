@@ -92,15 +92,6 @@ struct TFE_TensorHandle {
     }
     return new TFE_TensorHandle(handle);
   }
-  static tensorflow::Status CreateLocalHandle(const class tensorflow::Tensor& t,
-                                              tensorflow::Device* d,
-                                              TFE_TensorHandle** h) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(
-        tensorflow::TensorHandle::CreateLocalHandle(t, d, nullptr, &handle));
-    *h = new TFE_TensorHandle(handle);
-    return tensorflow::Status::OK();
-  }
 
   tensorflow::TensorHandle* handle;
 

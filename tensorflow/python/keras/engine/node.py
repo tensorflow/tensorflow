@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.util import nest
 
@@ -129,6 +130,19 @@ class Node(object):
     return zip(
         nest.flatten(self.inbound_layers), nest.flatten(self.node_indices),
         nest.flatten(self.tensor_indices), nest.flatten(self.input_tensors))
+
+  def _get_all_node_dependencies(self):
+    """Returns all of the nodes this node immediately depends on."""
+    node_deps = []
+    for layer, node_index, _, _ in self.iterate_inbound():
+      node_deps.append(layer._inbound_nodes[node_index])
+
+    for arg in nest.flatten(self.arguments):
+      if isinstance(arg, ops.Tensor) and hasattr(arg, '_keras_history'):
+        kh = arg._keras_history
+        node_deps.append(kh.layer._inbound_nodes[kh.node_index])
+
+    return node_deps
 
   def get_config(self):
     inbound_names = nest.map_structure(

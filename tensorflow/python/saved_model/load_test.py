@@ -36,6 +36,7 @@ from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -1741,6 +1742,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                                  r"Resource .* does not exist."):
       gen_resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
+
+  def test_function_called_as_operation(self, cycles):
+
+    @framework_function.Defun(dtypes.float32)
+    def inner(x):
+      return x + 1.
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
+    def outer(x):
+      return inner(x)
+
+    root = module.Module()
+    root.f = outer
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(2., imported.f(constant_op.constant(1.)))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

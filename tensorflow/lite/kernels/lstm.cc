@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -796,7 +796,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(activation_out), GetTensorData<float>(activation_out),
         GetTensorShape(concat_temp), GetTensorData<float>(concat_temp),
         GetTensorShape(activation_temp), GetTensorData<float>(activation_temp),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   } else if (input->type == kTfLiteUInt8 &&
              prev_activation->type == kTfLiteUInt8 &&
              weights->type == kTfLiteUInt8 && bias->type == kTfLiteInt32 &&
@@ -844,7 +844,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(concat_temp), GetTensorData<uint8_t>(concat_temp),
         GetTensorShape(activation_temp),
         GetTensorData<int16_t>(activation_temp),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   } else {
     context->ReportError(context,
                          "Unsupported combination of data types for LstmCell");
@@ -866,10 +866,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const auto* params = reinterpret_cast<const TfLiteLSTMParams*>(buffer);
   switch (params->kernel_type) {
     case kTfLiteLSTMFullKernel:
-      cpu_backend_support::IncrementUsageCounter(context);
       return full::Init(context, buffer, length);
     case kTfLiteLSTMBasicKernel:
-      cpu_backend_support::IncrementUsageCounter(context);
       return basic::Init(context, buffer, length);
     default:
       return nullptr;
@@ -877,8 +875,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
-  cpu_backend_support::DecrementUsageCounter(context);
-
   delete reinterpret_cast<OpData*>(buffer);
 }
 

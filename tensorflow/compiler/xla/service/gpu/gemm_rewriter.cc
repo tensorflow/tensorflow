@@ -61,7 +61,7 @@ static complex128 GetScalarConstantAsComplex(const Literal &literal) {
 // and provided C has no other users).
 // We then guide the buffer assignment to alias the buffer of the custom call
 // and C.
-class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
+class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   Status HandleDot(HloInstruction *instr) override {
     if (IsMatrixMultiplication(*instr)) {
@@ -107,9 +107,7 @@ class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
         config.set_alpha_real(new_alpha.real());
         config.set_alpha_imag(new_alpha.imag());
         TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
-        TF_RETURN_IF_ERROR(
-            instr->parent()->ReplaceInstruction(instr, existing_gemm));
-        changed_ = true;
+        TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
       }
     }
     return Status::OK();
@@ -141,27 +139,12 @@ class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
     }
     return Status::OK();
   }
-
-  Status DefaultAction(HloInstruction *) override { return Status::OK(); }
-
-  bool IsChanged() { return changed_; }
-
- private:
-  Status ReplaceWithNewInstruction(
-      HloInstruction *instr, std::unique_ptr<HloInstruction> replacement) {
-    TF_RETURN_IF_ERROR(instr->parent()->ReplaceWithNewInstruction(
-        instr, std::move(replacement)));
-    changed_ = true;
-    return Status::OK();
-  }
-
-  bool changed_ = false;
 };
 
 static StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmRewriterVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  return visitor.IsChanged();
+  return visitor.changed();
 }
 
 StatusOr<bool> GemmRewriter::Run(HloModule *module) {

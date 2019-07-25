@@ -46,5 +46,12 @@ void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
                                   std::vector<std::uint_fast32_t>* start_vec,
                                   std::vector<std::uint_fast32_t>* end_vec);
 
+// For each of the num_threads determine the index of the active_request whose
+// work queue should be attempted first by that the thread. Return a vector of
+// size num_threads which represents how threads should be distributed across
+// requests.
+std::vector<int> ChooseRequestsWithExponentialDistribution(
+    int num_active_requests, int num_threads);
+
 }  // end namespace tensorflow
 #endif  // TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_

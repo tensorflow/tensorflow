@@ -369,6 +369,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
     from_logits: Whether to interpret `y_pred` as a tensor of
       [logit](https://en.wikipedia.org/wiki/Logit) values. By default, we assume
         that `y_pred` contains probabilities (i.e., values in [0, 1]).
+      Note: Using from_logits=True may be more numerically stable.
     label_smoothing: Float in [0, 1]. When 0, no smoothing occurs. When > 0, we
       compute the loss between the predicted labels and a smoothed version of
       the true labels, where the smoothing squeezes the labels towards 0.5.
@@ -432,6 +433,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
+      Note: Using from_logits=True may be more numerically stable.
     label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
       meaning the confidence on label values are relaxed. e.g.
       `label_smoothing=0.2` means that we will use a value of `0.1` for label
@@ -496,6 +498,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
+      Note: Using from_logits=True may be more numerically stable.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `AUTO`. `AUTO` indicates that the reduction option will
       be determined by the usage context. For almost all cases this defaults to

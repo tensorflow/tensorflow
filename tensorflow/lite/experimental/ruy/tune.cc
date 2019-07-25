@@ -18,12 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 namespace ruy {
 
-#ifdef __aarch64__
+#ifdef RUY_IMPLEMENT_TUNING
 
 namespace {
 
@@ -130,7 +129,7 @@ Tuning TuningResolver::ResolveNow() {
   return is_probably_inorder ? Tuning::kInOrder : Tuning::kOutOfOrder;
 }
 
-#else  // not defined __aarch64__
+#else  // not defined RUY_IMPLEMENT_TUNING
 
 float TuningResolver::EvalRatio() { return 0; }
 float TuningResolver::ThresholdRatio() { return 0; }
@@ -145,9 +144,7 @@ TuningResolver::TuningResolver()
     : expiry_duration_(DurationFromSeconds(kExpirySecs)) {}
 
 Tuning TuningResolver::Resolve() {
-#if !RUY_OPT_ENABLED(RUY_OPT_TUNING)
-  return Tuning::kOutOfOrder;
-#endif
+#ifdef RUY_IMPLEMENT_TUNING
   if (unresolved_tuning_ != Tuning::kAuto) {
     return unresolved_tuning_;
   }
@@ -159,6 +156,9 @@ Tuning TuningResolver::Resolve() {
   last_resolved_timepoint_ = new_timepoint;
   last_resolved_tuning_ = ResolveNow();
   return last_resolved_tuning_;
+#else
+  return Tuning::kOutOfOrder;
+#endif
 }
 
 }  // namespace ruy

@@ -166,12 +166,17 @@ class InitializableLookupTableBase(LookupInterface):
                                                        initializer.value_dtype)
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
-    self._default_value.get_shape().merge_with(tensor_shape.scalar())
+    self._default_value.get_shape().merge_with(tensor_shape.TensorShape([]))
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(initializer, "_initializer")
     with ops.init_scope():
       self._resource_handle = self._create_resource()
-    self._init_op = self._initialize()
+    if (not context.executing_eagerly() and
+        ops.get_default_graph()._get_control_flow_context() is not None):  # pylint: disable=protected-access
+      with ops.init_scope():
+        self._init_op = self._initialize()
+    else:
+      self._init_op = self._initialize()
 
   def _initialize(self):
     return self._initializer.initialize(self)
@@ -420,9 +425,16 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
-    self._values = ops.convert_to_tensor(
-        values, dtype=value_dtype, name="values")
+    if (not context.executing_eagerly() and
+        ops.get_default_graph()._get_control_flow_context() is not None):  # pylint: disable=protected-access
+      with ops.init_scope():
+        self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+        self._values = ops.convert_to_tensor(
+            values, dtype=value_dtype, name="values")
+    else:
+      self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+      self._values = ops.convert_to_tensor(
+          values, dtype=value_dtype, name="values")
     self._name = name if name is not None else "key_value_init"
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious

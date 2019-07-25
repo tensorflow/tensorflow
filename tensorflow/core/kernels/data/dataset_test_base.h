@@ -33,13 +33,49 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
+
+enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+
+// Returns a string representation for the given compression type.
+string ToString(CompressionType compression_type);
+
+// Gets the specified zlib compression options according to the compression
+// type. Note that `CompressionType::UNCOMPRESSED` is not supported because
+// `ZlibCompressionOptions` does not have an option.
+io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type);
+
+// Used to specify parameters when writing data into files with compression.
+// `input_buffer_size` and `output_buffer_size` specify the input and output
+// buffer size when ZLIB and GZIP compression is used.
+struct CompressionParams {
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  int32 input_buffer_size = 0;
+  int32 output_buffer_size = 0;
+};
+
+// Writes the input data into the file without compression.
+Status WriteDataToFile(const string& filename, const char* data);
+
+// Writes the input data into the file with the specified compression.
+Status WriteDataToFile(const string& filename, const char* data,
+                       const CompressionParams& params);
+
+// Writes the input data into the TFRecord file with the specified compression.
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
@@ -141,6 +177,19 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CreateTensorSliceDataset(StringPiece node_name,
                                   std::vector<Tensor>* const components,
                                   DatasetBase** tensor_slice_dataset);
+
+  // Creates a `RangeDataset` dataset as a variant tensor.
+  Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
+                          const Tensor& step,
+                          const DataTypeVector& output_types,
+                          const std::vector<PartialTensorShape>& output_shapes,
+                          Tensor* range_dataset);
+
+  // Creates a `TakeDataset` dataset as a variant tensor.
+  Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
+                         const DataTypeVector& output_types,
+                         const std::vector<PartialTensorShape>& output_shapes,
+                         Tensor* take_dataset);
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,

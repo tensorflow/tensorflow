@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -33,10 +34,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
 namespace {
+
+// Control return mapping function for outside compilation host graphs.
+// All nodes with kXlaHasHostTransfer attribute are control outputs.
+absl::optional<string> HostGraphControlRetMapping(const Node* n) {
+  if (HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
+    return n->name();
+  }
+  return absl::nullopt;
+}
 
 // Add a key placeholder node to the graph. The key placeholder node will be
 // used as input for XlaRecvAtHost/XlaSendFromHost nodes.
@@ -104,7 +115,7 @@ xla::StatusOr<Node*> BuildRecvAtHostNode(
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   recv_at_host_builder.Attr("device_ordinal", device_ordinal_value);
   recv_at_host_builder.Attr(
       "key", absl::StrCat("host_compute_channel_", oc_cluster_name));
@@ -206,7 +217,7 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   send_from_host_builder.Attr("device_ordinal", device_ordinal_value);
   send_from_host_builder.Attr(
       "key", absl::StrCat("host_compute_channel_", oc_cluster_name));
@@ -391,31 +402,9 @@ Status ValidateOutsideCompilationCallNode(Node* call_node) {
 }
 
 // Replace outside compilation function call node with XlaHostCompute node.
-// If the function call node has no input/output edges, we will just remove it
-// and not create a XlaHostCompute node.
-xla::StatusOr<Node*> ReplaceOrRemoveOutsideCompilationCallNode(
+xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
     const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
-  // If the function call node has no input/output edges, just remove it.
-  bool has_edge = false;
-  for (auto e : call_node->in_edges()) {
-    if (!e->IsControlEdge() || e->src() != g->source_node()) {
-      has_edge = true;
-      break;
-    }
-  }
-  for (auto e : call_node->out_edges()) {
-    if (!e->IsControlEdge() || e->dst() != g->sink_node()) {
-      has_edge = true;
-      break;
-    }
-  }
-  if (!has_edge) {
-    VLOG(4) << "Did not add HostCompute node for " << call_node->DebugString();
-    g->RemoveNode(call_node);
-    return nullptr;
-  }
-
   // Build XlaHostCompute NodeDef.
   TF_ASSIGN_OR_RETURN(
       NodeDef node_def,
@@ -427,12 +416,12 @@ xla::StatusOr<Node*> ReplaceOrRemoveOutsideCompilationCallNode(
   return host_compute_node;
 }
 
-// Resets "device_ordinal" attr to placeholder value for related nodes
+// Resets "_device_ordinal" attr to placeholder value for related nodes
 // (XlaRecvAtHost nodes; XlaSendFromHost nodes; If/While/FuncCall nodes
 // containing XlaRecvAtHost/XlaSendFromHost).
 Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   for (Node* n : g->nodes()) {
     if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
       continue;
@@ -447,7 +436,7 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
            std::vector<string>{"then_branch", "else_branch"}) {
         NameAttrList branch_func;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
-        (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+        (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
       }
@@ -455,14 +444,14 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
       for (const string& attr_name : std::vector<string>{"cond", "body"}) {
         NameAttrList branch_func;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
-        (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+        (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
       }
-    } else if (HasNodeAttr(n->def(), "device_ordinal")) {
+    } else if (HasNodeAttr(n->def(), "_device_ordinal")) {
       // Function call node containing outside compilation.
-      n->ClearAttr("device_ordinal");
-      n->AddAttr("device_ordinal", device_ordinal_value);
+      n->ClearAttr("_device_ordinal");
+      n->AddAttr("_device_ordinal", device_ordinal_value);
     } else {
       return errors::Internal("Unknown node marked with ",
                               kXlaHasHostTransferAttrName, ": ",
@@ -472,158 +461,503 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
   return Status::OK();
 }
 
-Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
+// Cheap check to tell whether FunctionDef contains a lifted argument.
+bool HasLiftedArgs(const FunctionDef& function_def) {
+  return absl::c_any_of(function_def.node_def(), [](const NodeDef& node_def) {
+    return (node_def.op() == "Placeholder" &&
+            node_def.attr().find(kXlaLiftedArgOutsideCompilationAttrName) !=
+                node_def.attr().end());
+  });
+}
+
+// Find lifted arguments in a function body and their corresponding outside
+// compilation nodes.
+xla::StatusOr<std::vector<std::pair<Node*, Node*>>>
+LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+    const FunctionBody& function_body,
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node) {
+  std::vector<std::pair<Node*, Node*>>
+      lifted_arg_nodes_and_outside_compilation_nodes;
+  for (Node* n : function_body.graph->op_nodes()) {
+    string oc_cluster;
+    if (n->type_string() == "Placeholder" &&
+        GetNodeAttr(n->def(), kXlaLiftedArgOutsideCompilationAttrName,
+                    &oc_cluster)
+            .ok()) {
+      TF_RET_CHECK(outside_compilation_attr_to_node.find(oc_cluster) !=
+                   outside_compilation_attr_to_node.end());
+      lifted_arg_nodes_and_outside_compilation_nodes.emplace_back(
+          n, outside_compilation_attr_to_node.at(oc_cluster));
+    }
+  }
+  return lifted_arg_nodes_and_outside_compilation_nodes;
+}
+
+// Append lifted args' types to functional control flow node's `type_attr_name`
+// attribute.
+xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
+    const std::vector<std::pair<Node*, Node*>>&
+        lifted_arg_nodes_and_outside_compilation_nodes,
+    const string& type_attr_name, Node* n) {
+  std::vector<DataType> data_types;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), type_attr_name, &data_types));
+  for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
+    Node* outside_compilation_node = pair.second;
+    DataType data_type;
+    TF_RET_CHECK(outside_compilation_node->IsIdentity() ||
+                 outside_compilation_node->type_string() == "Placeholder");
+    if (outside_compilation_node->IsIdentity()) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+    } else {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+    }
+    data_types.push_back(data_type);
+  }
+  n->ClearAttr(type_attr_name);
+  n->AddAttr(type_attr_name, data_types);
+
+  return data_types;
+}
+
+// Add edges from lifted outside compilation argument nodes to `n` in Graph `g`.
+void AddEdgesFromOutsideCompilationNodes(
+    const int original_arg_count, const int arg_to_input_edge_offset,
+    const std::vector<DataType>& data_types,
+    const std::vector<Node*>& outside_compilation_nodes, Graph* g, Node* n) {
+  // Add edges from outside compilation nodes to While node.
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    Node* outside_compilation_node =
+        outside_compilation_nodes[i - original_arg_count];
+    g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
+  }
+}
+
+// Construct _Arg that maps to lifted outside compilation argument node input.
+xla::StatusOr<Node*> AddOutsideCompilationInputArgToFunctionBody(
+    const FunctionBody& function_body, const int arg_idx,
+    const DataType& data_type) {
+  NodeDefBuilder arg_builder(absl::StrCat("arg_", arg_idx), "_Arg");
+  arg_builder.Attr("T", data_type);
+  arg_builder.Attr("index", arg_idx);
+  NodeDef arg_def;
+  TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
+
+  Status s;
+  Node* arg_node = function_body.graph->AddNode(arg_def, &s);
+  TF_RETURN_IF_ERROR(s);
+  return arg_node;
+}
+
+// Add _Retval node that matches newly added `arg_node` and connect `arg_node`
+// to it.
+Status AddMatchingRetvalNode(const FunctionBody& function_body,
+                             const int arg_idx, const DataType& data_type,
+                             Node* arg_node) {
+  NodeDefBuilder ret_builder(absl::StrCat("ret_", arg_idx), "_Retval");
+  ret_builder.Attr("T", data_type);
+  ret_builder.Attr("index", arg_idx);
+  ret_builder.Input(arg_node->name(), 0, data_type);
+  NodeDef ret_def;
+  TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
+  Status s;
+  Node* ret_node = function_body.graph->AddNode(ret_def, &s);
+  TF_RETURN_IF_ERROR(s);
+  function_body.graph->AddEdge(arg_node, 0, ret_node, 0);
+
+  return Status::OK();
+}
+
+void ReplaceLiftedArgNodePlaceholderWithArg(
+    const FunctionBody& function_body, const int original_arg_count,
+    const int arg_idx, const std::vector<Node*>& lifted_arg_nodes,
+    Node* arg_node) {
+  Node* lifted_arg_node = lifted_arg_nodes[arg_idx - original_arg_count];
+  // This might happen because lifted_arg_node only exists in one branch of an
+  // If node, and we are handling the other branch.
+  if (!lifted_arg_node) {
+    return;
+  }
+
+  for (const Edge* e : lifted_arg_node->out_edges()) {
+    if (e->IsControlEdge()) {
+      function_body.graph->AddControlEdge(arg_node, e->dst());
+    } else {
+      function_body.graph->AddEdge(arg_node, 0, e->dst(), e->dst_input());
+    }
+  }
+  function_body.graph->RemoveNode(lifted_arg_node);
+}
+
+// Reconnect outside compilation lifted arguments in a functional While node to
+// its outside compilation tensor sources.
+Status PostprocessLiftedArgsForWhile(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  TF_RET_CHECK(n->type_string() == "While");
+
+  // Check if there is any lifted args in body function.
+  NameAttrList body_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "body", &body_func));
+  const FunctionDef* body_function_def = fld->Find(body_func.name());
+  TF_RET_CHECK(body_function_def);
+
+  if (!HasLiftedArgs(*body_function_def)) {
+    return Status::OK();
+  }
+
+  // Gather all lifted args.
+  std::unique_ptr<FunctionBody> body_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*body_function_def,
+                                             AttrSlice(&body_func.attr()), fld,
+                                             &body_function_body));
+
+  int original_arg_count = body_function_body->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(
+      auto lifted_arg_nodes_and_outside_compilation_nodes,
+      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+          *body_function_body, outside_compilation_attr_to_node));
+
+  // Append lifted args' types to While node's T attribute.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DataType> data_types,
+      UpdateTypesAttribute(lifted_arg_nodes_and_outside_compilation_nodes, "T",
+                           n));
+
+  // Add edges from outside compilation nodes to While node.
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
+
+  // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
+  // nodes with the new _Arg nodes.
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    TF_ASSIGN_OR_RETURN(Node * arg_node,
+                        AddOutsideCompilationInputArgToFunctionBody(
+                            *body_function_body, i, data_types[i]));
+
+    TF_RETURN_IF_ERROR(
+        AddMatchingRetvalNode(*body_function_body, i, data_types[i], arg_node));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *body_function_body, original_arg_count, i, lifted_arg_nodes, arg_node);
+  }
+
+  FunctionDef rewritten_body_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *body_function_body->graph, body_func.name(), HostGraphControlRetMapping,
+      &rewritten_body_function_def));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(body_func.name(), rewritten_body_function_def));
+
+  // In cond_graph, just add new _Arg nodes.
+  NameAttrList cond_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "cond", &cond_func));
+  const FunctionDef* cond_function_def = fld->Find(cond_func.name());
+  TF_RET_CHECK(cond_function_def);
+  std::unique_ptr<FunctionBody> cond_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*cond_function_def,
+                                             AttrSlice(&cond_func.attr()), fld,
+                                             &cond_function_body));
+
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    xla::StatusOr<Node*> arg_node_or =
+        AddOutsideCompilationInputArgToFunctionBody(*cond_function_body, i,
+                                                    data_types[i]);
+    TF_RETURN_IF_ERROR(arg_node_or.status());
+  }
+
+  FunctionDef rewritten_cond_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *cond_function_body->graph, cond_func.name(), HostGraphControlRetMapping,
+      &rewritten_cond_function_def));
+  TF_RETURN_IF_ERROR(
+      fld->ReplaceFunction(cond_func.name(), rewritten_cond_function_def));
+
+  return Status::OK();
+}
+
+Status PostprocessLiftedArgsForIf(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  TF_RET_CHECK(n->type_string() == "If");
+
+  NameAttrList then_branch_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
+  const FunctionDef* then_branch_function_def =
+      fld->Find(then_branch_func.name());
+  TF_RET_CHECK(then_branch_function_def);
+
+  NameAttrList else_branch_func;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "else_branch", &else_branch_func));
+  const FunctionDef* else_branch_function_def =
+      fld->Find(else_branch_func.name());
+  TF_RET_CHECK(else_branch_function_def);
+
+  // Nothing to do if neither branch contains any lifted arguments.
+  if (!HasLiftedArgs(*then_branch_function_def) &&
+      !HasLiftedArgs(*else_branch_function_def)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<FunctionBody> then_branch_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *then_branch_function_def, AttrSlice(&then_branch_func.attr()), fld,
+      &then_branch_function_body));
+
+  std::unique_ptr<FunctionBody> else_branch_function_body;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *else_branch_function_def, AttrSlice(&else_branch_func.attr()), fld,
+      &else_branch_function_body));
+
+  // Then and else branches have same argument count and argument data types.
+  int original_arg_count = then_branch_function_body->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(
+      auto then_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+          *then_branch_function_body, outside_compilation_attr_to_node));
+
+  TF_ASSIGN_OR_RETURN(
+      auto else_branch_lifted_arg_nodes_and_outside_compilation_nodes,
+      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+          *else_branch_function_body, outside_compilation_attr_to_node));
+
+  // Merge lifted args from then and else branches.
+  std::vector<Node*> outside_compilation_nodes;
+  std::vector<Node*> then_branch_lifted_arg_nodes;
+  for (const auto& pair :
+       then_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    outside_compilation_nodes.push_back(pair.second);
+    then_branch_lifted_arg_nodes.push_back(pair.first);
+  }
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    if (std::find(outside_compilation_nodes.begin(),
+                  outside_compilation_nodes.end(),
+                  pair.second) == outside_compilation_nodes.end()) {
+      outside_compilation_nodes.push_back(pair.second);
+      // Then branch does not contain this lifted arg. Add an empty item to
+      // then_branch_lifted_arg_nodes.
+      then_branch_lifted_arg_nodes.push_back(nullptr);
+    }
+  }
+  // Reorder else_branch_lifted_arg_nodes_and_outside_compilation_nodes.
+  std::vector<Node*> else_branch_lifted_arg_nodes(
+      outside_compilation_nodes.size());
+  for (const auto& pair :
+       else_branch_lifted_arg_nodes_and_outside_compilation_nodes) {
+    auto iter = std::find(outside_compilation_nodes.begin(),
+                          outside_compilation_nodes.end(), pair.second);
+    TF_RET_CHECK(iter != outside_compilation_nodes.end());
+    int index = iter - outside_compilation_nodes.begin();
+    else_branch_lifted_arg_nodes[index] = pair.first;
+  }
+
+  // Append lifted args' types to If node's Tin attribute.
+  std::vector<DataType> data_types;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
+  for (Node* n : outside_compilation_nodes) {
+    data_types.push_back(n->output_type(0));
+  }
+  n->ClearAttr("Tin");
+  n->AddAttr("Tin", data_types);
+
+  // Add edges from outside compilation nodes to If node. If node's input #0
+  // is predicate input, input #1 maps to _Arg #0 of branch functions, thus
+  // arg_to_input_edge_offset is set to 1.
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/1,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
+
+  for (int i = original_arg_count; i < data_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
+                        AddOutsideCompilationInputArgToFunctionBody(
+                            *then_branch_function_body, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *then_branch_function_body, original_arg_count, i,
+        then_branch_lifted_arg_nodes, then_branch_arg_node);
+
+    TF_ASSIGN_OR_RETURN(Node * else_branch_arg_node,
+                        AddOutsideCompilationInputArgToFunctionBody(
+                            *else_branch_function_body, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(
+        *else_branch_function_body, original_arg_count, i,
+        else_branch_lifted_arg_nodes, else_branch_arg_node);
+  }
+
+  FunctionDef rewritten_then_branch_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *then_branch_function_body->graph, then_branch_func.name(),
+      HostGraphControlRetMapping, &rewritten_then_branch_function_def));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(then_branch_func.name(),
+                                          rewritten_then_branch_function_def));
+
+  FunctionDef rewritten_else_branch_function_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *else_branch_function_body->graph, else_branch_func.name(),
+      HostGraphControlRetMapping, &rewritten_else_branch_function_def));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(else_branch_func.name(),
+                                          rewritten_else_branch_function_def));
+  return Status::OK();
+}
+
+Status PostprocessLiftedArgsForCall(
+    const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld) {
+  const FunctionDef* fdef = fld->Find(n->type_string());
+  TF_RET_CHECK(fdef);
+
+  // Nothing to do if the function does not contain any lifted arguments.
+  if (!HasLiftedArgs(*fdef)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, n->attrs(), fld, &fbody));
+
+  int original_arg_count = fbody->arg_nodes.size();
+
+  TF_ASSIGN_OR_RETURN(auto lifted_arg_nodes_and_outside_compilation_nodes,
+                      LiftedArgsAndOutsideCompilationNodesInFunctionBody(
+                          *fbody, outside_compilation_attr_to_node));
+
+  // Append lifted args' types to call node's input data types.
+  std::vector<DataType> data_types(n->input_types().begin(),
+                                   n->input_types().end());
+  for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
+    Node* outside_compilation_node = pair.second;
+    DataType data_type;
+    TF_RET_CHECK(outside_compilation_node->IsIdentity() ||
+                 outside_compilation_node->type_string() == "Placeholder");
+    if (outside_compilation_node->IsIdentity()) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+    } else {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+    }
+    data_types.push_back(data_type);
+  }
+
+  std::vector<Node*> lifted_arg_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(lifted_arg_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.first; });
+  for (int i = original_arg_count; i < data_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        Node * arg_node,
+        AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
+
+    ReplaceLiftedArgNodePlaceholderWithArg(*fbody, original_arg_count, i,
+                                           lifted_arg_nodes, arg_node);
+  }
+
+  FunctionDef rewritten_fdef;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, n->type_string(),
+                                        HostGraphControlRetMapping,
+                                        &rewritten_fdef));
+  TF_RETURN_IF_ERROR(fld->ReplaceFunction(n->type_string(), rewritten_fdef));
+
+  // We need to recreate the node. Otherwise TF will not know n->num_inputs()
+  // has increased.
+  NodeDef node_def = n->def();
+  for (int i = original_arg_count; i < data_types.size(); i++) {
+    Node* outside_compilation_node =
+        lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
+            .second;
+    node_def.add_input(absl::StrCat(outside_compilation_node->name(), ":", 0));
+  }
+  TF_ASSIGN_OR_RETURN(n, ReplaceNode(g, n, node_def));
+
+  // Add edges from outside compilation nodes to call node.
+  std::vector<Node*> outside_compilation_nodes;
+  std::transform(
+      lifted_arg_nodes_and_outside_compilation_nodes.begin(),
+      lifted_arg_nodes_and_outside_compilation_nodes.end(),
+      std::back_inserter(outside_compilation_nodes),
+      [](const std::pair<Node*, Node*>& pair) { return pair.second; });
+  AddEdgesFromOutsideCompilationNodes(original_arg_count,
+                                      /*arg_to_input_edge_offset=*/0,
+                                      data_types, outside_compilation_nodes, g,
+                                      n);
+
+  return Status::OK();
+}
+
+// Creates a mapping from outside compilation cluster name to lifted argument
+// placeholder.
+xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
+    const Graph& g) {
   std::unordered_map<string, Node*> outside_compilation_attr_to_node;
-  for (Node* n : g->op_nodes()) {
+  for (Node* n : g.op_nodes()) {
     bool is_lifted_arg;
     string outside_compilation_attr;
     if (GetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg).ok() &&
         GetNodeAttr(n->def(), "_xla_outside_compilation",
                     &outside_compilation_attr)
             .ok()) {
+      TF_RET_CHECK(is_lifted_arg);
       TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
       outside_compilation_attr_to_node[outside_compilation_attr] = n;
     }
   }
 
+  return outside_compilation_attr_to_node;
+}
+
+Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
+  TF_ASSIGN_OR_RETURN(auto outside_compilation_attr_to_node,
+                      OutsideCompilationAttrToNode(*g));
+
+  std::vector<Node*> call_nodes;
   for (Node* n : g->op_nodes()) {
     if (!HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
       continue;
     }
 
     if (n->type_string() == "While") {
-      // Check if there is any lifted args in body function.
-      NameAttrList body_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "body", &body_func));
-      const FunctionDef* body_fdef = fld->Find(body_func.name());
-      TF_RET_CHECK(body_fdef);
-      bool has_lifted_args = false;
-      for (const NodeDef& ndef : body_fdef->node_def()) {
-        if (ndef.op() == "Placeholder" &&
-            ndef.attr().find(kXlaLiftedArgOutsideCompilationAttrName) !=
-                ndef.attr().end()) {
-          has_lifted_args = true;
-          break;
-        }
-      }
-      if (!has_lifted_args) {
-        continue;
-      }
-
-      // Gather all lifted args.
-      std::unique_ptr<FunctionBody> fbody;
-      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-          *body_fdef, AttrSlice(&body_func.attr()), fld, &fbody));
-      Graph* body_graph = fbody->graph;
-      std::vector<std::pair<Node*, Node*>>
-          lifted_arg_node_and_outside_compilation_node;
-      for (Node* n : body_graph->op_nodes()) {
-        string oc_cluster;
-        if (n->type_string() == "Placeholder" &&
-            GetNodeAttr(n->def(), kXlaLiftedArgOutsideCompilationAttrName,
-                        &oc_cluster)
-                .ok()) {
-          TF_RET_CHECK(outside_compilation_attr_to_node.find(oc_cluster) !=
-                       outside_compilation_attr_to_node.end());
-          lifted_arg_node_and_outside_compilation_node.push_back(
-              {n, outside_compilation_attr_to_node.at(oc_cluster)});
-        }
-      }
-
-      // Append lifted args' types to While node's T attribute.
-      std::vector<DataType> dtypes;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtypes));
-      int original_arg_count = dtypes.size();
-      for (auto i : lifted_arg_node_and_outside_compilation_node) {
-        DataType dtype;
-        TF_RET_CHECK(i.second->IsIdentity() ||
-                     i.second->type_string() == "Placeholder");
-        if (i.second->IsIdentity()) {
-          TF_RETURN_IF_ERROR(GetNodeAttr(i.second->def(), "T", &dtype));
-        } else {
-          TF_RETURN_IF_ERROR(GetNodeAttr(i.second->def(), "dtype", &dtype));
-        }
-        dtypes.push_back(dtype);
-      }
-      n->ClearAttr("T");
-      n->AddAttr("T", dtypes);
-
-      // Add edges from outside compilation nodes to While node.
-      for (int i = original_arg_count; i < dtypes.size(); i++) {
-        Node* outside_compilation_node =
-            lifted_arg_node_and_outside_compilation_node[i - original_arg_count]
-                .second;
-        g->AddEdge(outside_compilation_node, 0, n, i);
-      }
-
-      // In body_graph, create new _Arg/_Retval nodes, and replace lifted arg
-      // nodes with the new _Arg nodes.
-      for (int i = original_arg_count; i < dtypes.size(); i++) {
-        NodeDefBuilder arg_builder(absl::StrCat("arg_", i), "_Arg");
-        arg_builder.Attr("T", dtypes[i]);
-        arg_builder.Attr("index", i);
-        NodeDef arg_def;
-        TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
-        Status s;
-        Node* arg_node = body_graph->AddNode(arg_def, &s);
-        TF_RETURN_IF_ERROR(s);
-
-        NodeDefBuilder ret_builder(absl::StrCat("ret_", i), "_Retval");
-        ret_builder.Attr("T", dtypes[i]);
-        ret_builder.Attr("index", i);
-        ret_builder.Input(arg_node->name(), 0, dtypes[i]);
-        NodeDef ret_def;
-        TF_RETURN_IF_ERROR(ret_builder.Finalize(&ret_def));
-        Node* ret_node = body_graph->AddNode(ret_def, &s);
-        TF_RETURN_IF_ERROR(s);
-        body_graph->AddEdge(arg_node, 0, ret_node, 0);
-
-        Node* lifted_arg_node =
-            lifted_arg_node_and_outside_compilation_node[i - original_arg_count]
-                .first;
-        std::vector<const Edge*> out_edges(lifted_arg_node->out_edges().begin(),
-                                           lifted_arg_node->out_edges().end());
-        for (const Edge* e : out_edges) {
-          if (e->IsControlEdge()) {
-            body_graph->AddControlEdge(arg_node, e->dst());
-          } else {
-            body_graph->AddEdge(arg_node, 0, e->dst(), e->dst_input());
-          }
-        }
-
-        body_graph->RemoveNode(lifted_arg_node);
-      }
-      FunctionDef rewritten_body_fdef;
-      TF_RETURN_IF_ERROR(GraphToFunctionDef(*body_graph, body_func.name(),
-                                            &rewritten_body_fdef));
-      TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(body_func.name(), rewritten_body_fdef));
-
-      // In cond_graph, add new _Arg nodes.
-      NameAttrList cond_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "cond", &cond_func));
-      const FunctionDef* cond_fdef = fld->Find(cond_func.name());
-      TF_RET_CHECK(cond_fdef);
-      std::unique_ptr<FunctionBody> cond_fbody;
-      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-          *cond_fdef, AttrSlice(&cond_func.attr()), fld, &cond_fbody));
-      Graph* cond_graph = cond_fbody->graph;
-      for (int i = original_arg_count; i < dtypes.size(); i++) {
-        NodeDefBuilder arg_builder(absl::StrCat("arg_", i), "_Arg");
-        arg_builder.Attr("T", dtypes[i]);
-        arg_builder.Attr("index", i);
-        NodeDef arg_def;
-        TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
-        Status s;
-        cond_graph->AddNode(arg_def, &s);
-        TF_RETURN_IF_ERROR(s);
-      }
-      FunctionDef rewritten_cond_fdef;
-      TF_RETURN_IF_ERROR(GraphToFunctionDef(*cond_graph, cond_func.name(),
-                                            &rewritten_cond_fdef));
-      TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(cond_func.name(), rewritten_cond_fdef));
+      TF_RETURN_IF_ERROR(PostprocessLiftedArgsForWhile(
+          outside_compilation_attr_to_node, g, n, fld));
     }
+
+    if (n->type_string() == "If") {
+      TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
+          outside_compilation_attr_to_node, g, n, fld));
+    }
+
+    // Outside compilation host side function call will always be direct
+    // function call nodes.
+    // Function call nodes need to be handled separately because we rewrite
+    // nodes in `PostprocessLiftedArgsForCall`.
+    if (fld->Contains(n->type_string())) {
+      call_nodes.push_back(n);
+    }
+  }
+
+  for (Node* n : call_nodes) {
+    TF_RETURN_IF_ERROR(PostprocessLiftedArgsForCall(
+        outside_compilation_attr_to_node, g, n, fld));
   }
 
   return Status::OK();
@@ -640,8 +974,8 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
 Status ConstructHostGraph(
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
-    FunctionLibraryDefinition* fld, const string& host_graph_func_name) {
-  Graph host_graph(fld);
+    FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
+  host_graph->reset(new Graph(fld));
 
   // Create sequencer node in host graph.
   NodeDefBuilder sequencer_builder(absl::StrCat(xla_cluster_name, "_sequencer"),
@@ -650,13 +984,13 @@ Status ConstructHostGraph(
   NodeDef sequencer_def;
   TF_RETURN_IF_ERROR(sequencer_builder.Finalize(&sequencer_def));
   Status s;
-  Node* sequencer = host_graph.AddNode(sequencer_def, &s);
+  Node* sequencer = (*host_graph)->AddNode(sequencer_def, &s);
   TF_RETURN_IF_ERROR(s);
 
   // Create key placeholder in host graph.
   TF_ASSIGN_OR_RETURN(
       Node * key_placeholder,
-      AddHostComputeKeyPlaceholder(xla_cluster_name, &host_graph));
+      AddHostComputeKeyPlaceholder(xla_cluster_name, host_graph->get()));
 
   // For each outside compilation graph, copy them to host graph with the
   // following changes:
@@ -667,14 +1001,14 @@ Status ConstructHostGraph(
   // c) Clear node_def.device(), so device placer won't get confused.
   for (const string& host_func : outside_compilation_host_graphs) {
     VLOG(4) << "Expanding host graph " << host_func;
-    // Temporarily use "0" as "device_ordinal". It will be reset to placeholder
+    // Temporarily use "0" as "_device_ordinal". It will be reset to placeholder
     // value after we expanded all host graphs. We cannot just use placeholder
     // value here because FunctionDef instantiation does not allow placeholder
     // value for attributes.
     AttrValue device_ordinal_attr;
     device_ordinal_attr.set_i(0);
     protobuf::Map<string, AttrValue> attrs;
-    attrs["device_ordinal"] = device_ordinal_attr;
+    attrs["_device_ordinal"] = device_ordinal_attr;
     std::unique_ptr<FunctionBody> host_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
         *fld->Find(host_func), AttrSlice(&attrs), fld, &host_fbody));
@@ -685,8 +1019,8 @@ Status ConstructHostGraph(
     FixupSourceAndSinkEdges(host_fbody->graph);
 
     std::map<const Node*, Node*> node_map;
-    node_map[host_fbody->graph->source_node()] = host_graph.source_node();
-    node_map[host_fbody->graph->sink_node()] = host_graph.sink_node();
+    node_map[host_fbody->graph->source_node()] = (*host_graph)->source_node();
+    node_map[host_fbody->graph->sink_node()] = (*host_graph)->sink_node();
     Status s;
     ReverseDFS(
         *host_fbody->graph, /*enter=*/nullptr,
@@ -708,7 +1042,7 @@ Status ConstructHostGraph(
             NodeDef copy_def = n->def();
             // Change c).
             copy_def.clear_device();
-            copy = host_graph.AddNode(copy_def, &s);
+            copy = (*host_graph)->AddNode(copy_def, &s);
             if (!s.ok()) {
               return;
             }
@@ -723,13 +1057,14 @@ Status ConstructHostGraph(
                                    e->src()->DebugString());
               return;
             }
-            host_graph.AddEdge(node_map[e->src()], e->src_output(), copy,
-                               e->dst_input());
+            (*host_graph)
+                ->AddEdge(node_map[e->src()], e->src_output(), copy,
+                          e->dst_input());
           }
 
           // Change b).
           if (HasNodeAttr(copy->def(), kXlaHasHostTransferAttrName)) {
-            host_graph.AddControlEdge(copy, sequencer);
+            (*host_graph)->AddControlEdge(copy, sequencer);
           }
         },
         NodeComparatorID());
@@ -738,8 +1073,8 @@ Status ConstructHostGraph(
       return s;
     }
   }
-  // Reset "device_ordinal" to placeholder value.
-  TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(&host_graph));
+  // Reset "_device_ordinal" to placeholder value.
+  TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(host_graph->get()));
 
   // sequencer and key_placeholder might be dead nodes. Prune them if necessary.
   // - sequencer should be pruned iff it has no input control edges from
@@ -748,32 +1083,23 @@ Status ConstructHostGraph(
   // - key_placeholder should be pruned iff there's no RecvAtHost/SendFromHost.
   //   We don't need to do anything special.
   if (!sequencer->in_edges().empty()) {
-    host_graph.AddControlEdge(sequencer, host_graph.sink_node());
+    (*host_graph)->AddControlEdge(sequencer, (*host_graph)->sink_node());
   }
   PruneForReverseReachability(
-      &host_graph, std::unordered_set<const Node*>{host_graph.sink_node()});
+      host_graph->get(),
+      std::unordered_set<const Node*>{(*host_graph)->sink_node()});
 
   // Postprocess edges between different outside compilations.
   TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
-      &host_graph, outside_compilation_attr_name));
+      host_graph->get(), outside_compilation_attr_name));
 
   // Postprocess lifted arg nodes.
-  TF_RETURN_IF_ERROR(PostprocessLiftedArgs(&host_graph, fld));
+  TF_RETURN_IF_ERROR(PostprocessLiftedArgs(host_graph->get(), fld));
 
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
                                  xla_cluster_name),
-                    host_graph, fld);
-  }
-
-  FunctionDef host_graph_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(host_graph, host_graph_func_name, &host_graph_fdef));
-  if (fld->Find(host_graph_func_name)) {
-    TF_RETURN_IF_ERROR(
-        fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));
-  } else {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(host_graph_fdef));
+                    **host_graph, fld);
   }
 
   return Status::OK();
@@ -786,14 +1112,14 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
                                     const string& host_graph_func_name,
                                     Node* xla_computation_node,
                                     Node* pivot_node) {
-  // Temporarily use "0" as "device_ordinal". It will be rewritten with the
+  // Temporarily use "0" as "_device_ordinal". It will be rewritten with the
   // correct value in a later pass. We cannot just use placeholder value here
   // because FunctionDef instantiation does not allow placeholder value for
   // attributes.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(host_graph_func_name),
                                              AttrSlice(&attrs), fld, &fbody));
@@ -865,11 +1191,11 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
 Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                                   Graph* host_graph, Node* pivot_node,
                                   FunctionLibraryDefinition* fld) {
-  // Use "0" as "device_ordinal". It does not matter for shape inference.
+  // Use "0" as "_device_ordinal". It does not matter for shape inference.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld, &fbody));
@@ -890,14 +1216,14 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   }
 
   // See if the SendFromHost node exists in `host_graph`.
-  Node* send_from_host_main_graph = nullptr;
+  Node* send_node_in_host_graph = nullptr;
   for (Node* n : host_graph->nodes()) {
     if (n->name() == send_from_host->name()) {
-      send_from_host_main_graph = n;
+      send_node_in_host_graph = n;
       break;
     }
   }
-  if (send_from_host_main_graph) {
+  if (send_node_in_host_graph) {
     // This is an "top-level" outside compilation. Clear the graph, and copy
     // SendFromHost and all its predecessors from `host_graph`.
     std::vector<Node*> nodes;
@@ -913,7 +1239,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       Node* n;
       bool is_exiting;
     };
-    std::vector<Visit> stack{{send_from_host_main_graph, false}};
+    std::vector<Visit> stack{{send_node_in_host_graph, false}};
     std::map<Node*, Node*> node_map;
     node_map[host_graph->source_node()] = g->source_node();
     while (!stack.empty()) {
@@ -948,9 +1274,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       }
     }
 
-    send_from_host = node_map[send_from_host_main_graph];
+    send_from_host = node_map[send_node_in_host_graph];
   } else {
-    // This is an outside compilation embedded in If/While/gradient/etc.
+    // This is an outside compilation generated for If/While/gradient/etc.
     // It will be enough for shape inference. Leave `g` unchanged.
   }
 
@@ -1003,12 +1329,12 @@ xla::StatusOr<Node*> BuildSendIfPredNode(const string& name,
 Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
                                         const string& func_name,
                                         FunctionLibraryDefinition* fld) {
-  // Temporarily use "0" as "device_ordinal". It will be reset to placeholder
+  // Temporarily use "0" as "_device_ordinal". It will be reset to placeholder
   // value after rewriting.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_attr;
+  attrs["_device_ordinal"] = device_ordinal_attr;
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(func_name),
                                              AttrSlice(&attrs), fld, &fbody));
@@ -1035,11 +1361,12 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
   TF_RETURN_IF_ERROR(arg_builder.Finalize(&arg_def));
   TF_RETURN_IF_ERROR(ReplaceNode(g, key_placeholder, arg_def).status());
 
-  // Reset "device_ordinal" to placeholder value.
+  // Reset "_device_ordinal" to placeholder value.
   TF_RETURN_IF_ERROR(ResetDeviceOrdinalToPlaceholderValue(g));
 
   FunctionDef replace_fdef;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*g, func_name, &replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *g, func_name, HostGraphControlRetMapping, &replace_fdef));
   TF_RETURN_IF_ERROR(fld->ReplaceFunction(func_name, replace_fdef));
   return Status::OK();
 }
@@ -1057,7 +1384,7 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   Graph host_graph(fld);
   string outside_compilation_name = absl::StrCat("oc_if_", if_node_name);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
 
   // Step 1: add key placeholder node.
   TF_ASSIGN_OR_RETURN(
@@ -1096,9 +1423,9 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   if_builder.Attr("Tout", std::vector<DataType>{});
   NameAttrList host_then_branch, host_else_branch;
   host_then_branch.set_name(then_branch_host_func_name);
-  (*host_then_branch.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  (*host_then_branch.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   host_else_branch.set_name(else_branch_host_func_name);
-  (*host_else_branch.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  (*host_else_branch.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   if_builder.Attr("then_branch", host_then_branch);
   if_builder.Attr("else_branch", host_else_branch);
   if_builder.Attr(kXlaHasHostTransferAttrName, true);
@@ -1115,7 +1442,7 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
   host_graph.AddEdge(recv_pred_node, 0, if_node, 0);
   host_graph.AddEdge(key_placeholder, 0, if_node, 1);
 
-  // Convert `host_graph` to function, and add a "device_ordinal" attr.
+  // Convert `host_graph` to function.
   FunctionDef oc_host_graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(host_graph, host_graph_func_name,
                                         &oc_host_graph_fdef));
@@ -1201,7 +1528,7 @@ Status RewriteHostWhileLoopCond(
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_temp_value;
+  attrs["_device_ordinal"] = device_ordinal_temp_value;
   std::unique_ptr<FunctionBody> cond_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld, &cond_fbody));
@@ -1219,18 +1546,17 @@ Status RewriteHostWhileLoopCond(
   }
 
   // Add an XlaRecvAtHost node to use as cond function return value.
-  // We don't need to set kXlaHasHostTransferAttrName for this node, because
-  // it's already added for the "While" node on the host.
   NodeDefBuilder recv_pred_builder(
       absl::StrCat("recv_oc_while_cond_", while_node_name), "_XlaRecvAtHost");
   recv_pred_builder.Attr("Toutputs", std::vector<DataType>{DT_BOOL});
   recv_pred_builder.Attr("key", host_transfer_key);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
   recv_pred_builder.Attr("device_ordinal", device_ordinal_value);
   recv_pred_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   recv_pred_builder.Attr(outside_compilation_attr_name,
                          outside_compilation_name);
+  recv_pred_builder.Attr(kXlaHasHostTransferAttrName, true);
   recv_pred_builder.Input(key_arg->name(), 0, DT_STRING);
   NodeDef recv_pred_def;
   TF_RETURN_IF_ERROR(recv_pred_builder.Finalize(&recv_pred_def));
@@ -1254,8 +1580,9 @@ Status RewriteHostWhileLoopCond(
 
   // Replace original function.
   FunctionDef cond_replace_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*cond_graph, cond_host_func_name, &cond_replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*cond_graph, cond_host_func_name,
+                                        HostGraphControlRetMapping,
+                                        &cond_replace_fdef));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(cond_host_func_name, cond_replace_fdef));
 
@@ -1276,7 +1603,7 @@ Status RewriteHostWhileLoopBody(
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
-  attrs["device_ordinal"] = device_ordinal_temp_value;
+  attrs["_device_ordinal"] = device_ordinal_temp_value;
   std::unique_ptr<FunctionBody> body_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
       *fld->Find(body_host_func_name), AttrSlice(&attrs), fld, &body_fbody));
@@ -1311,8 +1638,9 @@ Status RewriteHostWhileLoopBody(
 
   // Replace original function.
   FunctionDef body_replace_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*body_graph, body_host_func_name, &body_replace_fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*body_graph, body_host_func_name,
+                                        HostGraphControlRetMapping,
+                                        &body_replace_fdef));
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(body_host_func_name, body_replace_fdef));
 
@@ -1352,8 +1680,8 @@ Status BuildHostGraphForWhileNode(
   while_builder.Attr("T", std::vector<DataType>{DT_STRING});
   NameAttrList func;
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
-  (*func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+  device_ordinal_value.set_placeholder("_device_ordinal");
+  (*func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
   func.set_name(cond_host_func_name);
   while_builder.Attr("cond", func);
   func.set_name(body_host_func_name);
@@ -1361,6 +1689,9 @@ Status BuildHostGraphForWhileNode(
   while_builder.Attr(kXlaHasHostTransferAttrName, true);
   while_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   while_builder.Attr(outside_compilation_attr_name, outside_compilation_name);
+  // Make sure loop body of i-th iteration happens before loop cond of (i+1)-th
+  // iteration.
+  while_builder.Attr("parallel_iterations", 1);
   std::vector<NodeDefBuilder::NodeOut> while_inputs{
       {key_placeholder->name(), 0, DT_STRING}};
   while_builder.Input(while_inputs);
@@ -1386,14 +1717,14 @@ Status BuildHostGraphForWhileNode(
 }
 
 // Builds host graph for func call nodes.
-Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
-                                     const string& xla_cluster_name,
-                                     const string& func_call_host_func_name,
-                                     const string& host_graph_func_name,
-                                     FunctionLibraryDefinition* fld) {
+Status BuildHostGraphForFuncCallNode(
+    const string& xla_cluster_attr_name, const string& xla_cluster_name,
+    const string& outside_compilation_attr_name,
+    const string& func_call_node_name, const string& func_call_host_func_name,
+    const string& host_graph_func_name, FunctionLibraryDefinition* fld) {
   Graph host_graph(fld);
   AttrValue device_ordinal_value;
-  device_ordinal_value.set_placeholder("device_ordinal");
+  device_ordinal_value.set_placeholder("_device_ordinal");
 
   // Step 1: add key placeholder node.
   TF_ASSIGN_OR_RETURN(
@@ -1410,8 +1741,14 @@ Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
   NodeDefBuilder call_builder(absl::StrCat("oc_call_", func_call_node_name),
                               func_call_host_func_name, fld);
   call_builder.Input(key_placeholder->name(), 0, DT_STRING);
-  call_builder.Attr("device_ordinal", device_ordinal_value);
+  call_builder.Attr("_device_ordinal", device_ordinal_value);
   call_builder.Attr(kXlaHasHostTransferAttrName, true);
+  call_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
+  call_builder.Attr(outside_compilation_attr_name, call_builder.node_name());
+  // Make sure control outputs of this function call node will be respected when
+  // this node is lowered.
+  call_builder.Attr(LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr,
+                    true);
   NodeDef call_def;
   TF_RETURN_IF_ERROR(call_builder.Finalize(&call_def));
   Status s;
@@ -1419,9 +1756,10 @@ Status BuildHostGraphForFuncCallNode(const string& func_call_node_name,
   TF_RETURN_IF_ERROR(s);
   host_graph.AddEdge(key_placeholder, 0, call_node, 0);
 
-  // Convert `host_graph` to function, and add a "device_ordinal" attr.
+  // Convert `host_graph` to function.
   FunctionDef oc_host_graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(host_graph, host_graph_func_name,
+                                        HostGraphControlRetMapping,
                                         &oc_host_graph_fdef));
   if (fld->Find(host_graph_func_name)) {
     TF_RETURN_IF_ERROR(
@@ -1446,17 +1784,8 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
       if_nodes.push_back(n);
     } else if (n->type_string() == "While") {
       while_nodes.push_back(n);
-    } else if (fld->Contains(n->type_string())) {
+    } else if (IsFunctionCall(*fld, *n)) {
       func_call_nodes.push_back(n);
-    } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
-      // Only gradient for user-defined function should be considered as
-      // function call node.
-      NameAttrList original_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(
-          n->def(), FunctionLibraryDefinition::kFuncAttr, &original_func));
-      if (fld->Contains(original_func.name())) {
-        func_call_nodes.push_back(n);
-      }
     }
   }
 
@@ -1464,9 +1793,17 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     // Extract outside compilation for the function call.
     bool func_has_outside_compilation = false;
     NameAttrList func;
-    func.set_name(n->type_string());
-    typedef protobuf::Map<string, AttrValue> AttrMap;
-    *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    if (fld->Contains(n->type_string())) {
+      func.set_name(n->type_string());
+      typedef protobuf::Map<string, AttrValue> AttrMap;
+      *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+    } else if (n->IsPartitionedCall()) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
+    } else {
+      TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
+      func.set_name(FunctionLibraryDefinition::kGradientOp);
+      *func.mutable_attr() = n->def().attr();
+    }
     string new_func_name = absl::StrCat(n->name(), "_oc");
     string host_func_name = absl::StrCat("oc_func_call_host_", n->name());
     TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
@@ -1502,9 +1839,9 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     // Build host side graph for the function call.
     string oc_host_graph_name =
         absl::StrCat("oc_func_host_graph_", replace->name());
-    TF_RETURN_IF_ERROR(
-        BuildHostGraphForFuncCallNode(replace->name(), xla_cluster_name,
-                                      host_func_name, oc_host_graph_name, fld));
+    TF_RETURN_IF_ERROR(BuildHostGraphForFuncCallNode(
+        xla_cluster_attr_name, xla_cluster_name, outside_compilation_attr_name,
+        replace->name(), host_func_name, oc_host_graph_name, fld));
 
     // Record the host graph.
     host_graphs->push_back(oc_host_graph_name);
@@ -1775,6 +2112,12 @@ Status ExtractOutsideCompilationForFunction(
   // We cannot early return here, because we might have outside compilation in
   // If/While function body.
 
+  if (VLOG_IS_ON(4)) {
+    DumpGraphToFile(
+        absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
+        *fbody->graph, fld);
+  }
+
   // Find dependencies between outside compilation clusters.
   TF_ASSIGN_OR_RETURN(auto cluster_deps,
                       OutsideCompilationClusterDependencies(
@@ -1784,11 +2127,6 @@ Status ExtractOutsideCompilationForFunction(
   // restored in `ConstructHostGraph()`.
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
       fbody->graph, outside_compilation_attr_name));
-  if (VLOG_IS_ON(4)) {
-    DumpGraphToFile(
-        absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
-        *fbody->graph, fld);
-  }
 
   // Encapsulate outside_compilation cluster into function call node.
   std::unique_ptr<Graph> graph_out;
@@ -1802,6 +2140,7 @@ Status ExtractOutsideCompilationForFunction(
   // Replace outside_compilation function nodes with HostCompute ops.
   std::vector<Node*> outside_compilation_nodes;
   std::vector<string> outside_compilation_host_graphs;
+  std::vector<string> shape_inference_graphs_to_rewrite;
   for (Node* n : graph_out->nodes()) {
     if (HasNodeAttr(n->def(), "_outside_compilation_subgraph")) {
       outside_compilation_nodes.push_back(n);
@@ -1815,6 +2154,8 @@ Status ExtractOutsideCompilationForFunction(
                                      &shape_inference_graph));
       if (!shape_inference_graph.name().empty()) {
         shape_inference_graphs->push_back(shape_inference_graph.name());
+        shape_inference_graphs_to_rewrite.push_back(
+            shape_inference_graph.name());
 
         const FunctionDef* xla_fdef = fld->Find(n->name());
         if (!xla_fdef) {
@@ -1835,13 +2176,11 @@ Status ExtractOutsideCompilationForFunction(
   std::map<string, Node*> host_compute_nodes;
   for (Node* n : outside_compilation_nodes) {
     TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
-    auto host_compute_node_or = ReplaceOrRemoveOutsideCompilationCallNode(
+    auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
         graph_out.get(), n, host_compute_core, *cluster_deps);
     TF_RETURN_IF_ERROR(host_compute_node_or.status());
     Node* host_compute_node = host_compute_node_or.ValueOrDie();
-    if (host_compute_node) {
-      host_compute_nodes[host_compute_node->name()] = host_compute_node;
-    }
+    host_compute_nodes[host_compute_node->name()] = host_compute_node;
   }
   // For XlaHostCompute nodes with dependencies, add control edges between them
   // so XlaCompiler can handle them in correct order.
@@ -1857,9 +2196,8 @@ Status ExtractOutsideCompilationForFunction(
       }
 
       auto iter = host_compute_nodes.find(node_name);
-      if (iter != host_compute_nodes.end()) {
-        graph_out->AddControlEdge(iter->second, host_compute_node);
-      }
+      TF_RET_CHECK(iter != host_compute_nodes.end());
+      graph_out->AddControlEdge(iter->second, host_compute_node);
     }
   }
 
@@ -1871,9 +2209,30 @@ Status ExtractOutsideCompilationForFunction(
       has_outside_compilation));
 
   // Construct host graph.
-  TF_RETURN_IF_ERROR(ConstructHostGraph(
-      xla_cluster_name, outside_compilation_attr_name,
-      outside_compilation_host_graphs, fld, host_graph_func_name));
+  std::unique_ptr<Graph> host_graph;
+  TF_RETURN_IF_ERROR(
+      ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
+                         outside_compilation_host_graphs, fld, &host_graph));
+  FunctionDef host_graph_fdef;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*host_graph, host_graph_func_name,
+                                        HostGraphControlRetMapping,
+                                        &host_graph_fdef));
+  if (fld->Find(host_graph_func_name)) {
+    TF_RETURN_IF_ERROR(
+        fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));
+  } else {
+    TF_RETURN_IF_ERROR(fld->AddFunctionDef(host_graph_fdef));
+  }
+
+  // Shape inference graphs might contain Placeholder nodes for outside
+  // compilation to outside compilation edges. Rewrite shape inference graphs
+  // to remove such nodes.
+  for (const string& shape_inference_graph :
+       shape_inference_graphs_to_rewrite) {
+    TF_RETURN_IF_ERROR(RewriteShapeInferenceGraph(shape_inference_graph,
+                                                  host_graph.get(),
+                                                  /*pivot_node=*/nullptr, fld));
+  }
 
   // Remove the outside compilation graphs from function library.
   for (const string& func : outside_compilation_host_graphs) {

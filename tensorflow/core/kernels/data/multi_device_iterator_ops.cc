@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <deque>
 
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -480,6 +482,46 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MultiDeviceIterator").Device(DEVICE_CPU),
                         MultiDeviceIteratorHandleOp);
 
+// This atomic is used to ensure that each new AnonymousMultiDeviceIterator
+// handle is unique.
+static std::atomic<int64> current_multi_device_iterator_id_;
+
+class AnonymousMultiDeviceIteratorOp
+    : public AnonymousIteratorResourceOp<MultiDeviceIterator> {
+ public:
+  explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
+      : AnonymousIteratorResourceOp<MultiDeviceIterator>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+  }
+
+ private:
+  void GenerateContainerNames(string* unique_name,
+                              string* container_name) override {
+    *unique_name =
+        strings::StrCat("_AnonymousMultiDeviceIterator",
+                        current_multi_device_iterator_id_.fetch_add(1));
+    *container_name = "AnonymousMultiDeviceIterator";
+  }
+
+  Status CreateResource(OpKernelContext* ctx,
+                        std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                        FunctionLibraryRuntime* lib,
+                        MultiDeviceIterator** resource) override {
+    auto function_handle_cache = absl::make_unique<FunctionHandleCache>(lib);
+    *resource =
+        new MultiDeviceIterator(ctx->env(), output_dtypes_, output_shapes_,
+                                devices_, std::move(flib_def), std::move(pflr),
+                                lib, std::move(function_handle_cache));
+    return Status::OK();
+  }
+
+  std::vector<string> devices_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("AnonymousMultiDeviceIterator").Device(DEVICE_CPU),
+                        AnonymousMultiDeviceIteratorOp);
+
 // Calls init on the MultiDeviceIterator.
 class MultiDeviceIteratorInitOp : public OpKernel {
  public:
@@ -652,6 +694,35 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("MultiDeviceIteratorFromStringHandle").Device(DEVICE_CPU),
     MultiDeviceIteratorFromStringHandleOp);
+
+class DeleteMultiDeviceIteratorOp : public OpKernel {
+ public:
+  explicit DeleteMultiDeviceIteratorOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+    // The iterator resource is guaranteed to exist because the variant tensor
+    // wrapping the deleter is provided as an unused input to this op, which
+    // guarantees that it has not run yet.
+    Status s = ctx->resource_manager()->Delete(handle);
+    if (errors::IsNotFound(s)) {
+      // TODO(b/135948230): Investigate why is the above statement not true and
+      // then get rid of the special case.
+      ctx->SetStatus(Status::OK());
+      return;
+    }
+    ctx->SetStatus(s);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DeleteMultiDeviceIterator").Device(DEVICE_CPU),
+                        DeleteMultiDeviceIteratorOp);
+// Since this op takes in Iterator handles as (unused) inputs, we don't want
+// to constrain the iterator location to CPU only. Therefore, we exempt the
+// colocation restriction for this op allowing the iterators to be placed on
+// other devices.
+REGISTER_INPUT_COLOCATION_EXEMPTION("DeleteMultiDeviceIterator");
 
 }  // namespace
 }  // namespace data

@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
 #ifndef TFLITE_WITH_RUY
@@ -115,13 +115,11 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
   eigen_support::IncrementUsageCounter(context);
-  cpu_backend_support::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
   eigen_support::DecrementUsageCounter(context);
-  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -472,7 +470,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           GetTensorShape(bias), GetTensorData<int32_t>(bias),
           GetTensorShape(output), GetTensorData<uint8_t>(output),
           GetTensorShape(im2col), GetTensorData<uint8_t>(im2col),
-          cpu_backend_support::GetFromContext(context));
+          CpuBackendContext::GetFromContext(context));
       break;
     }
   }
@@ -516,7 +514,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<int32>(bias), GetTensorShape(output),
           GetTensorData<int8>(output), GetTensorShape(im2col),
           GetTensorData<int8>(im2col),
-          cpu_backend_support::GetFromContext(context));
+          CpuBackendContext::GetFromContext(context));
       break;
     }
   }
@@ -564,7 +562,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                           GetTensorData<float>(bias), GetTensorShape(output),
                           GetTensorData<float>(output), GetTensorShape(im2col),
                           GetTensorData<float>(im2col),
-                          cpu_backend_support::GetFromContext(context));
+                          CpuBackendContext::GetFromContext(context));
       break;
     }
     case kMultithreadOptimized: {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/DenseMap.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
@@ -44,6 +46,8 @@ namespace {
 using QuantParams = quant::QuantizedType;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams> &)>;
+using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
+using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 
 // Quantization specs of ops, driving the TF Lite quantization algorithm.
 struct OpQuantSpec {
@@ -66,7 +70,7 @@ struct OpQuantSpec {
   // "hard-coded" parameters and should be used unconditionally for the
   // quantized op. This vector is empty if the op doesn't have value resctricted
   // outputs.
-  llvm::SmallVector<QuantParams, 1> restricted_output_params;
+  llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
 };
 
 static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
@@ -121,7 +125,8 @@ struct RequantizeState {
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(Function fn) : builder_(fn.getBody()) {}
+  explicit QuantizationDriver(FuncOp fn, bool is_signed)
+      : fn_(fn), builder_(fn.getBody()), is_signed_(is_signed) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -193,8 +198,7 @@ class QuantizationDriver {
 
   // Sets the quantization parameters of the constant result according to its
   // content.
-  bool SetConstantResultParams(Operation *op, unsigned storage_type_width,
-                               bool narrow_range);
+  bool SetConstantResultParams(Operation *op);
 
   // Inserts the Quantize and Dequantize ops for quantizing the index-th result
   // of the op.
@@ -286,7 +290,9 @@ class QuantizationDriver {
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
   }
 
+  FuncOp fn_;
   OpBuilder builder_;
+  bool is_signed_;
 
   // All the ops needs to propagate the quantization parameters to.
   std::vector<Operation *> work_list_;
@@ -342,17 +348,17 @@ int QuantizationDriver::InitializeState(Operation *op, int index, Value *val,
   return next_state_index;
 }
 
-bool QuantizationDriver::SetConstantResultParams(Operation *op,
-                                                 unsigned storage_type_width,
-                                                 bool narrow_range) {
+bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   ElementsAttr attr;
   Value *res = op->getResult(0);
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
   }
-  auto final_type = GetUniformQuantizedTypeForElementsAttr(
-                        attr, storage_type_width, narrow_range)
-                        .dyn_cast_or_null<quant::QuantizedType>();
+  // TODO(fengliuai): the bit width should be determined by its user.
+  auto final_type =
+      GetUniformQuantizedTypeForElementsAttr(
+          attr, /*storage_type_width=*/8, is_signed_, /*narrow_range_=*/false)
+          .dyn_cast_or_null<quant::QuantizedType>();
   if (!final_type) return false;
   return SetResultParams(op, 0, final_type);
 }
@@ -562,7 +568,7 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 void QuantizationDriver::Initialize() {
   llvm::DenseMap<Value *, int> value_to_state;
 
-  builder_.getRegion()->walk([&](Operation *op) {
+  fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator()) return;
     if (!GetQuantSpec(op)->is_quantizable) return;
     work_list_.push_back(op);
@@ -621,9 +627,7 @@ bool QuantizationDriver::PropagateParams() {
 
       // The quantization parameters are determined by the content of the
       // constant.
-      // TODO(fengliuai): the storage_type_width should be from higher level.
-      changed |= SetConstantResultParams(op, /*storage_type_width=*/8,
-                                         /*narrow_range=*/false);
+      changed |= SetConstantResultParams(op);
       continue;
     }
 
@@ -644,9 +648,11 @@ bool QuantizationDriver::PropagateParams() {
       for (int res = 0, e = op->getNumResults(); res != e; ++res)
         changed |= SetResultParams(op, res, params);
     }
-
-    for (int i = 0, e = spec->restricted_output_params.size(); i != e; ++i)
-      changed |= SetResultParams(op, i, spec->restricted_output_params[i]);
+    // TODO(fengliuai): make the bit width configurable.
+    auto key = std::make_pair(8, is_signed_);
+    auto &restricted_outputs = spec->restricted_output_params[key];
+    for (int i = 0, e = restricted_outputs.size(); i != e; ++i)
+      changed |= SetResultParams(op, i, restricted_outputs[i]);
 
     for (auto &it : spec->biases_params) {
       auto params =
@@ -706,8 +712,8 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::Function func) {
-  QuantizationDriver(func).Run();
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed) {
+  QuantizationDriver(func, is_signed).Run();
 }
 
 }  // namespace TFL

@@ -326,11 +326,6 @@ class Exhaustive32BitOrLessUnaryTest
 
   void Run(std::function<XlaOp(XlaOp)> enqueue_op, F32EvaluateOp evaluate_op,
            std::function<ErrorSpec(float)> error_spec_gen) {
-    SetFastMathDisabled(true);
-
-    // Run all HLO passes.  In particular, constant folding is disabled by
-    // default for tests, but we need to run it in order to tickle some bugs.
-    mutable_debug_options()->clear_xla_disable_hlo_passes();
     Literal input_literal = CreateInputLiteral();
     switch (ty_) {
       case F32:
@@ -369,7 +364,8 @@ class Exhaustive32BitOrLessUnaryTest
   // type being tested.
   template <typename T>
   void FillInput(Literal* input_literal) {
-    using IntegralT = typename IntegralTypeWithByteWidth<sizeof(T)>::type;
+    using IntegralT =
+        typename test_util::IntegralTypeWithByteWidth<sizeof(T)>::type;
     int64 input_size = input_literal->element_count();
     int64 begin, end;
     std::tie(begin, end) = std::get<1>(GetParam());
@@ -439,6 +435,10 @@ XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Expm1) {
   auto error_spec_gen = [default_spec_gen](float x) {
     if (x < -105) {
       return ErrorSpec{0, 0};
+    } else if (std::abs(x) < 5e-6) {
+      // For points around x=0, we should make sure that the result is accurate
+      // within 1 ULP of the value.
+      return ErrorSpec{0, 1.1921e-7};
     }
     return default_spec_gen(x);
   };
@@ -702,6 +702,342 @@ INSTANTIATE_TEST_SUITE_P(
     BF16, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(BF16),
                        ::testing::Values(std::make_pair(0, 1 << 16))));
+#endif
+
+// Exhaustive test for unary operations for double.
+//
+// Test parameter is a tuple containing
+//   - primitive type under test,
+//   - FpValues representing a set of double values.
+class ExhaustiveF64UnaryTest : public ExhaustiveRealUnaryTestBase,
+                               public ::testing::WithParamInterface<
+                                   std::tuple<PrimitiveType, FpValues>> {
+ public:
+  typedef double (*F64EvaluateOp)(double);
+
+  ExhaustiveF64UnaryTest()
+      : ExhaustiveRealUnaryTestBase(std::get<0>(GetParam())) {}
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, F64EvaluateOp evaluate_op) {
+    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
+  }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, F64EvaluateOp evaluate_op,
+           std::function<ErrorSpec(float)> error_spec_gen) {
+    CHECK_EQ(ty_, F64);
+    Literal input_literal = CreateInputLiteral();
+    FillInputF64(&input_literal);
+    RunImpl<double, double>(enqueue_op, evaluate_op, input_literal,
+                            error_spec_gen);
+  }
+
+ private:
+  int64 GetInputSize() override {
+    FpValues values = std::get<1>(GetParam());
+    return values.GetTotalNumValues();
+  }
+
+  void FillInputF64(Literal* input_literal) {
+    FpValues fp_values = std::get<1>(GetParam());
+    int64 input_size = input_literal->element_count();
+    LOG(INFO) << "Checking fp values " << fp_values.ToString() << ", "
+              << input_size;
+    absl::Span<double> input_arr = input_literal->data<double>();
+
+    uint64 i = 0;
+    for (auto bits : fp_values) {
+      input_arr[i] = ConvertAndReplaceKnownIncorrectValueWith<double>(bits, 1);
+      ++i;
+    }
+    CHECK_EQ(i, input_size);
+  }
+};
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Log) { Run(Log, std::log); }
+
+// TODO(bixia): add other unary ops for double
+
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+INSTANTIATE_TEST_SUITE_P(
+    SpecialValues, ExhaustiveF64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(F64),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>())));
+
+INSTANTIATE_TEST_SUITE_P(
+    NormalValues, ExhaustiveF64UnaryTest,
+    ::testing::Combine(::testing::Values(F64),
+                       ::testing::Values(GetNormals<double>(1000))));
+
+// Tests a total of 4000000000 inputs, with 16000000 inputs in each sub-test, to
+// keep the peak memory usage low.
+INSTANTIATE_TEST_SUITE_P(
+    LargeAndSmallMagnituedNormalValues, ExhaustiveF64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(F64),
+        ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
+            4000000000ull, 16000000))));
+#endif
+
+class ExhaustiveComplexUnaryTestBase : public ExhaustiveOpTestBase {
+ public:
+  explicit ExhaustiveComplexUnaryTestBase(PrimitiveType ty)
+      : ExhaustiveOpTestBase(ty) {}
+
+  // A helper for implementing the Run method for unary op test of complex
+  // numbers.
+  //
+  // T is the component type of the complex number.
+  template <typename T>
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op,
+           std::complex<T> (*evaluate_op)(std::complex<T>),
+           FpValues* values_real, FpValues* values_imag,
+           std::function<ErrorSpec(float)> error_spec_gen) {
+    Literal input_literal = CreateInputLiteral();
+
+    FillInput<T>(&input_literal, values_real, values_imag);
+
+    XlaBuilder builder(TestName());
+    auto input = Parameter(&builder, 0, input_literal.shape(), "input");
+    enqueue_op(input);
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            RunComputation(comp, {&input_literal}));
+    ExpectNearComplex<T>(input_literal, result_literal, evaluate_op,
+                         error_spec_gen);
+  }
+
+  // Generates the input complex literal given the FpValues representation for
+  // the real and imaginary components.
+  //
+  // T is the component type of the complex number.
+  template <typename T>
+  void FillInput(Literal* input_literal, FpValues* real_values,
+                 FpValues* imag_values) {
+    VLOG(2) << " testing input total "
+            << real_values->GetTotalNumValues() *
+                   imag_values->GetTotalNumValues()
+            << ", range " << real_values->ToString() << " "
+            << imag_values->ToString();
+
+    absl::Span<std::complex<T>> input_arr =
+        input_literal->data<std::complex<T>>();
+
+    uint64 i = 0;
+    for (auto real : *real_values) {
+      for (auto imag : *imag_values) {
+        input_arr[i] = std::complex<T>(
+            ConvertAndReplaceKnownIncorrectValueWith<T>(real, 1),
+            ConvertAndReplaceKnownIncorrectValueWith<T>(imag, 1));
+
+        ++i;
+      }
+    }
+  }
+
+  template <typename T>
+  void ExpectNearComplex(const Literal& input_literal,
+                         const Literal& result_literal,
+                         std::complex<T> (*evaluate_op)(std::complex<T>),
+                         std::function<ErrorSpec(float)> error_spec_gen) {
+    absl::Span<const std::complex<T>> input_arr =
+        input_literal.data<std::complex<T>>();
+    absl::Span<const std::complex<T>> result_arr =
+        result_literal.data<std::complex<T>>();
+    ASSERT_EQ(result_arr.size(), input_arr.size());
+    int64 mismatches = 0;
+
+    for (int64 i = 0; i < input_arr.size(); ++i) {
+      std::complex<T> input = input_arr[i];
+      std::complex<T> actual = result_arr[i];
+      std::complex<T> expected = evaluate_op(input);
+
+      // TODO(bixia): Need to fix error_spec_gen to consider both components.
+      // This only affects the value specific error_spec, and before we fix
+      // this, it means complex operation testing doesn't support value
+      // specific error_spec yet. We delay the fix to this partially because
+      // we don't know whether it is enough for the error_spec to only take
+      // the absolute value of the complex number.
+      ErrorSpec error_spec = error_spec_gen(input.real());
+
+      if (IsClose(expected.real(), actual.real(), error_spec) &&
+          IsClose(expected.imag(), actual.imag(), error_spec)) {
+        continue;
+      }
+
+      // TODO(bixia): Need to handle complex operands with subnormals in
+      // real and/or imaginary components.
+      VLOG(2) << "calculate " << StringifyNum(input) << " ;"
+              << StringifyNum(actual) << "; " << StringifyNum(expected);
+
+      PrintMismatch(&mismatches, [&] {
+        return absl::StrFormat("Mismatch on %s. Expected %s, but got %s.",
+                               StringifyNum(input), StringifyNum(expected),
+                               StringifyNum(actual));
+      });
+    }
+
+    EXPECT_EQ(mismatches, 0);
+  }
+};
+
+// Unary op test for complex<float>.
+//
+// Test parameter is a tuple containing
+//   - primitive type under test,
+//   - two FpValues representing the values for the real and imaginary
+//     components. The complex numbers for the test input is the cartesian
+//     product of the values represented by the two FpValues.
+class ExhaustiveC64UnaryTest
+    : public ExhaustiveComplexUnaryTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, FpValues, FpValues>> {
+ public:
+  typedef complex64 (*C64EvaluateOp)(complex64);
+
+  ExhaustiveC64UnaryTest()
+      : ExhaustiveComplexUnaryTestBase(std::get<0>(GetParam())) {}
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, C64EvaluateOp evaluate_op) {
+    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
+  }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, C64EvaluateOp evaluate_op,
+           std::function<ErrorSpec(float)> error_spec_gen) {
+    FpValues values_real = std::get<1>(GetParam());
+    FpValues values_imag = std::get<2>(GetParam());
+    ExhaustiveComplexUnaryTestBase::Run<float>(
+        enqueue_op, evaluate_op, &values_real, &values_imag, error_spec_gen);
+  }
+
+  int64 GetInputSize() override {
+    FpValues values_real = std::get<1>(GetParam());
+    FpValues values_imag = std::get<2>(GetParam());
+    return values_real.GetTotalNumValues() * values_imag.GetTotalNumValues();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    F32SpecialValues, ExhaustiveC64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C64),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>()),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>())));
+
+INSTANTIATE_TEST_SUITE_P(
+    F32SpecialAndNormalValues, ExhaustiveC64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C64),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>()),
+        ::testing::Values(GetNormals<float>(10000))));
+
+INSTANTIATE_TEST_SUITE_P(
+    F32NormalAndSpecialValues, ExhaustiveC64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C64), ::testing::Values(GetNormals<float>(10000)),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>())));
+
+INSTANTIATE_TEST_SUITE_P(
+    F32NormalAndNormalValues, ExhaustiveC64UnaryTest,
+    ::testing::Combine(::testing::Values(C64),
+                       ::testing::Values(GetNormals<float>(10000)),
+                       ::testing::Values(GetNormals<float>(10000))));
+
+// Tests a total of 40000 ^ 2 inputs, with 4000 ^ 2 inputs in each sub-test, to
+// keep the peak memory usage low.
+INSTANTIATE_TEST_SUITE_P(
+    F32LargeAndSmallMagnituedNormalValues, ExhaustiveC64UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C64),
+        ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
+                                                                         4000)),
+        ::testing::ValuesIn(
+            GetFpValuesForMagnitudeExtremeNormals<float>(40000, 4000))));
+
+// Unary op test for complex<double>.
+//
+// Test parameter is a tuple containing
+//   - primitive type under test,
+//   - two FpValues representing the values for the real and imaginary
+//     components. The complex numbers for the test input is the cartesian
+//     product of the values represented by the two FpValues.
+class ExhaustiveC128UnaryTest
+    : public ExhaustiveComplexUnaryTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, FpValues, FpValues>> {
+ public:
+  typedef complex128 (*C128EvaluateOp)(complex128);
+
+  ExhaustiveC128UnaryTest()
+      : ExhaustiveComplexUnaryTestBase(std::get<0>(GetParam())) {}
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, C128EvaluateOp evaluate_op) {
+    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
+  }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, C128EvaluateOp evaluate_op,
+           std::function<ErrorSpec(float)> error_spec_gen) {
+    FpValues values_real = std::get<1>(GetParam());
+    FpValues values_imag = std::get<2>(GetParam());
+    ExhaustiveComplexUnaryTestBase::Run<double>(
+        enqueue_op, evaluate_op, &values_real, &values_imag, error_spec_gen);
+  }
+
+  int64 GetInputSize() override {
+    FpValues values_real = std::get<1>(GetParam());
+    FpValues values_imag = std::get<2>(GetParam());
+    return values_real.GetTotalNumValues() * values_imag.GetTotalNumValues();
+  }
+};
+
+XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
+  // TODO(bixia): only test values that are not too big and not too small
+  //             for now and will work on fixing the implementation of XLA
+  //             operations to enable test for other values.
+  known_incorrect_fn_ = [&](int64 v) {
+    double f = ConvertValue<double>(v);
+    return std::fpclassify(f) == FP_NAN || std::abs(f) > 5 || std::abs(f) < 1;
+  };
+  Run(Log, [](complex128 x) { return std::log(x); });
+}
+
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+INSTANTIATE_TEST_SUITE_P(
+    SpecialValues, ExhaustiveC128UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C128),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>()),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>())));
+
+INSTANTIATE_TEST_SUITE_P(
+    SpecialAndNormalValues, ExhaustiveC128UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C128),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>()),
+        ::testing::Values(GetNormals<double>(10000))));
+
+INSTANTIATE_TEST_SUITE_P(
+    NormalAndSpecialValues, ExhaustiveC128UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C128), ::testing::Values(GetNormals<double>(10000)),
+        ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>())));
+
+INSTANTIATE_TEST_SUITE_P(
+    F32NormalAndNormalValues, ExhaustiveC128UnaryTest,
+    ::testing::Combine(::testing::Values(C128),
+                       ::testing::Values(GetNormals<double>(10000)),
+                       ::testing::Values(GetNormals<double>(10000))));
+
+// Tests a total of 40000 ^ 2 inputs, with 2000 ^ 2 inputs in each sub-test, to
+// keep the peak memory usage low.
+INSTANTIATE_TEST_SUITE_P(
+    LargeAndSmallMagnituedNormalValues, ExhaustiveC128UnaryTest,
+    ::testing::Combine(
+        ::testing::Values(C128),
+        ::testing::ValuesIn(
+            GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),
+        ::testing::ValuesIn(
+            GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
 #endif
 
 }  // namespace xla

@@ -26,17 +26,16 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
@@ -494,9 +493,18 @@ def make_csv_dataset_v2(
     return features
 
   # Read files sequentially (if num_parallel_reads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
+  cycle_length = num_parallel_reads
+  if num_parallel_reads == dataset_ops.AUTOTUNE:
+    cycle_length = core_readers.DEFAULT_CYCLE_LENGTH
+  dataset = dataset.interleave(
+      filename_to_dataset,
+      cycle_length,
+      num_parallel_calls=num_parallel_reads)
+
+  if sloppy:
+    options = dataset_ops.Options()
+    options.experimental_deterministic = False
+    dataset = dataset.with_options(options)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -664,7 +672,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_dtype=dtypes.int64,
     )
     self._element_spec = tuple(
-        structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
+        tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
     if compat.forward_compatible(2019, 8, 3):
       variant_tensor = gen_experimental_dataset_ops.csv_dataset(
           filenames=self._filenames,
@@ -838,11 +846,18 @@ def make_batched_features_dataset_v2(file_pattern,
     reader_args = []
 
   # Read files sequentially (if reader_num_threads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          lambda filename: reader(filename, *reader_args),
-          cycle_length=reader_num_threads,
-          sloppy=sloppy_ordering))
+  cycle_length = reader_num_threads
+  if reader_num_threads == dataset_ops.AUTOTUNE:
+    cycle_length = core_readers.DEFAULT_CYCLE_LENGTH
+  dataset = dataset.interleave(
+      lambda filename: reader(filename, *reader_args),
+      cycle_length,
+      num_parallel_calls=reader_num_threads)
+
+  if sloppy_ordering:
+    options = dataset_ops.Options()
+    options.experimental_deterministic = False
+    dataset = dataset.with_options(options)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
@@ -970,7 +985,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
     self._element_spec = nest.map_structure(
-        lambda dtype: structure.TensorStructure(dtype, []), output_types)
+        lambda dtype: tensor_spec.TensorSpec([], dtype), output_types)
     if compat.forward_compatible(2019, 8, 3):
       variant_tensor = gen_experimental_dataset_ops.sql_dataset(
           self._driver_name, self._data_source_name, self._query,

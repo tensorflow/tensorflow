@@ -230,7 +230,7 @@ class Binomial(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(_binomial_sample_note)
   def _log_prob(self, counts):

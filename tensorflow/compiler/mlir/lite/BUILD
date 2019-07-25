@@ -7,13 +7,14 @@ load(
 package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
-        "//visibility:public",
+        ":friends",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
     name = "friends",
+    includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
@@ -171,6 +172,7 @@ cc_library(
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/lite/schema:schema_fbs",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
@@ -179,7 +181,6 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -232,7 +233,6 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -302,7 +302,7 @@ genrule(
     srcs = [
         "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/lite:ir/tfl_ops.td",
+        ":ir/tfl_ops.td",
     ],
     outs = [
         "utils/generated_op_quant_spec_getters.inc",
@@ -343,7 +343,7 @@ genrule(
     srcs = [
         "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/lite:ir/tfl_ops.td",
+        ":ir/tfl_ops.td",
     ],
     outs = [
         "operator_writers.inc",
@@ -364,7 +364,7 @@ cc_library(
         "flatbuffer_operator.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -385,17 +385,33 @@ tf_native_cc_binary(
 )
 
 cc_library(
+    name = "emit_error_reporter",
+    srcs = [
+        "emit_error_reporter.cc",
+    ],
+    hdrs = [
+        "emit_error_reporter.h",
+    ],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
+        "flatbuffer_import.cc",
         "flatbuffer_translate.cc",
     ],
     hdrs = [
+        "flatbuffer_import.h",
         "flatbuffer_translate.h",
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
+        ":tensorflow_lite",
+        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
@@ -447,9 +463,16 @@ cc_library(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "tf_tfl_translate_main",
+    srcs = [
+        "tf_tfl_translate.cc",
+    ],
+)
+
 tf_cc_binary(
     name = "tf_tfl_translate",
-    srcs = ["tf_tfl_translate.cc"],
+    srcs = [":tf_tfl_translate_main"],
     deps = [
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",

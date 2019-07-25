@@ -142,8 +142,6 @@ def _sequence_like(instance, args):
   elif _is_type_spec(instance):
     # Pack a CompositeTensor's components according to a TypeSpec.
     assert len(args) == 1
-    if args[0] and _is_type_spec(args[0][0]):
-      raise ValueError("Can not pack TypeSpec into a TypeSpec.")
     return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)

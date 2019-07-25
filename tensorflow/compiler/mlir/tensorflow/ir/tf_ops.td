@@ -78,6 +78,50 @@ Returns a tensor with the same shape and contents as input.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_IfOp : TF_Op<"If", []> {
+  let summary = "output = cond ? then_branch(input) : else_branch(input)";
+
+  let description = [{
+output = cond ? then_branch(input) : else_branch(input)
+
+cond: A Tensor. If the tensor is a scalar of non-boolean type, the
+    scalar is converted to a boolean according to the
+    following rule: if the scalar is a numerical value, non-zero means
+    True and zero means False; if the scalar is a string, non-empty
+    means True and empty means False. If the tensor is not a scalar,
+    being empty means False and being non-empty means True.
+input: A list of input tensors.
+then_branch: A function that takes 'inputs' and returns a list of
+    tensors, whose types are the same as what else_branch returns.
+else_branch: A function that takes 'inputs' and returns a list of
+    tensors.  whose types are the same as what then_branch returns.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$cond,
+    Variadic<TF_Tensor>:$input,
+
+    SymbolRefAttr:$then_branch,
+    SymbolRefAttr:$else_branch,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+
+    // Used to map StatelessIf and If op defined in TensorFlow to a common op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
@@ -105,8 +149,10 @@ retained with length 1.
 
 // In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
 // of function arguments.
+// Note: NoSideEffect trait is not added intentionally to preserve the captured
+// attributes even if the input is unused.
 def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [NoSideEffect, SameOperandsAndResultType]> {
+    [SameOperandsAndResultType]> {
   let summary = "PlaceholderInput op";
 
   let description = [{
@@ -143,6 +189,93 @@ Inserts a placeholder for a tensor that will be always fed.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
+  let summary = "List of the given size with empty elements.";
+
+  let description = [{
+element_shape: the shape of the future elements of the list
+num_elements: the number of elements to reserve
+handle: the output list
+element_dtype: the desired type of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$element_shape,
+    I32Tensor:$num_elements
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    if (handle_dtype().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result variant type");
+    }
+
+    return Verify(*this);
+  }];
+
+  DerivedTypeAttr element_dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(element_type());">;
+
+  let extraClassDeclaration = [{
+    // Returns type of the TensorList element produced by this op.
+    TensorType element_type() { return handle_dtype().getSubtypes()[0]; }
+
+    // Returns data type of the result handle. Returned type contains type of
+    // the TensorList element as a subtype.
+    VariantType handle_dtype() {
+      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
+    }
+  }];
+}
+
+def TF_WhileOp : TF_Op<"While", []> {
+  let summary = [{
+output = input; While (Cond(output)) { output = Body(output) }
+  }];
+
+  let description = [{
+output = input; While (Cond(output)) { output = Body(output) }
+
+input: A list of input tensors whose types are T.
+output: A list of output tensors whose types are T.
+cond: A function takes 'input' and returns a tensor.  If the tensor is
+    a scalar of non-boolean, the scalar is converted to a boolean
+    according to the following rule: if the scalar is a numerical
+    value, non-zero means True and zero means False; if the scalar is
+    a string, non-empty means True and empty means False. If the
+    tensor is not a scalar, non-emptiness means True and False
+    otherwise.
+body: A function that takes a list of tensors and returns another
+      list of tensors. Both lists have the same types as specified
+      by T.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input,
+
+    SymbolRefAttr:$cond,
+    SymbolRefAttr:$body,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 #endif // TF_OPS

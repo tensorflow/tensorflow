@@ -1334,6 +1334,9 @@ class BackpropTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMaxPooling3DGradient(self):
 
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
+
     def forward(a):
       r = max_pooling3d(a, pool_size=pool_size, strides=strides, padding='SAME')
       return r
@@ -1353,6 +1356,12 @@ class BackpropTest(test.TestCase):
           tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
       tf_da = gradients.gradients(tf_max, [tf_aa])
       self.assertAllEqual(da[0], tf_da[0].eval())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchBadThing(self):
+    g = backprop.GradientTape()
+    with self.assertRaisesRegexp(ValueError, 'ndarray'):
+      g.watch(np.array(1.))
 
 
 class JacobianTest(test.TestCase):

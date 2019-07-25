@@ -496,11 +496,7 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
 
   profiler::TraceMe activity(
-      [&] {
-        return strings::StrCat(
-            "SessionRun #id=", step_id,
-            ",step_container_name=", run_state.step_container.name(), "#");
-      },
+      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -1488,12 +1484,15 @@ Status DirectSession::GetOrCreateExecutors(
 
   // Reacquire the lock, try to insert into the map.
   mutex_lock l(executor_lock_);
-  functions_.push_back(std::move(func_info));
 
   // Another thread may have created the entry before us, in which case we will
   // reuse the already created one.
   auto insert_result = executors_.emplace(
       sorted_key, std::shared_ptr<ExecutorsAndKeys>(std::move(ek)));
+  if (insert_result.second) {
+    functions_.push_back(std::move(func_info));
+  }
+
   // Insert the value under the original key, so the fast path lookup will work
   // if the user uses the same order of inputs, outputs, and targets again.
   executors_.emplace(key, insert_result.first->second);

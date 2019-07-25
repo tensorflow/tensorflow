@@ -211,8 +211,8 @@ def validate_callbacks(input_callbacks, optimizer):
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
         callbacks passed.
-    ValueError: If `histogram_freq` or `write_grads` is one of the parameters
-        passed as part of the TensorBoard callback.
+    ValueError: If `write_grads` is one of the parameters passed as part of the
+        TensorBoard callback.
   """
   if input_callbacks:
     for callback in input_callbacks:
@@ -227,20 +227,13 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if getattr(callback, 'histogram_freq', False):
-          logging.warning(
-              UserWarning(
-                  '`histogram_freq` in the TensorBoard callback is not '
-                  'supported when using DistributionStrategy. Setting '
-                  '`histogram_freq` to `0`.'))
-          callback.histogram_freq = 0
         if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
                   'when using DistributionStrategy. Setting `write_grads` '
                   'to `False`.'))
-          callback.histogram_freq = False
+          callback.write_grads = False
 
 
 def validate_distributed_dataset_inputs(distribution_strategy, x, y,
@@ -547,13 +540,6 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
-def list_to_tuple(maybe_list):
-  """Datasets treat lists specially, so switch them to tuples."""
-  if isinstance(maybe_list, list):
-    return tuple(maybe_list)
-  return maybe_list
-
-
 def get_iterator(dataset, distribution_strategy):
   with distribution_strategy.scope():
     iterator = distribution_strategy.make_dataset_iterator(dataset)
@@ -645,9 +631,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
-  We are going to distribute the model by cloning if the user has signaled
-  that intent by setting `cloning=True` in `Model.compile()` unless we are in
-  graph mode.
+  We are going to distribute the model by cloning in graph mode.
 
   Args:
     model: Keras model to distribute.
@@ -657,14 +641,11 @@ def is_distributing_by_cloning(model):
     otherwise.
   """
   if (is_tpu_strategy(model._distribution_strategy) and
-      context.executing_eagerly):
-    if model._cloning:
-      logging.warning(
-          'Model cloning is not supported in TPU Strategy in Eager mode.'
-          'cloning argument will be ignored.')
+      context.executing_eagerly):  # b/137580852
     return False
-  return (model._cloning or model._compile_distribution or
-          not ops.executing_eagerly_outside_functions())
+  elif ops.executing_eagerly_outside_functions():
+    return bool(model._compile_distribution)
+  return True
 
 
 def _custom_compile_for_predict(model):
@@ -834,7 +815,6 @@ def _make_execution_function_without_cloning(model, mode):
   with strategy.scope():
     per_replica_function = _make_replica_execution_function(model, mode)
 
-    @def_function.function
     def distributed_function(input_fn):
       """A single step of the distributed execution across replicas."""
       x, y, sample_weights = input_fn()
@@ -849,9 +829,14 @@ def _make_execution_function_without_cloning(model, mode):
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
       return all_outputs
 
-    def execution_function(input_fn):
-      # `numpy` translates Tensors to values in Eager mode.
-      return [out.numpy() for out in distributed_function(input_fn)]
+    if not model.run_eagerly:
+      distributed_function = def_function.function(distributed_function)
+      def execution_function(input_fn):
+        # `numpy` translates Tensors to values in Eager mode.
+        return [out.numpy() for out in distributed_function(input_fn)]
+    else:
+      execution_function = distributed_function
+
     return execution_function
 
 

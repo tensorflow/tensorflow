@@ -138,7 +138,7 @@ py_binary(
     name = "tf_upgrade_v2",
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",

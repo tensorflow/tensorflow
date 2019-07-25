@@ -113,6 +113,9 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
                       int64 i);
 
+// Gets the attr corresponding to a dataset node's output types, if it exists.
+Status GetDatasetOutputTypesAttr(const NodeDef& node, AttrValue* output_types);
+
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
 std::vector<int> FindAllGraphNodesWithOp(const string& op,

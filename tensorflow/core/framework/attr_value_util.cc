@@ -152,6 +152,12 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
 
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
                         const TensorProtosEquality& tensor_equality) {
+  if (a.type() != b.type()) {
+    return false;
+  } else if (a.type() != DT_INVALID && b.type() != DT_INVALID) {
+    return a.type() == b.type();
+  }
+
   if (a.has_tensor() != b.has_tensor()) {
     return false;
   } else if (a.has_tensor() && b.has_tensor()) {

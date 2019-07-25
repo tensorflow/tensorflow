@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -66,15 +66,15 @@ class ParameterRewriter : public InlineRewrite {
   }
 
   // Return true if parameter was successfully added.
-  bool AddParameter(UniformParameter param) {
+  bool AddParameter(Variable param) {
     std::string old_name = param.name;
     param.name = name_func_(old_name);
     return name_to_param_.insert({old_name, std::move(param)}).second;
   }
 
   // Returns a collection of uniform parameters with updated names.
-  std::vector<UniformParameter> GetUniformParameters() const {
-    std::vector<UniformParameter> params;
+  std::vector<Variable> GetUniformParameters() const {
+    std::vector<Variable> params;
     params.reserve(name_to_param_.size());
     for (auto& param : name_to_param_) {
       params.push_back(param.second);
@@ -86,7 +86,7 @@ class ParameterRewriter : public InlineRewrite {
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, UniformParameter> name_to_param_;
+  std::unordered_map<std::string, Variable> name_to_param_;
 };
 
 // Rewrites names of all objects according to returned values from the

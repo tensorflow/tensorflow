@@ -44,6 +44,7 @@ from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -86,6 +87,7 @@ def _summarize_eager(tensor, summarize=None):
     summarize = 3
   elif summarize < 0:
     summarize = array_ops.size(tensor)
+
   # reshape((-1,)) is the fastest way to get a flat array view
   if tensor._rank():  # pylint: disable=protected-access
     flat = tensor.numpy().reshape((-1,))
@@ -94,7 +96,7 @@ def _summarize_eager(tensor, summarize=None):
       lst.append("...")
   else:
     # tensor.numpy() returns a scalar for zero dimensional arrays
-    if summarize != 0:
+    if gen_math_ops.not_equal(summarize, 0):
       lst = [str(tensor.numpy())]
     else:
       lst = []
@@ -2662,6 +2664,7 @@ def while_loop(cond,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
           maximum_iterations, name="maximum_iterations")
@@ -2677,7 +2680,7 @@ def while_loop(cond,
             0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
-      if len(loop_vars) == 1:
+      if try_to_pack:
         loop_vars = (counter, loop_vars[0])
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
@@ -2687,9 +2690,9 @@ def while_loop(cond,
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
+      try_to_pack = False
 
     if executing_eagerly:
-      try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
       loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,

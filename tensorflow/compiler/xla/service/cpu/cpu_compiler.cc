@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
@@ -656,7 +655,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
