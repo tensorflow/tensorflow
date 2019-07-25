@@ -626,6 +626,20 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
+tf_cc_test(
+    name = "platform_unbounded_work_queue_test",
+    srcs = ["platform/unbounded_work_queue_test.cc"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 # Headers that are not exported as part of ":lib".
 filegroup(
     name = "platform_other_internal_hdrs",
@@ -2465,6 +2479,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/snappy.h",
     "platform/tensor_coding.h",
     "platform/tracing.h",
+    "platform/unbounded_work_queue.h",
     "util/env_var.h",
 ]
 
