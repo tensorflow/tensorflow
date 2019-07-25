@@ -122,9 +122,9 @@ struct TrMulTask final : Task {
       if (!packed[side][block[side]].load(std::memory_order_acquire)) {
         params->RunPack(side, tuning, start, end);
         TraceRecordBlockPacked(side, block_id, trace);
-        local_packed[side][block[side]] = true;
         packed[side][block[side]].store(true, std::memory_order_release);
       }
+      local_packed[side][block[side]] = true;
     }
   }
 
