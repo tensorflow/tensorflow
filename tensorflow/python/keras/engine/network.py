@@ -1357,9 +1357,39 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(f, self.layers)
+        saving.load_weights_from_hdf5_group_by_name(f, self._get_all_layers(self))
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
+
+  def _get_all_layers (self, network):
+    """Extract all layers included layers in sub models
+
+    For example, a model included:
+      -Conv2D (keras.layer)
+      -BatchNorm (Keras.layer)
+      -CustomLayer (keras.layer)
+      -CustomModel (keras.Model)
+          -Conv2D (keras.layer)
+          -Conv2D (keras.layer)
+          -etc..
+      -Conv2D (keras.layer)
+
+    This function will extract all the layers included the layers in 
+    CustomModel or deeper. This is helpful when load a weights from
+    functional model h5 file to subclass model.
+
+    Returns:
+        All layers
+    """
+    layers = []
+
+    for layer in network.layers:
+      if isinstance(layer, Network):
+        layers.extend(self._get_all_layers(layer))
+      else:
+        layers.append(layer)
+    
+    return layers
 
   def _updated_config(self):
     """Util shared between different serialization methods.
