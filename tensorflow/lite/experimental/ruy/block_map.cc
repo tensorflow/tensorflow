@@ -91,6 +91,8 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
   RUY_DCHECK_GE(rows, kernel_rows);
   RUY_DCHECK_GE(cols, kernel_cols);
+  RUY_DCHECK_EQ(rows % kernel_rows, 0);
+  RUY_DCHECK_EQ(cols % kernel_cols, 0);
 
   block_map->traversal_order = BlockMapTraversalOrder::kLinear;
   if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
@@ -171,25 +173,20 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   int num_blocks_base_log2 = size_floor_log2 - l1_size_log2;
   RUY_DCHECK_GE(num_blocks_base_log2, 0);
 
-  int rows_rounded_up = round_up_pot(rows, kernel_rows);
-  int cols_rounded_up = round_up_pot(cols, kernel_cols);
-
   const int num_blocks_of_rows_log2 =
       num_blocks_base_log2 + rows_rectangularness_log2;
   const int num_blocks_of_cols_log2 =
       num_blocks_base_log2 + cols_rectangularness_log2;
 
   const int smallr =
-      round_down_pot(rows_rounded_up >> num_blocks_of_rows_log2, kernel_rows);
+      round_down_pot(rows >> num_blocks_of_rows_log2, kernel_rows);
   const int smallc =
-      round_down_pot(cols_rounded_up >> num_blocks_of_cols_log2, kernel_cols);
+      round_down_pot(cols >> num_blocks_of_cols_log2, kernel_cols);
   const int missr =
-      round_up_pot(rows_rounded_up - (smallr << num_blocks_of_rows_log2),
-                   kernel_rows) /
+      round_up_pot(rows - (smallr << num_blocks_of_rows_log2), kernel_rows) /
       kernel_rows;
   const int missc =
-      round_up_pot(cols_rounded_up - (smallc << num_blocks_of_cols_log2),
-                   kernel_cols) /
+      round_up_pot(cols - (smallc << num_blocks_of_cols_log2), kernel_cols) /
       kernel_cols;
 
   block_map->dims[Side::kLhs] = rows;
