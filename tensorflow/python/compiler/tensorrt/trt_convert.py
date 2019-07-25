@@ -94,8 +94,10 @@ class TrtPrecisionMode(object):
 
   @staticmethod
   def supported_precision_modes():
-    return [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8]
-
+    precisions = [
+        TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8
+    ]
+    return precisions + [p.lower() for p in precisions]
 
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
