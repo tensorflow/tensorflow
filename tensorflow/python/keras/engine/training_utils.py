@@ -1212,10 +1212,8 @@ def cast_if_floating_dtype(x):
   return nest.map_structure(cast_single_tensor, x)
 
 
-def cast_if_floating_to_model_input_dtypes(x, model):
+def cast_to_model_input_dtypes(x, model):
   """Casts the given data tensors to the dtypes of the model inputs.
-
-  Casts only if the input is already a floating point type.
 
   Args:
     x: tensor or list/tuple of tensors.
@@ -1225,10 +1223,8 @@ def cast_if_floating_to_model_input_dtypes(x, model):
     Converted input. Each tensor is casted to the corresponding input in
     `model.inputs`.
   """
-  # TODO(b/131372221): We should probably cast even if the input is not
-  # floating-point.
   input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
-  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+  return nest.map_structure(math_ops.cast, x, input_dtypes)
 
 
 def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):

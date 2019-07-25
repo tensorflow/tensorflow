@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -282,16 +281,9 @@ def train_on_batch(model,
       total loss and the loss associated with each output.
   """
   if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          inputs, model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
+    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+    if targets:
+      targets = training_utils.cast_if_floating_dtype(targets)
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
@@ -335,16 +327,9 @@ def test_on_batch(model,
       total loss, loss and metrics associated with each output.
   """
   if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          inputs, model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
+    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+    if targets:
+      targets = training_utils.cast_if_floating_dtype(targets)
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
