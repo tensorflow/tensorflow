@@ -964,6 +964,50 @@ class ApiTest(test.TestCase):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
+  def test_super_with_one_arg(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def one_arg(self, x):
+        test_base_unbound = super(TestSubclass)
+        test_base = test_base_unbound.__get__(self, TestSubclass)
+        return test_base.plus_three(x)
+
+    tc = api.converted_call(TestSubclass,
+                            converter.ConversionOptions(recursive=True), (), {})
+
+    self.assertEqual(5, tc.one_arg(2))
+
+  def test_super_with_two_args(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def two_args(self, x):
+        return super(TestSubclass, self).plus_three(x)
+
+    tc = api.converted_call(TestSubclass,
+                            converter.ConversionOptions(recursive=True), (), {})
+
+    self.assertEqual(5, tc.two_args(2))
+
 
 if __name__ == '__main__':
   os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'

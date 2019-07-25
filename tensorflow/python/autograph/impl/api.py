@@ -398,6 +398,8 @@ def converted_call(f, options, args, kwargs):
   if inspect_utils.isbuiltin(f):
     if f is eval:
       return py_builtins.eval_in_original_context(f, args, 1)
+    if f is super:
+      return py_builtins.super_in_original_context(f, args, 1)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
