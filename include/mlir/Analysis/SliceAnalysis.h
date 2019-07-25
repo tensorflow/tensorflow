@@ -56,7 +56,7 @@ using TransitiveFilter = std::function<bool(Operation *)>;
 /// Example starting from node 0
 /// ============================
 ///
-///              0
+///               0
 ///    ___________|___________
 ///    1       2      3      4
 ///    |_______|      |______|

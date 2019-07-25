@@ -217,8 +217,61 @@ func @slicing_test() {
   return
 }
 
-// This test dumps 2 sets of outputs: first the test outputs themselves followed
+// FWD-LABEL: slicing_test_2
+// BWD-LABEL: slicing_test_2
+// FWDBWD-LABEL: slicing_test_2
+func @slicing_test_2() {
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  %c2 = constant 2 : index
+  %c16 = constant 16 : index
+  loop.for %i0 = %c0 to %c16 step %c1 {
+    affine.for %i1 = (i)[] -> (i)(%i0) to 10 {
+      // BWD: matched: %[[b:.*]] {{.*}} backward static slice:
+      // BWD: loop.for {{.*}}
+
+      // affine.for appears in the body of loop.for
+      // BWD: affine.for {{.*}}
+
+      // affine.for appears as a proper op in the backward slice
+      // BWD: affine.for {{.*}}
+      %b = "slicing-test-op"(%i1): (index) -> index
+
+      // BWD: matched: %[[c:.*]] {{.*}} backward static slice:
+      // BWD: loop.for {{.*}}
+
+      // affine.for appears in the body of loop.for
+      // BWD-NEXT: affine.for {{.*}}
+
+      // affine.for only appears in the body of loop.for
+      // BWD-NOT: affine.for {{.*}}
+      %c = "slicing-test-op"(%i0): (index) -> index
+    }
+  }
+  return
+}
+
+// FWD-LABEL: slicing_test_3
+// BWD-LABEL: slicing_test_3
+// FWDBWD-LABEL: slicing_test_3
+func @slicing_test_3() {
+  %f = constant 1.0 : f32
+  %c = "slicing-test-op"(%f): (f32) -> index
+  // FWD: matched: {{.*}} (f32) -> index forward static slice:
+  // FWD: loop.for {{.*}}
+  // FWD: matched: {{.*}} (index, index) -> index forward static slice:
+  loop.for %i2 = %c to %c step %c {
+    %d = "slicing-test-op"(%c, %i2): (index, index) -> index
+  }
+  return
+}// This test dumps 2 sets of outputs: first the test outputs themselves followed
 // by the module. These labels isolate the test outputs from the module dump.
 // FWD-LABEL: slicing_test
 // BWD-LABEL: slicing_test
 // FWDBWD-LABEL: slicing_test
+// FWD-LABEL: slicing_test_2
+// BWD-LABEL: slicing_test_2
+// FWDBWD-LABEL: slicing_test_2
+// FWD-LABEL: slicing_test_3
+// BWD-LABEL: slicing_test_3
+// FWDBWD-LABEL: slicing_test_3
