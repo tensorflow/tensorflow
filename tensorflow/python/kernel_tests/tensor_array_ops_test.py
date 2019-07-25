@@ -1747,6 +1747,38 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(v0, -3)
       self.assertAllEqual(v1, 100)
 
+  def testInferShapeFalseValid(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=3, infer_shape=False, element_shape=[None, 10, 20])
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+    ta = ta.write(1, array_ops.ones([50, 10, 20]))
+    ta = ta.write(2, array_ops.ones([1, 10, 20]))
+    ta = ta.concat()
+
+    correct = np.ones([101, 10, 20])
+
+    self.assertAllEqual(ta, correct)
+
+  def testInferShapeFalseInvalid(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=2, infer_shape=False, element_shape=[None, 10, 20])
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+
+    with self.assertRaises(ValueError):
+      ta = ta.write(1, array_ops.ones([1, 20, 20]))
+
+  def testInferShapeTrue(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=3, infer_shape=True, element_shape=[None, 10, 20])
+    self.assertAllEqual((None, 10, 20), ta.element_shape.as_list())
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+    self.assertAllEqual((50, 10, 20), ta.element_shape.as_list())
+    ta = ta.write(1, array_ops.ones([50, 10, 20]))
+    with self.assertRaises(ValueError):
+      ta = ta.write(
+          2, array_ops.ones([1, 10, 20])
+      )  # Inconsistent shapes: saw (1, 10, 20) but expected (50, 10, 20)
+
 
 class TensorArrayBenchmark(test.Benchmark):
 
