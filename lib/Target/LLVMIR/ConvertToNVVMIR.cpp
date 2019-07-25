@@ -22,7 +22,7 @@
 
 #include "mlir/Target/NVVMIR.h"
 
-#include "mlir/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/LLVMIR/NVVMDialect.h"

@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_GPU_GPUDIALECT_H
-#define MLIR_GPU_GPUDIALECT_H
+#ifndef MLIR_DIALECT_GPU_GPUDIALECT_H
+#define MLIR_DIALECT_GPU_GPUDIALECT_H
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
@@ -166,9 +166,9 @@ private:
 };
 
 #define GET_OP_CLASSES
-#include "mlir/GPU/GPUOps.h.inc"
+#include "mlir/Dialect/GPU/GPUOps.h.inc"
 
 } // end namespace gpu
 } // end namespace mlir
 
-#endif // MLIR_GPUKERNEL_GPUDIALECT_H
+#endif // MLIR_DIALECT_GPU_GPUDIALECT_H

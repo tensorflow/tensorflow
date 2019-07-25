@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/GPU/GPUDialect.h"
-#include "mlir/GPU/Passes.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/Passes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"

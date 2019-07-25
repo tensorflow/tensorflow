@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_GPU_PASSES_H_
-#define MLIR_GPU_PASSES_H_
+#ifndef MLIR_DIALECT_GPU_PASSES_H_
+#define MLIR_DIALECT_GPU_PASSES_H_
 
 namespace mlir {
 
@@ -30,4 +30,4 @@ ModulePassBase *createGpuKernelOutliningPass();
 
 } // namespace mlir
 
-#endif // MLIR_GPU_PASSES_H_
+#endif // MLIR_DIALECT_GPU_PASSES_H_

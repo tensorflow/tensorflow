@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
 
 // Static initialization for GPU dialect registration.
 static mlir::DialectRegistration<mlir::gpu::GPUDialect> kernelDialect;
