@@ -555,7 +555,7 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
     # important which contains on-fly model build/tensor align for dict input,
     # etc. We should still call the _standardize_user_data with the peeked data
     # from generator or sequence, and let model compile.
-  return adapter_cls(x, y, batch_size=batch_size,
+  return adapter_cls(x, y, batch_size=batch_size, steps=steps,
                      sample_weights=sample_weights, shuffle=shuffle,
                      distribution_strategy=distribution_strategy)
 

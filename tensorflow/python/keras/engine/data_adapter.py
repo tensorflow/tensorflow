@@ -184,7 +184,7 @@ class TensorLikeDataAdapter(DataAdapter):
     return all(_is_tensor_or_composite(v) for v in flat_inputs)
 
   def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               shuffle=False, **kwargs):
+               steps=None, shuffle=False, **kwargs):
     super(TensorLikeDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
@@ -207,23 +207,25 @@ class TensorLikeDataAdapter(DataAdapter):
     else:
       inputs = (x,)
 
-    if not batch_size:
-      raise ValueError(
-          "`batch_size` is required for `Tensor` or `NumPy` input data.")
-
     dataset = dataset_ops.DatasetV2.from_tensor_slices(inputs)
     num_samples = int(nest.flatten(x)[0].shape[0])
     if shuffle:
       dataset = dataset.shuffle(num_samples)
-    if batch_size:
-      dataset = dataset.batch(batch_size)
-      self._size = int(math.ceil(num_samples / batch_size))
-      self._batch_size = batch_size
-      self._has_partial_batch = (self._size != (num_samples // batch_size))
-    else:
-      self._size = 1
-      self._batch_size = num_samples
-      self._has_partial_batch = False
+
+    # If batch_size is not passed but steps is, calculate from the input data.
+    if steps and not batch_size:
+      batch_size = int(math.ceil(num_samples/steps))
+
+    if not batch_size:
+      raise ValueError(
+          "`batch_size` or `steps` is required for `Tensor` or `NumPy`"
+          " input data.")
+
+    dataset = dataset.batch(batch_size)
+    self._size = int(math.ceil(num_samples / batch_size))
+    self._batch_size = batch_size
+    self._has_partial_batch = (self._size != (num_samples // batch_size))
+
     self._partial_batch_size = None
     if self._has_partial_batch:
       self._partial_batch_size = (
