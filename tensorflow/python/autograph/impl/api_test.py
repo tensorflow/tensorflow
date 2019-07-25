@@ -630,6 +630,53 @@ class ApiTest(test.TestCase):
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
 
+  def test_converted_call_namedtuple_subclass_bound_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+
+      def test_method(self, x):
+        while tf.reduce_sum(x) > self.a:
+          x //= self.b
+        return x
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    x = api.converted_call(
+        obj.test_method, opts, (constant_op.constant([2, 4]),), {})
+
+    self.assertAllEqual(self.evaluate(x), [1, 2])
+
+  def test_converted_call_namedtuple_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+      pass
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    # _asdict is a documented method of namedtuple.
+    x = api.converted_call(obj._asdict, opts, (), {})
+
+    self.assertDictEqual(x, {'a': 5, 'b': 2})
+
+  def test_converted_call_namedtuple_subclass_unbound_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+
+      def test_method(self, x):
+        while tf.reduce_sum(x) > self.a:
+          x //= self.b
+        return x
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    x = api.converted_call(TestClass.test_method, opts,
+                           (obj, constant_op.constant([2, 4])), {})
+
+    self.assertAllEqual(self.evaluate(x), [1, 2])
+
   def test_converted_call_lambda(self):
 
     opts = converter.ConversionOptions(recursive=True)
