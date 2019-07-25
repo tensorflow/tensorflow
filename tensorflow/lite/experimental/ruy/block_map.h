@@ -94,11 +94,11 @@ struct BlockMap {
   // axis.
   SidePair<int> kernel_dims;
   // Internal helper. Minimum number of rows/columns in each block.
-  SidePair<std::uint16_t> small_block_dims;
+  SidePair<int> small_block_dims;
   // Internal helper. Number of blocks along each dimension that need to have
   // their size in that dimension be given by (small_block_dims + kernel_dims)
   // instead of just small_block_dims.
-  SidePair<std::uint16_t> large_blocks;
+  SidePair<int> large_blocks;
 };
 
 // Create a BlockMap suitable for tiling the destination matrix in a
@@ -108,27 +108,25 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int cache_friendly_traversal_threshold, BlockMap* block_map);
 
 // Maps an integer index to a block position in the grid.
-void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
-                     SidePair<std::uint16_t>* block);
+void GetBlockByIndex(const BlockMap& block_map, int index,
+                     SidePair<int>* block);
 
 // Given a block position in the grid, returns its actual
 // position in the matrix that the BlockMap refers to in the dimension
 // referred to by `side`: along rows if side==kLhs, along columns if
 // side==kRhs.
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
-                          const SidePair<std::uint16_t>& block, int* start,
-                          int* end);
+                          const SidePair<int>& block, int* start, int* end);
 
 // Given a block position in the grid, returns its actual
 // position in the matrix that the BlockMap refers to in terms of
 // actual row/column indices.
-void GetBlockMatrixCoords(const BlockMap& block_map,
-                          const SidePair<std::uint16_t>& block,
+void GetBlockMatrixCoords(const BlockMap& block_map, const SidePair<int>& block,
                           SidePair<int>* start, SidePair<int>* end);
 
 // Returns the number of grid subdivisions along the rows dimension (if
 // side == kLhs) or columns dimension (if side == kRhs).
-inline std::uint16_t NumBlocksPerSide(Side side, const BlockMap& block_map) {
+inline int NumBlocksPerSide(Side side, const BlockMap& block_map) {
   return 1 << (block_map.num_blocks_base_log2 +
                block_map.rectangularness_log2[side]);
 }
@@ -140,7 +138,7 @@ inline std::uint16_t NumBlocksPerSide(Side side, const BlockMap& block_map) {
 // Note that it is always true that
 //   NumBlocks == NumBlocksOfRows * NumBlocksOfCols
 // because either rows_rectangularness_log2 or cols_rectangularness_log2 is 0.
-inline std::uint32_t NumBlocks(const BlockMap& block_map) {
+inline int NumBlocks(const BlockMap& block_map) {
   return 1 << (2 * block_map.num_blocks_base_log2 +
                block_map.rectangularness_log2[Side::kLhs] +
                block_map.rectangularness_log2[Side::kRhs]);

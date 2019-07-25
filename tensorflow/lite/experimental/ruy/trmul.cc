@@ -33,8 +33,8 @@ namespace {
 
 struct TrMulTask final : Task {
   TrMulTask(TrMulParams* params_, const BlockMap& block_map_,
-            std::atomic<std::uint32_t>* atomic_block_id_,
-            std::uint32_t thread_id_, SidePair<std::atomic<bool>*> packed_,
+            std::atomic<int>* atomic_block_id_, int thread_id_,
+            SidePair<std::atomic<bool>*> packed_,
             TuningResolver* tuning_resolver_, Allocator* local_allocator_,
             Trace* trace_)
       : params(params_),
@@ -60,19 +60,19 @@ struct TrMulTask final : Task {
       }
     }
 
-    const std::uint32_t num_blocks = NumBlocks(block_map);
+    const int num_blocks = NumBlocks(block_map);
 
     const Tuning tuning = tuning_resolver->Resolve();
 
     TraceRecordThreadLoopStart(thread_id, trace);
 
-    SidePair<std::uint16_t> block;
+    SidePair<int> block;
     SidePair<int> start;
     SidePair<int> end;
 
     // Each thread starts by initially reserving the block whose id
     // is the thread id.
-    std::uint32_t block_id = thread_id;
+    int block_id = thread_id;
     TraceRecordBlockReserved(thread_id, block_id, trace);
 
     while (block_id < num_blocks) {
@@ -81,7 +81,7 @@ struct TrMulTask final : Task {
       // is shared among CPU cores, e.g. 60 cycles on an ARM CPU as of 2019)
       // of this atomic operation, we structure this code so as to avoid
       // immediately depending on the `next_n` result.
-      const std::uint32_t next_block_id =
+      const int next_block_id =
           atomic_block_id->fetch_add(1, std::memory_order_relaxed);
       TraceRecordBlockReserved(thread_id, next_block_id, trace);
       // Get coordinates of the current block to handle, in "block space".
@@ -107,11 +107,9 @@ struct TrMulTask final : Task {
   }
 
  private:
-  void EnsurePacked(Side side, std::uint32_t block_id,
-                    const SidePair<bool*> local_packed,
-                    const SidePair<std::uint16_t>& block,
-                    const SidePair<int>& start, const SidePair<int>& end,
-                    Tuning tuning) {
+  void EnsurePacked(Side side, int block_id, const SidePair<bool*> local_packed,
+                    const SidePair<int>& block, const SidePair<int>& start,
+                    const SidePair<int>& end, Tuning tuning) {
     // If two threads concurrently hit the same block to pack,
     // we allow them to concurrently pack it, writing the same packed matrix
     // data to the same location. That is considered worth it to avoid
@@ -132,8 +130,8 @@ struct TrMulTask final : Task {
 
   TrMulParams* params;
   const BlockMap& block_map;
-  std::atomic<std::uint32_t>* atomic_block_id;
-  std::uint32_t thread_id;
+  std::atomic<int>* atomic_block_id;
+  int thread_id;
   SidePair<std::atomic<bool>*> packed;
   TuningResolver* tuning_resolver;
   Allocator* local_allocator;
@@ -245,7 +243,7 @@ void TrMul(TrMulParams* params, Context* context) {
   // Create the atomic block id, allocate it using Allocator so that
   // we get the alignment ensuring that it sits alone in its exclusives
   // reservation granule.
-  std::atomic<std::uint32_t>* atomic_block_id;
+  std::atomic<int>* atomic_block_id;
   allocator->Allocate(1, &atomic_block_id);
 
   // Create task objects.

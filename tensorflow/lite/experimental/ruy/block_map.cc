@@ -22,34 +22,40 @@ limitations under the License.
 
 namespace ruy {
 
-void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
-                     SidePair<std::uint16_t>* block) {
+void GetBlockByIndex(const BlockMap& block_map, int index,
+                     SidePair<int>* block) {
   gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
-  std::uint16_t rectr =
-      index & ((1 << block_map.rectangularness_log2[Side::kLhs]) - 1);
-  std::uint16_t rectc =
-      index & ((1 << block_map.rectangularness_log2[Side::kRhs]) - 1);
+  const std::uint32_t index_u32 = index;
+  const std::uint32_t rectr =
+      index_u32 & ((1u << block_map.rectangularness_log2[Side::kLhs]) - 1);
+  const std::uint32_t rectc =
+      index_u32 & ((1u << block_map.rectangularness_log2[Side::kRhs]) - 1);
 
-  std::uint16_t n1 = index >> (block_map.rectangularness_log2[Side::kLhs] +
-                               block_map.rectangularness_log2[Side::kRhs]);
-  RUY_DCHECK_EQ(index, (n1 << (block_map.rectangularness_log2[Side::kLhs] +
-                               block_map.rectangularness_log2[Side::kRhs])) +
-                           rectr + rectc);
+  const std::uint32_t n1 =
+      index_u32 >> (block_map.rectangularness_log2[Side::kLhs] +
+                    block_map.rectangularness_log2[Side::kRhs]);
+  RUY_DCHECK_EQ(index_u32,
+                (n1 << (block_map.rectangularness_log2[Side::kLhs] +
+                        block_map.rectangularness_log2[Side::kRhs])) +
+                    rectr + rectc);
 
-  std::uint16_t br, bc;
+  std::uint32_t br, bc;
   if (block_map.traversal_order == BlockMapTraversalOrder::kLinear) {
-    br = n1 & ((1 << block_map.num_blocks_base_log2) - 1);
+    br = n1 & ((1u << block_map.num_blocks_base_log2) - 1);
     bc = n1 >> block_map.num_blocks_base_log2;
   } else {
     // Decode fractal z-order
-    std::uint16_t n2 =
-        (n1 & 0x9999) | ((n1 & 0x4444) >> 1) | ((n1 & 0x2222) << 1);
-    std::uint16_t n4 =
-        (n2 & 0xc3c3) | ((n2 & 0x3030) >> 2) | ((n2 & 0x0c0c) << 2);
-    std::uint16_t n8 =
-        (n4 & 0xf00f) | ((n4 & 0x0f00) >> 4) | ((n4 & 0x00f0) << 4);
-    br = n8 & 0xff;
-    bc = n8 >> 8;
+    const std::uint32_t n2 = (n1 & 0x99999999u) | ((n1 & 0x44444444u) >> 1) |
+                             ((n1 & 0x22222222u) << 1);
+    const std::uint32_t n4 = (n2 & 0xc3c3c3c3u) | ((n2 & 0x30303030u) >> 2) |
+                             ((n2 & 0x0c0c0c0cu) << 2);
+    const std::uint32_t n8 = (n4 & 0xf00ff00fu) | ((n4 & 0x0f000f00u) >> 4) |
+                             ((n4 & 0x00f000f0u) << 4);
+    const std::uint32_t n16 = (n8 & 0xff0000ffu) | ((n8 & 0x00ff0000u) >> 8) |
+                              ((n8 & 0x0000ff00u) << 8);
+
+    br = n16 & 0xffff;
+    bc = n16 >> 16;
     if (block_map.traversal_order == BlockMapTraversalOrder::kFractalU) {
       // Change fractal z-order to u-order
       br ^= bc;
@@ -182,15 +188,15 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   const int num_blocks_of_cols_log2 =
       num_blocks_base_log2 + cols_rectangularness_log2;
 
-  std::uint16_t smallr =
+  const int smallr =
       round_down_pot(rows_rounded_up >> num_blocks_of_rows_log2, kernel_rows);
-  std::uint16_t smallc =
+  const int smallc =
       round_down_pot(cols_rounded_up >> num_blocks_of_cols_log2, kernel_cols);
-  std::uint16_t missr =
+  const int missr =
       round_up_pot(rows_rounded_up - (smallr << num_blocks_of_rows_log2),
                    kernel_rows) /
       kernel_rows;
-  std::uint16_t missc =
+  const int missc =
       round_up_pot(cols_rounded_up - (smallc << num_blocks_of_cols_log2),
                    kernel_cols) /
       kernel_cols;
@@ -209,10 +215,9 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 }
 
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
-                          const SidePair<std::uint16_t>& block, int* start,
-                          int* end) {
+                          const SidePair<int>& block, int* start, int* end) {
   gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
-  const std::uint16_t b = block[side];
+  const int b = block[side];
   *start =
       b * block_map.small_block_dims[side] +
       std::min(b, block_map.large_blocks[side]) * block_map.kernel_dims[side];
@@ -226,8 +231,7 @@ void GetBlockMatrixCoords(Side side, const BlockMap& block_map,
   RUY_DCHECK_GE(*start, 0);
 }
 
-void GetBlockMatrixCoords(const BlockMap& block_map,
-                          const SidePair<std::uint16_t>& block,
+void GetBlockMatrixCoords(const BlockMap& block_map, const SidePair<int>& block,
                           SidePair<int>* start, SidePair<int>* end) {
   for (Side side : {Side::kLhs, Side::kRhs}) {
     GetBlockMatrixCoords(side, block_map, block, &(*start)[side],
