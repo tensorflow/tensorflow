@@ -15,12 +15,61 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
+#include "tensorflow/core/lib/gtl/cleanup.h"
+
 namespace tensorflow {
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
-  thread_done_ = true;
+  state_ = ExecutorState::kShutDown;
   nodes_pending_.notify_all();
+}
+
+Status EagerExecutor::ShutDown() {
+  {
+    tensorflow::mutex_lock l(node_queue_mutex_);
+    if (state_ != ExecutorState::kShutDown) {
+      // if the state is kShutDown, we don't return here because we want to
+      // make sure the executor thread has ended (if there is one).
+      // So, we fall through to
+      // thread_exited_notification_.WaitForNotification() below.
+      state_ = ExecutorState::kShuttingDown;
+    }
+    WaitForOrDestroyAllPendingNodes(&l);
+    state_ = ExecutorState::kShutDown;
+    if (thread_ == nullptr) {
+      return status_;
+    }
+    nodes_pending_.notify_all();
+  }
+
+  thread_exited_notification_.WaitForNotification();
+  tensorflow::mutex_lock l(node_queue_mutex_);
+  return status_;
+}
+
+void EagerExecutor::WaitForOrDestroyAllPendingNodes(mutex_lock* lock) {
+  if (state_ == ExecutorState::kShutDown) {
+    return;
+  }
+  if (thread_ == nullptr) {
+    Status status = status_;
+    if (status.ok()) {
+      status = errors::FailedPrecondition(
+          "Aborting eager nodes because EagerExecutor is being shut down "
+          "before it got a thread to run the nodes");
+      status_ = status;
+    }
+    while (!node_queue_.empty()) {
+      node_queue_.front()->Abort(status);
+      node_queue_.pop();
+    }
+    return;
+  }
+
+  // It is OK to ignore the returned status here because it will be saved
+  // as the final status_.
+  WaitForAllPendingNodesLocked(lock).IgnoreError();
 }
 
 void EagerExecutor::EnableAsync() {
@@ -32,6 +81,17 @@ void EagerExecutor::EnableAsync() {
   }
 }
 
+const char* EagerExecutor::StateStringLocked() {
+  switch (state_) {
+    case ExecutorState::kActive:
+      return "Active";
+    case ExecutorState::kShuttingDown:
+      return "ShuttingDown";
+    case ExecutorState::kShutDown:
+      return "ShutDown";
+  }
+}
+
 Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
   Status status;
 
@@ -40,18 +100,25 @@ Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
   // try to call EagerExecutor::Add()
   {
     tensorflow::mutex_lock l(node_queue_mutex_);
-    DCHECK(thread_) << "EnableAsync should have been called before Add";
-    status = status_;
-    if (status.ok()) {
-      node_queue_.push(std::move(node));
+    if (state_ != ExecutorState::kActive) {
+      status = errors::FailedPrecondition(
+          "EagerExecutor accepts new EagerNodes to run only in Active state. "
+          "Current state is '",
+          StateStringLocked(), "'");
+    } else {
+      DCHECK(thread_) << "EnableAsync should have been called before Add";
+      status = status_;
+      if (status.ok()) {
+        node_queue_.push(std::move(node));
 
-      // If there were no previous nodes pending, wake the run thread to start
-      // processing requests again.
-      if (node_queue_.size() == 1) {
-        nodes_pending_.notify_all();
+        // If there were no previous nodes pending, wake the run thread to start
+        // processing requests again.
+        if (node_queue_.size() == 1) {
+          nodes_pending_.notify_all();
+        }
+
+        return Status::OK();
       }
-
-      return Status::OK();
     }
   }
 
@@ -61,14 +128,19 @@ Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
 }
 
 tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {
-  tensorflow::condition_variable cond;
   tensorflow::mutex_lock l(node_queue_mutex_);
+  return WaitForAllPendingNodesLocked(&l);
+}
+
+tensorflow::Status EagerExecutor::WaitForAllPendingNodesLocked(
+    mutex_lock* lock) {
+  tensorflow::condition_variable cond;
   // Don't wait if an error is already set.
   if (!status_.ok()) return status_;
   if (node_queue_.empty()) return tensorflow::Status::OK();
   EagerNode* last_node = node_queue_.back().get();
   node_done_notifications_.insert(std::make_pair(last_node, &cond));
-  cond.wait(l);
+  cond.wait(*lock);
   // Note that we could be woken up if an error occurs, even though the node has
   // not actually executed.
   return status_;
@@ -76,6 +148,7 @@ tensorflow::Status EagerExecutor::WaitForAllPendingNodes() {
 
 void EagerExecutor::ClearError() {
   tensorflow::mutex_lock l(node_queue_mutex_);
+  // TODO(iga): Check state_ and return an error if it is not kActive.
   if (status_.ok()) return;
   // If an error was set, node_done_notifications_ and node_queue_ should have
   // been cleared, and no new entries should have been added since.
@@ -91,12 +164,14 @@ tensorflow::Status EagerExecutor::status() const {
 }
 
 void EagerExecutor::Run() {
+  auto thread_exited_notifier =
+      gtl::MakeCleanup([this] { thread_exited_notification_.Notify(); });
   while (true) {
     EagerNode* curr_node_raw;
     {
       tensorflow::mutex_lock l(node_queue_mutex_);
       while (node_queue_.empty() || !status_.ok()) {
-        if (thread_done_) return;
+        if (state_ == ExecutorState::kShutDown) return;
         nodes_pending_.wait(l);
       }
       // Obtain raw pointer since we don't want to remove from the queue until
@@ -126,7 +201,7 @@ void EagerExecutor::Run() {
             ". Encountered when executing an operation using "
             "EagerExecutor. This error cancels all future "
             "operations and poisons their output tensors.");
-        for (int i = 0; i < node_queue_.size(); ++i) {
+        while (!node_queue_.empty()) {
           node_queue_.front()->Abort(status);
           nodes_to_destroy.push_back(std::move(node_queue_.front()));
           node_queue_.pop();
