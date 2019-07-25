@@ -200,10 +200,12 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "not well defined.+test_ones"):
       len(x)
 
+    # EagerTensors should still behave as numpy arrays.
     with context.eager_mode():
       x = array_ops.ones((3, 4))
 
     self.assertAllEqual(x, np.ones((3, 4)))
+    self.assertAllEqual(np.array(x), np.ones((3, 4)))
     self.assertEqual(len(x), 3)
 
 
