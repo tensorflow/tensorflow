@@ -383,8 +383,6 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -429,14 +427,6 @@ class TrainingTest(keras_parameterized.TestCase):
         batch_size=5,
         verbose=2)
     model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
-
-    # Test model with input data as a list of lists
-    model.fit(
-        [np.ndarray.tolist(input_a_np), np.ndarray.tolist(input_b_np)],
-        [output_d_np, output_e_np],
-        epochs=2,
-        batch_size=5,
-        verbose=2)
 
     # Test with validation data
     model.fit(
@@ -598,11 +588,18 @@ class TrainingTest(keras_parameterized.TestCase):
     input_a_np = np.random.random((10, 3))
     input_b_np = np.random.random((10, 4))
 
-    model.fit([np.ndarray.tolist(input_a_np)],
-              [np.ndarray.tolist(input_b_np)],
-              epochs=2,
-              batch_size=5,
-              verbose=2)
+    if testing_utils.should_run_distributed():
+      model.fit(np.ndarray.tolist(input_a_np),
+                np.ndarray.tolist(input_b_np),
+                epochs=2,
+                batch_size=5,
+                verbose=2)
+    else:
+      model.fit([np.ndarray.tolist(input_a_np)],
+                [np.ndarray.tolist(input_b_np)],
+                epochs=2,
+                batch_size=5,
+                verbose=2)
 
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_predict_on_arrays(self):
